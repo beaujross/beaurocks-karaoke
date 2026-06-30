@@ -17,17 +17,17 @@ test('UnifiedGameLauncher quick launch keeps voice games in TV-controlled crowd 
   );
   assert.match(
     source,
-    /const startFlappyAmbient = async[\s\S]*gameRulesId: Date\.now\(\)/,
+    /const startFlappyAmbient = async[\s\S]*gameRulesId: now/,
     'Pitch Runner launches should push a fresh rules token so the room gets control instructions before gameplay',
   );
   assert.match(
     source,
-    /const startVocalAmbient = async[\s\S]*gameRulesId: Date\.now\(\)/,
+    /const startVocalAmbient = async[\s\S]*gameRulesId: now/,
     'Vocal Challenge launches should push a fresh rules token so the room gets control instructions before gameplay',
   );
   assert.match(
     source,
-    /const startRidingScalesCrowd = async[\s\S]*gameRulesId: Date\.now\(\)/,
+    /const startRidingScalesCrowd = async[\s\S]*gameRulesId: now/,
     'Riding Scales launches should push a fresh rules token so the room gets control instructions before gameplay',
   );
 });
@@ -116,4 +116,53 @@ test('GameCardItem receives next-question action through props', () => {
     /const GameCardItem = \(\{(?![^}]*nextQuestionAction)[^}]*\}\) => \{[\s\S]*\{nextQuestionAction \? \(/,
     'The active game card should not render nextQuestionAction without receiving it as a prop.',
   );
+});
+test('UnifiedGameLauncher keeps game controls reachable on shorter host screens', () => {
+  assert.match(
+    source,
+    /const GameConfigShell = \(\{ title, subtitle, accentClass, onClose, children \}\) => \{[\s\S]*overflow-y-auto overscroll-contain p-3 sm:p-6[\s\S]*max-h-\[calc\(100dvh-1\.5rem\)\][\s\S]*custom-scrollbar/,
+    'Shared game config dialogs should scroll inside the viewport instead of letting lower controls fall off-screen.',
+  );
+  assert.match(
+    source,
+    /data-game-card=\{game\.id\}[\s\S]*overflow-visible bg-gradient-to-b/,
+    'Game cards should not clip expanded per-game participant controls.',
+  );
+  assert.match(
+    source,
+    /selectedGame === 'flappy_bird'[\s\S]*max-h-\[calc\(100dvh-1\.5rem\)\][\s\S]*selectedGame === 'vocal_challenge'[\s\S]*max-h-\[calc\(100dvh-1\.5rem\)\][\s\S]*selectedGame === 'riding_scales'[\s\S]*max-h-\[calc\(100dvh-1\.5rem\)\]/,
+    'The custom vocal game config dialogs should get the same viewport-safe scrolling as shared config dialogs.',
+  );
+});
+
+
+test('UnifiedGameLauncher auto-arms the host room mic for host-mic voice games', () => {
+  assert.match(source, /const startFlappyAmbient = async[\s\S]*hostVoiceMicControl\?\.onArm\?\.\(\)/, 'Pitch Runner crowd launch should start host mic capture immediately');
+  assert.match(source, /const startVocalAmbient = async[\s\S]*hostVoiceMicControl\?\.onArm\?\.\(\)/, 'Vocal Challenge crowd launch should start host mic capture immediately');
+  assert.match(source, /const startRidingScalesCrowd = async[\s\S]*hostVoiceMicControl\?\.onArm\?\.\(\)/, 'Riding Scales crowd launch should start host mic capture immediately');
+  assert.match(source, /const startTeamPong = async[\s\S]*hostVoiceMicControl\?\.onArm\?\.\(\)/, 'Team Pong launch should start host mic capture immediately');
+  assert.match(source, /hostVoiceMicControl\.statusText/, 'Launcher mic card should show the host-reported mic startup state');
+  assert.match(source, /hostVoiceMicControl\.tvFeedLabel/, 'Launcher mic card should show whether the TV feed is live or waiting');
+  assert.match(source, /selectedDeviceId/, 'Launcher mic setup should expose selected mic device state');
+  assert.match(source, /onRefreshDevices/, 'Launcher mic setup should let the host refresh browser input devices');
+  assert.match(source, /Test Tone/, 'Launcher mic setup should include a quick audible output check');
+  assert.match(source, /hostVoiceMicControl\.error \? 'Retry Room Mic'/, 'Launcher mic card should expose retry when browser mic startup fails');
+});
+test('UnifiedGameLauncher schedules host-mic voice games with a synchronized launch warmup', () => {
+  assert.match(source, /const VOICE_GAME_LAUNCH_WARMUP_MS = 6200/);
+  assert.match(source, /const buildVoiceGameLaunchTimingConfig = \(now = Date\.now\(\), warmupMs = VOICE_GAME_LAUNCH_WARMUP_MS\) => \(\{[\s\S]*voiceLaunchAtMs: now \+ warmupMs,[\s\S]*launchCueId: now/);
+  assert.match(source, /activeMode: 'flappy_bird',[\s\S]*\.\.\.buildVoiceGameLaunchTimingConfig\(now\)/);
+  assert.match(source, /activeMode: 'vocal_challenge',[\s\S]*\.\.\.buildVoiceGameLaunchTimingConfig\(now\)/);
+  assert.match(source, /activeMode: 'riding_scales',[\s\S]*\.\.\.buildVoiceGameLaunchTimingConfig\(now\)/);
+});
+
+test('UnifiedGameLauncher carries voice-game sound pack and room tuning metadata into launches', () => {
+  assert.match(source, /const VOICE_GAME_SOUND_PACK_MANIFEST_URL = '\/audio\/voice-games\/manifest\.json'/);
+  assert.match(source, /const VoiceAudioSetupPanel = \(\{ voiceRoomTuning = 'forgiving_room', setVoiceRoomTuning, hostVoiceMicControl = null \}\) =>/);
+  assert.match(source, /const buildVoiceGameAudioLaunchConfig = \(\) => \(\{[\s\S]*soundPackManifestUrl: VOICE_GAME_SOUND_PACK_MANIFEST_URL,[\s\S]*soundPackBasePath: VOICE_GAME_SOUND_PACK_BASE_PATH,[\s\S]*voiceRoomTuning/);
+  assert.match(source, /activeMode: 'flappy_bird',[\s\S]*\.\.\.buildVoiceGameAudioLaunchConfig\(\)/);
+  assert.match(source, /activeMode: 'vocal_challenge',[\s\S]*\.\.\.buildVoiceGameAudioLaunchConfig\(\)/);
+  assert.match(source, /activeMode: 'riding_scales',[\s\S]*\.\.\.buildVoiceGameAudioLaunchConfig\(\)/);
+  assert.match(source, /activeMode: 'team_pong',[\s\S]*\.\.\.buildVoiceGameAudioLaunchConfig\(\)/);
+  assert.match(source, /activeMode: 'musical_moments',[\s\S]*\.\.\.buildVoiceGameAudioLaunchConfig\(\)/);
 });

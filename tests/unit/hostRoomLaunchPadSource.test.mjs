@@ -58,9 +58,11 @@ test('room browser keeps results adjacent to folders, supports pinning, and does
 
   assert.match(browserSource, /data-room-browser-bucket=\{bucket\.id\}/);
   assert.match(browserSource, /ref=\{roomBrowserResultsRef\}/);
-  assert.match(browserSource, /roomBrowserResultsRef\.current\.scrollIntoView/);
+  assert.match(browserSource, /handleRoomBrowserBucketClick/);
+  assert.ok(browserSource.includes("roomBrowserResultsRef.current?.scrollIntoView"));
   assert.match(browserSource, /xl:col-start-2 xl:row-start-1/);
-  assert.match(browserSource, /xl:col-start-2 xl:row-start-2/);
+  assert.match(browserSource, /xl:col-start-3 xl:row-start-1/);
+  assert.ok(browserSource.includes("openExistingRoomWorkspace(roomItem.code, 'ops.room_setup')"));
   assert.match(browserSource, /\{roomPinned \? 'Pinned' : 'Pin'\}/);
   assert.match(browserSource, /Pin Room/);
   assert.match(launchPadSource, /ROOM_BROWSER_PIN_STORAGE_KEY/);
@@ -81,7 +83,7 @@ test('AAHF rooms still drive the default launchpad focus without a dedicated bro
   assert.match(launchPadSource, /const \[selectedRoomCode, setSelectedRoomCode\] = useState\(\(\) => String\(featuredRoom\?\.code \|\| ''\)\.trim\(\)\.toUpperCase\(\)\);/);
   assert.match(launchPadSource, /setRoomBrowserFilter\(targetBucketId\);/);
   assert.doesNotMatch(browserSource, /Event Focus/);
-  assert.match(browserSource, /Selected Room Details/);
+  assert.match(browserSource, /Room controls/);
   assert.match(browserSource, />\s*Room Settings\s*</);
   assert.match(browserSource, />\s*Reset Room\s*</);
 });
@@ -96,9 +98,16 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
   assert.match(browserSource, /manageModeActive = roomSetupMode === 'manage'/);
   assert.match(browserSource, /existingRoomCount = roomBrowserBuckets\.find\(\(bucket\) => bucket\.id === 'all'\)\?\.rooms\.length \|\| 0/);
   assert.match(browserSource, /\{manageModeActive \? \(/);
+  assert.match(browserSource, /\{createModeActive \? \(/);
+  assert.match(browserSource, /xl:grid-cols-\[220px_minmax\(0,1fr\)_380px\]/);
   assert.match(browserSource, /xl:sticky xl:top-4/);
-  assert.match(browserSource, /Choose one lane/);
+  assert.ok(browserSource.includes("openExistingRoomWorkspace(roomItem.code, 'ops.room_setup')"));
+  assert.match(browserSource, /More room actions/);
+  assert.match(browserSource, /Pick a task/);
   assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\('create'\)\}/);
   assert.match(browserSource, /ROOM_SETUP_TABS = Object\.freeze\(\[/);
   assert.match(browserSource, /id: 'manage'/);
+  assert.match(browserSource, /How should points work\?/);
+  assert.doesNotMatch(browserSource, /Credits and promos/);
+  assert.doesNotMatch(browserSource, /EventCreditsConfigPanel/);
 });

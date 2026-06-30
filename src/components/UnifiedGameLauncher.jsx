@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { GAMES_META } from '../lib/gameRegistry';
 import { db, doc, onSnapshot, setDoc, updateDoc, serverTimestamp } from '../lib/firebase';
 import { APP_ID } from '../lib/assets';
@@ -20,7 +20,7 @@ import {
 import { VOICE_GAME_FUN_DEFAULTS } from '../games/vocalGameTuning';
 
 const STYLES = {
-    btnStd: "rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-nowrap backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0",
+    btnStd: "rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-normal text-center leading-tight backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     btnPrimary: "bg-[#00C4D9]/20 border-[#00C4D9]/40 text-[#00C4D9] hover:bg-[#00C4D9]/30",
     btnSecondary: "bg-zinc-900/60 border-zinc-700 text-zinc-300 hover:bg-zinc-900 hover:border-zinc-600",
     btnDanger: "bg-red-600/20 border-red-600/40 text-red-300 hover:bg-red-600/30",
@@ -28,6 +28,33 @@ const STYLES = {
     input: "bg-zinc-900/70 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C4D9]/50",
     header: "text-xs uppercase tracking-[0.3em] text-zinc-500",
 };
+
+const VOICE_GAME_SOUND_PACK_MANIFEST_URL = '/audio/voice-games/manifest.json';
+const VOICE_GAME_SOUND_PACK_BASE_PATH = '/audio/voice-games';
+const VOICE_GAME_SOUND_PACK_ID = 'voice-games-produced-v1';
+const VOICE_GAME_LAUNCH_WARMUP_MS = 6200;
+
+const MUSICAL_MOMENT_PRESETS = Object.freeze([
+    {
+        id: 'whitney_i_will_always_love_you_silence_drop',
+        label: 'Whitney Silence Drop',
+        title: 'I Will Always Love You: Silence Drop',
+        artist: 'Whitney Houston',
+        mediaUrl: 'https://www.youtube.com/watch?v=3JWTaaS7LdU',
+        startSec: 171,
+        loopSec: 24,
+        mysteryStartSec: 14,
+        targetBeatSec: 18,
+        hitWindowMs: 700,
+        tapLatencyOffsetMs: 0,
+        targetLabel: 'Drum Crash',
+        prompt: 'Wait through the silence and tap exactly when the crash lands.'
+    },
+    { id: 'silence_drop', label: 'Silence Drop', title: 'Silence Before The Crash', artist: 'Re-entry timing', mediaUrl: '', startSec: 0, loopSec: 10, mysteryStartSec: 5.6, targetBeatSec: 7.2, hitWindowMs: 820, tapLatencyOffsetMs: 0, targetLabel: 'Beat Drop', prompt: 'Hold through the silence and punch the re-entry.' },
+    { id: 'high_note', label: 'High Note Lift', title: 'High Note Lift-Off', artist: 'Room vocal challenge', mediaUrl: '', startSec: 0, loopSec: 12, mysteryStartSec: 6.2, targetBeatSec: 8.6, hitWindowMs: 760, tapLatencyOffsetMs: 0, targetLabel: 'Lift Peak', prompt: 'Build the note and tap the peak.' },
+    { id: 'crowd_chant', label: 'Chant Punch', title: 'Crowd Chant Punch-In', artist: 'Rhythm and voice', mediaUrl: '', startSec: 0, loopSec: 8, mysteryStartSec: 3.4, targetBeatSec: 5.1, hitWindowMs: 680, tapLatencyOffsetMs: 0, targetLabel: 'Chant Hit', prompt: 'Lock the chant and hit the punch-in.' },
+    { id: 'final_word', label: 'Final Word', title: 'Last Word Lock-In', artist: 'Phrase ending challenge', mediaUrl: '', startSec: 0, loopSec: 14, mysteryStartSec: 8.8, targetBeatSec: 10.8, hitWindowMs: 900, tapLatencyOffsetMs: 0, targetLabel: 'Final Word', prompt: 'Feel the phrase ending and tap the final word.' }
+]);
 
 const splitTriviaImportLine = (line = '') => {
     if (line.includes('|')) return line.split('|');
@@ -341,9 +368,9 @@ const detectBingoWin = ({ tiles = [], size = 5, revealed = {}, victory = default
 
 const GameConfigShell = ({ title, subtitle, accentClass, onClose, children }) => {
     return (
-        <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
-            <div className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 z-[300] bg-black/80 flex items-start justify-center overflow-y-auto overscroll-contain p-3 sm:p-6">
+            <div className="my-auto w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl shadow-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto custom-scrollbar">
+                <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-white/10 bg-zinc-900/96 px-4 py-4 backdrop-blur sm:px-6">
                     <div>
                         <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Game Config</div>
                         <div className={`text-2xl font-bold ${accentClass || 'text-white'}`}>{title}</div>
@@ -351,12 +378,70 @@ const GameConfigShell = ({ title, subtitle, accentClass, onClose, children }) =>
                     </div>
                     <button onClick={onClose} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm`}>Close</button>
                 </div>
-                {children}
+                <div className="p-4 sm:p-6">
+                    {children}
+                </div>
             </div>
         </div>
     );
 };
 
+
+const VoiceAudioSetupPanel = ({ voiceRoomTuning = 'forgiving_room', setVoiceRoomTuning, hostVoiceMicControl = null }) => {
+    const devices = Array.isArray(hostVoiceMicControl?.devices) ? hostVoiceMicControl.devices : [];
+    const micVisible = !!hostVoiceMicControl?.visible;
+    return (
+        <div className="rounded-2xl border border-violet-300/20 bg-violet-500/10 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <label className="flex flex-1 flex-col gap-2 text-xs text-zinc-300">
+                    <span className="uppercase tracking-[0.24em] text-violet-200">Room Audio</span>
+                    <select value={voiceRoomTuning} onChange={(event) => setVoiceRoomTuning?.(event.target.value)} className={STYLES.input}>
+                        <option value="forgiving_room">Forgiving room</option>
+                        <option value="loud_room">Loud room</option>
+                        <option value="tight_stage">Tight stage</option>
+                    </select>
+                </label>
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-100">
+                    Pack: {VOICE_GAME_SOUND_PACK_ID}
+                </div>
+            </div>
+            <div className="mt-3 text-xs leading-5 text-violet-100/80">
+                Uses {VOICE_GAME_SOUND_PACK_MANIFEST_URL}; procedural cues stay active until produced files are available.
+            </div>
+            <div className={(hostVoiceMicControl?.active ? 'border-emerald-300/30 bg-emerald-500/10' : hostVoiceMicControl?.armed ? 'border-cyan-300/25 bg-cyan-500/10' : 'border-amber-300/25 bg-amber-500/10') + ' mt-4 rounded-2xl border p-3'}>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100/80">Host Mic Setup</div>
+                        <div className="mt-1 text-sm leading-6 text-zinc-200">{hostVoiceMicControl?.statusText || 'Waiting. Arm this host device mic before the crowd controls the game.'}</div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={hostVoiceMicControl?.error ? (hostVoiceMicControl?.onRetry || hostVoiceMicControl?.onArm || hostVoiceMicControl?.onToggle) : (hostVoiceMicControl?.onToggle || hostVoiceMicControl?.onArm)}
+                        className={`${STYLES.btnStd} ${hostVoiceMicControl?.armed ? STYLES.btnHighlight : STYLES.btnPrimary} px-3 py-2 text-xs ${!hostVoiceMicControl ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        disabled={!hostVoiceMicControl}
+                    >
+                        <i className="fa-solid fa-microphone-lines"></i>
+                        {hostVoiceMicControl?.error ? 'Retry Room Mic' : (hostVoiceMicControl?.armed ? 'Room Mic Armed' : 'Arm Room Mic')}
+                    </button>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+                    <select value={hostVoiceMicControl?.selectedDeviceId || ''} onChange={(event) => hostVoiceMicControl?.onSelectDevice?.(event.target.value)} className={STYLES.input} disabled={!hostVoiceMicControl}>
+                        <option value="">Default microphone</option>
+                        {devices.map((device, index) => <option key={device.deviceId || index} value={device.deviceId || ''}>{device.label || ('Microphone ' + (index + 1))}</option>)}
+                    </select>
+                    <button type="button" onClick={hostVoiceMicControl?.onRefreshDevices} disabled={!hostVoiceMicControl} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-xs ${!hostVoiceMicControl ? 'opacity-60 cursor-not-allowed' : ''}`}>Refresh</button>
+                    <button type="button" onClick={hostVoiceMicControl?.onTestTone} disabled={!hostVoiceMicControl} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-xs ${!hostVoiceMicControl ? 'opacity-60 cursor-not-allowed' : ''}`}>Test Tone</button>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300 sm:grid-cols-4">
+                    <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2"><div className="uppercase tracking-[0.16em] text-cyan-100/70">State</div><div className="mt-1 font-black text-white">{micVisible ? (hostVoiceMicControl?.ready ? 'Browser stream ready' : hostVoiceMicControl?.armed ? 'Mic armed' : 'Waiting') : 'Waiting'}</div></div>
+                    <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2"><div className="uppercase tracking-[0.16em] text-cyan-100/70">Note</div><div className="mt-1 font-black text-white">{hostVoiceMicControl?.note || '...'}</div></div>
+                    <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2"><div className="uppercase tracking-[0.16em] text-cyan-100/70">Volume</div><div className="mt-1 font-black text-white">{Math.round(Number(hostVoiceMicControl?.volumePct || 0))}%</div></div>
+                    <div className={(hostVoiceMicControl?.stale ? 'border-amber-300/35 bg-amber-500/12' : 'border-white/10 bg-black/25') + ' rounded-lg border px-2 py-2'}><div className="uppercase tracking-[0.16em] text-cyan-100/70">TV Feed</div><div className="mt-1 font-black text-white">{hostVoiceMicControl?.tvFeedLabel || 'Waiting'}</div></div>
+                </div>
+            </div>
+        </div>
+    );
+};
 const UnifiedGameLauncher = ({
     room,
     roomCode,
@@ -380,7 +465,8 @@ const UnifiedGameLauncher = ({
     onSetBracketWinnerFromCrowdVotes,
     onToggleBracketCrowdVoting,
     onForfeitBracketContestant,
-    onAddQuickRunOfShowMoment
+    onAddQuickRunOfShowMoment,
+    hostVoiceMicControl = null
 }) => {
     const toast = useToast() || console.log;
     const canUseAiGeneration = !!capabilities?.['ai.generate_content'];
@@ -399,6 +485,12 @@ const UnifiedGameLauncher = ({
     const [selectedSingerId, setSelectedSingerId] = useState('');
     const sortedUsers = [...users].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     const allUserIds = useMemo(() => getResolvedRoomUserUids(sortedUsers), [sortedUsers]);
+    const cleanParticipantIds = useCallback((ids = []) => {
+        const allowed = new Set(allUserIds);
+        return Array.from(new Set((Array.isArray(ids) ? ids : [])
+            .map((id) => String(id || '').trim())
+            .filter((id) => id && (!allowed.size || allowed.has(id)))));
+    }, [allUserIds]);
     const [bracketSeedUids, setBracketSeedUids] = useState([]);
     const [bracketSeedRandomize, setBracketSeedRandomize] = useState(false);
     const [bracketSignupDurationMin, setBracketSignupDurationMin] = useState(BRACKET_SIGNUP_DEFAULT_DURATION_MIN);
@@ -466,6 +558,24 @@ const UnifiedGameLauncher = ({
     const [vocalDurationSec, setVocalDurationSec] = useState(VOICE_GAME_FUN_DEFAULTS.vocalChallenge.durationSec);
     const [vocalDifficulty, setVocalDifficulty] = useState(VOICE_GAME_FUN_DEFAULTS.vocalChallenge.difficulty);
     const [vocalGuideTone, setVocalGuideTone] = useState(VOICE_GAME_FUN_DEFAULTS.vocalChallenge.guideTone);
+    const [voiceRoomTuning, setVoiceRoomTuning] = useState('forgiving_room');
+
+    // Team Pong state
+    const [teamPongTargetRally, setTeamPongTargetRally] = useState(45);
+    const [teamPongRallyTimeoutMs, setTeamPongRallyTimeoutMs] = useState(3200);
+
+    // Musical Moments state
+    const [musicalMomentTitle, setMusicalMomentTitle] = useState('Big Re-Entry Challenge');
+    const [musicalMomentArtist, setMusicalMomentArtist] = useState('');
+    const [musicalMomentMediaUrl, setMusicalMomentMediaUrl] = useState('');
+    const [musicalMomentStartSec, setMusicalMomentStartSec] = useState(0);
+    const [musicalMomentLoopSec, setMusicalMomentLoopSec] = useState(12);
+    const [musicalMomentMysteryStartSec, setMusicalMomentMysteryStartSec] = useState(0);
+    const [musicalMomentTargetBeatSec, setMusicalMomentTargetBeatSec] = useState(8);
+    const [musicalMomentHitWindowMs, setMusicalMomentHitWindowMs] = useState(700);
+    const [musicalMomentTapLatencyOffsetMs, setMusicalMomentTapLatencyOffsetMs] = useState(0);
+    const [musicalMomentPlayMode, setMusicalMomentPlayMode] = useState('crowd');
+    const [musicalMomentParticipants, setMusicalMomentParticipants] = useState([]);
 
     const participantConfigs = useMemo(() => ({
         trivia_pop: {
@@ -536,7 +646,8 @@ const UnifiedGameLauncher = ({
             wyr: '50 pts',
             bingo: 'Custom',
             karaoke_bracket: 'Champion',
-            team_pong: 'Rally',
+            team_pong: 'Paddle saves',
+            musical_moments: 'Tap + Sing',
             riding_scales: `${Math.max(10, Number(scaleRewardPerRound) || 50)} pts`,
             vocal_challenge: 'Streak',
             flappy_bird: 'High score',
@@ -551,7 +662,9 @@ const UnifiedGameLauncher = ({
             trivia_pop: 'Group',
             wyr: 'Group',
             bingo: 'Group',
-            team_pong: 'Left vs Right',
+            team_pong: 'Team paddles',
+            volley_orb: 'Lobby rocket',
+            musical_moments: 'Media loop',
             karaoke_bracket: '1v1 bracket',
             selfie_challenge: 'Group'
         };
@@ -578,12 +691,14 @@ const UnifiedGameLauncher = ({
         doodle_oke: 'Doodle-oke',
         bingo: 'Bingo',
         team_pong: 'Team Pong',
+        musical_moments: 'Musical Moments',
+        volley_orb: 'Volley Orb',
         karaoke_bracket: 'Sweet 16 Bracket',
         trivia_pop: 'Trivia',
         trivia_reveal: 'Trivia',
         wyr: 'Would You Rather',
         wyr_reveal: 'Would You Rather'
-    }[room?.activeMode] || '';
+    }[room?.activeMode] || (String(room?.lightMode || '').trim().toLowerCase() === 'volley' ? 'Volley Orb' : '');
 
     useEffect(() => {
         if (!roomCode) return () => {};
@@ -686,10 +801,111 @@ const UnifiedGameLauncher = ({
         await updateRoom({ gameRulesId: Date.now() });
         toast("Game rules sent to screens");
     };
+
+    const buildVocalGameRecap = (modeId = '', gameData = {}) => {
+        const safeMode = String(modeId || '').trim();
+        const now = Date.now();
+        const labels = {
+            flappy_bird: 'Pitch Runner',
+            vocal_challenge: 'Vocal Challenge',
+            riding_scales: 'Riding Scales',
+            team_pong: 'Team Pong',
+            musical_moments: 'Musical Moments'
+        };
+        if (!labels[safeMode]) return null;
+        if (gameData?.recap && typeof gameData.recap === 'object') return gameData.recap;
+        const liveStats = gameData?.liveStats && typeof gameData.liveStats === 'object' ? gameData.liveStats : {};
+        const playerName = String(gameData?.playerName || liveStats.playerName || (gameData?.playerId === 'GROUP' || gameData?.playerId === 'AMBIENT' ? 'The Crowd' : 'Players')).trim() || 'Players';
+        const base = {
+            active: true,
+            mode: safeMode,
+            title: labels[safeMode],
+            playerName,
+            headline: `${labels[safeMode]} complete`,
+            summary: 'Nice run. Reset quickly or launch the next room moment.',
+            createdAtMs: now,
+            tvUntilMs: now + 22000,
+            stats: [],
+            highlights: []
+        };
+        if (safeMode === 'team_pong') {
+            const leftHits = Math.max(0, Number(liveStats.leftHits || 0));
+            const rightHits = Math.max(0, Number(liveStats.rightHits || 0));
+            return {
+                ...base,
+                headline: leftHits === rightHits ? 'Rally complete' : `${leftHits > rightHits ? 'Left' : 'Right'} side edged the rally`,
+                summary: 'Chants built the charge; phones kept the rally alive.',
+                stats: [
+                    { label: 'Total hits', value: leftHits + rightHits },
+                    { label: 'Best rally', value: Math.max(0, Number(liveStats.rallyCount || 0)) },
+                    { label: 'Players', value: Math.max(0, Number(liveStats.participantCount || 0)) },
+                    { label: 'Chant charge', value: `${Math.round(Number(liveStats.crowdChargePct || 0))}%` }
+                ],
+                highlights: [`Left ${leftHits}`, `Right ${rightHits}`, `x${Number(liveStats.teamworkMultiplier || 1).toFixed(1)} teamwork`]
+            };
+        }
+        if (safeMode === 'musical_moments') {
+            return {
+                ...base,
+                headline: liveStats.grade ? `${liveStats.grade} musical moment` : 'Musical moment complete',
+                summary: liveStats.bestTapName ? `${liveStats.bestTapName} hit the strongest beat.` : 'The room chased the hit and vocal lift together.',
+                stats: [
+                    { label: 'Room score', value: Math.max(0, Number(liveStats.roomScore || 0)) },
+                    { label: 'Best tap', value: liveStats.bestTapScore ? Math.round(Number(liveStats.bestTapScore)) : '--' },
+                    { label: 'Taps', value: Math.max(0, Number(liveStats.tapCount || 0)) },
+                    { label: 'Vocal lift', value: `${Math.round(Number(liveStats.vocalLift || 0))}%` }
+                ],
+                highlights: [liveStats.title || gameData?.title || 'Beat challenge', liveStats.averageOffsetLabel || '', liveStats.bestTapName || 'Crowd timing'].filter(Boolean)
+            };
+        }
+        if (safeMode === 'flappy_bird') {
+            return {
+                ...base,
+                headline: `${Math.max(0, Number(gameData?.gatesPassed || 0))} gates cleared`,
+                summary: 'The room steered pitch up and down through the lane.',
+                stats: [
+                    { label: 'Score', value: Math.max(0, Number(gameData?.score || 0)) },
+                    { label: 'Gates', value: Math.max(0, Number(gameData?.gatesPassed || 0)) },
+                    { label: 'Range', value: `${gameData?.lowestMidi || '--'}-${gameData?.highestMidi || '--'}` },
+                    { label: 'Difficulty', value: gameData?.difficulty || 'normal' }
+                ]
+            };
+        }
+        if (safeMode === 'vocal_challenge') {
+            return {
+                ...base,
+                headline: `${Math.max(0, Number(gameData?.score || 0))} ribbon points`,
+                summary: 'Locked notes and near saves kept the target ribbon alive.',
+                stats: [
+                    { label: 'Score', value: Math.max(0, Number(gameData?.score || 0)) },
+                    { label: 'Streak', value: Math.max(0, Number(gameData?.streak || 0)) },
+                    { label: 'Notes', value: Math.max(0, Number(gameData?.targetIndex || 0)) },
+                    { label: 'Mode', value: gameData?.mode === 'crowd' ? 'Crowd' : 'Turns' }
+                ]
+            };
+        }
+        return {
+            ...base,
+            headline: `Round ${Math.max(1, Number(gameData?.bestRound || gameData?.round || 1))} reached`,
+            summary: 'The room listened, echoed, and rode the scale as far as it could.',
+            stats: [
+                { label: 'Best round', value: Math.max(1, Number(gameData?.bestRound || gameData?.round || 1)) },
+                { label: 'Checkpoints', value: Math.max(0, Number(gameData?.checkpointCount || 0)) },
+                { label: 'Strikes', value: `${Math.max(0, Number(gameData?.strikes || 0))}/${Math.max(1, Number(gameData?.maxStrikes || 3))}` },
+                { label: 'Mode', value: gameData?.mode === 'crowd' ? 'Crowd' : 'Turns' }
+            ]
+        };
+    };
     
-    const stopGame = async () => { 
-        await updateRoom({ activeMode: 'karaoke', gameData: null, gameParticipantMode: 'all', gameParticipants: [] }); 
-        toast("Game Stopped"); 
+    const stopGame = async () => {
+        const recap = buildVocalGameRecap(room?.activeMode, room?.gameData || {});
+        const patch = { activeMode: 'karaoke', gameData: recap ? { recap } : null, gameParticipantMode: 'all', gameParticipants: [] };
+        if (String(room?.lightMode || '').trim().toLowerCase() === 'volley') {
+            patch.lightMode = 'off';
+            patch.lobbyVolleyEnabled = false;
+        }
+        await updateRoom(patch);
+        toast(recap ? "Game stopped. Recap is on TV." : "Game Stopped");
     };
 
     const buildParticipantPayload = (mode, participants) => ({
@@ -701,6 +917,19 @@ const UnifiedGameLauncher = ({
         setSelectedGameForConfig(gameId);
         setShowGameConfig(true);
     };
+
+    const buildVoiceGameAudioLaunchConfig = () => ({
+        soundPackId: VOICE_GAME_SOUND_PACK_ID,
+        soundPackManifestUrl: VOICE_GAME_SOUND_PACK_MANIFEST_URL,
+        soundPackBasePath: VOICE_GAME_SOUND_PACK_BASE_PATH,
+        voiceRoomTuning
+    });
+
+    const buildVoiceGameLaunchTimingConfig = (now = Date.now(), warmupMs = VOICE_GAME_LAUNCH_WARMUP_MS) => ({
+        voiceLaunchAtMs: now + warmupMs,
+        voiceLaunchWarmupMs: warmupMs,
+        launchCueId: now
+    });
 
     const toggleGamePreview = async (gameId) => {
         const next = room?.gamePreviewId === gameId ? null : gameId;
@@ -720,7 +949,8 @@ const UnifiedGameLauncher = ({
             trivia_pop: `${Math.max(5, Number(triviaRoundSec) || 20)}s round`,
             wyr: '1 question',
             bingo: '1 board',
-            team_pong: 'Live rally',
+            team_pong: `${Math.max(10, Number(teamPongTargetRally) || 45)} rally goal`,
+            volley_orb: 'Lobby relay',
             karaoke_bracket: 'Sweet 16 flow',
             flappy_bird: 'Crowd mic pitch run'
         };
@@ -728,7 +958,8 @@ const UnifiedGameLauncher = ({
             trivia_pop: '100 pts',
             wyr: '50 pts',
             bingo: 'Custom',
-            team_pong: 'Rally score',
+            team_pong: 'Save + Spike',
+            volley_orb: 'Combo lift',
             karaoke_bracket: 'Champion',
             riding_scales: `${Math.max(10, Number(scaleRewardPerRound) || 50)} pts`,
             vocal_challenge: 'Streak score',
@@ -756,6 +987,8 @@ const UnifiedGameLauncher = ({
         }
         if (gameId === 'riding_scales') return startRidingScalesCrowd();
         if (gameId === 'team_pong') return startTeamPong();
+        if (gameId === 'volley_orb') return startVolleyOrb();
+        if (gameId === 'musical_moments') return startMusicalMoments();
         if (gameId === 'trivia_pop') return startRandomTrivia();
         if (gameId === 'wyr') return startRandomWyr();
         if (gameId === 'bingo') {
@@ -807,16 +1040,18 @@ const UnifiedGameLauncher = ({
     };
 
     const startFlappyAmbient = async ({ quick = false } = {}) => {
+        hostVoiceMicControl?.onArm?.();
+        const now = Date.now();
         await updateRoom({
             activeMode: 'flappy_bird',
-            gameData: { playerId: 'AMBIENT', playerName: 'THE CROWD', playerAvatar: 'O', inputSource: 'ambient', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'easy', timestamp: Date.now() },
-            gameRulesId: Date.now(),
+            gameData: { playerId: 'AMBIENT', playerName: 'THE CROWD', playerAvatar: 'O', inputSource: 'ambient', voiceInput: 'host', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'easy', ...buildVoiceGameAudioLaunchConfig(), ...buildVoiceGameLaunchTimingConfig(now), timestamp: now },
+            gameRulesId: now,
             ...buildParticipantPayload('all', [])
         });
         logActivity(roomCode, 'HOST', 'started Ambient Pitch Runner (crowd mic).', 'GAME');
         toast(quick
-            ? "Quick Pitch Runner: Crowd mic mode (TV controls pitch lane)."
-            : "Ambient Pitch Runner started. Crowd mic on TV drives the lane.");
+            ? "Quick Pitch Runner: Crowd mic mode (arm the Host room mic)."
+            : "Ambient Pitch Runner started. Host room mic drives the lane.");
         setShowGameConfig(false);
     };
 
@@ -828,7 +1063,7 @@ const UnifiedGameLauncher = ({
         }
         await updateRoom({
             activeMode: 'flappy_bird',
-            gameData: { playerId: uid, playerName: selected.name || 'SINGER', playerAvatar: selected.avatar || 'O', inputSource: 'singer', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'easy', timestamp: Date.now() },
+            gameData: { playerId: uid, playerName: selected.name || 'SINGER', playerAvatar: selected.avatar || 'O', inputSource: 'singer', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'easy', ...buildVoiceGameAudioLaunchConfig(), timestamp: Date.now() },
             gameRulesId: Date.now(),
             ...buildParticipantPayload('selected', [uid])
         });
@@ -847,6 +1082,8 @@ const UnifiedGameLauncher = ({
     };
     
     const startVocalAmbient = async ({ quick = false } = {}) => {
+        hostVoiceMicControl?.onArm?.();
+        const now = Date.now();
         await updateRoom({
             activeMode: 'vocal_challenge',
             gameData: {
@@ -854,6 +1091,7 @@ const UnifiedGameLauncher = ({
                 playerName: 'THE CROWD',
                 playerAvatar: 'O',
                 inputSource: 'ambient',
+                voiceInput: 'host',
                 mode: 'crowd',
                 status: 'playing',
                 score: 0,
@@ -861,22 +1099,24 @@ const UnifiedGameLauncher = ({
                 turnDurationMs: Math.max(10, Number(vocalDurationSec) || VOICE_GAME_FUN_DEFAULTS.vocalChallenge.durationSec) * 1000,
                 difficulty: vocalDifficulty,
                 guideTone: vocalGuideTone,
-                timestamp: Date.now()
+                ...buildVoiceGameAudioLaunchConfig(),
+                ...buildVoiceGameLaunchTimingConfig(now),
+                timestamp: now
             },
-            gameRulesId: Date.now(),
+            gameRulesId: now,
             ...buildParticipantPayload('all', [])
         });
         logActivity(roomCode, 'HOST', 'started Ambient Vocal Challenge.', 'GAME');
         toast(quick
-            ? "Quick Vocal: Crowd mic mode (TV controls scoring)."
-            : "Ambient Vocal Challenge Started! Crowd mic (TV) controls scoring.");
+            ? "Quick Vocal: Crowd mic mode (arm the Host room mic)."
+            : "Ambient Vocal Challenge Started! Host room mic controls scoring.");
         setShowGameConfig(false);
     };
 
     const startVocalTurnsForParticipants = async (participantIds = [], { quick = false } = {}) => {
-        const participants = Array.isArray(participantIds) && participantIds.length
+        const participants = cleanParticipantIds(Array.isArray(participantIds) && participantIds.length
             ? participantIds
-            : (vocalParticipants.length ? vocalParticipants : allUserIds);
+            : (vocalParticipants.length ? vocalParticipants : allUserIds));
         if (!participants.length) { toast("Select at least one participant."); return; }
         const first = findRoomUserByUid(users, participants[0]);
         const uid = participants[0];
@@ -901,6 +1141,7 @@ const UnifiedGameLauncher = ({
                 turnDurationMs: Math.max(10, Number(vocalDurationSec) || VOICE_GAME_FUN_DEFAULTS.vocalChallenge.durationSec) * 1000,
                 difficulty: vocalDifficulty,
                 guideTone: vocalGuideTone,
+                ...buildVoiceGameAudioLaunchConfig(),
                 timestamp: Date.now()
             },
             gameRulesId: Date.now(),
@@ -927,6 +1168,7 @@ const UnifiedGameLauncher = ({
     const pickScalePattern = () => SCALE_PATTERNS[Math.floor(Math.random() * SCALE_PATTERNS.length)];
     
     const startRidingScalesCrowd = async () => {
+        hostVoiceMicControl?.onArm?.();
         const now = Date.now();
         await updateRoom({
             activeMode: 'riding_scales',
@@ -935,12 +1177,15 @@ const UnifiedGameLauncher = ({
                 playerName: 'THE CROWD',
                 playerAvatar: '🎤',
                 inputSource: 'crowd',
+                voiceInput: 'host',
                 mode: 'crowd',
                 startedAt: now,
+                ...buildVoiceGameLaunchTimingConfig(now),
                 turnDurationMs: Math.max(10, Number(scaleDurationSec) || VOICE_GAME_FUN_DEFAULTS.ridingScales.durationSec) * 1000,
                 pattern: pickScalePattern(),
                 difficulty: scaleDifficulty,
                 guideTone: scaleGuideTone,
+                ...buildVoiceGameAudioLaunchConfig(),
                 maxStrikes: Math.max(1, Number(scaleMaxStrikes) || VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes),
                 rewardPerRound: Math.max(10, Number(scaleRewardPerRound) || VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound),
                 status: 'running'
@@ -954,7 +1199,7 @@ const UnifiedGameLauncher = ({
     };
     
     const startRidingScalesTurns = async () => {
-        const participants = scaleParticipants.length ? scaleParticipants : allUserIds;
+        const participants = cleanParticipantIds(scaleParticipants.length ? scaleParticipants : allUserIds);
         if (!participants.length) { toast("Select at least one participant."); return; }
         const first = findRoomUserByUid(users, participants[0]);
         const now = Date.now();
@@ -978,6 +1223,7 @@ const UnifiedGameLauncher = ({
                 pattern: pickScalePattern(),
                 difficulty: scaleDifficulty,
                 guideTone: scaleGuideTone,
+                ...buildVoiceGameAudioLaunchConfig(),
                 maxStrikes: Math.max(1, Number(scaleMaxStrikes) || VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes),
                 rewardPerRound: Math.max(10, Number(scaleRewardPerRound) || VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound),
                 status: 'running'
@@ -990,23 +1236,103 @@ const UnifiedGameLauncher = ({
         setShowGameConfig(false);
     };
 
-    const startTeamPong = async () => {
+    const startVolleyOrb = async () => {
+        hostVoiceMicControl?.onArm?.();
         const now = Date.now();
+        await updateRoom({
+            lightMode: 'volley',
+            lobbyVolleyEnabled: true,
+            lobbyVolleyLaunchId: now,
+            lobbyVolleyStartedAtMs: now,
+            gameRulesId: now
+        });
+        logActivity(roomCode, 'HOST', 'started Volley Orb from the Games tab.', 'GAME');
+        toast('Volley Orb launched. Audience phones and Host room mic are live.');
+        setShowGameConfig(false);
+    };
+
+    const startTeamPong = async () => {
+        hostVoiceMicControl?.onArm?.();
+        const now = Date.now();
+        const normalizedTargetRally = Math.max(10, Math.min(120, Number(teamPongTargetRally) || 45));
+        const normalizedRallyTimeoutMs = Math.max(1800, Math.min(6000, Number(teamPongRallyTimeoutMs) || 3200));
         await updateRoom({
             activeMode: 'team_pong',
             gameData: {
                 sessionId: `team_pong_${now}`,
                 status: 'live',
-                startedAt: now,
+                startedAt: now + VOICE_GAME_LAUNCH_WARMUP_MS,
+                ...buildVoiceGameLaunchTimingConfig(now),
                 windowMs: 18000,
-                rallyTimeoutMs: 3200,
-                targetRally: 45,
-                inputSource: 'crowd'
+                rallyTimeoutMs: normalizedRallyTimeoutMs,
+                targetRally: normalizedTargetRally,
+                inputSource: 'crowd',
+                voiceInput: 'host',
+                ...buildVoiceGameAudioLaunchConfig()
             },
             ...buildParticipantPayload('all', [])
         });
         logActivity(roomCode, 'HOST', 'started Team Pong.', 'GAME');
         toast('Team Pong started');
+        setShowGameConfig(false);
+    };
+
+    const startMusicalMoments = async () => {
+        hostVoiceMicControl?.onArm?.();
+        const now = Date.now();
+        const loopSec = Math.max(4, Math.min(45, Number(musicalMomentLoopSec) || 12));
+        const targetBeatSec = Math.max(0.5, Math.min(loopSec - 0.25, Number(musicalMomentTargetBeatSec) || Math.max(1, loopSec - 4)));
+        const mysteryStartSec = Math.max(0, Math.min(targetBeatSec - 0.2, Number(musicalMomentMysteryStartSec) || Math.max(0, targetBeatSec - 4)));
+        const startSec = Math.max(0, Number(musicalMomentStartSec) || 0);
+        const mediaUrl = String(musicalMomentMediaUrl || '').trim();
+        const playMode = musicalMomentPlayMode === 'turns' ? 'turns' : 'crowd';
+        const turnParticipantUids = playMode === 'turns'
+            ? musicalMomentParticipants.map((uid) => String(uid || '').trim()).filter(Boolean)
+            : [];
+        const turnParticipants = turnParticipantUids.map((uid) => {
+            const user = users.find((entry) => resolveRoomUserUid(entry) === uid) || {};
+            return {
+                uid,
+                name: String(user.name || user.displayName || 'Guest').trim() || 'Guest',
+                avatar: String(user.avatar || '').trim()
+            };
+        });
+        await updateRoom({
+            activeMode: 'musical_moments',
+            gameData: {
+                sessionId: `musical_moments_${now}`,
+                status: 'live',
+                title: String(musicalMomentTitle || '').trim() || 'Big Re-Entry Challenge',
+                artist: String(musicalMomentArtist || '').trim(),
+                prompt: 'Tap the hit on your phone and sing the lift into the room.',
+                targetLabel: 'Hit Moment',
+                mediaUrl,
+                youtubeId: mediaUrl,
+                startSec,
+                loopSec,
+                mysteryStartSec,
+                targetBeatSec,
+                targetAbsoluteSec: startSec + targetBeatSec,
+                mysteryAbsoluteSec: startSec + mysteryStartSec,
+                hitWindowMs: Math.max(180, Math.min(1800, Number(musicalMomentHitWindowMs) || 700)),
+                tapLatencyOffsetMs: Math.max(-1200, Math.min(1200, Number(musicalMomentTapLatencyOffsetMs) || 0)),
+                playMode,
+                turnParticipantUids,
+                turnParticipants,
+                vocalWindowMs: 2200,
+                inputSource: 'crowd',
+                voiceInput: 'host',
+                ...buildVoiceGameAudioLaunchConfig(),
+                ...buildVoiceGameLaunchTimingConfig(now),
+                startedAt: now + VOICE_GAME_LAUNCH_WARMUP_MS,
+                timestamp: now,
+                tapEvents: []
+            },
+            gameRulesId: now,
+            ...buildParticipantPayload('all', [])
+        });
+        logActivity(roomCode, 'HOST', 'started Musical Moments challenge.', 'GAME');
+        toast(playMode === 'turns' ? 'Musical Moments started. Selected players will take turns.' : 'Musical Moments started. Host room mic and audience taps are live.');
         setShowGameConfig(false);
     };
     
@@ -1683,6 +2009,48 @@ const UnifiedGameLauncher = ({
                         </div>
                     </div>
                 )}
+                {hostVoiceMicControl?.visible ? (
+                    <div className={`mt-2.5 rounded-2xl border px-3 py-3 ${hostVoiceMicControl.active ? 'border-emerald-300/35 bg-emerald-500/10' : hostVoiceMicControl.armed ? 'border-cyan-300/28 bg-cyan-500/10' : 'border-amber-300/28 bg-amber-500/10'}`}>
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/80">Room Voice Mic</div>
+                                <div className="mt-1 text-sm leading-6 text-zinc-200">
+                                    {hostVoiceMicControl.statusText || (hostVoiceMicControl.active
+                                        ? `Live mic is feeding ${hostVoiceMicControl.targetLabel || 'this voice game'}.`
+                                        : hostVoiceMicControl.armed
+                                            ? `Armed and waiting for ${hostVoiceMicControl.targetLabel || 'this voice game'}.`
+                                            : `Arm this host device mic before ${hostVoiceMicControl.targetLabel || 'this voice game'} listens for the crowd.`)}
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={hostVoiceMicControl.error ? (hostVoiceMicControl.onRetry || hostVoiceMicControl.onArm || hostVoiceMicControl.onToggle) : hostVoiceMicControl.onToggle}
+                                className={`${STYLES.btnStd} ${hostVoiceMicControl.armed ? STYLES.btnHighlight : STYLES.btnPrimary} min-w-[9.5rem] px-3 py-2 text-xs`}
+                            >
+                                <i className="fa-solid fa-microphone-lines"></i>
+                                {hostVoiceMicControl.error ? 'Retry Room Mic' : (hostVoiceMicControl.armed ? 'Room Mic Armed' : 'Arm Room Mic')}
+                            </button>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300 sm:grid-cols-4">
+                            <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                                <div className="uppercase tracking-[0.16em] text-cyan-100/70">Note</div>
+                                <div className="mt-1 font-black text-white">{hostVoiceMicControl.note || '...'}</div>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                                <div className="uppercase tracking-[0.16em] text-cyan-100/70">Volume</div>
+                                <div className="mt-1 font-black text-white">{Math.round(Number(hostVoiceMicControl.volumePct || 0))}%</div>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                                <div className="uppercase tracking-[0.16em] text-cyan-100/70">Match</div>
+                                <div className="mt-1 font-black text-white">{hostVoiceMicControl.calibrating ? 'Cal' : `${Math.round(Number(hostVoiceMicControl.matchPct || 0))}%`}</div>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                                <div className="uppercase tracking-[0.16em] text-cyan-100/70">TV Feed</div>
+                                <div className="mt-1 font-black text-white">{hostVoiceMicControl.tvFeedLabel || 'Waiting'}</div>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
             </div>
             
             {/* Game Grid */}
@@ -1753,7 +2121,36 @@ const UnifiedGameLauncher = ({
                 onStartVocalSolo={startVocalSolo}
                 onStartRidingCrowd={startRidingScalesCrowd}
                 onStartRidingTurns={startRidingScalesTurns}
+                hostVoiceMicControl={hostVoiceMicControl}
                 onStartTeamPong={startTeamPong}
+                onStartVolleyOrb={startVolleyOrb}
+                teamPongTargetRally={teamPongTargetRally}
+                setTeamPongTargetRally={setTeamPongTargetRally}
+                teamPongRallyTimeoutMs={teamPongRallyTimeoutMs}
+                setTeamPongRallyTimeoutMs={setTeamPongRallyTimeoutMs}
+                onStartMusicalMoments={startMusicalMoments}
+                musicalMomentTitle={musicalMomentTitle}
+                setMusicalMomentTitle={setMusicalMomentTitle}
+                musicalMomentArtist={musicalMomentArtist}
+                setMusicalMomentArtist={setMusicalMomentArtist}
+                musicalMomentMediaUrl={musicalMomentMediaUrl}
+                setMusicalMomentMediaUrl={setMusicalMomentMediaUrl}
+                musicalMomentStartSec={musicalMomentStartSec}
+                setMusicalMomentStartSec={setMusicalMomentStartSec}
+                musicalMomentLoopSec={musicalMomentLoopSec}
+                setMusicalMomentLoopSec={setMusicalMomentLoopSec}
+                musicalMomentMysteryStartSec={musicalMomentMysteryStartSec}
+                setMusicalMomentMysteryStartSec={setMusicalMomentMysteryStartSec}
+                musicalMomentTargetBeatSec={musicalMomentTargetBeatSec}
+                setMusicalMomentTargetBeatSec={setMusicalMomentTargetBeatSec}
+                musicalMomentHitWindowMs={musicalMomentHitWindowMs}
+                setMusicalMomentHitWindowMs={setMusicalMomentHitWindowMs}
+                musicalMomentTapLatencyOffsetMs={musicalMomentTapLatencyOffsetMs}
+                setMusicalMomentTapLatencyOffsetMs={setMusicalMomentTapLatencyOffsetMs}
+                musicalMomentPlayMode={musicalMomentPlayMode}
+                setMusicalMomentPlayMode={setMusicalMomentPlayMode}
+                musicalMomentParticipants={musicalMomentParticipants}
+                setMusicalMomentParticipants={setMusicalMomentParticipants}
                 doodlePromptsText={doodlePromptsText}
                 setDoodlePromptsText={setDoodlePromptsText}
                 doodleDuration={doodleDuration}
@@ -1845,6 +2242,8 @@ const UnifiedGameLauncher = ({
                 setVocalDifficulty={setVocalDifficulty}
                 vocalGuideTone={vocalGuideTone}
                 setVocalGuideTone={setVocalGuideTone}
+                voiceRoomTuning={voiceRoomTuning}
+                setVoiceRoomTuning={setVoiceRoomTuning}
                 vocalParticipants={vocalParticipants}
                 setVocalParticipants={setVocalParticipants}
                 canUseAiGeneration={canUseAiGeneration}
@@ -1884,7 +2283,9 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
         rose: { border: 'border-rose-400/30', badge: 'bg-rose-500/10 border-rose-400/30 text-rose-200', text: 'text-rose-300' },
     };
     const c = colorMap[game.color] || colorMap.cyan;
-    const isActive = room?.activeMode === game.id;
+    const isActive = game.id === 'volley_orb'
+        ? String(room?.lightMode || '').trim().toLowerCase() === 'volley'
+        : room?.activeMode === game.id;
     const [showPicker, setShowPicker] = useState(false);
     const playerCount = participantConfig?.count || 0;
     const visualMap = {
@@ -1894,13 +2295,13 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
             { icon: 'fa-check-to-slot', label: 'Vote' }
         ],
         flappy_bird: [
-            { icon: 'fa-microphone-lines', label: 'Voice' },
-            { icon: 'fa-gamepad', label: 'Arcade' },
-            { icon: 'fa-chart-line', label: 'Score' }
+            { icon: 'fa-arrow-trend-up', label: 'Trend' },
+            { icon: 'fa-road', label: 'Lane' },
+            { icon: 'fa-shield-halved', label: 'Shield' }
         ],
         vocal_challenge: [
-            { icon: 'fa-wave-square', label: 'Pitch' },
-            { icon: 'fa-bullseye', label: 'Target' },
+            { icon: 'fa-wave-square', label: 'Ribbon' },
+            { icon: 'fa-microphone-lines', label: 'Battle' },
             { icon: 'fa-fire', label: 'Streak' }
         ],
         riding_scales: [
@@ -1924,9 +2325,19 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
             { icon: 'fa-trophy', label: 'Win' }
         ],
         team_pong: [
-            { icon: 'fa-people-group', label: 'Teams' },
-            { icon: 'fa-table-tennis-paddle-ball', label: 'Rally' },
-            { icon: 'fa-bolt', label: 'Pace' }
+            { icon: 'fa-table-tennis-paddle-ball', label: 'Paddles' },
+            { icon: 'fa-shield-halved', label: 'Save' },
+            { icon: 'fa-bolt', label: 'Spike' }
+        ],
+        volley_orb: [
+            { icon: 'fa-volleyball', label: 'Orb' },
+            { icon: 'fa-microphone-lines', label: 'Lift' },
+            { icon: 'fa-link', label: 'Combo' }
+        ],
+        musical_moments: [
+            { icon: 'fa-compact-disc', label: 'Loop' },
+            { icon: 'fa-hand-pointer', label: 'Tap' },
+            { icon: 'fa-microphone-lines', label: 'Lift' }
         ],
         karaoke_bracket: [
             { icon: 'fa-trophy', label: 'Bracket' },
@@ -1957,7 +2368,7 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
     return (
         <div
             data-game-card={game.id}
-            className={`relative overflow-hidden bg-gradient-to-b from-zinc-900/80 to-zinc-950 border ${c.border} rounded-2xl p-2.5 md:p-3 flex flex-col gap-2 shadow-lg hover:shadow-xl transition-all`}
+            className={`relative min-w-0 overflow-visible bg-gradient-to-b from-zinc-900/80 to-zinc-950 border ${c.border} rounded-2xl p-2.5 md:p-3 flex flex-col gap-2 shadow-lg hover:shadow-xl transition-all`}
         >
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl opacity-10 bg-white"></div>
             <div className="absolute -left-4 bottom-0 w-16 h-16 rounded-full blur-2xl opacity-5 bg-white"></div>
@@ -2779,11 +3190,42 @@ const GameConfigModal = ({
     setVocalDifficulty,
     vocalGuideTone,
     setVocalGuideTone,
+    voiceRoomTuning = 'forgiving_room',
+    setVoiceRoomTuning,
     vocalParticipants,
     setVocalParticipants,
     onStartRidingCrowd,
     onStartRidingTurns,
     onStartTeamPong,
+    onStartVolleyOrb,
+    teamPongTargetRally = 45,
+    setTeamPongTargetRally,
+    teamPongRallyTimeoutMs = 3200,
+    setTeamPongRallyTimeoutMs,
+    onStartMusicalMoments,
+    musicalMomentTitle = '',
+    setMusicalMomentTitle,
+    musicalMomentArtist = '',
+    setMusicalMomentArtist,
+    musicalMomentMediaUrl = '',
+    setMusicalMomentMediaUrl,
+    musicalMomentStartSec = 0,
+    setMusicalMomentStartSec,
+    musicalMomentLoopSec = 12,
+    setMusicalMomentLoopSec,
+    musicalMomentMysteryStartSec = 0,
+    setMusicalMomentMysteryStartSec,
+    musicalMomentTargetBeatSec = 8,
+    setMusicalMomentTargetBeatSec,
+    musicalMomentHitWindowMs = 700,
+    setMusicalMomentHitWindowMs,
+    musicalMomentTapLatencyOffsetMs = 0,
+    setMusicalMomentTapLatencyOffsetMs,
+    musicalMomentPlayMode = 'crowd',
+    setMusicalMomentPlayMode,
+    musicalMomentParticipants = [],
+    setMusicalMomentParticipants,
+    hostVoiceMicControl = null,
     doodlePromptsText,
     setDoodlePromptsText,
     doodleDuration,
@@ -2894,17 +3336,33 @@ const GameConfigModal = ({
 }) => {
     if (selectedGame === 'flappy_bird') {
         return (
-            <div data-feature-id="host-doodle-config" className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
-                <div className="w-full max-w-3xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl">
+            <div data-feature-id="host-doodle-config" className="fixed inset-0 z-[300] bg-black/80 flex items-start justify-center overflow-y-auto overscroll-contain p-3 sm:p-6">
+                <div className="my-auto w-full max-w-3xl bg-zinc-900 border border-white/10 rounded-3xl p-4 shadow-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto custom-scrollbar sm:p-6 sm:max-h-[calc(100dvh-3rem)]">
                     <div className="flex items-center justify-between mb-4">
                         <div>
-                            <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Pitch Runner</div>
-                            <div className="text-2xl font-bold text-cyan-300">Configure game mode</div>
+                            <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Voice Runner</div>
+                            <div className="text-2xl font-bold text-cyan-300">Safe-lane pitch run</div>
+                            <div className="mt-1 text-sm text-zinc-400">The crowd steers by trend: sing higher, lower, or hold steady. Shields and Breath keep misses recoverable.</div>
                         </div>
                         <button onClick={onClose} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm`}>Close</button>
                     </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                        <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Cue</div>
+                            <div className="text-2xl font-black text-white mt-1">Higher / Lower</div>
+                        </div>
+                        <div className="rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-200">Lane</div>
+                            <div className="text-2xl font-black text-white mt-1">Hold Steady</div>
+                        </div>
+                        <div className="rounded-xl border border-pink-300/30 bg-pink-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-pink-200">Recovery</div>
+                            <div className="text-2xl font-black text-white mt-1">Shield</div>
+                        </div>
+                    </div>
+                    <VoiceAudioSetupPanel voiceRoomTuning={voiceRoomTuning} setVoiceRoomTuning={setVoiceRoomTuning} hostVoiceMicControl={hostVoiceMicControl} />
                     <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-4">
-                        <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Choose game mode</div>
+                        <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Choose runner mode</div>
                         <select value={selectedSingerId} onChange={e => setSelectedSingerId(e.target.value)} className={`${STYLES.input} w-full mb-3`}>
                             <option value="">Select singer or leave blank for crowd</option>
                             {sortedUsers.map(u => {
@@ -2915,10 +3373,10 @@ const GameConfigModal = ({
                         </select>
                         <div className="flex gap-2">
                             <button onClick={onStartFlappyAmbient} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
-                                <i className="fa-solid fa-microphone mr-1"></i> Crowd Mic
+                                <i className="fa-solid fa-microphone mr-1"></i> Crowd runner
                             </button>
                             <button onClick={onStartFlappySolo} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-2 text-sm`}>
-                                <i className="fa-solid fa-user mr-1"></i> Solo Singer
+                                <i className="fa-solid fa-user mr-1"></i> Solo runner
                             </button>
                         </div>
                     </div>
@@ -2928,17 +3386,33 @@ const GameConfigModal = ({
     }
     if (selectedGame === 'vocal_challenge') {
         return (
-            <div data-feature-id="host-selfie-config" className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
-                <div className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl">
+            <div data-feature-id="host-selfie-config" className="fixed inset-0 z-[300] bg-black/80 flex items-start justify-center overflow-y-auto overscroll-contain p-3 sm:p-6">
+                <div className="my-auto w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-4 shadow-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto custom-scrollbar sm:p-6 sm:max-h-[calc(100dvh-3rem)]">
                     <div className="flex items-center justify-between mb-4">
                         <div>
-                            <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Vocal Challenge</div>
-                            <div className="text-2xl font-bold text-pink-300">Configure game mode</div>
+                            <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Vocal Battle</div>
+                            <div className="text-2xl font-bold text-pink-300">Target ribbon challenge</div>
+                            <div className="mt-1 text-sm text-zinc-400">Crowd battle uses the room mic. Spotlight turns rotate selected singers through the same forgiving ribbon lane.</div>
                         </div>
                         <button onClick={onClose} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm`}>Close</button>
                     </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                        <div className="rounded-xl border border-pink-300/30 bg-pink-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-pink-200">Ribbon</div>
+                            <div className="text-2xl font-black text-white mt-1">Hold Lane</div>
+                        </div>
+                        <div className="rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-200">Result</div>
+                            <div className="text-2xl font-black text-white mt-1">Locked / Close</div>
+                        </div>
+                        <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Assist</div>
+                            <div className="text-2xl font-black text-white mt-1">Harmony Boost</div>
+                        </div>
+                    </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-4">
+                        <VoiceAudioSetupPanel voiceRoomTuning={voiceRoomTuning} setVoiceRoomTuning={setVoiceRoomTuning} hostVoiceMicControl={hostVoiceMicControl} />
+                    <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-4">
                             <div className="text-xs uppercase tracking-widest text-zinc-500">Timing + Difficulty</div>
                             <label className="text-xs text-zinc-400 flex flex-col gap-2">
                                 Turn length (seconds)
@@ -2984,10 +3458,10 @@ const GameConfigModal = ({
                     </div>
                     <div className="flex gap-3 mt-6">
                         <button onClick={onStartVocalAmbient} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm`}>
-                            <i className="fa-solid fa-users mr-1"></i> Start crowd mode
+                            <i className="fa-solid fa-users mr-1"></i> Start crowd battle
                         </button>
                         <button onClick={onStartVocalSolo} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-6 py-3 text-sm`}>
-                            <i className="fa-solid fa-user-tie mr-1"></i> Start spotlight turns
+                            <i className="fa-solid fa-user-tie mr-1"></i> Start spotlight battle
                         </button>
                     </div>
                 </div>
@@ -2996,8 +3470,8 @@ const GameConfigModal = ({
     }
     if (selectedGame === 'riding_scales') {
         return (
-            <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
-                <div className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl">
+            <div className="fixed inset-0 z-[300] bg-black/80 flex items-start justify-center overflow-y-auto overscroll-contain p-3 sm:p-6">
+                <div className="my-auto w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-4 shadow-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto custom-scrollbar sm:p-6 sm:max-h-[calc(100dvh-3rem)]">
                     <div className="flex items-center justify-between mb-4">
                         <div>
                             <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Riding Scales</div>
@@ -3006,7 +3480,8 @@ const GameConfigModal = ({
                         <button onClick={onClose} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm`}>Close</button>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-4">
+                        <VoiceAudioSetupPanel voiceRoomTuning={voiceRoomTuning} setVoiceRoomTuning={setVoiceRoomTuning} hostVoiceMicControl={hostVoiceMicControl} />
+                    <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-4">
                             <div className="text-xs uppercase tracking-widest text-zinc-500">Timing + Rules</div>
                             <label className="text-xs text-zinc-400 flex flex-col gap-2">
                                 Round length (seconds)
@@ -3070,11 +3545,47 @@ const GameConfigModal = ({
             </div>
         );
     }
+    if (selectedGame === 'volley_orb') {
+        return (
+            <GameConfigShell
+                title="Volley Orb"
+                subtitle="Lobby Vocal Rocket: audience saves, combos, and room-mic lift keep the orb airborne."
+                accentClass="text-emerald-300"
+                onClose={onClose}
+            >
+                <div className="space-y-4">
+                    <VoiceAudioSetupPanel voiceRoomTuning={voiceRoomTuning} setVoiceRoomTuning={setVoiceRoomTuning} hostVoiceMicControl={hostVoiceMicControl} />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-200">Audience</div>
+                            <div className="text-2xl font-black text-white mt-1">Save + Combo</div>
+                        </div>
+                        <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Room Mic</div>
+                            <div className="text-2xl font-black text-white mt-1">Vocal Lift</div>
+                        </div>
+                        <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-amber-200">Arc</div>
+                            <div className="text-2xl font-black text-white mt-1">Rocket Climb</div>
+                        </div>
+                    </div>
+                    <div className="rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+                        This uses the same Volley Orb engine as Vibe Sync, but exposes it as a Games tab launch. The Host room mic is armed automatically so the public TV can show Vocal Rocket lift.
+                    </div>
+                    <button onClick={onStartVolleyOrb} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-6 py-3 text-sm`}>
+                        <i className="fa-solid fa-volleyball mr-1"></i> Launch Volley Orb
+                    </button>
+                </div>
+            </GameConfigShell>
+        );
+    }
     if (selectedGame === 'team_pong') {
+        const targetRally = Math.max(10, Math.min(120, Number(teamPongTargetRally) || 45));
+        const rallyTimeoutSeconds = (Math.max(1800, Math.min(6000, Number(teamPongRallyTimeoutMs) || 3200)) / 1000).toFixed(1);
         return (
             <GameConfigShell
                 title="Team Pong"
-                subtitle="Crowd teams tap to keep the rally alive."
+                subtitle="Audience phones become team paddles: Save returns the ball, chant widens the window, and Spike attacks across."
                 accentClass="text-cyan-300"
                 onClose={onClose}
             >
@@ -3082,22 +3593,49 @@ const GameConfigModal = ({
                     <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
                         <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">How It Works</div>
                         <div className="text-sm text-zinc-200">
-                            Players are split into left and right teams. Everyone taps from mobile to return the ball, and the TV tracks rally pace and team momentum live.
+                            The public TV frames this as paddle control: left and right teams race to the rally goal. Phones are the paddles, Save returns the ball before it drops, room chant widens the return window, Redirect counters an attack, and Spike sends a bigger +3 shot across the table.
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Teams</div>
-                            <div className="text-2xl font-black text-white mt-1">Left vs Right</div>
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Phones</div>
+                            <div className="text-2xl font-black text-white mt-1">Paddles</div>
                         </div>
                         <div className="rounded-xl border border-white/15 bg-black/35 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-300">Input</div>
-                            <div className="text-2xl font-black text-white mt-1">Tap</div>
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-300">Save</div>
+                            <div className="text-2xl font-black text-white mt-1">Return Ball</div>
                         </div>
                         <div className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.2em] text-fuchsia-200">Goal</div>
-                            <div className="text-2xl font-black text-white mt-1">Longest Rally</div>
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-fuchsia-200">Spike</div>
+                            <div className="text-2xl font-black text-white mt-1">+3 Swing</div>
                         </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className="rounded-xl border border-white/10 bg-black/35 p-3">
+                            <span className="block text-[10px] uppercase tracking-[0.2em] text-zinc-400">Rally Goal</span>
+                            <select
+                                value={targetRally}
+                                onChange={(event) => setTeamPongTargetRally(Number(event.target.value))}
+                                className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white"
+                            >
+                                {[30, 45, 60, 90].map((value) => <option key={value} value={value}>Reach {value}</option>)}
+                            </select>
+                        </label>
+                        <label className="rounded-xl border border-white/10 bg-black/35 p-3">
+                            <span className="block text-[10px] uppercase tracking-[0.2em] text-zinc-400">Drop Timer</span>
+                            <select
+                                value={Math.max(1800, Math.min(6000, Number(teamPongRallyTimeoutMs) || 3200))}
+                                onChange={(event) => setTeamPongRallyTimeoutMs(Number(event.target.value))}
+                                className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white"
+                            >
+                                <option value={4200}>Forgiving 4.2s</option>
+                                <option value={3200}>Standard 3.2s</option>
+                                <option value={2400}>Arcade 2.4s</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                        Launching now: first side to {targetRally} paddle hits wins. The ball drops after {rallyTimeoutSeconds}s without a Save, Slow-Mo, Shield, Redirect, or Spike. Host room-mic chant charge widens the return window.
                     </div>
                     <div className="flex gap-3">
                         <button onClick={onStartTeamPong} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-6 py-3 text-sm`}>
@@ -3108,10 +3646,203 @@ const GameConfigModal = ({
             </GameConfigShell>
         );
     }
+    if (selectedGame === 'musical_moments') {
+        const loopSec = Math.max(4, Math.min(45, Number(musicalMomentLoopSec) || 12));
+        const targetBeatSec = Math.max(0.5, Math.min(loopSec - 0.25, Number(musicalMomentTargetBeatSec) || 8));
+        const mysteryStartSec = Math.max(0, Math.min(targetBeatSec - 0.2, Number(musicalMomentMysteryStartSec) || Math.max(0, targetBeatSec - 4)));
+        const savedMusicalMomentPresets = Array.isArray(room?.musicalMomentPresets) ? room.musicalMomentPresets : [];
+        const allMusicalMomentPresets = [...MUSICAL_MOMENT_PRESETS, ...savedMusicalMomentPresets];
+        const applyMusicalMomentPreset = (preset = {}) => {
+            setMusicalMomentTitle(preset.title || 'Big Re-Entry Challenge');
+            setMusicalMomentArtist(preset.artist || '');
+            setMusicalMomentMediaUrl(preset.mediaUrl || preset.youtubeId || '');
+            setMusicalMomentStartSec(Number(preset.startSec || 0));
+            setMusicalMomentLoopSec(Number(preset.loopSec || 12));
+            setMusicalMomentMysteryStartSec(Number(preset.mysteryStartSec ?? Math.max(0, Number(preset.targetBeatSec || 8) - 4)));
+            setMusicalMomentTargetBeatSec(Number(preset.targetBeatSec || 8));
+            setMusicalMomentHitWindowMs(Number(preset.hitWindowMs || 700));
+            setMusicalMomentTapLatencyOffsetMs(Number(preset.tapLatencyOffsetMs || 0));
+            if (preset.playMode) setMusicalMomentPlayMode(preset.playMode === 'turns' ? 'turns' : 'crowd');
+            if (Array.isArray(preset.turnParticipantUids)) setMusicalMomentParticipants(preset.turnParticipantUids);
+        };
+        const saveMusicalMomentPreset = async () => {
+            const safeTitle = String(musicalMomentTitle || '').trim() || 'Custom Musical Moment';
+            const preset = {
+                id: `custom_${Date.now()}`,
+                label: safeTitle.slice(0, 34),
+                title: safeTitle,
+                artist: String(musicalMomentArtist || '').trim(),
+                mediaUrl: String(musicalMomentMediaUrl || '').trim(),
+                startSec: Math.max(0, Number(musicalMomentStartSec) || 0),
+                loopSec,
+                mysteryStartSec,
+                targetBeatSec,
+                hitWindowMs: Math.max(180, Math.min(1800, Number(musicalMomentHitWindowMs) || 700)),
+                tapLatencyOffsetMs: Math.max(-1200, Math.min(1200, Number(musicalMomentTapLatencyOffsetMs) || 0)),
+                playMode: musicalMomentPlayMode === 'turns' ? 'turns' : 'crowd',
+                turnParticipantUids: musicalMomentPlayMode === 'turns' ? musicalMomentParticipants.map((uid) => String(uid || '').trim()).filter(Boolean) : [],
+                savedAtMs: Date.now()
+            };
+            const nextPresets = [preset, ...savedMusicalMomentPresets].slice(0, 24);
+            try {
+                await updateRoom({ musicalMomentPresets: nextPresets });
+                toast('Musical Moment preset saved.');
+            } catch (err) {
+                console.error('Failed to save Musical Moment preset', err);
+                toast('Could not save Musical Moment preset.');
+            }
+        };
+        return (
+            <GameConfigShell
+                title="Musical Moments"
+                subtitle="Loop a recognizable song moment, let phones tap the hit, and let the Host room mic score the vocal lift."
+                accentClass="text-pink-300"
+                onClose={onClose}
+            >
+                <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-4">
+                    <VoiceAudioSetupPanel voiceRoomTuning={voiceRoomTuning} setVoiceRoomTuning={setVoiceRoomTuning} hostVoiceMicControl={hostVoiceMicControl} />
+                    <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-4">
+                        <div className="text-xs uppercase tracking-widest text-zinc-500">Moment source</div>
+                        <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                            Challenge title
+                            <input value={musicalMomentTitle} onChange={(e) => setMusicalMomentTitle(e.target.value)} className={`${STYLES.input}`} placeholder="Big Re-Entry Challenge" />
+                        </label>
+                        <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                            Artist or source label
+                            <input value={musicalMomentArtist} onChange={(e) => setMusicalMomentArtist(e.target.value)} className={`${STYLES.input}`} placeholder="Optional" />
+                        </label>
+                        <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                            YouTube URL, YouTube ID, or direct video URL
+                            <input value={musicalMomentMediaUrl} onChange={(e) => setMusicalMomentMediaUrl(e.target.value)} className={`${STYLES.input}`} placeholder="https://youtube.com/watch?v=..." />
+                        </label>
+                        <div className="rounded-2xl border border-pink-300/20 bg-pink-500/10 px-4 py-3 text-sm leading-6 text-pink-100">
+                            First slice: use legal/embeddable clips or host-provided media. The game still works without media as a timing-and-vocal practice loop.
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {allMusicalMomentPresets.map((preset) => (
+                                <button
+                                    key={preset.id}
+                                    type="button"
+                                    onClick={() => applyMusicalMomentPreset(preset)}
+                                    className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-left transition hover:border-pink-300/40 hover:bg-pink-500/10"
+                                >
+                                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-pink-200">{preset.savedAtMs ? 'Saved Preset' : 'Preset'}</div>
+                                    <div className="mt-1 text-sm font-black text-white">{preset.label}</div>
+                                    <div className="mt-1 text-[11px] font-semibold text-zinc-400">Start {preset.startSec || 0}s / mystery {preset.mysteryStartSec ?? '--'}s / hit {preset.targetBeatSec}s</div>
+                                </button>
+                            ))}
+                        </div>
+                        <button type="button" onClick={saveMusicalMomentPreset} className={`${STYLES.btnStd} ${STYLES.btnSecondary} w-full px-4 py-3 text-sm`}>
+                            <i className="fa-solid fa-floppy-disk mr-1"></i> Save Current Moment Preset
+                        </button>
+                    </div>
+                    <VoiceAudioSetupPanel voiceRoomTuning={voiceRoomTuning} setVoiceRoomTuning={setVoiceRoomTuning} hostVoiceMicControl={hostVoiceMicControl} />
+                    <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-4">
+                        <div className="text-xs uppercase tracking-widest text-zinc-500">Loop timing</div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                                Start sec
+                                <input type="number" min="0" value={musicalMomentStartSec} onChange={(e) => setMusicalMomentStartSec(e.target.value)} className={`${STYLES.input}`} />
+                            </label>
+                            <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                                Loop sec
+                                <input type="number" min="4" max="45" value={musicalMomentLoopSec} onChange={(e) => setMusicalMomentLoopSec(e.target.value)} className={`${STYLES.input}`} />
+                            </label>
+                            <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                                Mystery starts sec
+                                <input type="number" min="0" max={targetBeatSec} step="0.1" value={musicalMomentMysteryStartSec} onChange={(e) => setMusicalMomentMysteryStartSec(e.target.value)} className={`${STYLES.input}`} />
+                            </label>
+                            <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                                Hit at sec
+                                <input type="number" min="0.5" max={loopSec} step="0.1" value={musicalMomentTargetBeatSec} onChange={(e) => setMusicalMomentTargetBeatSec(e.target.value)} className={`${STYLES.input}`} />
+                            </label>
+                            <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                                Hit window ms
+                                <input type="number" min="180" max="1800" step="20" value={musicalMomentHitWindowMs} onChange={(e) => setMusicalMomentHitWindowMs(e.target.value)} className={`${STYLES.input}`} />
+                            </label>
+                            <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                                Phone latency ms
+                                <input type="number" min="-1200" max="1200" step="20" value={musicalMomentTapLatencyOffsetMs} onChange={(e) => setMusicalMomentTapLatencyOffsetMs(e.target.value)} className={`${STYLES.input}`} />
+                            </label>
+                        </div>
+                        <div className="relative h-6 overflow-hidden rounded-full border border-white/10 bg-white/10">
+                            <div className="absolute inset-y-0 bg-cyan-300/55" style={{ width: `${(targetBeatSec / loopSec) * 100}%` }} />
+                            <div className="absolute inset-y-0 w-1 -translate-x-1/2 bg-pink-300 shadow-[0_0_18px_rgba(244,114,182,0.8)]" style={{ left: `${(targetBeatSec / loopSec) * 100}%` }} />
+                        </div>
+                        <div className="rounded-2xl border border-cyan-300/20 bg-cyan-500/10 px-4 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100">Gameplay Mode</div>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                                <button type="button" onClick={() => setMusicalMomentPlayMode('crowd')} className={`${STYLES.btnStd} ${musicalMomentPlayMode === 'crowd' ? STYLES.btnPrimary : STYLES.btnSecondary} px-3 py-2 text-xs`}>Crowd Play</button>
+                                <button type="button" onClick={() => setMusicalMomentPlayMode('turns')} className={`${STYLES.btnStd} ${musicalMomentPlayMode === 'turns' ? STYLES.btnPrimary : STYLES.btnSecondary} px-3 py-2 text-xs`}>Turn Battle</button>
+                            </div>
+                            {musicalMomentPlayMode === 'turns' && (
+                                <div className="mt-3 grid max-h-40 grid-cols-2 gap-2 overflow-y-auto pr-1 custom-scrollbar">
+                                    {sortedUsers.map((u) => {
+                                        const uid = resolveRoomUserUid(u);
+                                        if (!uid) return null;
+                                        const selected = musicalMomentParticipants.includes(uid);
+                                        return (
+                                            <button key={`musical-moment-turn-${uid}`} type="button" onClick={() => setMusicalMomentParticipants((prev) => (prev.includes(uid) ? prev.filter((value) => value !== uid) : [...prev, uid]))} className={`rounded-xl border px-3 py-2 text-left text-xs ${selected ? 'border-pink-300/45 bg-pink-500/15 text-white' : 'border-white/10 bg-black/25 text-zinc-300'}`}>
+                                                <span className="font-black">{u.name || 'Guest'}</span>
+                                                <span className="mt-0.5 block text-[10px] uppercase tracking-[0.16em] text-zinc-500">{selected ? 'In rotation' : 'Tap to add'}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                        <div className="rounded-2xl border border-pink-300/20 bg-pink-500/10 px-4 py-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-[0.2em] text-pink-200">Latency Calibration</div>
+                                    <div className="mt-1 text-xs leading-5 text-pink-100/85">If the crowd looks late, add positive ms. If they look early, use negative ms.</div>
+                                </div>
+                                <div className="text-2xl font-black text-white">{Number(musicalMomentTapLatencyOffsetMs) > 0 ? '+' : ''}{Number(musicalMomentTapLatencyOffsetMs) || 0}ms</div>
+                            </div>
+                            <div className="mt-3 grid grid-cols-4 gap-2">
+                                {[-120, -60, 60, 120].map((delta) => (
+                                    <button
+                                        key={delta}
+                                        type="button"
+                                        onClick={() => setMusicalMomentTapLatencyOffsetMs(Math.max(-1200, Math.min(1200, (Number(musicalMomentTapLatencyOffsetMs) || 0) + delta)))}
+                                        className="rounded-lg border border-white/10 bg-black/35 px-2 py-2 text-xs font-black text-white transition hover:border-pink-300/40"
+                                    >
+                                        {delta > 0 ? '+' : ''}{delta}ms
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Phones</div>
+                                <div className="text-lg font-black text-white">Tap Hit</div>
+                            </div>
+                            <div className="rounded-xl border border-pink-300/25 bg-pink-500/10 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.2em] text-pink-200">Room Mic</div>
+                                <div className="text-lg font-black text-white">Vocal Lift</div>
+                            </div>
+                            <div className="rounded-xl border border-emerald-300/25 bg-emerald-500/10 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-200">Scoring</div>
+                                <div className="text-lg font-black text-white">Forgiving</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex flex-wrap gap-3 pt-2">
+                    <button onClick={onStartMusicalMoments} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-6 py-3 text-sm`}>
+                        <i className="fa-solid fa-compact-disc mr-1"></i> Start Musical Moment
+                    </button>
+                    <button onClick={onClose} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm`}>
+                        Close
+                    </button>
+                </div>
+            </GameConfigShell>
+        );
+    }
     if (selectedGame === 'doodle_oke') {
         return (
-            <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
-                <div data-feature-id="host-doodle-config" className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="fixed inset-0 z-[300] bg-black/80 flex items-start justify-center overflow-y-auto overscroll-contain p-3 sm:p-6">
+                <div data-feature-id="host-doodle-config" className="my-auto w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-4 shadow-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto custom-scrollbar sm:p-6 sm:max-h-[calc(100dvh-3rem)]">
                     <div className="flex items-center justify-between mb-4">
                         <div>
                             <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Doodle-oke</div>
@@ -3234,8 +3965,8 @@ const GameConfigModal = ({
     }
     if (selectedGame === 'selfie_challenge') {
         return (
-            <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
-                <div data-feature-id="host-selfie-config" className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="fixed inset-0 z-[300] bg-black/80 flex items-start justify-center overflow-y-auto overscroll-contain p-3 sm:p-6">
+                <div data-feature-id="host-selfie-config" className="my-auto w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-4 shadow-2xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto custom-scrollbar sm:p-6 sm:max-h-[calc(100dvh-3rem)]">
                     <div className="flex items-center justify-between mb-4">
                         <div>
                             <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Selfie Challenge</div>

@@ -85,6 +85,11 @@ import {
   getRunOfShowReleaseWindowTally,
   normalizeRunOfShowDirector,
 } from '../../../lib/runOfShowDirector';
+import {
+  AUDIENCE_DECISION_TYPES,
+  buildContinueOrRotateDecision,
+  resolveAudienceDecision,
+} from '../../../lib/audienceDecision';
 import { buildSelfServeQueueExplanation } from '../../../lib/selfServeQueueExplanation';
 import { getSelfServeAuctionState } from '../../../lib/selfServeAuction';
 import {
@@ -122,6 +127,11 @@ const QueueYouTubeSearchModal = React.lazy(() => import('./QueueYouTubeSearchMod
 const QueueEditSongModal = React.lazy(() => import('./QueueEditSongModal'));
 const hostLogger = createLogger('HostQueueTab');
 const nowMs = () => Date.now();
+const DEFAULT_APPLAUSE_WARMUP_SEC = 0;
+const DEFAULT_APPLAUSE_COUNTDOWN_SEC = 0;
+const DEFAULT_APPLAUSE_MEASURE_SEC = 5;
+const APPLAUSE_RESULT_DISPLAY_SEC = 5;
+const APPLAUSE_HOST_FALLBACK_GRACE_MS = 2500;
 
 const stripKaraokeDecorators = (value = '') =>
   String(value || '')
@@ -164,6 +174,18 @@ const buildAudioLibraryDraft = (item = {}) => {
     };
 };
 
+const SCENE_LIBRARY_TEMPLATE_QUICK_PADS = Object.freeze([
+    { id: 'host_update', label: 'Host Update', group: 'Announcements', icon: 'fa-bullhorn', detail: 'Fast host message' },
+    { id: 'how_to_join', label: 'How To Join', group: 'Announcements', icon: 'fa-qrcode', detail: 'Scan and join cue' },
+    { id: 'sponsor_spotlight', label: 'Sponsor', group: 'Announcements', icon: 'fa-handshake', detail: 'Branded thank-you' },
+    { id: 'support_the_show', label: 'Support', group: 'Support', icon: 'fa-heart', detail: 'Donation beat' },
+    { id: 'leaderboard_flash', label: 'Leaderboard', group: 'Audience', icon: 'fa-ranking-star', detail: 'Room status flash' },
+    { id: 'selfie_cam', label: 'Selfie Cam', group: 'Audience', icon: 'fa-camera', detail: 'Crowd spotlight' },
+    { id: 'would_you_rather', label: 'WYR Vote', group: 'Interactive', icon: 'fa-scale-balanced', detail: 'Quick A/B room vote' },
+    { id: 'trivia_break', label: 'Trivia', group: 'Interactive', icon: 'fa-circle-question', detail: 'One-question break' },
+    { id: 'applause_meter', label: 'Applause', group: 'Interactive', icon: 'fa-volume-high', detail: 'Measure the room' },
+    { id: 'winner_declaration', label: 'Winner', group: 'Announcements', icon: 'fa-trophy', detail: 'Declare the result' },
+]);
 const parseDecoratedSongTitle = (value = '') => {
   const raw = String(value || '').trim();
   if (!raw) return { title: '', artist: '' };
@@ -485,8 +507,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const {
         stagePanelOpen,
         setStagePanelOpen,
-        tvControlsOpen,
-        setTvControlsOpen,
         soundboardOpen,
         setSoundboardOpen,
         applyWorkspacePreset,
@@ -653,6 +673,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const hallOfFameTimerRef = useRef(null);
     const autoDjApplausePendingSongRef = useRef('');
     const autoDjApplauseFallbackTimerRef = useRef(null);
+    const autoDjApplauseDeadlineTimerRef = useRef(null);
+    const autoDjApplauseFallbackKeyRef = useRef('');
     const autoDjAutoEndKeyRef = useRef('');
     const performanceSessionCompletionKeyRef = useRef('');
     const currentPlaybackDurationSyncKeyRef = useRef('');
@@ -663,6 +685,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const autoDjObservedPerfTsRef = useRef(0);
     const reviewAutoSuggestingIdsRef = useRef(new Set());
     const postPerformanceBackingPromptKeyRef = useRef('');
+    const oneMinuteMicDecisionOpenKeyRef = useRef('');
+    const oneMinuteMicDecisionResolveKeyRef = useRef('');
+    const audienceAutomationCommandKeyRef = useRef('');
     const [commandOpen, setCommandOpen] = useState(false);
     const [commandQuery, setCommandQuery] = useState('');
     const [autoDjSequenceState, setAutoDjSequenceState] = useState(() => createAutoDjSequenceState());
@@ -699,10 +724,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         ? 'border-pink-100/70 bg-[linear-gradient(135deg,rgba(236,72,153,0.96),rgba(190,24,93,0.92))] text-white shadow-[0_0_18px_rgba(236,72,153,0.42)]'
         : 'border-pink-300/35 bg-[linear-gradient(135deg,rgba(236,72,153,0.18),rgba(190,24,93,0.24))] text-pink-50 shadow-[0_0_14px_rgba(236,72,153,0.24)]';
     const scenePresetCount = Array.isArray(scenePresets) ? scenePresets.length : 0;
-    const recentScenePresetTitles = (Array.isArray(scenePresets) ? scenePresets : [])
-        .slice(0, 3)
-        .map((preset) => String(preset?.title || '').trim())
-        .filter(Boolean);
     const hasSceneLibrarySeedPack = !!sceneLibrarySeedPack?.label && Number(sceneLibrarySeedPack?.assetCount || 0) > 0;
     const mediaLibraryTabs = [
         { id: 'scenes', label: 'Scenes', helper: `${scenePresetCount} saved` },
@@ -768,7 +789,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     ), [audioLibraryItems, mediaLibraryFolderMatches]);
     const sceneLibraryGridClass = sceneLibraryView === 'list'
         ? 'grid gap-3'
-        : 'grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]';
+        : 'grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(168px,1fr))]';
     const activeAudioLane = mediaLibraryTab === 'bg' ? 'bg' : 'sfx';
     const activeAudioLaneItems = visibleAudioLibraryItems.filter((item) => (
         normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === activeAudioLane
@@ -911,6 +932,36 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         assignedQueueOpen,
         setAssignedQueueOpen
     });
+    const buildNextUpSnapshot = useCallback((excludeSongId = '') => {
+        const excludedId = String(excludeSongId || '').trim();
+        const seen = new Set();
+        return [
+            ...(Array.isArray(assigned) ? assigned : []),
+            ...(Array.isArray(queue) ? queue : [])
+        ]
+            .filter((song) => {
+                const songId = String(song?.id || '').trim();
+                if (!songId || songId === excludedId || seen.has(songId)) return false;
+                seen.add(songId);
+                return song?.playbackReady !== false;
+            })
+            .slice(0, 3)
+            .map((song, index) => ({
+                id: String(song?.id || '').trim(),
+                songId: String(song?.songId || '').trim() || null,
+                songTitle: String(song?.songTitle || song?.title || '').trim() || 'Song loading',
+                artist: String(song?.artist || '').trim(),
+                singerName: String(song?.singerName || song?.name || '').trim() || 'Next singer',
+                singerUid: String(song?.singerUid || '').trim() || null,
+                singerAvatar: String(song?.singerAvatar || song?.avatar || song?.emoji || '').trim(),
+                albumArtUrl: String(song?.albumArtUrl || song?.artworkUrl100 || song?.artworkUrl || '').trim(),
+                status: String(song?.status || '').trim().toLowerCase() || 'requested',
+                priorityScore: Number(song?.priorityScore || 0) || 0,
+                isVip: song?.isVip === true,
+                vipLevel: Math.max(0, Number(song?.vipLevel || 0) || 0),
+                lineupPosition: index + 1
+            }));
+    }, [assigned, queue]);
     const normalizedDecisionDirector = useMemo(
         () => normalizeRunOfShowDirector(runOfShowDirector || room?.runOfShowDirector || {}),
         [room?.runOfShowDirector, runOfShowDirector]
@@ -1337,6 +1388,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         if (autoDjApplauseFallbackTimerRef.current) {
             clearTimeout(autoDjApplauseFallbackTimerRef.current);
             autoDjApplauseFallbackTimerRef.current = null;
+        }
+        if (autoDjApplauseDeadlineTimerRef.current) {
+            clearTimeout(autoDjApplauseDeadlineTimerRef.current);
+            autoDjApplauseDeadlineTimerRef.current = null;
         }
     }, []);
     useEffect(() => {
@@ -2652,6 +2707,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     }
                 }
                 const recapDisplayMeta = getRecapDisplayMeta({ ...s, ...latestSong });
+                const nextUpSnapshot = buildNextUpSnapshot(id);
                 const recapPayload = {
                     ...s,
                     ...latestSong,
@@ -2674,6 +2730,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     vibeStats: resolvedVibeStats,
                     popTriviaSummary,
                     totalPoints: resolvedHypeScore + finalApplauseScore + resolvedHostBonus,
+                    nextUpSnapshot,
+                    nextUpSnapshotCreatedAtMs: performanceEndedAtMs,
                     recapScoreFinalized: true,
                     performanceSessionId: String(performanceSession?.sessionId || '').trim() || null,
                     playbackCompletionReason: String(performanceSession?.completionReason || '').trim() || null,
@@ -3009,6 +3067,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         clearTimeout(autoDjApplauseFallbackTimerRef.current);
         autoDjApplauseFallbackTimerRef.current = null;
     }, []);
+    const clearAutoDjApplauseDeadline = useCallback(() => {
+        if (!autoDjApplauseDeadlineTimerRef.current) return;
+        clearTimeout(autoDjApplauseDeadlineTimerRef.current);
+        autoDjApplauseDeadlineTimerRef.current = null;
+    }, []);
+    const getApplauseAutoFinalizeDelayMs = useCallback(() => {
+        const warmupSec = Math.max(0, Math.min(8, Math.round(Number(room?.applauseWarmupSec ?? DEFAULT_APPLAUSE_WARMUP_SEC) || 0)));
+        const countdownSec = Math.max(0, Math.min(8, Math.round(Number(room?.applauseCountdownSec ?? DEFAULT_APPLAUSE_COUNTDOWN_SEC) || 0)));
+        const measureSec = Math.max(2, Math.min(10, Math.round(Number(room?.applauseMeasureSec ?? DEFAULT_APPLAUSE_MEASURE_SEC) || DEFAULT_APPLAUSE_MEASURE_SEC)));
+        return ((warmupSec + countdownSec + measureSec + APPLAUSE_RESULT_DISPLAY_SEC) * 1000) + APPLAUSE_HOST_FALLBACK_GRACE_MS;
+    }, [room?.applauseCountdownSec, room?.applauseMeasureSec, room?.applauseWarmupSec]);
     const clearPendingEarlyEndDecision = useCallback(() => {
         setPendingEarlyEndDecision(null);
         setPendingEarlyEndDecisionBusy(false);
@@ -3038,6 +3107,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         if (!targetSongId) return;
         const targetSong = (songs || []).find((song) => song.id === targetSongId) || null;
         clearAutoDjApplauseFallback();
+        clearAutoDjApplauseDeadline();
         autoDjApplausePendingSongRef.current = '';
         await updateDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', targetSongId),
@@ -3046,19 +3116,33 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         await clearStagePlaybackState();
         pushAutoDjEvent(AUTO_DJ_EVENTS.RETRY, { songId: targetSongId, error: 'returned_to_queue' });
         toast(`${targetSong?.songTitle || 'Current song'} returned to queue.`);
-    }, [clearAutoDjApplauseFallback, clearStagePlaybackState, pushAutoDjEvent, songs, toast]);
+    }, [clearAutoDjApplauseDeadline, clearAutoDjApplauseFallback, clearStagePlaybackState, pushAutoDjEvent, songs, toast]);
 
     const startApplauseSequence = useCallback(async ({ songId = '', autoFinalize = false } = {}) => {
         if (!songId) return;
         const targetSong = (songs || []).find((song) => song.id === songId) || null;
-        const applauseSubject = buildApplauseSubject(targetSong || null);
+        const baseApplauseSubject = buildApplauseSubject(targetSong || null);
+        const autoFinalizeDelayMs = autoFinalize ? getApplauseAutoFinalizeDelayMs() : 0;
+        const autoFinalizeStartedAtMs = autoFinalize ? nowMs() : 0;
+        const autoFinalizeDeadlineMs = autoFinalize ? autoFinalizeStartedAtMs + autoFinalizeDelayMs : 0;
+        const applauseSubject = autoFinalize
+            ? {
+                ...baseApplauseSubject,
+                autoFinalize: true,
+                autoFinalizeSongId: songId,
+                autoFinalizeStartedAtMs,
+                autoFinalizeDeadlineMs
+            }
+            : baseApplauseSubject;
         pushAutoDjEvent(AUTO_DJ_EVENTS.APPLAUSE_STARTED, { songId });
         if (autoFinalize && targetSong) {
             showPostPerformanceBackingPrompt(targetSong);
         }
         if (autoFinalize) {
             autoDjApplausePendingSongRef.current = songId;
+            autoDjApplauseFallbackKeyRef.current = '';
             clearAutoDjApplauseFallback();
+            clearAutoDjApplauseDeadline();
             autoDjApplauseFallbackTimerRef.current = setTimeout(() => {
                 const pendingSongId = autoDjApplausePendingSongRef.current;
                 if (!pendingSongId) return;
@@ -3070,7 +3154,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: pendingSongId, error: error?.message || 'fallback_finalize_failed' });
                     hostLogger.warn('Auto-DJ applause fallback finalization failed', error);
                 });
-            }, 26000);
+            }, autoFinalizeDelayMs);
         }
         await updateRoom({
             activeMode: 'applause_countdown',
@@ -3086,7 +3170,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         });
         if (autoFinalize) toast('Measuring applause now. Auto-DJ will end this performance after results.');
         else toast('Applause countdown started.');
-    }, [clearAutoDjApplauseFallback, showPostPerformanceBackingPrompt, toast, updateRoom, pushAutoDjEvent, songs]);
+    }, [clearAutoDjApplauseDeadline, clearAutoDjApplauseFallback, getApplauseAutoFinalizeDelayMs, showPostPerformanceBackingPrompt, toast, updateRoom, pushAutoDjEvent, songs]);
 
     const getPerformanceElapsedSec = useCallback((songId = '') => {
         const targetSongId = String(songId || '').trim();
@@ -3110,6 +3194,44 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         clearPendingEarlyEndDecision();
         await startApplauseSequence({ songId: targetSongId, autoFinalize: true });
     }, [clearPendingEarlyEndDecision, startApplauseSequence]);
+    useEffect(() => {
+        const command = room?.audienceAutomationCommand && typeof room.audienceAutomationCommand === 'object'
+            ? room.audienceAutomationCommand
+            : null;
+        if (!command) return undefined;
+        if (String(command?.status || '').trim().toLowerCase() !== 'pending') return undefined;
+        if (String(command?.action || '').trim().toLowerCase() !== 'finish_performance') return undefined;
+        const targetSongId = String(command?.songId || '').trim();
+        if (!targetSongId) return undefined;
+        const activeSongId = String(room?.currentPerformanceSession?.songId || room?.currentPerformanceMeta?.songId || current?.id || '').trim();
+        if (activeSongId !== targetSongId) return undefined;
+        if (String(room?.activeMode || '').trim().toLowerCase() !== 'karaoke') return undefined;
+        const commandKey = String(command?.id || `${command?.source || 'audience'}_${targetSongId}_${command?.createdAtMs || ''}`).trim();
+        if (!commandKey || audienceAutomationCommandKeyRef.current === commandKey) return undefined;
+        audienceAutomationCommandKeyRef.current = commandKey;
+        handleFinishPerformance(targetSongId)
+            .then(() => updateRoom({
+                audienceAutomationCommand: {
+                    ...command,
+                    status: 'consumed',
+                    consumedAtMs: nowMs(),
+                    consumedBy: 'host_runtime',
+                }
+            }))
+            .catch((error) => {
+                audienceAutomationCommandKeyRef.current = '';
+                hostLogger.warn('Audience automation command failed', error);
+                updateRoom({
+                    audienceAutomationCommand: {
+                        ...command,
+                        status: 'failed',
+                        failedAtMs: nowMs(),
+                        lastError: String(error?.message || 'Host runtime could not consume command.').slice(0, 240),
+                    }
+                }).catch(() => {});
+            });
+        return undefined;
+    }, [current?.id, handleFinishPerformance, room?.activeMode, room?.audienceAutomationCommand, room?.currentPerformanceMeta?.songId, room?.currentPerformanceSession?.songId, updateRoom]);
 
     const handleChangeBackingForCurrentPerformance = useCallback(async (songId = '') => {
         const targetSongId = String(songId || '').trim();
@@ -3142,6 +3264,73 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         return () => clearTimeout(timer);
     }, [handleFinishPerformance, pendingEarlyEndDecision, pendingEarlyEndDecisionBusy]);
 
+    const oneMinuteMicEnabled = room?.oneMinuteMicEnabled === true
+        || String(room?.performanceProgressionMode || '').trim().toLowerCase() === 'one_minute_mic';
+    const oneMinuteMicOpeningWindowSec = Math.max(15, Math.min(180, Math.round(Number(room?.oneMinuteMicOpeningWindowSec || 60) || 60)));
+    const oneMinuteMicVoteWindowSec = Math.max(5, Math.min(45, Math.round(Number(room?.oneMinuteMicVoteWindowSec || 12) || 12)));
+
+    useEffect(() => {
+        if (!oneMinuteMicEnabled) return undefined;
+        const currentSongId = String(current?.id || '').trim();
+        const activeMode = String(room?.activeMode || '').trim().toLowerCase();
+        if (!currentSongId || activeMode !== 'karaoke') return undefined;
+        const existingDecision = room?.audienceDecision && typeof room.audienceDecision === 'object' ? room.audienceDecision : null;
+        const existingDecisionType = String(existingDecision?.type || '').trim().toLowerCase();
+        const existingDecisionSongId = String(existingDecision?.subjectSongId || existingDecision?.songId || '').trim();
+        if (existingDecisionType === AUDIENCE_DECISION_TYPES.continueOrRotate && existingDecisionSongId === currentSongId) return undefined;
+        const sessionId = String(room?.currentPerformanceSession?.sessionId || '').trim();
+        const sessionSongId = String(room?.currentPerformanceSession?.songId || '').trim();
+        const metaSongId = String(room?.currentPerformanceMeta?.songId || '').trim();
+        const startedAtMs = Math.max(
+            sessionSongId === currentSongId ? Number(room?.currentPerformanceSession?.startedAtMs || 0) || 0 : 0,
+            metaSongId === currentSongId ? Number(room?.currentPerformanceMeta?.startedAtMs || 0) || 0 : 0,
+            getTimestampMs(current?.performingStartedAt),
+            getTimestampMs(current?.timestamp)
+        );
+        if (!startedAtMs) return undefined;
+        const openAtMs = startedAtMs + (oneMinuteMicOpeningWindowSec * 1000);
+        const decisionKey = `${currentSongId}:${sessionId || startedAtMs}:${openAtMs}`;
+        const openDecision = () => {
+            if (oneMinuteMicDecisionOpenKeyRef.current === decisionKey) return;
+            oneMinuteMicDecisionOpenKeyRef.current = decisionKey;
+            updateRoom({
+                audienceDecision: buildContinueOrRotateDecision({
+                    songId: currentSongId,
+                    songTitle: current?.songTitle || current?.title || 'Current song',
+                    singerName: current?.singerName || current?.name || 'Singer',
+                    artistName: current?.artist || current?.artistName || '',
+                    performanceSessionId: sessionId,
+                    openedAtMs: nowMs(),
+                    voteWindowSec: oneMinuteMicVoteWindowSec,
+                    openingWindowSec: oneMinuteMicOpeningWindowSec,
+                })
+            }).catch((error) => {
+                oneMinuteMicDecisionOpenKeyRef.current = '';
+                hostLogger.warn('One-Minute Mic decision failed to open', error);
+            });
+        };
+        const delayMs = Math.max(0, openAtMs - nowMs());
+        if (delayMs <= 0) {
+            openDecision();
+            return undefined;
+        }
+        const timer = setTimeout(openDecision, delayMs);
+        return () => clearTimeout(timer);
+    }, [
+        current,
+        current?.id,
+        oneMinuteMicEnabled,
+        oneMinuteMicOpeningWindowSec,
+        oneMinuteMicVoteWindowSec,
+        room?.activeMode,
+        room?.audienceDecision,
+        room?.currentPerformanceMeta?.songId,
+        room?.currentPerformanceMeta?.startedAtMs,
+        room?.currentPerformanceSession?.sessionId,
+        room?.currentPerformanceSession?.songId,
+        room?.currentPerformanceSession?.startedAtMs,
+        updateRoom
+    ]);
     const handleEndPerformance = useCallback(async (songId = '', options = {}) => {
         const targetSongId = String(songId || '').trim();
         if (!targetSongId) return;
@@ -3173,12 +3362,49 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [getPerformanceElapsedSec, handleFinishPerformance, room?.activeMode, songs, toast]);
 
     useEffect(() => {
+        const decision = room?.audienceDecision && typeof room.audienceDecision === 'object' ? room.audienceDecision : null;
+        if (!decision || String(decision?.type || '').trim().toLowerCase() !== AUDIENCE_DECISION_TYPES.continueOrRotate) return undefined;
+        if (String(decision?.status || '').trim().toLowerCase() !== 'open') return undefined;
+        const subjectSongId = String(decision?.subjectSongId || decision?.songId || current?.id || '').trim();
+        if (!subjectSongId) return undefined;
+        const closesAtMs = Math.max(0, Number(decision?.closesAtMs || 0) || 0);
+        if (!closesAtMs) return undefined;
+        const resolveDecision = () => {
+            const resolution = resolveAudienceDecision(decision, { nowMs: nowMs(), force: true });
+            if (!resolution.resolved) return;
+            const resolveKey = `${resolution.decision.id}:${resolution.resultChoice}:${resolution.decision.resolvedAtMs}`;
+            if (oneMinuteMicDecisionResolveKeyRef.current === resolveKey) return;
+            oneMinuteMicDecisionResolveKeyRef.current = resolveKey;
+            const finishAfterResolution = resolution.resolutionAction === 'wrap_and_rotate';
+            updateRoom({ audienceDecision: resolution.decision })
+                .then(() => {
+                    if (finishAfterResolution) {
+                        return handleFinishPerformance(subjectSongId);
+                    }
+                    toast('Crowd unlocked the rest of the song.');
+                    return null;
+                })
+                .catch((error) => {
+                    oneMinuteMicDecisionResolveKeyRef.current = '';
+                    hostLogger.warn('One-Minute Mic decision resolution failed', error);
+                });
+        };
+        const delayMs = Math.max(0, closesAtMs - nowMs());
+        if (delayMs <= 0) {
+            resolveDecision();
+            return undefined;
+        }
+        const timer = setTimeout(resolveDecision, delayMs);
+        return () => clearTimeout(timer);
+    }, [current?.id, handleFinishPerformance, room?.audienceDecision, toast, updateRoom]);
+    useEffect(() => {
         const pendingSongId = autoDjApplausePendingSongRef.current;
         if (!pendingSongId) return;
         if (room?.activeMode !== 'applause_result') return;
         pushAutoDjEvent(AUTO_DJ_EVENTS.APPLAUSE_RESULT, { songId: pendingSongId });
         autoDjApplausePendingSongRef.current = '';
         clearAutoDjApplauseFallback();
+        clearAutoDjApplauseDeadline();
         const runUpdateStatus = updateStatusRef.current;
         if (!runUpdateStatus) return;
         runUpdateStatus(pendingSongId, 'performed')
@@ -3190,8 +3416,49 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: pendingSongId, error: error?.message || 'auto_finalize_failed' });
                 hostLogger.warn('Auto-DJ applause finalization failed', error);
             });
-    }, [clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
+    }, [clearAutoDjApplauseDeadline, clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
 
+
+    useEffect(() => {
+        const activeMode = String(room?.activeMode || '').trim();
+        const applauseActive = activeMode === 'applause_countdown' || activeMode === 'applause' || activeMode === 'applause_result';
+        if (!applauseActive) {
+            clearAutoDjApplauseDeadline();
+            autoDjApplauseFallbackKeyRef.current = '';
+            return undefined;
+        }
+        if (activeMode === 'applause_result') return undefined;
+        const subject = room?.applauseSubject || {};
+        if (subject?.autoFinalize !== true) return undefined;
+        const pendingSongId = String(autoDjApplausePendingSongRef.current || subject?.autoFinalizeSongId || subject?.id || '').trim();
+        const deadlineMs = Math.max(0, Number(subject?.autoFinalizeDeadlineMs || 0));
+        if (!pendingSongId || !deadlineMs) return undefined;
+        const deadlineKey = `${pendingSongId}:${deadlineMs}`;
+        const finalizeFromDeadline = () => {
+            if (autoDjApplauseFallbackKeyRef.current === deadlineKey) return;
+            autoDjApplauseFallbackKeyRef.current = deadlineKey;
+            autoDjApplausePendingSongRef.current = '';
+            clearAutoDjApplauseFallback();
+            clearAutoDjApplauseDeadline();
+            pushAutoDjEvent(AUTO_DJ_EVENTS.RETRY, { songId: pendingSongId, error: 'applause_deadline_elapsed' });
+            const runUpdateStatus = updateStatusRef.current;
+            if (!runUpdateStatus) return;
+            runUpdateStatus(pendingSongId, 'performed').catch((error) => {
+                autoDjApplauseFallbackKeyRef.current = '';
+                pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: pendingSongId, error: error?.message || 'deadline_finalize_failed' });
+                hostLogger.warn('Auto-DJ applause deadline finalization failed', error);
+            });
+        };
+        clearAutoDjApplauseDeadline();
+        const delayMs = Math.max(0, deadlineMs - nowMs());
+        autoDjApplauseDeadlineTimerRef.current = setTimeout(finalizeFromDeadline, delayMs);
+        return () => {
+            if (autoDjApplauseDeadlineTimerRef.current) {
+                clearTimeout(autoDjApplauseDeadlineTimerRef.current);
+                autoDjApplauseDeadlineTimerRef.current = null;
+            }
+        };
+    }, [clearAutoDjApplauseDeadline, clearAutoDjApplauseFallback, pushAutoDjEvent, room?.activeMode, room?.applauseSubject]);
     useEffect(() => {
         performanceSessionCompletionKeyRef.current = '';
     }, [room?.currentPerformanceSession?.sessionId]);
@@ -3398,7 +3665,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         });
         autoDjApplausePendingSongRef.current = '';
         clearAutoDjApplauseFallback();
-    }, [clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
+        clearAutoDjApplauseDeadline();
+    }, [clearAutoDjApplauseDeadline, clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
 
     const getCurrentPlaybackPositionSec = useCallback(() => {
         const session = room?.currentPerformanceSession || {};
@@ -4173,7 +4441,41 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             </div>
             <div ref={sceneLibraryScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar scroll-pt-20 sm:px-5">
                 {mediaLibraryTab === 'scenes' ? (
-                <div className={sceneLibraryGridClass}>
+                <>
+                    <div data-feature-id="host-scene-template-quick-pads" className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">Template Scenes</div>
+                                <div className="mt-1 text-xs text-zinc-500">Common announcement, audience, support, and interactive beats live next to saved media scenes.</div>
+                            </div>
+                            <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
+                                {SCENE_LIBRARY_TEMPLATE_QUICK_PADS.length} templates
+                            </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(136px,1fr))]">
+                            {SCENE_LIBRARY_TEMPLATE_QUICK_PADS.map((template) => (
+                                <button
+                                    key={template.id}
+                                    type="button"
+                                    disabled={typeof onAddQuickRunOfShowMoment !== 'function'}
+                                    onClick={() => onAddQuickRunOfShowMoment?.(template.id)}
+                                    className={`min-h-[104px] rounded-2xl border border-white/10 bg-zinc-950/70 px-3 py-3 text-left transition hover:border-cyan-300/35 hover:bg-cyan-500/10 ${typeof onAddQuickRunOfShowMoment !== 'function' ? 'cursor-not-allowed opacity-55' : 'active:scale-[0.98]'}`}
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
+                                            <i className={`fa-solid ${template.icon}`}></i>
+                                        </span>
+                                        <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-400">
+                                            {template.group}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 text-sm font-black leading-tight text-white">{template.label}</div>
+                                    <div className="mt-1 text-[11px] leading-snug text-zinc-500">{template.detail}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className={sceneLibraryGridClass}>
                     {(visibleScenePresets || []).map((preset) => {
                         const draft = scenePresetDrafts[preset.id] || {
                             title: String(preset?.title || '').trim(),
@@ -4214,11 +4516,20 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 className={`rounded-2xl border bg-zinc-950/55 p-3 shadow-[0_14px_32px_rgba(0,0,0,0.22)] ${isGridPad ? 'border-cyan-300/18 bg-[linear-gradient(180deg,rgba(14,20,31,0.96),rgba(8,8,14,0.98))]' : 'border-white/10'} ${sceneLibraryView === 'list' ? 'lg:flex lg:items-start lg:gap-4' : ''}`}
                             >
                                 <div className={`${isGridPad ? '' : `flex gap-3 ${sceneLibraryView === 'list' ? 'lg:min-w-0 lg:flex-1' : ''}`}`}>
-                                    <div className={`shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35 ${sceneLibraryView === 'list' ? 'h-24 w-36' : 'aspect-[4/3] w-full'}`}>
+                                    <button
+                                        type="button"
+                                        data-feature-id="host-scene-thumbnail-launch"
+                                        onClick={() => onLaunchScenePreset?.(preset)}
+                                        className={`group relative shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35 text-left transition hover:border-cyan-300/45 ${sceneLibraryView === 'list' ? 'h-24 w-36' : 'aspect-[4/3] w-full'}`}
+                                        aria-label={`Run scene ${draft.title || preset?.title || 'Media scene'} live`}
+                                    >
                                         {isVideoScene
-                                            ? <video src={preset.mediaUrl} className="h-full w-full object-cover" muted playsInline />
-                                            : <img src={preset.mediaUrl} alt="" className="h-full w-full object-cover" />}
-                                    </div>
+                                            ? <video src={preset.mediaUrl} className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.03]" muted playsInline />
+                                            : <img src={preset.mediaUrl} alt="" className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.03]" />}
+                                        <span className="absolute inset-x-2 bottom-2 rounded-full border border-cyan-200/35 bg-black/70 px-2 py-1 text-center text-[10px] font-black uppercase tracking-[0.14em] text-cyan-50 opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                                            Run Live
+                                        </span>
+                                    </button>
                                     <div className={`min-w-0 flex-1 ${isGridPad ? 'mt-3' : ''}`}>
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] ${isVideoScene ? 'border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100' : 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'}`}>
@@ -4241,7 +4552,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                 </span>
                                             ) : null}
                                         </div>
-                                        <input
+                                        <div className="mt-2 min-h-[42px]">
+                                            <div className="line-clamp-2 text-sm font-black leading-tight text-white">{draft.title || (isVideoScene ? 'Video Scene' : 'Image Scene')}</div>
+                                            <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Tap thumbnail to run live</div>
+                                        </div>
+                                        {!isGridPad ? (
+                                            <>
+                                                <input
                                             value={draft.title}
                                             onChange={(event) => setScenePresetDraftField(preset.id, 'title', event.target.value)}
                                             className={`${STYLES.input} mt-2 h-10 px-3 text-sm font-black`}
@@ -4360,6 +4677,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                     : 'This scene stays visual-only on the audience app.'}
                                             </div>
                                         </div>
+                                            </>
+                                        ) : null}
                                     </div>
                                 </div>
                                 <div className={`mt-3 ${isGridPad ? 'grid grid-cols-2 gap-2' : `flex flex-wrap gap-2 ${sceneLibraryView === 'list' ? 'lg:mt-0 lg:w-[17rem] lg:shrink-0 lg:justify-end' : ''}`}`}>
@@ -4369,8 +4688,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     <button type="button" onClick={() => onQueueScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-2 text-[10px]`}>
                                         Queue Next In Show
                                     </button>
-                                    <button type="button" onClick={() => onAddScenePresetToRunOfShow?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px]`}>
-                                        Use In Run Of Show
+                                    <button type="button" onClick={() => setSceneLibraryView('list')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px]`}>
+                                        Edit
                                     </button>
                                     <button type="button" onClick={() => onDeleteScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
                                         Delete
@@ -4406,7 +4725,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             </div>
                         </div>
                     ) : null}
-                </div>
+                    </div>
+                </>
                 ) : (
                     <div className="grid gap-4">
                         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">

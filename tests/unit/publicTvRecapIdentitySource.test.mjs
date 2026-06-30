@@ -47,3 +47,63 @@ test('PublicTV only auto-opens finalized recaps and prefers the finalized total 
     'PublicTV should use the host-provided finalized total score when available.',
   );
 });
+test('PublicTV recap next-up phase prefers the finalized host snapshot', () => {
+  assert.match(
+    source,
+    /const recapNextUpSnapshot = Array\.isArray\(recap\?\.nextUpSnapshot\)[\s\S]*const recapNextUpLineup = recapNextUpSnapshot\.length \? recapNextUpSnapshot : nextUp\.slice\(0, 3\);/s,
+    'The recap next-up screen should use the host-captured lineup before falling back to the live queue.',
+  );
+  assert.match(
+    source,
+    /<PerformanceNextUpOverlay[\s\S]*nextUp=\{recapNextUpLineup\}/s,
+    'PerformanceNextUpOverlay should receive the stable recap lineup during the recap loop.',
+  );
+});
+test('PublicTV recap stages score subtotals before revealing the final total', () => {
+  assert.ok(source.includes('const recapScoreFocusIndex = Math.max('));
+  assert.ok(source.includes('const recapScoreVisibleCount = Math.max(0, Math.min(scoreBreakdownCards.length, recapScoreFocusIndex + 1));'));
+  assert.ok(source.includes('const recapScoreTotalVisible = recapAgeMs >= recapScoreTotalRevealMs;'));
+  assert.match(source, /const recapDetailsVisible = recapAgeMs >= recapScoreTotalRevealMs \+ Math\.min\(2200, Math\.max\(1200, Math\.round\(recapScoreStepMs \* 0\.85\)\)\);/);
+  assert.match(
+    source,
+    /scoreBreakdownCards\.map\(\(item, index\) => \{[\s\S]*const active = !recapScoreTotalVisible && index === recapScoreFocusIndex;[\s\S]*const completed = recapScoreTotalVisible \|\| index < recapScoreFocusIndex;[\s\S]*recap-score-arrival/s,
+    'Score subtotal cards should arrive one at a time before the final score reveal.',
+  );
+  assert.match(
+    source,
+    /recap-total-reveal[\s\S]*<RecapCountUpNumber[\s\S]*value=\{totalPoints\}[\s\S]*active=\{recapScoreTotalVisible\}/s,
+    'The final score should count up after the subtotal tally has landed.',
+  );
+});
+test('PublicTV recap has synthesized game-show UI cue hooks', () => {
+  assert.match(source, /const playTvUiCue = useCallback\(\(cue = 'tick'/);
+  assert.match(source, /case 'score_bonus':/);
+  assert.match(source, /case 'total_reveal':/);
+  assert.match(source, /case 'next_up':/);
+  assert.match(source, /playTvUiCue\('score_tick'/);
+});
+
+test('PublicTV recap score reveal counts subtotals and total up with dramatic timing', () => {
+  assert.match(source, /const RecapCountUpNumber = \(\{ value = 0, active = false, completed = false, durationMs = 1100/);
+  assert.ok(source.includes('durationMs={recapScoreCountDurationMs}'));
+  assert.ok(source.includes('durationMs={2300}'));
+  assert.match(source, /performanceRecapScoreStepMs/);
+  assert.match(source, /recapScoreStepMs = performanceRecapScoreStepMs;/);
+  assert.match(source, /const recapScoreFinalHoldMs = Math\.max\(5200, Math\.min\(9000, Math\.round\(recapScoreStepMs \* 2\.25\)\)\);/);
+  assert.match(source, /const recapBreakdownPhaseMs = Math\.max\([\s\S]*recapScoreTotalRevealMs \+ recapScoreFinalHoldMs[\s\S]*\);/);
+});
+
+test('PublicTV recap score screen keeps long song metadata inside the TV viewport', () => {
+  assert.match(source, /const recapTitleClampStyle = \{[\s\S]*WebkitLineClamp: isVeryShortViewport \? 1 : 2[\s\S]*overflowWrap: 'anywhere'[\s\S]*\};/);
+  assert.match(source, /style=\{recapTitleClampStyle\}/);
+  assert.match(source, /<div className="min-h-0 flex-1 overflow-hidden">/);
+  assert.match(source, /\{recapDetailsVisible && crowdMomentCards\.length > 0 && \(/);
+  assert.match(source, /\{recapDetailsVisible && \(\s*<div className="rounded-\[1\.8rem\] border border-white\/10 bg-black\/20 p-5/);
+  assert.match(source, /Score Locked[\s\S]*Added to tonight's board/);
+});
+test('PublicTV recap empty next-up phase prompts guests to join the queue', () => {
+  assert.match(source, /<PerformanceNextUpOverlay[\s\S]*roomCode=\{roomCode\}[\s\S]*joinUrl=\{joinUrl\}/s);
+  assert.match(source, /const emptyQueueQrValue = String\(joinUrl \|\| ''\)\.trim\(\) \|\|/);
+  assert.match(source, /Who wants the next song\?/);
+  assert.match(source, /<LocalQrImage value=\{emptyQueueQrValue\}/);
+});

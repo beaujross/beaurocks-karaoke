@@ -10,7 +10,8 @@ import {
 test("audience shell variant helpers normalize and derive takeover state", () => {
   assert.equal(normalizeAudienceShellVariant("streamlined"), AUDIENCE_SHELL_VARIANTS.streamlined);
   assert.equal(normalizeAudienceShellVariant("CLASSIC"), AUDIENCE_SHELL_VARIANTS.classic);
-  assert.equal(normalizeAudienceShellVariant("unexpected"), AUDIENCE_SHELL_VARIANTS.classic);
+  assert.equal(normalizeAudienceShellVariant("unexpected"), AUDIENCE_SHELL_VARIANTS.streamlined);
+  assert.equal(normalizeAudienceShellVariant(""), AUDIENCE_SHELL_VARIANTS.streamlined);
 
   assert.equal(deriveAudienceTakeoverKind({ activeMode: "bingo" }), "active:bingo");
   assert.equal(deriveAudienceTakeoverKind({ activeMode: "karaoke", lightMode: "storm" }), "light:storm");

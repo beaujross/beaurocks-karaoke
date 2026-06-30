@@ -857,6 +857,26 @@ async function run() {
       );
     }],
 
+    ["firestore: audience user can create spotlight reaction metadata", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/reactions/reaction_spotlight_wave`).set({
+          roomCode: ROOM_CODE,
+          type: "spotlight_wave",
+          count: 1,
+          uid: GUEST_UID,
+          userName: "Guest",
+          avatar: "????",
+          isVip: false,
+          isFree: true,
+          spotlightSessionId: "audience_spotlight_guest-uid_123",
+          spotlightKind: "audience_spotlight",
+          spotlightMode: "cheer",
+          spotlightUserId: GUEST_UID,
+          timestamp: new Date(),
+        })
+      );
+    }],
     ["firestore: audience user cannot spoof reaction uid", async () => {
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
       await assertFails(

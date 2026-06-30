@@ -13,6 +13,9 @@ test('audience app exposes run-of-show release-window controls for crowd and co-
   assert.match(source, /const canSeeAudienceReleaseWindow = useMemo/);
   assert.match(source, /const castRunOfShowReleaseVote = async/);
   assert.match(source, /castRunOfShowReleaseWindowVote/);
+  assert.match(source, /castAudienceDecisionVote/);
+  assert.match(source, /buildReleaseWindowFromAudienceDecision/);
+  assert.match(source, /choiceAudienceDecisionIds/);
   assert.match(source, /Co-Host Song Face-Off/);
   assert.match(source, /Audience Song Face-Off/);
   assert.match(source, /Co-Host Slot Fill/);

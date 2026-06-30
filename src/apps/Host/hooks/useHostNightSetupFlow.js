@@ -553,7 +553,7 @@ const useHostNightSetupFlow = ({
                 allowSingerTrackSelect: payload.allowSingerTrackSelect,
             }));
             setAudienceFeatureAccess(payload.audienceFeatureAccess || {});
-            setAudienceShellVariant(payload.audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic');
+            setAudienceShellVariant(payload.audienceShellVariant === 'classic' ? 'classic' : 'streamlined');
             if (payload.audienceBrandTheme) {
                 setAudienceBrandTheme(payload.audienceBrandTheme);
             }

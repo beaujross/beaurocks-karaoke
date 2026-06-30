@@ -491,6 +491,39 @@ export const buildRunOfShowGameLaunchRoomUpdates = ({
         };
     }
 
+    if (modeKey === 'musical_moments') {
+        const loopSec = clampNumber(launchConfig.loopSec, 4, 45, 12);
+        const targetBeatSec = clampNumber(launchConfig.targetBeatSec, 0.5, Math.max(0.75, loopSec - 0.25), Math.max(1, loopSec - 4));
+        return {
+            activeMode: 'musical_moments',
+            activeScreen: 'stage',
+            gameData: {
+                ...baseGameData,
+                sessionId: `musical_moments_${startedAtMs}`,
+                status: 'live',
+                title: cleanText(launchConfig.title || item?.title) || 'Musical Moment Challenge',
+                artist: cleanText(launchConfig.artist),
+                prompt: cleanText(launchConfig.prompt) || 'Tap the hit on your phone and sing the lift into the room.',
+                targetLabel: cleanText(launchConfig.targetLabel) || 'Hit Moment',
+                mediaUrl: cleanText(launchConfig.mediaUrl || launchConfig.youtubeUrl || launchConfig.youtubeId),
+                youtubeId: cleanText(launchConfig.youtubeId || launchConfig.youtubeUrl || launchConfig.mediaUrl),
+                startSec: clampNumber(launchConfig.startSec, 0, 7200, 0),
+                loopSec,
+                targetBeatSec,
+                hitWindowMs: clampNumber(launchConfig.hitWindowMs, 180, 1800, 700),
+                vocalWindowMs: clampNumber(launchConfig.vocalWindowMs, 600, 5000, 2200),
+                inputSource: 'crowd',
+                voiceInput: 'host',
+                startedAt: startedAtMs,
+                timestamp: startedAtMs,
+                tapEvents: []
+            },
+            triviaQuestion: null,
+            wyrData: null,
+            ...buildParticipantPayload('all', [])
+        };
+    }
+
     if (modeKey === 'applause_countdown') {
         return {
             activeMode: 'applause_countdown',

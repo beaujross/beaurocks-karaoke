@@ -16,3 +16,15 @@ test('public TV exposes a full-screen run-of-show release-window vote overlay', 
   assert.match(source, /Room Code/);
   assert.match(source, /tvReleaseWindowVisible/);
 });
+
+test('public TV can render release-window votes as a glass overlay above active games', () => {
+  assert.match(source, /buildAudienceDecisionFromReleaseWindow/);
+  assert.match(source, /data-tv-audience-decision-type/);
+  assert.match(source, /displayMode = 'takeover'/);
+  assert.match(source, /data-tv-release-window-display-mode/);
+  assert.match(source, /glass_overlay/);
+  assert.match(source, /tvReleaseWindowGlassOverlayVisible/);
+  assert.match(source, /tvReleaseWindowTakeoverVisible/);
+  assert.match(source, /activeGameCartridgeMode/);
+  assert.match(source, /displayMode="glass_overlay"/);
+});

@@ -102,40 +102,44 @@ export const isVolleyOrbSceneActive = ({
 export const getVolleyOrbMobileMainLine = ({
     paused = false,
     timedOut = false,
-    relayActive = false
+    relayActive = false,
+    phaseLabel = ''
 } = {}) => {
     if (paused) return 'Paused';
-    if (timedOut) return 'Save it';
-    if (relayActive) return 'Hit target';
-    return 'Tap to launch';
+    if (timedOut) return 'Add air now';
+    if (relayActive) return 'Keep it rising';
+    const safePhase = String(phaseLabel || '').trim();
+    return safePhase ? `${safePhase} together` : 'Inflate together';
 };
 
 export const getVolleyOrbTvInstructionCopy = ({
     warningState = false,
     hasActiveVolley = false,
-    volleyExpired = false
+    volleyExpired = false,
+    phaseLabel = ''
 } = {}) => {
+    const safePhase = String(phaseLabel || '').trim();
     if (warningState) {
         return {
-            headline: 'Save It',
-            secondary: 'Any tap now'
+            headline: 'More Air',
+            secondary: 'Make a bigger sound together'
         };
     }
     if (hasActiveVolley) {
         return {
-            headline: 'Pass It',
-            secondary: 'New player hits target'
+            headline: safePhase ? `${safePhase} Phase` : 'Keep It Rising',
+            secondary: 'The room voice is driving the climb'
         };
     }
     if (volleyExpired) {
         return {
-            headline: 'Restart',
-            secondary: 'Any tap relaunches'
+            headline: 'Inflate Again',
+            secondary: 'Crowd volume relaunches the orb'
         };
     }
     return {
-        headline: 'Join In',
-        secondary: 'Any tap launches'
+        headline: 'Blow To Inflate',
+        secondary: 'Make sound toward the room mic'
     };
 };
 

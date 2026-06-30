@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { GAME_REGISTRY } from '../lib/gameRegistry';
 
 const TV_VOICE_MIC_READY_KEY = 'beaurocks_tv_voice_mic_ready';
@@ -7,33 +7,41 @@ const GAME_RULES = {
     flappy_bird: {
         title: 'Pitch Runner',
         lines: [
-            'Crowd mic first: one person calibrates, then the whole room can sing to steer.',
-            'Keep the orb inside the glowing note gap, and use Breath if the room needs a reset.',
-            'Missing a gate is not the end, because extra lives and host assist keep the run moving.'
+            'Crowd mic first: calibrate a low and high note, then the room steers by trend.',
+            'Sing higher, lower, or hold steady to keep the orb inside the safe lane.',
+            'Shields, Breath, and extra lives turn misses into recoverable checkpoints.'
         ]
     },
     vocal_challenge: {
         title: 'Vocal Challenge',
         lines: [
-            'Watch the glowing note and sing with it together as it shifts.',
-            'Near matches still score, so staying loud and close is better than going silent.',
-            'Harmony Boost widens the lane when the room needs a confidence save.'
+            'Follow the target ribbon and hold your voice inside the lane.',
+            'Locked notes score big, close notes still recover the phrase.',
+            'Harmony Boost widens the lane when the room needs a crowd save.'
         ]
     },
     riding_scales: {
         title: 'Riding Scales',
         lines: [
-            'First listen, then echo the pattern back note by note.',
-            'The pattern ramps gently, and most misses turn into replays instead of hard fails.',
+            'First listen to the sustained guide notes, then echo the pattern back note by note.',
+            'Use the breath window between notes; close matches still count.',
             'Scale Save gives the room another listen before the game takes a strike.'
         ]
     },
     team_pong: {
         title: 'Team Pong',
         lines: [
-            'Phones are the controllers here, so tap when the ball reaches your side.',
-            'Everyone on your team can help keep the rally alive.',
-            'The longer the rally lasts, the more dramatic the finish gets.'
+            'Your phone controls your team paddle: Save returns the ball before it drops.',
+            'First side to the rally goal wins; team hits move the score bar.',
+            'Chant to widen the return window, then Spike or Redirect to swing momentum.'
+        ]
+    },
+    musical_moments: {
+        title: 'Musical Moments',
+        lines: [
+            'Watch the loop and feel where the big hit lands.',
+            'Audience phones tap the hit; the Host room mic scores the vocal lift.',
+            'Timing is forgiving, so crowd energy matters more than frame-perfect latency.'
         ]
     },
     bingo: {
@@ -86,8 +94,10 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
     // 1. Check if the current mode matches a registered game
     const GameComponent = GAME_REGISTRY[activeMode];
     const [showRules, setShowRules] = useState(false);
+    const [launchCountdown, setLaunchCountdown] = useState(0);
     const lastRulesRef = useRef(null);
     const showClose = view === 'mobile' && typeof props.onClose === 'function';
+    const isTv = view === 'tv';
     const normalizeMode = (mode) => {
         if (!mode) return null;
         if (mode.startsWith('trivia')) return 'trivia_pop';
@@ -99,13 +109,23 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
         if (!rulesToken) return;
         if (lastRulesRef.current === rulesToken) return;
         lastRulesRef.current = rulesToken;
-        const showTimer = setTimeout(() => setShowRules(true), 0);
-        const hideTimer = setTimeout(() => setShowRules(false), 6000);
+        const showTimer = setTimeout(() => {
+            setShowRules(true);
+            setLaunchCountdown(isTv ? 3 : 0);
+        }, 0);
+        const countdownTimer = isTv ? setInterval(() => {
+            setLaunchCountdown((value) => Math.max(0, value - 1));
+        }, 1000) : null;
+        const hideTimer = setTimeout(() => {
+            setShowRules(false);
+            setLaunchCountdown(0);
+        }, isTv ? 3400 : 6000);
         return () => {
             clearTimeout(showTimer);
             clearTimeout(hideTimer);
+            if (countdownTimer) clearInterval(countdownTimer);
         };
-    }, [rulesToken]);
+    }, [rulesToken, isTv]);
 
     // 3. If a game IS found, render it specifically
     // FIX: Explicitly pass activeMode down so the game knows its state
@@ -119,7 +139,9 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
         return null;
     })();
     const normalizedMode = normalizeMode(activeMode);
-    const wantsLocalVoiceMic = view === 'tv'
+    const voiceInputMode = String(props?.gameState?.voiceInput || props?.playerData?.voiceInput || '').trim().toLowerCase();
+    const wantsLocalVoiceMic = voiceInputMode !== 'host'
+        && view === 'tv'
         && props.isPlayer
         && ['flappy_bird', 'vocal_challenge', 'riding_scales'].includes(normalizedMode)
         && ['ambient', 'crowd', 'local'].includes(props.inputSource);
@@ -131,48 +153,7 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
             return false;
         }
     };
-    const [tvVoiceMicReady, setTvVoiceMicReady] = useState(() => !wantsLocalVoiceMic || readTvVoiceMicReady());
-    const [tvVoiceMicPending, setTvVoiceMicPending] = useState(false);
-    const [tvVoiceMicError, setTvVoiceMicError] = useState('');
-
-    useEffect(() => {
-        setTvVoiceMicReady(!wantsLocalVoiceMic || readTvVoiceMicReady());
-        setTvVoiceMicPending(false);
-        setTvVoiceMicError('');
-    }, [wantsLocalVoiceMic, normalizedMode]);
-
-    const requestTvVoiceMic = useCallback(async () => {
-        if (!wantsLocalVoiceMic || tvVoiceMicPending) return;
-        if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-            setTvVoiceMicError('Mic unavailable on this browser');
-            return;
-        }
-        setTvVoiceMicPending(true);
-        setTvVoiceMicError('');
-        try {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            const ctx = AudioCtx ? new AudioCtx() : null;
-            if (ctx?.state === 'suspended') {
-                await ctx.resume();
-            }
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            stream.getTracks().forEach((track) => track.stop());
-            if (ctx && typeof ctx.close === 'function') {
-                await ctx.close().catch(() => {});
-            }
-            try {
-                window.sessionStorage?.setItem(TV_VOICE_MIC_READY_KEY, '1');
-            } catch (_) {
-                // Ignore storage failures and keep the session-local state only.
-            }
-            setTvVoiceMicReady(true);
-        } catch (error) {
-            setTvVoiceMicError('Enable mic on this TV to control the game');
-            console.warn('TV voice mic prime failed', error);
-        } finally {
-            setTvVoiceMicPending(false);
-        }
-    }, [tvVoiceMicPending, wantsLocalVoiceMic]);
+    const tvVoiceMicReady = !wantsLocalVoiceMic || readTvVoiceMicReady();
 
     const bingoMode = props?.gameState?.bingoMode || props?.playerData?.bingoMode || 'karaoke';
     const rulesConfig = (() => {
@@ -217,7 +198,33 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
                     Input: {inputLabel}
                 </div>
             )}
-            {showRules && rulesConfig && (
+            {showRules && rulesConfig && (isTv ? (
+                <div
+                    className="pointer-events-none absolute inset-x-6 top-20 z-[300] flex justify-center"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-cyan-300/25 bg-black/70 shadow-[0_18px_70px_rgba(0,0,0,0.42)] backdrop-blur-md">
+                        <div className="flex items-stretch">
+                            <div className="flex w-28 shrink-0 items-center justify-center bg-cyan-300 text-5xl font-black text-black">
+                                {launchCountdown || 'GO'}
+                            </div>
+                            <div className="min-w-0 flex-1 px-6 py-4">
+                                <div className="text-[11px] uppercase tracking-[0.32em] text-cyan-100/80">Launch Countdown</div>
+                                <div className="mt-1 text-4xl font-black text-white">{rulesConfig.title}</div>
+                                <div className="mt-2 grid grid-cols-1 gap-1 text-lg text-zinc-100 md:grid-cols-3">
+                                    {rulesConfig.lines.map((line, idx) => (
+                                        <div key={idx} className="truncate rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2">{line}</div>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex w-44 shrink-0 items-center justify-center border-l border-white/10 px-4 text-center text-sm uppercase tracking-[0.22em] text-cyan-100">
+                                Game visible now
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : (
                 <div
                     className="absolute inset-0 z-[300] bg-black/80 flex items-center justify-center p-6"
                     onClick={() => setShowRules(false)}
@@ -225,42 +232,29 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
                     tabIndex={0}
                     onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setShowRules(false); }}
                 >
-                    <div className={`max-w-4xl w-full bg-zinc-900/90 border border-white/10 rounded-[2.5rem] p-10 text-center ${view === 'tv' ? 'shadow-[0_0_80px_rgba(34,211,238,0.3)]' : ''}`}>
-                        <div className={`uppercase tracking-[0.4em] text-zinc-400 mb-3 ${view === 'tv' ? 'text-base' : 'text-sm'}`}>Game Rules</div>
-                        <div className={`${view === 'tv' ? 'text-7xl' : 'text-4xl'} font-bebas text-cyan-300 mb-6`}>{rulesConfig.title}</div>
-                        <div className={`space-y-4 text-zinc-100 ${view === 'tv' ? 'text-4xl' : 'text-lg'}`}>
+                    <div className="max-w-4xl w-full bg-zinc-900/90 border border-white/10 rounded-[2.5rem] p-10 text-center">
+                        <div className="uppercase tracking-[0.4em] text-zinc-400 mb-3 text-sm">Game Rules</div>
+                        <div className="text-4xl font-bebas text-cyan-300 mb-6">{rulesConfig.title}</div>
+                        <div className="space-y-4 text-zinc-100 text-lg">
                             {rulesConfig.lines.map((line, idx) => (
                                 <div key={idx}>{line}</div>
                             ))}
                         </div>
-                        <div className={`${view === 'tv' ? 'text-xl' : 'text-sm'} text-zinc-400 mt-6`}>Tap to continue</div>
+                        <div className="text-sm text-zinc-400 mt-6">Tap to continue</div>
                     </div>
                 </div>
-            )}
+            ))}
             {wantsLocalVoiceMic && !tvVoiceMicReady ? (
                 <div className="absolute inset-0 z-[220] flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.16),transparent_24%),linear-gradient(180deg,#030712_0%,#020617_50%,#000000_100%)] p-6 text-white">
                     <div className="w-full max-w-2xl rounded-[2.5rem] border border-cyan-300/25 bg-black/70 p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
-                        <div className="text-[11px] font-black uppercase tracking-[0.34em] text-cyan-200/80">TV Voice Control</div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.34em] text-cyan-200/80">Room Voice Control</div>
                         <div className="mt-4 text-4xl font-black tracking-tight text-white">
-                            Enable room mic to start this voice game
+                            Room mic is waiting for host setup
                         </div>
                         <div className="mt-4 text-base leading-7 text-zinc-300">
-                            This TV owns the room mic for crowd sing-along mode. Tap once on the TV device to grant microphone access, then the warmup rules and game will launch.
+                            Voice games should be armed from the host controls so the public TV can stay display-only. If this room still uses TV mic capture, grant mic access during host setup before launching.
                         </div>
-                        <button
-                            type="button"
-                            onClick={requestTvVoiceMic}
-                            disabled={tvVoiceMicPending}
-                            className={`mt-6 inline-flex items-center justify-center gap-3 rounded-full border border-cyan-300/40 bg-cyan-400/18 px-6 py-3 text-sm font-black uppercase tracking-[0.22em] text-cyan-50 ${tvVoiceMicPending ? 'cursor-not-allowed opacity-70' : 'hover:bg-cyan-400/28'}`}
-                        >
-                            <i className={`fa-solid ${tvVoiceMicPending ? 'fa-spinner fa-spin' : 'fa-microphone-lines'}`}></i>
-                            {tvVoiceMicPending ? 'Enabling Mic...' : 'Enable Room Mic'}
-                        </button>
-                        {tvVoiceMicError ? (
-                            <div className="mt-4 text-sm text-amber-200">
-                                {tvVoiceMicError}
-                            </div>
-                        ) : null}
+
                     </div>
                 </div>
             ) : (

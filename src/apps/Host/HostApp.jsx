@@ -25,6 +25,7 @@ import useHostNightSetupFlow from './hooks/useHostNightSetupFlow';
 import useHostRoomManager from './hooks/useHostRoomManager';
 import useHostWorkspaceNavigation from './hooks/useHostWorkspaceNavigation';
 import useHostWorkspaceState from './hooks/useHostWorkspaceState';
+import { usePitch } from '../../hooks/usePitch';
 import { getCrowdPulseSnapshot } from './crowdPulse';
 import {
     buildIndexedYouTubeAutocompleteEntries,
@@ -54,7 +55,7 @@ import {
     manageHostSettingsDefaults,
     updateRoomAsHost,
     publishPublicRoomRecap,
-    uploadHostSceneMedia,
+    createMediaUploadSession,
     manageKaraokeBracket,
     resolveKaraokeBracketMatch,
     provisionHostRoom,
@@ -95,6 +96,7 @@ import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCano
 import { buildRoomRecapSummary, buildRoomRecapUrl } from '../../lib/roomRecap';
 import {
     AUDIENCE_SPOTLIGHT_MODE_OPTIONS,
+    AUDIENCE_SPOTLIGHT_MODES,
     SPOTLIGHT_KINDS,
     buildAudienceSpotlightPrompt,
     getAudienceSpotlightMessage,
@@ -461,6 +463,23 @@ const QUICK_GUEST_TRACK_POLICY_OPTIONS = Object.freeze([
     { id: UNKNOWN_BACKING_POLICIES.requireReview, label: 'Send to me first' },
     { id: UNKNOWN_BACKING_POLICIES.autoQueueUnverified, label: 'Let it into the queue' },
     { id: UNKNOWN_BACKING_POLICIES.blockUnknown, label: 'Known tracks only' },
+]);
+const ROOM_CONTROL_MODEL_OPTIONS = Object.freeze([
+    {
+        id: 'host_led',
+        label: 'Host-Led',
+        summary: 'Full songs, manual pacing, and host-owned rotation decisions.',
+    },
+    {
+        id: 'assisted_host',
+        label: 'Assisted Host',
+        summary: 'Full songs with Auto-DJ support between performances.',
+    },
+    {
+        id: 'crowd_driven',
+        label: 'Crowd-Driven',
+        summary: 'One-Minute Mic plus Auto-DJ for self-service party flow.',
+    },
 ]);
 
 const deriveQuickGuestTrackPolicy = ({
@@ -1433,15 +1452,15 @@ const deleteLocalVideo = async (id = '') => {
 
 // --- STYLES ---
 const STYLES = {
-    btnStd: "host-btn rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-nowrap backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0 overflow-hidden bg-clip-padding relative",
-    btnPrimary: "bg-gradient-to-r from-[#00C4D9] via-[#61E6F4] to-[#A5F3FC] text-slate-950 border-transparent bg-clip-padding overflow-hidden shadow-[0_0_22px_rgba(0,196,217,0.34)] hover:brightness-110",
-    btnHighlight: "bg-gradient-to-r from-[#0f2d39] via-[#17263d] to-[#26172e] text-cyan-100 border-cyan-400/30 bg-clip-padding overflow-hidden shadow-[0_0_16px_rgba(0,196,217,0.12)] hover:border-cyan-300/55 hover:text-white",
+    btnStd: "host-btn rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-normal text-center leading-tight backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0 bg-clip-padding relative",
+    btnPrimary: "bg-gradient-to-r from-[#00C4D9] via-[#61E6F4] to-[#A5F3FC] text-slate-950 border-transparent bg-clip-padding shadow-[0_0_22px_rgba(0,196,217,0.34)] hover:brightness-110",
+    btnHighlight: "bg-gradient-to-r from-[#0f2d39] via-[#17263d] to-[#26172e] text-cyan-100 border-cyan-400/30 bg-clip-padding shadow-[0_0_16px_rgba(0,196,217,0.12)] hover:border-cyan-300/55 hover:text-white",
     btnNeutral: "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#00C4D9]/60 hover:text-white hover:bg-zinc-800 transition-all",
     btnDanger: "bg-[#EC4899]/20 text-[#FBCFE8] border-[#EC4899]/40 hover:bg-[#EC4899]/30 hover:text-white",
     btnInfo: "bg-[#00C4D9]/12 text-cyan-100 border-cyan-400/30 hover:bg-[#00C4D9]/20 hover:border-cyan-300/50 hover:text-white",
     btnSuccess: "bg-emerald-500/14 text-emerald-100 border-emerald-400/35 hover:bg-emerald-500/24 hover:border-emerald-300/55 hover:text-white",
-    btnBrand: "bg-gradient-to-r from-[#EC4899] to-[#F472B6] text-white border-transparent bg-clip-padding overflow-hidden shadow-[0_0_16px_rgba(236,72,153,0.35)] hover:brightness-110",
-    btnSecondary: "bg-zinc-950/88 border border-zinc-700 text-zinc-200 bg-clip-padding overflow-hidden hover:border-cyan-300/28 hover:text-white hover:bg-zinc-900/92",
+    btnBrand: "bg-gradient-to-r from-[#EC4899] to-[#F472B6] text-white border-transparent bg-clip-padding shadow-[0_0_16px_rgba(236,72,153,0.35)] hover:brightness-110",
+    btnSecondary: "bg-zinc-950/88 border border-zinc-700 text-zinc-200 bg-clip-padding hover:border-cyan-300/28 hover:text-white hover:bg-zinc-900/92",
     btnStandardBrandHover: "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#EC4899]/60 hover:text-white hover:bg-zinc-800 transition-all",
     panel: "bg-zinc-900/95 border border-white/10 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden",
     input: "min-h-[44px] bg-zinc-950 border border-zinc-600 rounded-xl px-3 py-2.5 text-[15px] leading-5 text-white focus:border-[#00C4D9] focus:ring-2 focus:ring-[#00C4D9]/20 outline-none transition-colors w-full placeholder-zinc-500",
@@ -2799,7 +2818,97 @@ const IncomingModerationQueuePanel = ({
     );
 };
 
-const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaunchUrl = '' }) => {
+const HOST_ROOM_MIC_STALE_MS = 2600;
+const HOST_ROOM_MIC_BG_DUCK_LEVEL_PCT = 24;
+const HOST_ROOM_MIC_BG_DUCK_FADE_MS = 420;
+const AUDIENCE_SPOTLIGHT_DEFAULT_DURATION_SEC = 45;
+const AUDIENCE_SPOTLIGHT_MIN_DURATION_SEC = 15;
+const AUDIENCE_SPOTLIGHT_MAX_DURATION_SEC = 120;
+
+const HOST_ROOM_MIC_GAME_LABELS = {
+    flappy_bird: 'Pitch Runner',
+    vocal_challenge: 'Vocal Challenge',
+    riding_scales: 'Riding Scales',
+    team_pong: 'Team Pong',
+    musical_moments: 'Musical Moments',
+    volley: 'Vocal Rocket'
+};
+
+const getHostRoomVoiceTarget = (room = {}) => {
+    const activeMode = String(room?.activeMode || '').trim().toLowerCase();
+    if (['flappy_bird', 'vocal_challenge', 'riding_scales', 'team_pong', 'musical_moments'].includes(activeMode)) return activeMode;
+    return String(room?.lightMode || '').trim().toLowerCase() === 'volley' ? 'volley' : '';
+};
+
+const HostRoomVoiceMicCard = ({ control, compact = false }) => {
+    if (!control?.visible) return null;
+    const active = !!control.active;
+    const armed = !!control.armed;
+    const targetLabel = control.targetLabel || 'Voice Game';
+    const status = control.statusText || (active
+        ? `Live mic is feeding ${targetLabel}.`
+        : armed
+            ? `Armed and waiting for ${targetLabel}.`
+            : `Arm this host device mic before ${targetLabel} listens for the crowd.`);
+    const buttonAction = control.error ? (control.onRetry || control.onArm || control.onToggle) : control.onToggle;
+    const buttonLabel = control.error ? 'Retry Room Mic' : (armed ? 'Room Mic Armed' : 'Arm Room Mic');
+    const devices = Array.isArray(control.devices) ? control.devices : [];
+    return (
+        <div className={`rounded-xl border ${active ? 'border-emerald-300/35 bg-emerald-500/10' : armed ? 'border-cyan-300/28 bg-cyan-500/10' : 'border-amber-300/28 bg-amber-500/10'} ${compact ? 'px-3 py-3' : 'p-4'}`}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/80">Room Voice Mic</div>
+                    <div className="mt-1 text-sm leading-6 text-zinc-200">{status}</div>
+                </div>
+                <button
+                    type="button"
+                    onClick={buttonAction}
+                    className={`${STYLES.btnStd} ${armed ? STYLES.btnHighlight : STYLES.btnPrimary} min-w-[9.5rem] px-3 py-2 text-xs`}
+                >
+                    <i className="fa-solid fa-microphone-lines"></i>
+                    {buttonLabel}
+                </button>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-zinc-300 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <label className="min-w-0 rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                    <div className="uppercase tracking-[0.16em] text-cyan-100/70">Input Device</div>
+                    <select
+                        value={control.selectedDeviceId || ''}
+                        onChange={(event) => control.onSelectDevice?.(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-zinc-950 px-2 py-1 text-xs text-white"
+                    >
+                        <option value="">Default microphone</option>
+                        {devices.map((device, index) => (
+                            <option key={device.deviceId || index} value={device.deviceId || ''}>{device.label || ('Microphone ' + (index + 1))}</option>
+                        ))}
+                    </select>
+                </label>
+                <button type="button" onClick={control.onRefreshDevices} className={STYLES.btnStd + ' ' + STYLES.btnSecondary + ' px-3 py-2 text-xs'}>Refresh Devices</button>
+                <button type="button" onClick={control.onTestTone} className={STYLES.btnStd + ' ' + STYLES.btnNeutral + ' px-3 py-2 text-xs'}>Test Tone</button>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300 sm:grid-cols-4">
+                <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                    <div className="uppercase tracking-[0.16em] text-cyan-100/70">Note</div>
+                    <div className="mt-1 font-black text-white">{control.note || '...'}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                    <div className="uppercase tracking-[0.16em] text-cyan-100/70">Volume</div>
+                    <div className="mt-1 font-black text-white">{Math.round(Number(control.volumePct || 0))}%</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                    <div className="uppercase tracking-[0.16em] text-cyan-100/70">Match</div>
+                    <div className="mt-1 font-black text-white">{control.calibrating ? 'Cal' : `${Math.round(Number(control.matchPct || 0))}%`}</div>
+                </div>
+                <div className={(control.stale ? 'border-amber-300/35 bg-amber-500/12' : 'border-white/10 bg-black/25') + ' rounded-lg border px-2 py-2'}>
+                    <div className="uppercase tracking-[0.16em] text-cyan-100/70">TV Feed</div>
+                    <div className="mt-1 font-black text-white">{control.tvFeedLabel || 'Waiting'}</div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaunchUrl = '', hostVoiceMicControl = null }) => {
     const toast = useToast() || console.log;
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
     const [doodleVotes, setDoodleVotes] = useState([]);
@@ -2810,6 +2919,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
     const [qaNowMs, setQaNowMs] = useState(Date.now());
     const interactionTimerRef = useRef(null);
     const activeMode = room?.activeMode || 'karaoke';
+    const activeGameRecap = room?.gameData?.recap && typeof room.gameData.recap === 'object' ? room.gameData.recap : null;
     const doodle = room?.doodleOke || null;
     const selfie = room?.selfieChallenge || null;
     const doodlePromptId = doodle?.promptId || '';
@@ -3025,14 +3135,17 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             fit: options.fit || 'cover'
         });
     };
-    const awardWinnerPoints = async (winnerUid, points = 150, label = 'winner') => {
+    const awardWinnerPoints = async (winnerUid, points = 150, label = 'winner', options = {}) => {
         const safeUid = String(winnerUid || '').trim();
         const safePoints = Math.max(0, Number(points || 0) || 0);
         if (!roomCode || !safeUid || !safePoints) return false;
-        await callFunction('awardRoomPoints', {
+        const payload = {
             roomCode,
-            awards: [{ uid: safeUid, points: safePoints }]
-        });
+            awards: [{ uid: safeUid, points: safePoints }],
+            ...(options?.awardKey ? { awardKey: options.awardKey } : {}),
+            ...(options?.source ? { source: options.source } : {})
+        };
+        await callFunction('awardRoomPoints', payload);
         await logHostInteraction(`awarded ${safePoints} pts to ${label}.`);
         return true;
     };
@@ -3093,17 +3206,50 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
     };
     const revealDoodleWinner = async () => {
         if (!doodle) return;
+        const selectedWinner = doodleLeadingSubmission;
+        if (!selectedWinner?.uid) {
+            toast('No approved doodles are available yet.');
+            return;
+        }
+        const winnerUid = String(selectedWinner.uid || '').trim();
+        const winnerVotes = doodleVoteCounts[winnerUid] || 0;
+        const rewardPoints = Math.max(25, Number(doodle?.winnerPoints || 150) || 150);
+        const promptId = String(doodle?.promptId || doodlePromptId || '').trim();
+        const nextWinner = {
+            uid: winnerUid,
+            name: selectedWinner.name || 'Guest',
+            avatar: selectedWinner.avatar || '',
+            image: selectedWinner.image || '',
+            votes: winnerVotes,
+            points: rewardPoints
+        };
         setBusy(true);
         try {
+            if (!doodle?.winnerAwardedAt || String(doodle?.winner?.uid || '').trim() !== winnerUid) {
+                await awardWinnerPoints(winnerUid, rewardPoints, nextWinner.name, {
+                    awardKey: `doodle_${roomCode}_${promptId || 'round'}`,
+                    source: 'doodle_oke'
+                });
+            }
             await updateRoom({
                 doodleOke: {
                     ...doodle,
                     status: 'reveal',
                     guessEndsAt: nowMs() - 1,
+                    winner: nextWinner,
+                    winnerAwardedAt: nowMs(),
+                    winnerExpiresAt: nowMs() + 12000,
                     updatedAt: nowMs()
                 }
             });
-            toast('Winner reveal sent to TV. The top doodle gets the round reward.');
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
+                roomCode,
+                user: 'DOODLE-OKE',
+                text: `${nextWinner.name} won Doodle-oke (+${rewardPoints} pts).`,
+                icon: 'WIN',
+                timestamp: serverTimestamp()
+            });
+            toast(`${nextWinner.name} wins +${rewardPoints} pts`);
         } catch (err) {
             hostLogger.error('Host controlpad doodle reveal failed', err);
             toast('Could not reveal doodle winner');
@@ -3364,8 +3510,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
         },
         team_pong: {
             icon: 'fa-table-tennis-paddle-ball',
-            label: 'Rally Boost',
-            description: 'Inject a host paddle hit to keep momentum up.'
+            label: 'Rally Spike',
+            description: 'Inject a host spike that keeps momentum up and visibly swings the rally.'
         },
         applause: {
             icon: 'fa-hands-clapping',
@@ -3536,12 +3682,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         by: room?.hostName || 'Host',
                         triggeredAt: now,
                         durationMs: 4800
-                    },
-                    lightMode: 'strobe',
-                    strobeSessionId: `host_rescue_${now}`,
-                    strobeCountdownUntil: now,
-                    strobeEndsAt: now + 2500,
-                    strobeResults: null
+                    }
                 });
                 toast('Pitch lock sent.');
                 await logHostInteraction('sent a Pitch Runner rescue.');
@@ -3596,7 +3737,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                 await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                     roomCode,
                     type: 'team_pong_hit',
-                    count: 2,
+                    action: 'spike',
+                    count: 3,
                     team: 'left',
                     sessionId: room?.gameData?.sessionId || null,
                     userName: room?.hostName || 'Host',
@@ -3605,8 +3747,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                     isFree: true,
                     timestamp: serverTimestamp()
                 });
-                toast('Team Pong rally boost sent.');
-                await logHostInteraction('sent a Team Pong rally boost.');
+                toast('Team Pong rally spike sent.');
+                await logHostInteraction('sent a Team Pong rally spike.');
                 return;
             }
 
@@ -3628,7 +3770,47 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
         }
     };
 
-    if (!activeMode || activeMode === 'karaoke') return null;
+    const clearGameRecap = async () => {
+        await updateRoom({ gameData: null });
+        toast('Vocal game recap cleared.');
+    };
+
+    if ((!activeMode || activeMode === 'karaoke') && !activeGameRecap) return null;
+
+    if (activeMode === 'karaoke' && activeGameRecap) {
+        return (
+            <div className={`${STYLES.panel} mb-4 border border-fuchsia-300/30 bg-gradient-to-r from-zinc-950/95 via-[#171027]/95 to-[#102129]/95`} data-host-vocal-game-recap>
+                <div className="p-4 flex flex-col gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-xs uppercase tracking-[0.35em] text-fuchsia-200/80">Post Game Recap</div>
+                            <div className="mt-1 text-2xl font-bebas text-white">{activeGameRecap.title || 'Vocal Game'} Complete</div>
+                            <div className="mt-1 text-sm text-zinc-200">{activeGameRecap.headline || 'Run complete'}{activeGameRecap.summary ? ` - ${activeGameRecap.summary}` : ''}</div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button onClick={() => setTab('games')} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs`}>
+                                <i className="fa-solid fa-gamepad mr-1"></i> Next Game
+                            </button>
+                            <button onClick={clearGameRecap} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}>
+                                <i className="fa-solid fa-check mr-1"></i> Clear Recap
+                            </button>
+                            <button onClick={openTv} className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs`}>
+                                <i className="fa-solid fa-tv mr-1"></i> Open TV
+                            </button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                        {(Array.isArray(activeGameRecap.stats) ? activeGameRecap.stats.slice(0, 4) : []).map((stat, idx) => (
+                            <div key={`${stat?.label || 'stat'}_${idx}`} className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">{stat?.label || 'Stat'}</div>
+                                <div className="mt-1 text-xl font-black text-white">{stat?.value ?? '--'}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const isDoodle = activeMode === 'doodle_oke';
     const isSelfie = activeMode === 'selfie_challenge';
@@ -3646,8 +3828,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
 
     return (
         <>
-        {submissionPreview?.url || submissionPreview?.image ? (
-            <div className="fixed inset-0 z-[120]">
+        {submissionPreview?.url || submissionPreview?.image ? (            <div className="fixed inset-0 z-[120]">
                 <button
                     type="button"
                     onClick={() => setSubmissionPreview(null)}
@@ -3682,8 +3863,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                 </div>
             </div>
         ) : null}
-        <div className={`${STYLES.panel} mb-4 border border-[#00C4D9]/35 bg-gradient-to-r from-zinc-950/95 via-[#0f1828]/95 to-[#211025]/95`}>
-            <div className="p-4 flex flex-col gap-3">
+        <div data-host-active-game-controlpad className={`${STYLES.panel} mb-4 flex max-h-[calc(100dvh-8rem)] min-h-0 flex-col overflow-hidden border border-[#00C4D9]/35 bg-gradient-to-r from-zinc-950/95 via-[#0f1828]/95 to-[#211025]/95`}>
+            <div className="custom-scrollbar flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Host Controlpad</div>
@@ -3713,6 +3894,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         </button>
                     </div>
                 </div>
+                <HostRoomVoiceMicCard control={hostVoiceMicControl} compact />
                 {(isDoodle || isSelfie) && (
                     <div className="flex flex-wrap gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
                         {isDoodle && doodle?.status === 'voting' ? (
@@ -3742,7 +3924,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         ) : null}
                         {isDoodle && doodle?.status === 'reveal' ? (
                             <div className="inline-flex items-center rounded-full border border-emerald-300/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100">
-                                Reveal mode awards the top doodle on TV.
+                                Winner awarded by host reveal.
                             </div>
                         ) : null}
                     </div>
@@ -3792,7 +3974,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                             </button>
                         </div>
                         {doodleSubmissions.length > 0 && (
-                            <div data-host-game-submission-scroll="doodle" className="grid max-h-[min(58dvh,34rem)] grid-cols-1 gap-3 overflow-y-auto overscroll-contain pr-1 pb-2 custom-scrollbar sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                            <div data-host-game-submission-scroll="doodle" className="grid max-h-[min(58dvh,34rem)] min-h-[12rem] grid-cols-1 gap-3 overflow-y-auto overscroll-contain pr-1 pb-2 custom-scrollbar sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                                 {doodleSubmissions.map((submission) => {
                                     const isApproved = !!submission.approved;
                                     const voteCount = doodleVoteCounts[String(submission?.uid || '').trim()] || 0;
@@ -3887,7 +4069,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                                 )}
                             </div>
                         </div>
-                        <div data-host-game-submission-scroll="selfie" className="grid max-h-[min(58dvh,34rem)] grid-cols-1 gap-3 overflow-y-auto overscroll-contain pr-1 pb-2 custom-scrollbar sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                        <div data-host-game-submission-scroll="selfie" className="grid max-h-[min(58dvh,34rem)] min-h-[12rem] grid-cols-1 gap-3 overflow-y-auto overscroll-contain pr-1 pb-2 custom-scrollbar sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                             {selfieSubmissions.length > 0 ? selfieSubmissions.map((submission) => {
                                 const voteCount = selfieVoteCounts[String(submission?.uid || '').trim()] || 0;
                                 const isApproved = !selfie?.requireApproval || !!submission.approved;
@@ -4858,6 +5040,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [scenePresetSeedPending, setScenePresetSeedPending] = useState(false);
     const [commandPaletteRequestToken, setCommandPaletteRequestToken] = useState(0);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
+    const [liveGameLauncherDrawerOpen, setLiveGameLauncherDrawerOpen] = useState(false);
+    const activeHostGameModeForDrawer = String(room?.activeMode || '').trim().toLowerCase();
+    const hostHasLiveGameModeForDrawer = !!activeHostGameModeForDrawer && activeHostGameModeForDrawer !== 'karaoke';
+    const activeHostGameDrawerLabel = activeHostGameModeForDrawer
+        ? activeHostGameModeForDrawer.replace(/_/g, ' ')
+        : 'game';
     const [_appleMusicReady, setAppleMusicReady] = useState(false);
     const [appleMusicAuthorized, setAppleMusicAuthorized] = useState(false);
     const [appleMusicPlaying, setAppleMusicPlaying] = useState(false);
@@ -4881,11 +5069,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
     const autoDjEnabled = !!(room?.autoDj || autoDj);
     const performanceRecapBreakdownMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapBreakdownMs ?? 7000) || 7000)));
+    const performanceRecapScoreStepMs = Math.max(1800, Math.min(4200, Math.round(Number(room?.performanceRecapScoreStepMs ?? 2600) || 2600)));
     const performanceRecapLeaderboardMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapLeaderboardMs ?? 7000) || 7000)));
     const performanceRecapNextUpMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapNextUpMs ?? 6000) || 6000)));
+    const lastPerformanceScoreCardCount = Math.max(2, Math.min(3, 2 + (Math.max(0, Number(room?.lastPerformance?.hostBonus || 0)) > 0 ? 1 : 0)));
+    const performanceRecapScoreFinalHoldMs = Math.max(5200, Math.min(9000, Math.round(performanceRecapScoreStepMs * 2.25)));
+    const effectivePerformanceRecapBreakdownMs = Math.max(
+        performanceRecapBreakdownMs,
+        540 + (lastPerformanceScoreCardCount * performanceRecapScoreStepMs) + 700 + performanceRecapScoreFinalHoldMs
+    );
     const performanceRecapTotalMs = room?.showPerformanceRecap === false
         ? 0
-        : performanceRecapBreakdownMs + performanceRecapLeaderboardMs + performanceRecapNextUpMs;
+        : effectivePerformanceRecapBreakdownMs + performanceRecapLeaderboardMs + performanceRecapNextUpMs;
+    const performanceRecapAutoDjHoldMs = performanceRecapTotalMs > 0 ? performanceRecapTotalMs + 1500 : 0;
     const {
         activeBracket,
         bracketCrowdVotingEnabled,
@@ -5391,7 +5587,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [allowSingerTrackSelect, setAllowSingerTrackSelect] = useState(false);
     const [_audienceBackingMode, setAudienceBackingMode] = useState(AUDIENCE_BACKING_MODES.canonicalOnly);
     const [unknownBackingPolicy, setUnknownBackingPolicy] = useState(UNKNOWN_BACKING_POLICIES.requireReview);
-    const [audienceShellVariant, setAudienceShellVariant] = useState('classic');
+    const [audienceShellVariant, setAudienceShellVariant] = useState('streamlined');
     const [audienceBrandTheme, setAudienceBrandTheme] = useState(() => normalizeAudienceBrandTheme({}));
     const [audienceFeatureAccess, setAudienceFeatureAccess] = useState(() => normalizeAudienceFeatureAccess({}));
     const [audienceJoinPolicy, setAudienceJoinPolicy] = useState(() => normalizeAudienceJoinPolicy({}));
@@ -5564,6 +5760,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [activeWorkspaceSection, lobbyTab, normalizedInitialCode, roomCode, settingsTab, tab, trackHostOperatorEvent]);
     const [selectedLobbyUserToken, setSelectedLobbyUserToken] = useState('');
     const [lockedLobbyUserToken, setLockedLobbyUserToken] = useState('');
+    const [lobbyActionSearch, setLobbyActionSearch] = useState('');
     const [bracketBusy, setBracketBusy] = useState(false);
     const [bracketNoShow, setBracketNoShow] = useState(null);
     const [bracketNoShowNow, setBracketNoShowNow] = useState(nowMs());
@@ -5582,6 +5779,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [autoCrowdMomentOrderPreset, setAutoCrowdMomentOrderPreset] = useState('volley_first');
     const [autoCrowdMomentReadyCheckSec, setAutoCrowdMomentReadyCheckSec] = useState(6);
     const [autoCrowdMomentVolleySec, setAutoCrowdMomentVolleySec] = useState(12);
+    const [hostVolleyVoiceArmed, setHostVolleyVoiceArmed] = useState(false);
+    const [hostVolleyVoiceRetryToken, setHostVolleyVoiceRetryToken] = useState(0);
+    const [hostVoiceInputDevices, setHostVoiceInputDevices] = useState([]);
+    const [hostVoiceSelectedDeviceId, setHostVoiceSelectedDeviceId] = useState('');
+    const [hostVoiceDeviceRefreshToken, setHostVoiceDeviceRefreshToken] = useState(0);
+    const [spotlightDurationSec, setSpotlightDurationSec] = useState(45);
     const [runOfShowSubmissions, setRunOfShowSubmissions] = useState([]);
     // Announce state
     const [_announceText, _setAnnounceText] = useState(''); 
@@ -5655,6 +5858,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const supportDropSuggestedPoints = supportDropAmountValue > 0 && supportDropRateValue > 0
         ? Math.round(supportDropAmountValue * supportDropRateValue)
         : 0;
+    const supportDropEffectivePoints = supportDropHasExplicitPoints
+        ? Math.max(0, Math.round(Number(supportDropPoints || 0) || 0))
+        : supportDropSuggestedPoints;
+    const supportDropReady = supportDropEffectivePoints > 0 || supportDropAmountValue > 0;
+    const lobbyActionGiftPreviewPoints = Math.max(1, Math.round(Number(tipGiftAmount || 100) || 100));
     const [nightSetupApplying, setNightSetupApplying] = useState(false);
     const [nightSetupPresetId, setNightSetupPresetId] = useState('casual');
     const [nightSetupQueueLimitMode, setNightSetupQueueLimitMode] = useState('none');
@@ -6312,6 +6520,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const initialBgTrackUrlRef = useRef(roomBgTrackOptions[0]?.url || '');
     const bgMeterRafRef = useRef(null);
     const bgMeterPhaseRef = useRef(0);
+    const bgDuckFadeRef = useRef(null);
     const stageMeterRafRef = useRef(null);
     const stageMeterTimeRef = useRef(0);
     const stageMicCtxRef = useRef(null);
@@ -6339,6 +6548,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const seededPartyPolicyRoomRef = useRef('');
     const readyCheckTimerRef = useRef(null);
     const autoCrowdMomentTimerRef = useRef(null);
+    const hostVolleyVoiceLastWriteRef = useRef(0);
+    const hostVolleyVoiceInactiveSentRef = useRef(true);
+    const hostVoiceTelemetryTargetRef = useRef('');
     const bingoTurnAdvanceRef = useRef(null);
     const roomRef = useRef(room);
     const songsRef = useRef(songs);
@@ -6352,6 +6564,219 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const runOfShowPerformanceIntroTimerRef = useRef(null);
     const runOfShowPendingPerformanceIntroRef = useRef({ itemId: '', queueDocId: '' });
     const [runOfShowAutomationRetryTick, setRunOfShowAutomationRetryTick] = useState(0);
+    const hostVoiceTelemetryTarget = getHostRoomVoiceTarget(room);
+    const hostVoiceCaptureActive = hostVolleyVoiceArmed;
+    const refreshHostVoiceInputDevices = useCallback(async () => {
+        if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return;
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices
+                .filter((device) => device.kind === 'audioinput')
+                .map((device, index) => ({
+                    deviceId: String(device.deviceId || ''),
+                    label: String(device.label || ('Microphone ' + (index + 1)))
+                }));
+            setHostVoiceInputDevices(audioInputs);
+        } catch (error) {
+            hostLogger.debug('Host voice input device enumeration failed', error);
+        }
+    }, [hostLogger]);
+    const playHostMicTestTone = useCallback(() => {
+        try {
+            const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+            const ctx = new AudioContextCtor();
+            const oscillator = ctx.createOscillator();
+            const gain = ctx.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 660;
+            gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.42);
+            oscillator.connect(gain);
+            gain.connect(ctx.destination);
+            oscillator.start();
+            oscillator.stop(ctx.currentTime + 0.45);
+            setTimeout(() => ctx.close?.().catch?.(() => {}), 650);
+        } catch (error) {
+            hostLogger.debug('Host voice test tone failed', error);
+        }
+    }, [hostLogger]);
+    useEffect(() => {
+        if (!hostVoiceCaptureActive && !hostVoiceTelemetryTarget) return;
+        refreshHostVoiceInputDevices();
+    }, [hostVoiceCaptureActive, hostVoiceTelemetryTarget, hostVoiceDeviceRefreshToken, refreshHostVoiceInputDevices]);
+    const {
+        pitch: hostVolleyVoicePitch,
+        note: hostVolleyVoiceNote,
+        confidence: hostVolleyVoiceConfidence,
+        volumeNormalized: hostVolleyVoiceVolume,
+        stableNote: hostVolleyVoiceStableNote,
+        stability: hostVolleyVoiceStability,
+        isSinging: hostVolleyVoiceIsSinging,
+        calibrating: hostVolleyVoiceCalibrating,
+        streamActive: hostVolleyVoiceStreamActive,
+        micStatus: hostVolleyVoiceMicStatus,
+        micError: hostVolleyVoiceMicError,
+        audioState: hostVolleyVoiceAudioState
+    } = usePitch(hostVoiceCaptureActive, {
+        confidenceThreshold: 0.2,
+        singingThreshold: 0.026,
+        stableNoteMs: 180,
+        smoothingFactor: 0.42,
+        noiseGateMultiplier: 1.28,
+        restartKey: hostVolleyVoiceRetryToken,
+        deviceId: hostVoiceSelectedDeviceId
+    });
+    const hostVoiceStreamReady = hostVolleyVoiceStreamActive && !hostVolleyVoiceMicError;
+    const hostVolleyVoiceMicActive = hostVolleyVoiceArmed && Boolean(hostVoiceTelemetryTarget) && hostVoiceStreamReady;
+    useEffect(() => {
+        if (!roomCode) return;
+        const now = nowMs();
+        if (!hostVolleyVoiceMicActive) {
+            const inactiveTarget = hostVoiceTelemetryTarget || hostVoiceTelemetryTargetRef.current;
+            if (!inactiveTarget) return;
+            if (hostVoiceTelemetryTargetRef.current === inactiveTarget && hostVolleyVoiceInactiveSentRef.current && (now - Number(hostVolleyVoiceLastWriteRef.current || 0)) < 900) return;
+            hostVolleyVoiceInactiveSentRef.current = true;
+            hostVolleyVoiceLastWriteRef.current = now;
+            hostVoiceTelemetryTargetRef.current = inactiveTarget;
+            const inactiveTelemetry = {
+                source: 'host',
+                active: false,
+                armed: !!hostVolleyVoiceArmed,
+                streamActive: !!hostVolleyVoiceStreamActive,
+                micStatus: String(hostVolleyVoiceMicStatus || (hostVolleyVoiceArmed ? 'starting' : 'idle')),
+                micError: String(hostVolleyVoiceMicError || ''),
+                deviceId: String(hostVoiceSelectedDeviceId || ''),
+                capturedAtMs: now
+            };
+            const inactivePatch = inactiveTarget === 'volley'
+                ? { lobbyVoiceTelemetry: inactiveTelemetry }
+                : { 'gameData.voiceTelemetry': inactiveTelemetry };
+            updateRoom(inactivePatch).catch((error) => hostLogger.debug('Host voice inactive publish failed', error));
+            return;
+        }
+        if ((now - Number(hostVolleyVoiceLastWriteRef.current || 0)) < 220) return;
+        hostVolleyVoiceInactiveSentRef.current = false;
+        hostVolleyVoiceLastWriteRef.current = now;
+        hostVoiceTelemetryTargetRef.current = hostVoiceTelemetryTarget;
+        const liveTelemetry = {
+            source: 'host',
+            active: true,
+            armed: true,
+            streamActive: true,
+            micStatus: String(hostVolleyVoiceMicStatus || 'live'),
+            audioState: String(hostVolleyVoiceAudioState || ''),
+            deviceId: String(hostVoiceSelectedDeviceId || ''),
+            pitch: Number(hostVolleyVoicePitch || 0),
+            note: String(hostVolleyVoiceNote || ''),
+            confidence: Number(hostVolleyVoiceConfidence || 0),
+            volumeNormalized: Number(hostVolleyVoiceVolume || 0),
+            stableNote: String(hostVolleyVoiceStableNote || ''),
+            stability: Number(hostVolleyVoiceStability || 0),
+            isSinging: !!hostVolleyVoiceIsSinging,
+            calibrating: !!hostVolleyVoiceCalibrating,
+            capturedAtMs: now
+        };
+        const livePatch = hostVoiceTelemetryTarget === 'volley'
+            ? { lobbyVoiceTelemetry: liveTelemetry }
+            : { 'gameData.voiceTelemetry': liveTelemetry };
+        updateRoom(livePatch).catch((error) => hostLogger.debug('Host voice publish failed', error));
+    }, [
+        roomCode,
+        hostVoiceTelemetryTarget,
+        hostVolleyVoiceMicActive,
+        hostVolleyVoicePitch,
+        hostVolleyVoiceNote,
+        hostVolleyVoiceConfidence,
+        hostVolleyVoiceVolume,
+        hostVolleyVoiceStableNote,
+        hostVolleyVoiceStability,
+        hostVolleyVoiceIsSinging,
+        hostVolleyVoiceCalibrating,
+        hostVolleyVoiceArmed,
+        hostVolleyVoiceStreamActive,
+        hostVolleyVoiceMicStatus,
+        hostVolleyVoiceMicError,
+        hostVolleyVoiceAudioState,
+        hostVoiceSelectedDeviceId,
+        updateRoom
+    ]);
+    const hostVoiceMicControl = useMemo(() => {
+        const targetLabel = HOST_ROOM_MIC_GAME_LABELS[hostVoiceTelemetryTarget] || 'Voice Game';
+        const ready = !!hostVoiceStreamReady;
+        const error = String(hostVolleyVoiceMicError || '');
+        const publishAgeMs = Math.max(0, nowMs() - Number(hostVolleyVoiceLastWriteRef.current || 0));
+        const stale = Boolean(hostVoiceTelemetryTarget && hostVolleyVoiceMicActive && publishAgeMs > HOST_ROOM_MIC_STALE_MS);
+        const tvFeedLabel = hostVoiceTelemetryTarget
+            ? stale
+                ? 'Stale mic feed'
+                : hostVolleyVoiceMicActive
+                    ? 'TV feed live'
+                    : hostVolleyVoiceArmed
+                        ? (ready ? 'Browser stream ready' : 'Mic armed')
+                        : 'Waiting'
+            : hostVolleyVoiceArmed
+                ? 'Mic ready for next vocal game'
+                : 'No vocal game target';
+        const statusText = error
+            ? `Mic needs attention: ${error}`
+            : stale
+                ? `Mic telemetry to ${targetLabel} is stale. Retry the room mic before launch.`
+                : hostVolleyVoiceMicActive
+                    ? `TV receiving live mic telemetry for ${targetLabel}.`
+                : hostVolleyVoiceArmed
+                    ? ready
+                        ? (hostVoiceTelemetryTarget ? `Browser stream ready for ${targetLabel}. Sing once so the TV feed confirms live.` : 'Browser stream ready. Launch a vocal game when ready.')
+                        : 'Mic armed. Allow microphone access if the browser asks.'
+                    : `Waiting. Arm this host device mic before ${targetLabel} listens for the crowd.`;
+        return {
+            visible: Boolean(hostVoiceTelemetryTarget || hostVolleyVoiceArmed),
+            armed: hostVolleyVoiceArmed,
+            ready,
+            active: hostVolleyVoiceMicActive,
+            target: hostVoiceTelemetryTarget,
+            targetLabel,
+            status: hostVolleyVoiceMicStatus || 'idle',
+            statusText,
+            tvFeedLabel,
+            publishAgeMs,
+            stale,
+            devices: hostVoiceInputDevices,
+            selectedDeviceId: hostVoiceSelectedDeviceId,
+            onSelectDevice: setHostVoiceSelectedDeviceId,
+            onRefreshDevices: () => setHostVoiceDeviceRefreshToken((value) => value + 1),
+            onTestTone: playHostMicTestTone,
+            error,
+            audioState: hostVolleyVoiceAudioState || '',
+            note: hostVolleyVoiceStableNote || hostVolleyVoiceNote || '',
+            volumePct: Number(hostVolleyVoiceVolume || 0) * 100,
+            matchPct: Number(hostVolleyVoiceConfidence || 0) * 100,
+            calibrating: hostVolleyVoiceCalibrating,
+            onArm: () => setHostVolleyVoiceArmed(true),
+            onRetry: () => {
+                setHostVolleyVoiceArmed(false);
+                setHostVolleyVoiceRetryToken((value) => value + 1);
+                setTimeout(() => setHostVolleyVoiceArmed(true), 60);
+            },
+            onToggle: () => setHostVolleyVoiceArmed((value) => !value)
+        };
+    }, [
+        hostVoiceTelemetryTarget,
+        hostVolleyVoiceArmed,
+        hostVolleyVoiceMicActive,
+        hostVolleyVoiceStableNote,
+        hostVolleyVoiceNote,
+        hostVolleyVoiceVolume,
+        hostVolleyVoiceConfidence,
+        hostVolleyVoiceCalibrating,
+        hostVoiceStreamReady,
+        hostVolleyVoiceMicStatus,
+        hostVolleyVoiceMicError,
+        hostVolleyVoiceAudioState,
+        hostVoiceInputDevices,
+        hostVoiceSelectedDeviceId,
+        playHostMicTestTone
+    ]);
     const triggerHostMomentCueRef = useRef(null);
     const runOfShowDirector = useMemo(
         () => normalizeRunOfShowDirector(runOfShowDirectorState || {}),
@@ -9473,7 +9898,48 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ctx.resume().catch(() => {});
         }
     }, [playingBg]);
-    useEffect(() => { if(bgAudio.current) bgAudio.current.volume = bgVolume; }, [bgVolume]);
+    const hostRoomMicBgDuckActive = Boolean(hostVoiceTelemetryTarget);
+    const hostRoomMicBgDuckVolume = useMemo(() => {
+        const baseVolume = normalizeUnitVolume(bgVolume, 0.3);
+        if (!hostRoomMicBgDuckActive) return baseVolume;
+        const configuredPerformanceDuckPct = normalizePercent(autoBgMixDuringSong, HOST_ROOM_MIC_BG_DUCK_LEVEL_PCT);
+        const duckPct = Math.max(8, Math.min(HOST_ROOM_MIC_BG_DUCK_LEVEL_PCT, configuredPerformanceDuckPct || HOST_ROOM_MIC_BG_DUCK_LEVEL_PCT));
+        return Math.max(0, Math.min(baseVolume, baseVolume * (duckPct / 100)));
+    }, [autoBgMixDuringSong, bgVolume, hostRoomMicBgDuckActive]);
+    useEffect(() => {
+        const audio = bgAudio.current;
+        if (!audio) return undefined;
+        if (bgDuckFadeRef.current) {
+            clearInterval(bgDuckFadeRef.current);
+            bgDuckFadeRef.current = null;
+        }
+        const target = normalizeUnitVolume(hostRoomMicBgDuckVolume, 0.3);
+        const start = normalizeUnitVolume(audio.volume, normalizeUnitVolume(bgVolume, 0.3));
+        const diff = target - start;
+        if (Math.abs(diff) < 0.005) {
+            audio.volume = target;
+            return undefined;
+        }
+        const steps = Math.max(1, Math.round(HOST_ROOM_MIC_BG_DUCK_FADE_MS / 60));
+        let tick = 0;
+        bgDuckFadeRef.current = setInterval(() => {
+            tick += 1;
+            const t = Math.min(1, tick / steps);
+            const eased = t < 0.5 ? 2 * t * t : -1 + (4 - (2 * t)) * t;
+            audio.volume = Math.max(0, Math.min(1, start + (diff * eased)));
+            if (t >= 1) {
+                audio.volume = target;
+                clearInterval(bgDuckFadeRef.current);
+                bgDuckFadeRef.current = null;
+            }
+        }, 60);
+        return () => {
+            if (bgDuckFadeRef.current) {
+                clearInterval(bgDuckFadeRef.current);
+                bgDuckFadeRef.current = null;
+            }
+        };
+    }, [bgVolume, hostRoomMicBgDuckVolume]);
     useEffect(() => {
         if (room?.bgMusicVolume !== undefined && room?.bgMusicVolume !== null) {
             setBgVolume(normalizeUnitVolume(room.bgMusicVolume, 0.3));
@@ -9655,7 +10121,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             allowSingerTrackSelect: room?.allowSingerTrackSelect,
         }));
         setHideNonEmbeddableYouTube(room?.hideNonEmbeddableYouTube !== false);
-        setAudienceShellVariant(String(room?.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic');
+        setAudienceShellVariant(String(room?.audienceShellVariant || '').trim().toLowerCase() === 'classic' ? 'classic' : 'streamlined');
         setAudienceBrandTheme(normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}));
         setAudienceFeatureAccess(normalizeAudienceFeatureAccess(room?.audienceFeatureAccess || {}));
         setAudienceJoinPolicy(normalizeAudienceJoinPolicy(room?.audienceJoinPolicy || {}));
@@ -10140,6 +10606,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowPolicy,
             runOfShowPendingCountsById,
             autoDjDelaySec: activeRoom?.autoDjDelaySec,
+            postPerformanceHoldMs: performanceRecapAutoDjHoldMs,
             now: nowMs(),
             isQueueEntryPlayable
         });
@@ -10160,7 +10627,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updateRoom,
             logActivity
         });
-    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowPendingCountsById, runOfShowPolicy, runOfShowReleaseWindowPending, runOfShowStagedItem, stopAppleMusic, updateRoom]);
+    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, performanceRecapAutoDjHoldMs, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowPendingCountsById, runOfShowPolicy, runOfShowReleaseWindowPending, runOfShowStagedItem, stopAppleMusic, updateRoom]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -10185,6 +10652,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowPolicy,
             runOfShowPendingCountsById,
             autoDjDelaySec: room?.autoDjDelaySec,
+            postPerformanceHoldMs: performanceRecapAutoDjHoldMs,
             now: nowMs(),
             isQueueEntryPlayable
         });
@@ -10262,6 +10730,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.autoDjDelaySec,
         room?.lastPerformance?.timestamp,
         room?.missionControl?.autoMoment?.status,
+        performanceRecapAutoDjHoldMs,
         room?.programMode,
         room?.readyCheck?.active,
         room?.runOfShowEnabled,
@@ -11993,14 +12462,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Gift failed');
         }
     };
-    const triggerSupportDrop = async ({ scope = 'room' } = {}) => {
+    const triggerSupportDrop = async ({ scope = 'room', targetUidOverride = '' } = {}) => {
         if (!roomCode) return;
         const normalizedScope = scope === 'user' ? 'user' : 'room';
         let points = Math.max(0, Math.round(Number(supportDropPoints || 0) || 0));
         const amountValue = Math.max(0, Number.parseFloat(supportDropAmount || '0') || 0);
         const amountCents = Math.round(amountValue * 100);
         const donorName = String(supportDropDonorName || '').trim();
-        const targetUid = normalizedScope === 'user' ? String(supportDropTargetUid || '').trim() : '';
+        const targetUid = normalizedScope === 'user' ? String(targetUidOverride || supportDropTargetUid || '').trim() : '';
         if (!supportDropHasExplicitPoints && amountValue > 0 && supportDropSuggestedPoints > 0) {
             points = supportDropSuggestedPoints;
         }
@@ -12218,11 +12687,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowPolicy,
             runOfShowPendingCountsById,
             autoDjDelaySec: room?.autoDjDelaySec,
+            postPerformanceHoldMs: performanceRecapAutoDjHoldMs,
             now: nowMs(),
             isQueueEntryPlayable
         });
         if (!flow.autoPartyIntent.shouldStart || !flow.autoPartyIntent.moment) return;
         const recommendedMoment = flow.autoPartyIntent.moment;
+        const recapBridgeReadyDelayMs = Math.max(0, Math.round((lastPerformanceTs + performanceRecapTotalMs) - nowMs()));
+        const bridgeDelayMs = Math.max(Number(recommendedMoment.delayMs || 0) || 0, recapBridgeReadyDelayMs);
 
         const timer = setTimeout(() => {
             lastPartyAutoBreakTsRef.current = lastPerformanceTs;
@@ -12249,7 +12721,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }).catch((error) => {
                 hostLogger.debug('Autopilot crowd check skipped', error);
             });
-        }, recommendedMoment.delayMs);
+        }, bridgeDelayMs);
 
         return () => clearTimeout(timer);
     }, [
@@ -12261,6 +12733,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.lastPerformance?.timestamp,
         room?.lastPerformance?.duration,
         room?.missionControl,
+        performanceRecapAutoDjHoldMs,
+        performanceRecapTotalMs,
         room?.programMode,
         room?.readyCheck?.active,
         room?.runOfShowEnabled,
@@ -12787,13 +13261,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             authUid: String(currentUser?.uid || '').trim()
         };
     }, []);
-    const fileToDataUrl = useCallback((file) => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(reader.error || new Error('Could not read file.'));
-        reader.readAsDataURL(file);
-    }), []);
-
     const uploadLogoFile = async (file) => {
         if (!roomCode) {
             toast('Create or open a room first');
@@ -13517,28 +13984,83 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 const mediaUrl = await getDownloadURL(fileRef);
                 return { storagePath, mediaUrl };
             };
-            const callableUpload = async () => {
-                setUploadProgress(15);
-                options?.onProgress?.(15);
-                const uploaded = await uploadHostSceneMedia({
+            const sessionUpload = async () => {
+                setUploadProgress(5);
+                options?.onProgress?.(5);
+                const session = await createMediaUploadSession({
                     roomCode,
+                    purpose: 'scene_image',
                     fileName: file.name || safeName,
+                    title,
                     mimeType: contentType || 'image/jpeg',
-                    mediaBase64: await fileToDataUrl(file)
+                    sizeBytes: file.size || 0,
+                    folderId: String(options?.folderId || '').trim(),
+                    folderName: String(options?.folderName || '').trim()
                 });
-                const storagePath = String(uploaded?.storagePath || '').trim();
-                const mediaUrl = String(uploaded?.url || '').trim();
+                const uploadPath = String(session?.uploadPath || session?.storagePath || '').trim();
+                const orgId = String(session?.orgId || '').trim();
+                const sessionId = String(session?.sessionId || '').trim();
+                if (!uploadPath || !orgId || !sessionId) {
+                    throw new Error('Media upload session returned an incomplete payload.');
+                }
+                const fileRef = storageRef(storage, uploadPath);
+                await prepareHostStorageWrite();
+                const uploadTask = uploadBytesResumable(fileRef, file, contentType ? { contentType } : undefined);
+
+                await new Promise((resolve, reject) => {
+                    uploadTask.on('state_changed',
+                        (snap) => {
+                            const progress = snap.totalBytes ? 10 + ((snap.bytesTransferred / snap.totalBytes) * 70) : 10;
+                            setUploadProgress(progress);
+                            options?.onProgress?.(progress);
+                        },
+                        (err) => reject(err),
+                        () => resolve(true)
+                    );
+                });
+
+                const sessionRef = doc(db, 'organizations', orgId, 'media_upload_sessions', sessionId);
+                const deadline = nowMs() + 75000;
+                let latestSession = null;
+                while (nowMs() < deadline) {
+                    const snap = await getDoc(sessionRef);
+                    latestSession = snap.exists() ? snap.data() : null;
+                    const status = String(latestSession?.status || '').trim().toLowerCase();
+                    if (status === 'ready') break;
+                    if (status === 'rejected') {
+                        throw new Error(latestSession?.rejectionReason || 'Scene image upload was rejected.');
+                    }
+                    const pendingProgress = status === 'processing' ? 90 : 82;
+                    setUploadProgress((prev) => Math.max(Number(prev || 0), pendingProgress));
+                    options?.onProgress?.(pendingProgress);
+                    await sleep(800);
+                }
+                if (String(latestSession?.status || '').trim().toLowerCase() !== 'ready') {
+                    throw new Error('Scene image is still processing. Try the media library again in a moment.');
+                }
+                const storagePath = String(latestSession?.renderableStoragePath || latestSession?.storagePath || '').trim();
+                const mediaUrl = String(latestSession?.mediaUrl || latestSession?.url || '').trim();
                 if (!storagePath || !mediaUrl) {
-                    throw new Error('Scene media upload returned an incomplete payload.');
+                    throw new Error('Processed scene image returned an incomplete payload.');
                 }
                 setUploadProgress(100);
                 options?.onProgress?.(100);
-                return { storagePath, mediaUrl };
+                return {
+                    storagePath,
+                    mediaUrl,
+                    ingestedAsset: {
+                        id: latestSession.assetId || session.assetId,
+                        assetId: latestSession.assetId || session.assetId,
+                        orgId,
+                        source: 'org_media_ingest'
+                    }
+                };
             };
             let storagePath = '';
             let mediaUrl = '';
+            let ingestedAsset = null;
             if (mediaType === 'image') {
-                ({ storagePath, mediaUrl } = await callableUpload());
+                ({ storagePath, mediaUrl, ingestedAsset } = await sessionUpload());
             } else {
                 ({ storagePath, mediaUrl } = await directUpload());
             }
@@ -13569,14 +14091,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 createdAtMs: nowMs(),
                 createdBy: room?.hostName || 'Host'
             };
-            const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), payload);
-            const newItem = { id: docRef.id, _cloud: true, _collection: HOST_MEDIA_ASSETS_COLLECTION, collectionName: HOST_MEDIA_ASSETS_COLLECTION, ...payload };
-            setLocalLibrary(prev => [...prev, newItem]);
+            let newItem = null;
+            if (mediaType === 'image' && ingestedAsset?.assetId) {
+                newItem = {
+                    id: ingestedAsset.assetId,
+                    _cloud: true,
+                    _collection: HOST_MEDIA_ASSETS_COLLECTION,
+                    collectionName: HOST_MEDIA_ASSETS_COLLECTION,
+                    ...payload,
+                    ...ingestedAsset,
+                    url: mediaUrl,
+                    mediaUrl,
+                    storagePath,
+                    status: 'ready'
+                };
+                setLocalLibrary(prev => [...prev.filter(item => item?.id !== newItem.id), newItem]);
+            } else {
+                const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), payload);
+                newItem = { id: docRef.id, _cloud: true, _collection: HOST_MEDIA_ASSETS_COLLECTION, collectionName: HOST_MEDIA_ASSETS_COLLECTION, ...payload };
+                setLocalLibrary(prev => [...prev, newItem]);
+            }
             trackHostOperatorEvent('host_room_media_uploaded', {
                 media_type: mediaType,
                 file_name: String(file.name || '').trim(),
                 file_size_bytes: Number(file.size || 0) || 0,
-                upload_mode: mediaType === 'image' ? 'callable' : 'direct_storage'
+                upload_mode: mediaType === 'image' ? 'org_media_session' : 'direct_storage'
             });
             if (options?.successToast !== false) {
                 toast(
@@ -13607,7 +14146,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setUploadingLocal(false);
             setUploadProgress(0);
         }
-    }, [fileToDataUrl, hostLogger, prepareHostStorageWrite, room?.hostName, roomCode, roomUploadBytes, toast, trackHostOperatorEvent, uid]);
+    }, [hostLogger, prepareHostStorageWrite, room?.hostName, roomCode, roomUploadBytes, toast, trackHostOperatorEvent, uid]);
     const saveMediaAssetAsScenePreset = useCallback(async (item = {}, options = {}) => {
         const mediaUrl = getRoomMediaUrl(item);
         if (!canUseRoomMediaAsScene(item) || !mediaUrl) {
@@ -14645,6 +15184,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostLogger.debug('Could not load spotlight Tight 15', error);
             }
         }
+        const createdAtMs = Date.now();
+        const spotlightDurationMs = Math.max(
+            AUDIENCE_SPOTLIGHT_MIN_DURATION_SEC,
+            Math.min(AUDIENCE_SPOTLIGHT_MAX_DURATION_SEC, Number(options?.durationSec || spotlightDurationSec || AUDIENCE_SPOTLIGHT_DEFAULT_DURATION_SEC) || AUDIENCE_SPOTLIGHT_DEFAULT_DURATION_SEC)
+        ) * 1000;
         const requestedMessage = String(options?.messageOverride || msg || '').trim();
         const useAudienceDefaultMessage = spotlightKind === SPOTLIGHT_KINDS.audience
             && ['SPOTLIGHT', 'VIP Spotlight!'].includes(requestedMessage);
@@ -14660,7 +15204,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 mode: spotlightMode || null,
                 prompt,
                 interactive: spotlightKind === SPOTLIGHT_KINDS.audience,
-                sessionId: String(options?.sessionId || `${spotlightKind}_${uid}_${Date.now()}`),
+                sessionId: String(options?.sessionId || `${spotlightKind}_${uid}_${createdAtMs}`),
+                createdAtMs,
+                durationMs: spotlightDurationMs,
+                expiresAtMs: createdAtMs + spotlightDurationMs,
+                autoClear: options?.autoClear !== false,
+                replayCount: Number(options?.replayCount || 0),
+                promptUpdatedAtMs: prompt ? createdAtMs : 0,
                 tight15: spotlightTight15,
                 challengeSong: challengeSong || null
             }
@@ -15427,6 +15977,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const selectedLobbyUserNeedsFirstSongAssist = String(selectedLobbyUser?.requestIntent || '').trim() === 'host_pick_tight15';
     const selectedLobbyUserQueueBusy = !!(selectedLobbyUserUid && tight15QueueBusyUid === selectedLobbyUserUid);
     const selectedLobbyUserProfileBusy = !!(selectedLobbyUserUid && tight15ProfileBusyUid === selectedLobbyUserUid);
+    const lobbyActionUsers = useMemo(() => {
+        const query = String(lobbyActionSearch || '').trim().toLowerCase();
+        const list = query
+            ? users.filter((entry) => [entry?.name, entry?.email, entry?.phone, resolveRoomUserUid(entry)]
+                .some((value) => String(value || '').toLowerCase().includes(query)))
+            : users;
+        return list.slice(0, 18);
+    }, [lobbyActionSearch, users]);
     const pendingFirstSongAssistCount = users.filter((entry) => String(entry?.requestIntent || '').trim() === 'host_pick_tight15').length;
     useEffect(() => {
         const validTokens = new Set(users.map((entry) => resolveLobbyUserToken(entry)).filter(Boolean));
@@ -15439,6 +15997,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [users, selectedLobbyUserToken, lockedLobbyUserToken]);
     const sampleArt = SAMPLE_ART;
     const top100Seed = TOP100_SEED;
+    const toggleAudienceSpotlightForUser = async (roomUser = {}, mode = AUDIENCE_SPOTLIGHT_MODES.cheer) => {
+        const uid = resolveRoomUserUid(roomUser);
+        if (!uid) {
+            toast('Pick a lobby guest first.');
+            return;
+        }
+        const spotlightIsActive = room?.spotlightUser?.id === uid && inferSpotlightKind(room?.spotlightUser || null) === SPOTLIGHT_KINDS.audience;
+        await sendUserMessage(
+            uid,
+            spotlightIsActive ? null : getAudienceSpotlightMessage(mode),
+            { kind: SPOTLIGHT_KINDS.audience, mode, durationSec: spotlightDurationSec }
+        );
+    };
+
     const toggleLobbyUserCoHost = useCallback(async (roomUser = {}) => {
         const safeUid = resolveRoomUserUid(roomUser);
         if (!safeUid) return;
@@ -15469,7 +16041,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     msg: getAudienceSpotlightMessage(nextMode),
                     prompt: nextPrompt,
                     interactive: true,
-                    sessionId: String(activeAudienceSpotlight?.sessionId || `${SPOTLIGHT_KINDS.audience}_${activeAudienceSpotlightUid}_${Date.now()}`)
+                    sessionId: String(activeAudienceSpotlight?.sessionId || `${SPOTLIGHT_KINDS.audience}_${activeAudienceSpotlightUid}_${Date.now()}`),
+                    durationMs: Math.max(AUDIENCE_SPOTLIGHT_MIN_DURATION_SEC, Math.min(AUDIENCE_SPOTLIGHT_MAX_DURATION_SEC, Number(spotlightDurationSec || AUDIENCE_SPOTLIGHT_DEFAULT_DURATION_SEC))) * 1000,
+                    expiresAtMs: Date.now() + (Math.max(AUDIENCE_SPOTLIGHT_MIN_DURATION_SEC, Math.min(AUDIENCE_SPOTLIGHT_MAX_DURATION_SEC, Number(spotlightDurationSec || AUDIENCE_SPOTLIGHT_DEFAULT_DURATION_SEC))) * 1000),
+                    autoClear: true,
+                    promptUpdatedAtMs: Date.now()
                 }
             });
             toast(`${activeAudienceSpotlightUser?.name || 'Audience spotlight'} switched to ${getAudienceSpotlightModeMeta(nextMode).label}.`);
@@ -15477,7 +16053,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostLogger.error('Audience spotlight mode update failed', error);
             toast('Could not update spotlight mode.');
         }
-    }, [activeAudienceSpotlight, activeAudienceSpotlightUid, activeAudienceSpotlightUser?.name, hostLogger, toast, updateRoom]);
+    }, [activeAudienceSpotlight, activeAudienceSpotlightUid, activeAudienceSpotlightUser?.name, hostLogger, spotlightDurationSec, toast, updateRoom]);
     const advanceAudienceSpotlightPrompt = useCallback(async () => {
         if (!activeAudienceSpotlightUid) return;
         const nextMode = normalizeAudienceSpotlightMode(activeAudienceSpotlight?.mode);
@@ -15494,7 +16070,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     msg: getAudienceSpotlightMessage(nextMode),
                     prompt: nextPrompt,
                     interactive: true,
-                    sessionId: String(activeAudienceSpotlight?.sessionId || `${SPOTLIGHT_KINDS.audience}_${activeAudienceSpotlightUid}_${Date.now()}`)
+                    sessionId: String(activeAudienceSpotlight?.sessionId || `${SPOTLIGHT_KINDS.audience}_${activeAudienceSpotlightUid}_${Date.now()}`),
+                    durationMs: Math.max(AUDIENCE_SPOTLIGHT_MIN_DURATION_SEC, Math.min(AUDIENCE_SPOTLIGHT_MAX_DURATION_SEC, Number(spotlightDurationSec || AUDIENCE_SPOTLIGHT_DEFAULT_DURATION_SEC))) * 1000,
+                    expiresAtMs: Date.now() + (Math.max(AUDIENCE_SPOTLIGHT_MIN_DURATION_SEC, Math.min(AUDIENCE_SPOTLIGHT_MAX_DURATION_SEC, Number(spotlightDurationSec || AUDIENCE_SPOTLIGHT_DEFAULT_DURATION_SEC))) * 1000),
+                    autoClear: true,
+                    promptUpdatedAtMs: Date.now()
                 }
             });
             toast('Spotlight prompt updated.');
@@ -15502,8 +16082,90 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostLogger.error('Audience spotlight prompt advance failed', error);
             toast('Could not update spotlight prompt.');
         }
+    }, [activeAudienceSpotlight, activeAudienceSpotlightUid, hostLogger, spotlightDurationSec, toast, updateRoom]);
+
+    const replayAudienceSpotlight = useCallback(async () => {
+        if (!activeAudienceSpotlightUid) return;
+        const now = Date.now();
+        const durationMs = Math.max(AUDIENCE_SPOTLIGHT_MIN_DURATION_SEC, Math.min(AUDIENCE_SPOTLIGHT_MAX_DURATION_SEC, Number(spotlightDurationSec || AUDIENCE_SPOTLIGHT_DEFAULT_DURATION_SEC))) * 1000;
+        try {
+            await updateRoom({
+                spotlightUser: {
+                    ...activeAudienceSpotlight,
+                    kind: SPOTLIGHT_KINDS.audience,
+                    interactive: true,
+                    sessionId: `${SPOTLIGHT_KINDS.audience}_${activeAudienceSpotlightUid}_replay_${now}`,
+                    createdAtMs: now,
+                    durationMs,
+                    expiresAtMs: now + durationMs,
+                    autoClear: true,
+                    replayCount: Number(activeAudienceSpotlight?.replayCount || 0) + 1
+                }
+            });
+            toast('Spotlight replayed on Public TV.');
+        } catch (error) {
+            hostLogger.error('Audience spotlight replay failed', error);
+            toast('Could not replay spotlight.');
+        }
+    }, [activeAudienceSpotlight, activeAudienceSpotlightUid, hostLogger, spotlightDurationSec, toast, updateRoom]);
+
+    const pushAudienceSpotlightToMainstage = useCallback(async () => {
+        if (!activeAudienceSpotlightUid) {
+            toast('Start an audience spotlight first.');
+            return;
+        }
+        const now = Date.now();
+        const durationMs = Math.max(AUDIENCE_SPOTLIGHT_MIN_DURATION_SEC, Math.min(AUDIENCE_SPOTLIGHT_MAX_DURATION_SEC, Number(spotlightDurationSec || AUDIENCE_SPOTLIGHT_DEFAULT_DURATION_SEC))) * 1000;
+        try {
+            await updateRoom({
+                spotlightUser: {
+                    ...activeAudienceSpotlight,
+                    kind: SPOTLIGHT_KINDS.audience,
+                    interactive: true,
+                    mainstage: {
+                        active: true,
+                        sessionId: `${SPOTLIGHT_KINDS.audience}_${activeAudienceSpotlightUid}_mainstage_${now}`,
+                        startedAtMs: now,
+                        durationMs,
+                        expiresAtMs: now + durationMs
+                    }
+                }
+            });
+            toast('Spotlight pushed to Mainstage.');
+        } catch (error) {
+            hostLogger.error('Audience spotlight mainstage push failed', error);
+            toast('Could not push spotlight to Mainstage.');
+        }
+    }, [activeAudienceSpotlight, activeAudienceSpotlightUid, hostLogger, spotlightDurationSec, toast, updateRoom]);
+
+    const clearAudienceSpotlightMainstage = useCallback(async () => {
+        if (!activeAudienceSpotlightUid) return;
+        try {
+            await updateRoom({
+                spotlightUser: {
+                    ...activeAudienceSpotlight,
+                    mainstage: null
+                }
+            });
+            toast('Spotlight removed from Mainstage.');
+        } catch (error) {
+            hostLogger.error('Audience spotlight mainstage clear failed', error);
+            toast('Could not clear Mainstage spotlight.');
+        }
     }, [activeAudienceSpotlight, activeAudienceSpotlightUid, hostLogger, toast, updateRoom]);
 
+    useEffect(() => {
+        const payload = room?.spotlightUser || null;
+        const expiresAtMs = Number(payload?.expiresAtMs || 0);
+        if (!payload?.id || payload?.autoClear === false || expiresAtMs <= 0) return undefined;
+        const delayMs = Math.max(0, expiresAtMs - Date.now());
+        const timer = setTimeout(() => {
+            const current = roomRef.current?.spotlightUser || null;
+            if (String(current?.sessionId || '') !== String(payload?.sessionId || '')) return;
+            updateRoom({ spotlightUser: null }).catch((error) => hostLogger.debug('Spotlight auto-clear failed', error));
+        }, Math.min(delayMs + 120, AUDIENCE_SPOTLIGHT_MAX_DURATION_SEC * 1000 + 1000));
+        return () => clearTimeout(timer);
+    }, [room?.spotlightUser?.sessionId, room?.spotlightUser?.expiresAtMs, room?.spotlightUser?.autoClear, hostLogger, updateRoom]);
     const top100Songs = useMemo(() => {
         const arts = Object.values(sampleArt);
         const decorated = decorateBrowseSongs(top100Seed);
@@ -15709,6 +16371,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowPolicy,
             runOfShowPendingCountsById,
             autoDjDelaySec: room?.autoDjDelaySec,
+            postPerformanceHoldMs: performanceRecapAutoDjHoldMs,
             now: nowMs(),
             isQueueEntryPlayable
         });
@@ -15777,6 +16440,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.missionControl?.deadAirFiller,
         room?.programMode,
         room?.runOfShowEnabled,
+        performanceRecapAutoDjHoldMs,
         roomCode,
         runOfShowLiveItem,
         runOfShowNextItem,
@@ -17753,7 +18417,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const landingView = view === 'landing' ? ( 
         <div
-            className="relative min-h-screen overflow-hidden flex flex-col items-center justify-start p-4 pt-6 md:p-8 text-center"
+            className="relative min-h-screen overflow-x-hidden flex flex-col items-center justify-start p-4 pt-6 md:p-8 text-center"
             style={{
                 background:
                     'radial-gradient(circle at 12% 8%, rgba(0,196,217,0.35), transparent 34%), radial-gradient(circle at 86% 10%, rgba(236,72,153,0.3), transparent 32%), radial-gradient(circle at 52% 92%, rgba(251,191,36,0.14), transparent 34%), linear-gradient(160deg, #050612 0%, #0b1020 48%, #130a1c 100%)'
@@ -18129,7 +18793,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const settingsResultCount = settingsNavigationSections.reduce((sum, section) => sum + section.items.length, 0);
     const totalSocialUnread = (chatUnread ? 1 : 0) + (dmUnread ? 1 : 0);
     const settingsNavBadges = {
-        gamepad: room?.activeMode && room.activeMode !== 'karaoke' ? 'LIVE' : '',
+        gamepad: room?.activeMode && room.activeMode !== 'karaoke' ? 'LIVE' : (room?.gameData?.recap ? 'RECAP' : ''),
         chat: totalSocialUnread > 0 ? String(totalSocialUnread) : '',
         moderation: moderationQueueState.totalPending > 0 ? String(moderationQueueState.totalPending) : '',
         general: queuedSongs.length > 0 ? `${queuedSongs.length}Q` : ''
@@ -18253,7 +18917,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 allowSingerTrackSelect: room.allowSingerTrackSelect,
             }),
             hideNonEmbeddableYouTube: room.hideNonEmbeddableYouTube === true,
-            audienceShellVariant: String(room.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic',
+            audienceShellVariant: String(room.audienceShellVariant || '').trim().toLowerCase() === 'classic' ? 'classic' : 'streamlined',
             audienceBrandTheme: normalizeAudienceBrandTheme(room.audienceBrandTheme || {}),
             audienceFeatureAccess: normalizeAudienceFeatureAccess(room.audienceFeatureAccess || {}),
             chatShowOnTv: !!room.chatShowOnTv,
@@ -18661,6 +19325,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const liveOperatingStyleHistoryEntry = [...liveHostSettingsBundleHistory].reverse().find((entry) => entry?.bundleId === 'operating_style') || null;
     const currentCrowdModeSummary = getCrowdModeSummary(getCurrentCrowdModeState());
     const currentOperatingStyleSummary = getOperatingStyleSummary(getCurrentOperatingStyleState());
+    const currentRoomControlModelId = room?.oneMinuteMicEnabled === true || String(room?.performanceProgressionMode || '').trim().toLowerCase() === 'one_minute_mic'
+        ? 'crowd_driven'
+        : autoDj
+            ? 'assisted_host'
+            : 'host_led';
     const applyDraftCrowdModePreset = (presetId = '') => {
         const before = getCurrentCrowdModeState();
         const patch = buildCrowdModePatch(presetId, before);
@@ -19325,6 +19994,75 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
+    const setOneMinuteMicQuick = async (enabled = false) => {
+        const nextEnabled = enabled === true;
+        const openingWindowSec = Math.max(15, Math.min(180, Number(room?.oneMinuteMicOpeningWindowSec || 60) || 60));
+        const voteWindowSec = Math.max(5, Math.min(45, Number(room?.oneMinuteMicVoteWindowSec || 12) || 12));
+        const roomPatch = {
+            oneMinuteMicEnabled: nextEnabled,
+            performanceProgressionMode: nextEnabled ? 'one_minute_mic' : 'full_song',
+            oneMinuteMicOpeningWindowSec: openingWindowSec,
+            oneMinuteMicVoteWindowSec: voteWindowSec,
+        };
+        if (!nextEnabled && String(room?.audienceDecision?.type || '').trim().toLowerCase() === 'continue_or_rotate') {
+            roomPatch.audienceDecision = null;
+        }
+        try {
+            await updateRoom(roomPatch);
+            toast(nextEnabled ? 'One-Minute Mic is on.' : 'Full songs restored.');
+        } catch (error) {
+            console.error('Failed to update One-Minute Mic from host chrome', error);
+            toast('Could not update One-Minute Mic.');
+        }
+    };
+
+    const setOneMinuteMicTimingQuick = async (patch = {}) => {
+        const openingWindowSec = Math.max(15, Math.min(180, Number(patch.openingWindowSec ?? room?.oneMinuteMicOpeningWindowSec ?? 60) || 60));
+        const voteWindowSec = Math.max(5, Math.min(45, Number(patch.voteWindowSec ?? room?.oneMinuteMicVoteWindowSec ?? 12) || 12));
+        try {
+            await updateRoom({
+                oneMinuteMicOpeningWindowSec: openingWindowSec,
+                oneMinuteMicVoteWindowSec: voteWindowSec,
+            });
+        } catch (error) {
+            console.error('Failed to update One-Minute Mic timing from host chrome', error);
+            toast('Could not update One-Minute Mic timing.');
+        }
+    };
+    const applyRoomControlModelQuick = async (modelId = 'host_led') => {
+        const safeModel = ['host_led', 'assisted_host', 'crowd_driven'].includes(String(modelId || '').trim().toLowerCase())
+            ? String(modelId || '').trim().toLowerCase()
+            : 'host_led';
+        const nextOneMinuteMic = safeModel === 'crowd_driven';
+        const nextAutoDj = safeModel !== 'host_led';
+        const openingWindowSec = Math.max(15, Math.min(180, Number(room?.oneMinuteMicOpeningWindowSec || 60) || 60));
+        const voteWindowSec = Math.max(5, Math.min(45, Number(room?.oneMinuteMicVoteWindowSec || 12) || 12));
+        const previousAutoDj = !!autoDj;
+        const roomPatch = {
+            autoDj: nextAutoDj,
+            oneMinuteMicEnabled: nextOneMinuteMic,
+            performanceProgressionMode: nextOneMinuteMic ? 'one_minute_mic' : 'full_song',
+            oneMinuteMicOpeningWindowSec: openingWindowSec,
+            oneMinuteMicVoteWindowSec: voteWindowSec,
+        };
+        const activeAudienceDecisionType = String(room?.audienceDecision?.type || '').trim().toLowerCase();
+        if (!nextOneMinuteMic && ['continue_or_rotate', 'skip_performance'].includes(activeAudienceDecisionType)) {
+            roomPatch.audienceDecision = null;
+        }
+        setAutoDj(nextAutoDj);
+        try {
+            await updateRoom(roomPatch);
+            toast(safeModel === 'crowd_driven'
+                ? 'Crowd-driven mode is on.'
+                : safeModel === 'assisted_host'
+                    ? 'Assisted host mode is on.'
+                    : 'Host-led full songs restored.');
+        } catch (error) {
+            console.error('Failed to update room control model from host chrome', error);
+            setAutoDj(previousAutoDj);
+            toast('Could not update room control model.');
+        }
+    };
     const quickAutomationControls = {
         autoDj: !!autoDj,
         autoBgMusic: !!autoBgMusic,
@@ -19378,6 +20116,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         searchSources: normalizeHostSearchSources(searchSources, DEFAULT_SEARCH_SOURCES),
         guestTrackPolicyOptions: QUICK_GUEST_TRACK_POLICY_OPTIONS,
         readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10) || 10),
+        oneMinuteMicEnabled: room?.oneMinuteMicEnabled === true || String(room?.performanceProgressionMode || '').trim().toLowerCase() === 'one_minute_mic',
+        oneMinuteMicOpeningWindowSec: Math.max(15, Math.min(180, Number(room?.oneMinuteMicOpeningWindowSec || 60) || 60)),
+        oneMinuteMicVoteWindowSec: Math.max(5, Math.min(45, Number(room?.oneMinuteMicVoteWindowSec || 12) || 12)),
         queueLimitOptions: NIGHT_SETUP_QUEUE_LIMIT_OPTIONS,
         queueRotationOptions: NIGHT_SETUP_QUEUE_ROTATION_OPTIONS,
         requestModeOptions: REQUEST_MODE_OPTIONS,
@@ -19390,6 +20131,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onSetGuestTrackPolicy: setGuestTrackPolicyQuick,
         onSetSearchSource: setSearchSourceQuick,
         onSetReadyCheckDuration: setReadyCheckDurationQuick,
+        onApplyRoomControlModel: applyRoomControlModelQuick,
+        onSetOneMinuteMic: setOneMinuteMicQuick,
+        onSetOneMinuteMicTiming: setOneMinuteMicTimingQuick,
         onTriggerReadyCheck: startReadyCheck,
     };
     const experimentalHostPanelActive = quickRoomControls.runtimeShellMode === HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment;
@@ -19742,6 +20486,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     styles={STYLES}
                     logoFallback={ASSETS.logo}
                     onOpenCatalogueHelper={openCatalogueHelper}
+                    users={users}
+                    onDropBonus={dropBonus}
+                    onGiftPointsToUser={giftPointsToUser}
                     audioPanelOpen={audioPanelOpen}
                     setAudioPanelOpen={setAudioPanelOpen}
                     stageMeterLevel={stageMeterLevel}
@@ -19915,7 +20662,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 data-host-main-scroll="true"
                 className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : (tab === 'run_of_show' || tab === 'games') ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
-                {room?.activeMode && room.activeMode !== 'karaoke' && (
+                {((room?.activeMode && room.activeMode !== 'karaoke') || room?.gameData?.recap) && (
                     <HostGameControlPad
                         roomCode={roomCode}
                         room={room}
@@ -19923,6 +20670,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         setTab={setTab}
                         tvBase={tvBase}
                         tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
+                    hostVoiceMicControl={hostVoiceMicControl}
                     />
                 )}
                 <div
@@ -20067,7 +20815,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 {tab === 'browse' && browsePanel}
                 {tab === 'games' && (
                     <div className="flex min-h-0 flex-col gap-4">
-                        <div className="min-h-0 custom-scrollbar pr-1">
+                        {hostHasLiveGameModeForDrawer && (
+                            <div data-host-game-launcher-drawer="summary" className="rounded-2xl border border-white/10 bg-zinc-950/86 px-3 py-3 shadow-lg">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">Live Game Focus</div>
+                                        <div className="mt-1 text-sm text-zinc-300">{activeHostGameDrawerLabel} is running. Use the control pad above for live moderation and mechanics.</div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLiveGameLauncherDrawerOpen((open) => !open)}
+                                        className={`${STYLES.btnStd} ${liveGameLauncherDrawerOpen ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-2 text-xs`}
+                                        aria-expanded={liveGameLauncherDrawerOpen}
+                                    >
+                                        <i className={`fa-solid ${liveGameLauncherDrawerOpen ? 'fa-chevron-up' : 'fa-chevron-down'} mr-1`}></i>
+                                        {liveGameLauncherDrawerOpen ? 'Hide Launcher' : 'Open Launcher Drawer'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        <div className={`${hostHasLiveGameModeForDrawer && !liveGameLauncherDrawerOpen ? 'hidden' : 'min-h-0 custom-scrollbar pr-1'}`} data-host-game-launcher-drawer={hostHasLiveGameModeForDrawer ? 'content' : 'standard'}>
                             <UnifiedGameLauncher
                                 room={room}
                                 roomCode={roomCode}
@@ -20103,6 +20870,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 onToggleBracketCrowdVoting={toggleBracketCrowdVoting}
                                 onForfeitBracketContestant={forfeitBracketContestant}
                                 onAddQuickRunOfShowMoment={addQuickRunOfShowMoment}
+                            hostVoiceMicControl={hostVoiceMicControl}
                             />
                         </div>
                     </div>
@@ -20111,16 +20879,138 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 {tab === 'lobby' && (
                     <div className="flex flex-col h-full gap-4">
                         <div className="flex flex-wrap bg-zinc-900 p-1 rounded-xl w-full sm:w-fit gap-1">
-                            {['users', 'history', 'vip', 'tips', 'activity'].map(t => (
+                            {['users', 'actions', 'history', 'vip', 'tips', 'activity'].map(t => (
                                 <button
                                     key={t}
                                     onClick={() => setLobbyTab(t)}
                                     className={`px-4 py-2 rounded-lg text-sm font-bold uppercase transition-all ${lobbyTab === t ? 'bg-[#00C4D9] text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
                                 >
-                                    {t}
+                                    {t === 'tips' ? 'settings' : t}
                                 </button>
                             ))}
                         </div>
+                        {lobbyTab === 'actions' && (
+                            <div data-feature-id="host-lobby-actions-panel" className="flex flex-col gap-4">
+                                <div className={`${STYLES.panel} border-white/10 p-4`}>
+                                    <div className="flex flex-wrap items-end justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-bold uppercase tracking-wider text-zinc-300">Lobby Actions</div>
+                                            <div className="mt-1 text-sm text-zinc-500">Fast host controls for spotlight, points, support drops, and Tight 15 picks.</div>
+                                        </div>
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                            <button type="button" onClick={() => openAdminWorkspace('audience.monetization')} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-xs`}>
+                                                Tips + Boosts Settings
+                                            </button>
+                                            <input
+                                                value={lobbyActionSearch}
+                                                onChange={(e) => setLobbyActionSearch(e.target.value)}
+                                                className={`${STYLES.input} min-w-[220px]`}
+                                                placeholder="Search lobby..."
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                                        <select
+                                            value={selectedLobbyUserUid || ''}
+                                            onChange={(event) => {
+                                                const next = findRoomUserByUid(users, event.target.value);
+                                                const token = next ? resolveLobbyUserToken(next) : '';
+                                                setSelectedLobbyUserToken(token);
+                                                setLockedLobbyUserToken(token);
+                                                setTipGiftUserId(event.target.value);
+                                                setSupportDropTargetUid(event.target.value);
+                                            }}
+                                            className={`${STYLES.input} w-full`}
+                                        >
+                                            <option value="">Select lobby guest...</option>
+                                            {lobbyActionUsers.map((u) => {
+                                                const uid = resolveRoomUserUid(u);
+                                                if (!uid) return null;
+                                                return <option key={u.id || uid} value={uid}>{u.name || 'Guest'} - {u.points || 0} pts</option>;
+                                            })}
+                                        </select>
+                                        <button onClick={() => setLobbyTab('users')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-xs`}>
+                                            Open lobby cards
+                                        </button>
+                                    </div>
+                                    <div className="mt-3 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Selected Guest</div>
+                                                <div className="mt-1 text-sm font-bold text-white">{selectedLobbyUser ? selectedLobbyUser.name || 'Guest' : 'No guest selected'}</div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
+                                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1">{selectedLobbyUserUid ? `${selectedLobbyUser?.points || 0} pts` : 'Pick before firing'}</span>
+                                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1">{selectedLobbyUserIsSpotlight ? 'On TV now' : 'Not spotlighted'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+                                    <div className={`${STYLES.panel} border-yellow-300/20 bg-yellow-500/10 p-4`}>
+                                        <div className="text-[11px] font-black uppercase tracking-[0.2em] text-yellow-100">Spotlight Moment</div>
+                                        <div className="mt-1 text-sm text-zinc-300">{selectedLobbyUser ? selectedLobbyUser.name || 'Guest' : 'Pick a guest to feature on Public TV.'}</div>
+                                        <label className="mt-3 flex flex-col gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-yellow-100/80">
+                                            Duration
+                                            <select value={spotlightDurationSec} onChange={(event) => setSpotlightDurationSec(Number(event.target.value))} className={`${STYLES.input} text-xs`}>
+                                                {[30, 45, 60, 90].map((value) => <option key={value} value={value}>{value}s auto-clear</option>)}
+                                            </select>
+                                        </label>
+                                        <div className="mt-3 grid grid-cols-3 gap-2">
+                                            <button onClick={() => toggleAudienceSpotlightForUser(selectedLobbyUser, AUDIENCE_SPOTLIGHT_MODES.cheer)} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-2 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>Cheer</button>
+                                            <button onClick={() => toggleAudienceSpotlightForUser(selectedLobbyUser, AUDIENCE_SPOTLIGHT_MODES.qa)} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-2 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>Q&A</button>
+                                            <button onClick={() => toggleAudienceSpotlightForUser(selectedLobbyUser, AUDIENCE_SPOTLIGHT_MODES.roast)} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-2 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>Roast</button>
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-3 gap-2">
+                                            <button onClick={advanceAudienceSpotlightPrompt} disabled={!activeAudienceSpotlight} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-2 text-xs ${!activeAudienceSpotlight ? 'opacity-60 cursor-not-allowed' : ''}`}>Next Prompt</button>
+                                            <button onClick={replayAudienceSpotlight} disabled={!activeAudienceSpotlight} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-2 text-xs ${!activeAudienceSpotlight ? 'opacity-60 cursor-not-allowed' : ''}`}>Replay</button>
+                                            <button onClick={() => updateRoom({ spotlightUser: null })} disabled={!room?.spotlightUser} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-2 text-xs ${!room?.spotlightUser ? 'opacity-60 cursor-not-allowed' : ''}`}>Clear</button>
+                                        </div>
+                                        <div className="mt-2 grid grid-cols-2 gap-2">
+                                            <button onClick={pushAudienceSpotlightToMainstage} disabled={!activeAudienceSpotlight} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-2 text-xs ${!activeAudienceSpotlight ? 'opacity-60 cursor-not-allowed' : ''}`}>Mainstage</button>
+                                            <button onClick={clearAudienceSpotlightMainstage} disabled={!activeAudienceSpotlight?.mainstage?.active} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-2 text-xs ${!activeAudienceSpotlight?.mainstage?.active ? 'opacity-60 cursor-not-allowed' : ''}`}>Clear Stage</button>
+                                        </div>
+                                    </div>
+                                    <div className={`${STYLES.panel} border-cyan-300/20 bg-cyan-500/10 p-4`}>
+                                        <div className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-100">Points + Tight 15</div>
+                                        <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                                            <input value={tipGiftAmount} onChange={(e) => setTipGiftAmount(e.target.value)} className={`${STYLES.input} w-full`} placeholder="Pts" />
+                                            <button onClick={() => {
+                                                const targetUid = selectedLobbyUserUid || tipGiftUserId;
+                                                const points = lobbyActionGiftPreviewPoints;
+                                                if (!targetUid) return toast('Pick a guest first.');
+                                                giftPointsToUser(targetUid, points);
+                                                setTipGiftAmount('');
+                                            }} disabled={!selectedLobbyUserUid && !tipGiftUserId} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-xs ${(!selectedLobbyUserUid && !tipGiftUserId) ? 'opacity-60 cursor-not-allowed' : ''}`}>Gift +{lobbyActionGiftPreviewPoints}</button>
+                                        </div>
+                                        <div className="mt-2 grid grid-cols-3 gap-2">
+                                            {[50, 100, 250].map((points) => <button key={`lobby-action-all-${points}`} onClick={() => dropBonus(points)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-2 text-xs`}>All +{points}</button>)}
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                            <button onClick={() => selectedLobbyUser && queueRandomTight15ForUser(selectedLobbyUser, { sourceLabel: 'lobby_actions_tight15' })} disabled={!selectedLobbyUserUid || selectedLobbyUserQueueBusy} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-2 text-xs ${(!selectedLobbyUserUid || selectedLobbyUserQueueBusy) ? 'opacity-60 cursor-not-allowed' : ''}`}>Random T15</button>
+                                            <button onClick={() => selectedLobbyUser && openTight15ProfileCard(selectedLobbyUser)} disabled={!selectedLobbyUserUid || selectedLobbyUserProfileBusy} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-2 text-xs ${(!selectedLobbyUserUid || selectedLobbyUserProfileBusy) ? 'opacity-60 cursor-not-allowed' : ''}`}>T15 Card</button>
+                                        </div>
+                                    </div>
+                                    <div className={`${STYLES.panel} border-emerald-300/20 bg-emerald-500/10 p-4`}>
+                                        <div className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-100">Support Drop</div>
+                                        <input value={supportDropDonorName} onChange={(e) => setSupportDropDonorName(e.target.value)} className={`${STYLES.input} mt-3 w-full`} placeholder="Supporter name" />
+                                        <div className="mt-2 grid grid-cols-2 gap-2">
+                                            <input value={supportDropAmount} onChange={(e) => setSupportDropAmount(e.target.value)} className={`${STYLES.input} w-full`} placeholder="$ amount" />
+                                            <input value={supportDropPoints} onChange={(e) => setSupportDropPoints(e.target.value)} className={`${STYLES.input} w-full`} placeholder="Pts" />
+                                        </div>
+                                        <div className="mt-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-emerald-100/85">
+                                            {supportDropReady
+                                                ? `Ready: ${supportDropAmountValue > 0 ? `${supportDropAmountValue.toFixed(2)}` : 'no cash amount'} / +${supportDropEffectivePoints} pts`
+                                                : 'Add a dollar amount or points before firing a support drop.'}
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                            <button onClick={() => triggerSupportDrop({ scope: 'user', targetUidOverride: selectedLobbyUserUid })} disabled={!selectedLobbyUserUid || !supportDropReady} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-2 text-xs ${(!selectedLobbyUserUid || !supportDropReady) ? 'opacity-60 cursor-not-allowed' : ''}`}>Spotlight Guest</button>
+                                            <button onClick={() => triggerSupportDrop({ scope: 'room' })} disabled={!supportDropReady} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-2 text-xs ${!supportDropReady ? 'opacity-60 cursor-not-allowed' : ''}`}>Reward Room</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {lobbyTab === 'users' && (
                             <div className="flex flex-col gap-6">
                                 <div className={`grid grid-cols-2 lg:grid-cols-4 ${mediumHostViewport ? 'gap-3' : 'gap-4'}`}>
@@ -20224,7 +21114,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         })}
                                     </div>
                                     <div className="mt-2 text-[11px] text-zinc-400">
-                                        Tip: select a guest card, then use <span className="text-white">Make Co-Host</span> in the controls below.
+                                        Tip: select a guest card, then use <span className="text-white">Lobby Actions</span> for spotlight, Tight 15, points, and support controls.
                                     </div>
                                     {pendingFirstSongAssistCount > 0 && (
                                         <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
@@ -20250,7 +21140,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     </button>
                                                 )}
                                                 <button
-                                                    onClick={() => sendUserMessage(selectedLobbyUserUid, selectedLobbyUserIsSpotlight ? null : 'SPOTLIGHT')}
+                                                    onClick={() => toggleAudienceSpotlightForUser(selectedLobbyUser, AUDIENCE_SPOTLIGHT_MODES.cheer)}
                                                     disabled={!selectedLobbyUserUid}
                                                     className={`${STYLES.btnStd} ${selectedLobbyUserIsSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
@@ -20323,6 +21213,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 >
                                                     <i className="fa-solid fa-rotate-right mr-1"></i>
                                                     Next Prompt
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={replayAudienceSpotlight}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1.5 text-xs`}
+                                                >
+                                                    <i className="fa-solid fa-repeat mr-1"></i>
+                                                    Replay
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateRoom({ spotlightUser: null })}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-xs`}
+                                                >
+                                                    Clear
                                                 </button>
                                             </div>
                                             {activeAudienceSpotlightPrompt && (
@@ -20410,7 +21315,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 {u.phone && <div className="text-sm text-zinc-600">Phone {u.phone}</div>}
                                                 <div className={`absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-2 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                                                     <button
-                                                        onClick={() => sendUserMessage(userUid, isSpotlight ? null : 'SPOTLIGHT')}
+                                                        onClick={() => toggleAudienceSpotlightForUser(u, AUDIENCE_SPOTLIGHT_MODES.cheer)}
                                                         disabled={!userUid}
                                                         className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                     >
@@ -21686,7 +22591,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                       Show post-performance recap sequence on TV
                                   </label>
                                   <div className="host-form-helper">Turns the full post-song TV sequence on or off.</div>
-                                  <div className="host-form-helper">Default warm-up is off, so TV can roll straight into the applause countdown.</div>
+                                  <div className="host-form-helper">Default warm-up is off, so TV can roll straight into the live applause meter.</div>
                               </div>
                               <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                                   <label className="space-y-2">
@@ -21705,11 +22610,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                   <label className="space-y-2">
                                       <div className="text-sm uppercase tracking-widest text-zinc-400">Warm-up extension</div>
                                       <select
-                                          value={Math.max(1, Math.min(8, Math.round(Number(room?.applauseCountdownSec ?? 5) || 5)))}
+                                          value={Math.max(0, Math.min(8, Math.round(Number(room?.applauseCountdownSec ?? 0) || 0)))}
                                           onChange={async (e) => { await updateRoom({ applauseCountdownSec: Number(e.target.value) }); }}
                                           className={STYLES.input}
                                       >
-                                          {[1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
+                                          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
                                               <option key={`admin-applause-countdown-${value}`} value={value}>{value}s</option>
                                           ))}
                                       </select>
@@ -21740,6 +22645,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                           ))}
                                       </select>
                                       <div className="host-form-helper">How long the first recap card stays up before the leaderboard phase.</div>
+                                  </label>
+                                  <label className="space-y-2">
+                                      <div className="text-sm uppercase tracking-widest text-zinc-400">Score reveal pace</div>
+                                      <select
+                                          value={Math.max(1800, Math.min(4200, Math.round(Number(room?.performanceRecapScoreStepMs ?? 2600) || 2600)))}
+                                          onChange={async (e) => { await updateRoom({ performanceRecapScoreStepMs: Number(e.target.value) }); }}
+                                          className={STYLES.input}
+                                      >
+                                          {[1800, 2200, 2600, 3000, 3600, 4200].map((value) => (
+                                              <option key={`admin-recap-score-step-${value}`} value={value}>{(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}s each</option>
+                                          ))}
+                                      </select>
+                                      <div className="host-form-helper">How long each subtotal stays in focus before the next score segment starts. Slower keeps the breakdown readable on the TV.</div>
                                   </label>
                                   <label className="space-y-2">
                                       <div className="text-sm uppercase tracking-widest text-zinc-400">Leaderboard beat</div>
@@ -22360,6 +23278,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </summary>
                             <div className="mt-4 space-y-5">
+                                <div className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-500/5 p-4" data-room-setup-control-model>
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-fuchsia-200">Room control model</div>
+                                            <div className="mt-1 text-sm font-semibold text-white">Decide who drives the room before launch.</div>
+                                            <div className="mt-1 text-xs text-zinc-300">Host-Led protects full songs. Assisted Host keeps full songs with queue automation. Crowd-Driven enables One-Minute Mic and Auto-DJ for self-service parties.</div>
+                                        </div>
+                                        <span className="rounded-full border border-fuchsia-300/20 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-fuchsia-100">
+                                            Launch decision
+                                        </span>
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
+                                        {ROOM_CONTROL_MODEL_OPTIONS.map((option) => {
+                                            const selected = currentRoomControlModelId === option.id;
+                                            return (
+                                                <button
+                                                    key={`setup-control-model-${option.id}`}
+                                                    type="button"
+                                                    onClick={() => { void applyRoomControlModelQuick(option.id); }}
+                                                    aria-pressed={selected}
+                                                    className={`${STYLES.btnStd} ${selected ? STYLES.btnHighlight : STYLES.btnNeutral} min-h-[76px] justify-start text-left`}
+                                                >
+                                                    <span className="flex flex-col items-start">
+                                                        <span className="font-semibold">{option.label}</span>
+                                                        <span className="mt-1 text-[11px] text-zinc-300 normal-case tracking-normal">{option.summary}</span>
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                                     <button
                                         type="button"
@@ -22550,6 +23499,38 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             />
                                         </label>
                                     </div>
+                                    <div className="rounded-xl border border-cyan-300/25 bg-cyan-500/10 p-3">
+                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                            <div>
+                                                <div className="text-xs uppercase tracking-[0.22em] text-cyan-100">Voice game room mic</div>
+                                                <div className="mt-1 text-sm text-zinc-300">
+                                                    {hostVolleyVoiceMicActive ? (hostVoiceTelemetryTarget === 'team_pong' ? 'Live chant charge is feeding Team Pong.' : 'Live voice lift is feeding Volley Orb.') : (hostVolleyVoiceArmed ? 'Armed and waiting for Volley or Team Pong.' : 'Host-owned mic control for Vocal Rocket and Team Pong.')}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setHostVolleyVoiceArmed((value) => !value)}
+                                                className={`${STYLES.btnStd} ${hostVolleyVoiceArmed ? STYLES.btnHighlight : STYLES.btnNeutral} whitespace-nowrap`}
+                                            >
+                                                <i className="fa-solid fa-microphone-lines"></i>
+                                                {hostVolleyVoiceArmed ? 'Room Mic Armed' : 'Arm Room Mic'}
+                                            </button>
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-zinc-300">
+                                            <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                                                <div className="uppercase tracking-[0.16em] text-cyan-100/70">Note</div>
+                                                <div className="mt-1 font-black text-white">{hostVolleyVoiceStableNote || hostVolleyVoiceNote || '...'}</div>
+                                            </div>
+                                            <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                                                <div className="uppercase tracking-[0.16em] text-cyan-100/70">Volume</div>
+                                                <div className="mt-1 font-black text-white">{Math.round(Number(hostVolleyVoiceVolume || 0) * 100)}%</div>
+                                            </div>
+                                            <div className="rounded-lg border border-white/10 bg-black/25 px-2 py-2">
+                                                <div className="uppercase tracking-[0.16em] text-cyan-100/70">Match</div>
+                                                <div className="mt-1 font-black text-white">{hostVolleyVoiceCalibrating ? 'Cal' : `${Math.round(Number(hostVolleyVoiceConfidence || 0) * 100)}%`}</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </details>
@@ -22620,6 +23601,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </button>
                                     </div>
                                 </div>
+                                <HostRoomVoiceMicCard control={hostVoiceMicControl} />
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div className="bg-zinc-900/50 border border-cyan-500/15 rounded-xl p-4">
                                         <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Current Mode</div>
@@ -24972,3 +25954,4 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 };
 
 export default HostApp;
+

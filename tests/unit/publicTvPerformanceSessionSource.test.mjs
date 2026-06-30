@@ -23,20 +23,20 @@ test('PublicTV validates playback events against the active performance session 
   );
 });
 
-test('PublicTV retries playback session reporting through the host callable when direct telemetry is denied', () => {
-  assert.match(
+test('PublicTV reports playback telemetry directly without calling host-only room controls', () => {
+  assert.doesNotMatch(
     source,
-    /callFunction, updateRoomAsHost \} from '\.\.\/\.\.\/lib\/firebase';/,
-    'PublicTV should import updateRoomAsHost for host-authenticated TV fallback writes.',
+    /updateRoomAsHost/,
+    'PublicTV is display telemetry and should not call the host-only room controls callable.',
+  );
+  assert.doesNotMatch(
+    source,
+    /buildPerformanceSessionHostFallbackUpdate/,
+    'PublicTV should avoid host fallback writes that fail for non-host TV sessions.',
   );
   assert.match(
     source,
-    /const buildPerformanceSessionHostFallbackUpdate = \(room = \{\}, patch = \{\}\) => \{[\s\S]*currentPerformanceSession[\s\S]*currentPerformanceMeta[\s\S]*return updates;/,
-    'PublicTV should convert dotted telemetry patches into whole performance objects for the host callable.',
-  );
-  assert.match(
-    source,
-    /if \(isPermissionDeniedError\(error\)\) \{[\s\S]*await updateRoomAsHost\(roomCode, hostFallbackUpdate\);[\s\S]*return;/,
-    'Permission-denied direct telemetry writes should retry through the host callable before logging failure.',
+    /await updateDoc\(doc\(db, "artifacts", APP_ID, "public", "data", "rooms", roomCode\), nextWrite\.patch\);/,
+    'PublicTV should use the narrow Firestore telemetry write path.',
   );
 });

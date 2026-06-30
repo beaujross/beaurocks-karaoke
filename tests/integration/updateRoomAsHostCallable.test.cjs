@@ -333,6 +333,7 @@ async function run() {
     ["host can update performance recap timing fields", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         performanceRecapBreakdownMs: 6000,
+        performanceRecapScoreStepMs: 1800,
         performanceRecapLeaderboardMs: 8000,
         performanceRecapNextUpMs: 5000,
         performanceIntroSec: 12,
@@ -343,6 +344,7 @@ async function run() {
         new Set(result.updatedKeys),
         new Set([
           "performanceRecapBreakdownMs",
+          "performanceRecapScoreStepMs",
           "performanceRecapLeaderboardMs",
           "performanceRecapNextUpMs",
           "performanceIntroSec",
@@ -351,6 +353,7 @@ async function run() {
 
       const snap = await roomRef.get();
       assert.equal(snap.get("performanceRecapBreakdownMs"), 6000);
+      assert.equal(snap.get("performanceRecapScoreStepMs"), 1800);
       assert.equal(snap.get("performanceRecapLeaderboardMs"), 8000);
       assert.equal(snap.get("performanceRecapNextUpMs"), 5000);
       assert.equal(snap.get("performanceIntroSec"), 12);
@@ -502,21 +505,32 @@ async function run() {
       await updateRoomAsHost.run(requestFor(HOST_UID, {
         lightMode: "volley",
         lobbyVolleyEnabled: true,
+        lobbyVolleyLaunchId: 123456,
+        lobbyVolleyStartedAtMs: 123456,
         lobbyPlaygroundPaused: true,
         lobbyPlaygroundVisualOnly: true,
         lobbyPlaygroundStrictMode: true,
         lobbyPlaygroundPerUserCooldownMs: 450,
         lobbyPlaygroundMaxPerMinute: 8,
+        lobbyVoiceTelemetry: {
+          active: true,
+          source: "host",
+          capturedAtMs: 123,
+        },
       }));
 
       const snap = await roomRef.get();
       assert.equal(snap.get("lightMode"), "volley");
       assert.equal(snap.get("lobbyVolleyEnabled"), true);
+      assert.equal(snap.get("lobbyVolleyLaunchId"), 123456);
+      assert.equal(snap.get("lobbyVolleyStartedAtMs"), 123456);
       assert.equal(snap.get("lobbyPlaygroundPaused"), true);
       assert.equal(snap.get("lobbyPlaygroundVisualOnly"), true);
       assert.equal(snap.get("lobbyPlaygroundStrictMode"), true);
       assert.equal(snap.get("lobbyPlaygroundPerUserCooldownMs"), 450);
       assert.equal(snap.get("lobbyPlaygroundMaxPerMinute"), 8);
+      assert.equal(snap.get("lobbyVoiceTelemetry.active"), true);
+      assert.equal(snap.get("lobbyVoiceTelemetry.source"), "host");
     }],
 
     ["host can update approved dotted paths", async () => {
@@ -524,12 +538,21 @@ async function run() {
         "readyCheck.active": false,
         "bingoSuggestions.2.count": 3,
         "bingoRevealed.2": true,
+        "gameData.voiceTelemetry": {
+          active: true,
+          source: "host",
+          pitch: 220,
+          confidence: 0.8,
+          capturedAtMs: 456,
+        },
       }));
 
       const snap = await roomRef.get();
       assert.equal(snap.get("readyCheck.active"), false);
       assert.equal(snap.get("bingoSuggestions.2.count"), 3);
       assert.equal(snap.get("bingoRevealed.2"), true);
+      assert.equal(snap.get("gameData.voiceTelemetry.active"), true);
+      assert.equal(snap.get("gameData.voiceTelemetry.pitch"), 220);
     }],
 
     ["host can use approved server timestamp marker", async () => {
@@ -634,6 +657,28 @@ async function run() {
       assert.equal(snap.get("tvPresentationProfile"), "simple");
     }],
 
+    ["host can save musical moment presets", async () => {
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        musicalMomentPresets: [{
+          id: "whitney_i_will_always_love_you_silence_drop",
+          label: "Whitney Silence Drop",
+          title: "I Will Always Love You: Silence Drop",
+          artist: "Whitney Houston",
+          mediaUrl: "https://www.youtube.com/watch?v=3JWTaaS7LdU",
+          startSec: 171,
+          loopSec: 24,
+          mysteryStartSec: 14,
+          targetBeatSec: 18,
+          hitWindowMs: 700,
+          playMode: "crowd",
+        }],
+      }));
+
+      const snap = await roomRef.get();
+      const presets = snap.get("musicalMomentPresets");
+      assert.equal(presets[0].id, "whitney_i_will_always_love_you_silence_drop");
+      assert.equal(presets[0].targetBeatSec, 18);
+    }],
     ["host can launch vocal challenge payloads", async () => {
       await updateRoomAsHost.run(requestFor(HOST_UID, {
         activeMode: "vocal_challenge",

@@ -371,13 +371,16 @@ test("Host queue review presents Apple sing-along and YouTube backing as primary
   assert.match(source, /canUseAppleSingAlong \|\| sourceLabel\.includes\('apple'\) \|\| sourceLabel\.includes\('itunes'\)/);
 });
 
-test("Scene image uploads stay on the callable host upload path", () => {
-  const source = readFileSync(hostAppPath, "utf8");
+test('Scene image uploads use org media upload sessions', () => {
+  const source = readFileSync(hostAppPath, 'utf8');
 
-  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 8 \* 1024 \* 1024\) \{/);
-  assert.match(source, /toast\('Scene images must be 8 MB or smaller\.'\);/);
-  assert.match(source, /if \(mediaType === 'image'\) \{\s*\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);/s);
-  assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
+  assert.match(source, /createMediaUploadSession\(\{/);
+  assert.match(source, /purpose:\s*'scene_image'/);
+  assert.match(source, /doc\(db, 'organizations', orgId, 'media_upload_sessions', sessionId\)/);
+  assert.match(source, /uploadBytesResumable\(fileRef, file, contentType \? \{ contentType \} : undefined\)/);
+  assert.match(source, /upload_mode:\s*mediaType === 'image' \? 'org_media_session' : 'direct_storage'/);
+  assert.doesNotMatch(source, /mediaBase64:\s*await fileToDataUrl/);
+  assert.doesNotMatch(source, /await uploadHostSceneMedia\(/);
 });
 
 test("Host queue review candidate cards stay inside narrow panels", () => {
@@ -455,12 +458,13 @@ test("HostApp auto-routes the post-performance backing prompt into inbox if the 
   assert.match(chromeSource, /quickRoomControls\.onTogglePostPerformanceBackingPrompt/);
 });
 
-test("HostApp routes scene images through the host callable without a direct-storage fallback", () => {
-  const source = readFileSync(hostAppPath, "utf8");
+test('HostApp routes scene images through org ingest without creating duplicate media docs', () => {
+  const source = readFileSync(hostAppPath, 'utf8');
 
-  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 8 \* 1024 \* 1024\) \{/);
-  assert.match(source, /toast\('Scene images must be 8 MB or smaller\.'\);/);
-  assert.match(source, /if \(mediaType === 'image'\) \{\s*\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);/s);
+  assert.match(source, /if \(mediaType === 'image' && ingestedAsset\?\.assetId\) \{/);
+  assert.match(source, /id:\s*ingestedAsset\.assetId/);
+  assert.match(source, /setLocalLibrary\(prev => \[\.\.\.prev\.filter\(item => item\?\.id !== newItem\.id\), newItem\]\)/);
+  assert.match(source, /else \{\s*const docRef = await addDoc\(collection\(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION\), payload\);/s);
   assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
 });
 

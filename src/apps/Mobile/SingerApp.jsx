@@ -19,6 +19,7 @@ import {
     uploadAudienceRoomPhoto,
     submitAudienceQueueSong,
     castRunOfShowReleaseWindowVote,
+    castAudienceDecisionVote,
     claimTimedLobbyCredits,
     submitAudienceEmailCapture,
     submitBracketRoundSong,
@@ -118,6 +119,7 @@ import {
     getRunOfShowReleaseWindowTally,
     isRunOfShowReleaseWindowVotingOpen
 } from '../../lib/runOfShowDirector';
+import { buildReleaseWindowFromAudienceDecision } from '../../lib/audienceDecision';
 import {
     COHOST_SIGNAL_COOLDOWN_MS,
     COHOST_SIGNAL_OPTIONS,
@@ -125,13 +127,9 @@ import {
 } from '../../lib/coHostSignals';
 import {
     getVolleyOrbMobileMainLine,
-    getVolleyOrbBaseAction,
     getVolleyOrbUltimate,
     isVolleyOrbSceneActive,
-    isVolleyOrbTargetInteraction,
-    VOLLEY_ORB_BASE_ACTIONS,
     VOLLEY_ORB_ULTIMATE_COOLDOWN_MS,
-    VOLLEY_ORB_ULTIMATES
 } from '../../lib/volleyOrbUiState';
 import {
     BRACKET_SIGNUP_MIN_READY_COUNT,
@@ -310,6 +308,25 @@ const AudienceBrowseSongRow = ({
 );
 
 const DEFAULT_EMOJI = emoji(0x1F600);
+const EXPECTED_CAMERA_ERROR_NAMES = new Set(['NotReadableError', 'NotAllowedError', 'SecurityError', 'AbortError', 'OverconstrainedError']);
+
+const isExpectedCameraError = (error) => {
+    const name = String(error?.name || '').trim();
+    const code = String(error?.code || '').trim().toLowerCase();
+    const message = String(error?.message || '').trim().toLowerCase();
+    return EXPECTED_CAMERA_ERROR_NAMES.has(name)
+        || code.startsWith('camera/')
+        || message.includes('camera frame unavailable')
+        || message.includes('missing selfie canvas')
+        || message.includes('device in use')
+        || message.includes('could not start video source');
+};
+
+const createCameraUnavailableError = (message = 'Camera is unavailable right now. Close other camera apps or tabs, then try again.') => {
+    const error = new Error(message);
+    error.code = 'camera/unavailable';
+    return error;
+};
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
 const BRAND_ICON = '/images/logo-library/beaurocks-logo-neon trasnparent.png';
@@ -367,50 +384,6 @@ const getGuitarTargetLane = (sessionId, beatIndex, laneCount = GUITAR_LANE_COUNT
     mixed ^= mixed >>> 13;
     return getSafeGuitarLaneIndex(mixed, laneCount);
 };
-const LOBBY_PLAYGROUND_INTERACTIONS = VOLLEY_ORB_BASE_ACTIONS.map((item) => ({
-    ...item,
-    actionLabel: item.label,
-    accentCard: ({
-        wave: 'from-cyan-500/22 via-sky-500/12 to-black/55',
-        laser: 'from-fuchsia-500/24 via-cyan-500/10 to-black/55',
-        echo: 'from-indigo-500/22 via-blue-500/14 to-black/55',
-        confetti: 'from-pink-500/24 via-yellow-400/15 to-black/55'
-    })[item.id] || 'from-cyan-500/22 via-sky-500/12 to-black/55',
-    accentBorder: ({
-        wave: 'border-cyan-300/80',
-        laser: 'border-fuchsia-300/80',
-        echo: 'border-indigo-300/80',
-        confetti: 'border-pink-300/80'
-    })[item.id] || 'border-cyan-300/80',
-    accentText: ({
-        wave: 'text-cyan-100',
-        laser: 'text-fuchsia-100',
-        echo: 'text-indigo-100',
-        confetti: 'text-pink-100'
-    })[item.id] || 'text-cyan-100'
-}));
-
-const LOBBY_PLAYGROUND_ULTIMATES = VOLLEY_ORB_ULTIMATES.map((item) => ({
-    ...item,
-    accentCard: ({
-        ultimate_feather: 'from-cyan-400/18 via-emerald-400/10 to-black/55',
-        ultimate_lens: 'from-amber-400/18 via-yellow-300/12 to-black/55',
-        ultimate_magnet: 'from-violet-400/18 via-fuchsia-400/12 to-black/55',
-        ultimate_rocket: 'from-rose-400/20 via-orange-400/12 to-black/55'
-    })[item.id] || 'from-cyan-500/20 via-sky-500/10 to-black/55',
-    accentBorder: ({
-        ultimate_feather: 'border-emerald-300/70',
-        ultimate_lens: 'border-amber-300/70',
-        ultimate_magnet: 'border-fuchsia-300/70',
-        ultimate_rocket: 'border-rose-300/70'
-    })[item.id] || 'border-cyan-300/70',
-    accentText: ({
-        ultimate_feather: 'text-emerald-100',
-        ultimate_lens: 'text-amber-100',
-        ultimate_magnet: 'text-fuchsia-100',
-        ultimate_rocket: 'text-rose-100'
-    })[item.id] || 'text-cyan-100'
-}));
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
 const isQueuePermissionDeniedError = (error) => {
     const code = String(error?.code || '').toLowerCase();
@@ -1224,10 +1197,14 @@ const SingerApp = ({ roomCode, uid }) => {
         roles: room?.runOfShowRoles || {}
     }), [activeUid, room?.hostUid, room?.hostUids, room?.runOfShowRoles, user?.uid]);
     const audienceReleaseWindow = useMemo(() => {
-        const value = room?.runOfShowDirector?.releaseWindow;
-        if (!value || typeof value !== 'object' || value.active !== true) return null;
-        return value;
-    }, [room?.runOfShowDirector?.releaseWindow]);
+        const runOfShowValue = room?.runOfShowDirector?.releaseWindow;
+        if (runOfShowValue && typeof runOfShowValue === 'object' && runOfShowValue.active === true) return runOfShowValue;
+        const audienceDecisionValue = room?.audienceDecision && typeof room.audienceDecision === 'object'
+            ? buildReleaseWindowFromAudienceDecision(room.audienceDecision)
+            : null;
+        if (!audienceDecisionValue || audienceDecisionValue.active !== true) return null;
+        return audienceDecisionValue;
+    }, [room?.audienceDecision, room?.runOfShowDirector?.releaseWindow]);
     const [releaseWindowNowMs, setReleaseWindowNowMs] = useState(() => Date.now());
     useEffect(() => {
         if (!audienceReleaseWindow?.active) return undefined;
@@ -2824,6 +2801,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const videoRef = useRef(null);
     const audienceVideoRef = useRef(null);
     const audienceIframeRef = useRef(null);
+    const cameraStartPromiseRef = useRef(null);
+    const cameraRetryAfterRef = useRef(0);
     const [cameraActive, setCameraActive] = useState(false);
     const [cameraError, setCameraError] = useState('');
 
@@ -2937,6 +2916,11 @@ const SingerApp = ({ roomCode, uid }) => {
     }, 0), [isLoungeChatMessage, isDmForCurrentUser, getChatMessageTimestampMs]);
     const loungeMessages = useMemo(() => chatMessages.filter((msg) => isLoungeChatMessage(msg)), [chatMessages, isLoungeChatMessage]);
     const dmMessages = useMemo(() => chatMessages.filter((msg) => isDmForCurrentUser(msg)), [chatMessages, isDmForCurrentUser]);
+    const openLoungeChat = useCallback(() => {
+        if (isStreamlinedAudienceShell) return;
+        setTab('social');
+        setSocialTab('lounge');
+    }, [isStreamlinedAudienceShell]);
     const [hallOfFameMode, setHallOfFameMode] = useState('all_time');
     const [hallOfFameEntries, setHallOfFameEntries] = useState([]);
     const [hallOfFameFilter, setHallOfFameFilter] = useState('');
@@ -3418,7 +3402,7 @@ const SingerApp = ({ roomCode, uid }) => {
                 id: 'social_promo',
                 icon: 'fa-hashtag',
                 label: 'Check the social profile',
-                detail: 'Look for tonight’s social promo code and redeem it here.',
+                detail: 'Look for tonight\'s social promo code and redeem it here.',
                 points: activeEventCredits.socialPromoPoints,
             });
         }
@@ -3662,8 +3646,8 @@ const SingerApp = ({ roomCode, uid }) => {
                 {!festivalGuestJoinNoEmail && (
                     <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/8 px-4 py-3 text-sm text-cyan-100">
                         {allowsDonationAccess
-                            ? 'Room points power tonight’s session. Supporter unlocks light up this room right away, and email access keeps your identity and future bonuses tied together.'
-                            : `Room points power tonight’s session. Link email later to keep your identity, ${premiumPerksLabel}, and future bonuses tied together.`}
+                            ? 'Room points power tonight\'s session. Supporter unlocks light up this room right away, and email access keeps your identity and future bonuses tied together.'
+                            : `Room points power tonight's session. Link email later to keep your identity, ${premiumPerksLabel}, and future bonuses tied together.`}
                     </div>
                 )}
             </div>
@@ -4216,26 +4200,66 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const audienceVideoForced = room?.audienceVideoMode === 'force';
     const audienceYoutubeStateRef = useRef({ currentTime: null, playerState: null });
     const audienceYoutubeLastSeekKeyRef = useRef('');
-    const audienceIframeSrc = useMemo(() => {
-        if (!youtubeId) return null;
-        const start = room?.videoStartTimestamp ? (Date.now() - room.videoStartTimestamp) / 1000 : 0;
-        const origin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
-        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&disablekb=1&fs=0&playsinline=1&mute=1&enablejsapi=1&origin=${origin}&rel=0&modestbranding=1&iv_load_policy=3&start=${Math.floor(Math.max(0, start))}`;
-    }, [youtubeId, room?.videoStartTimestamp]);
+    const audiencePerformanceSession = room?.currentPerformanceSession || {};
+    const audiencePlaybackClockKey = useMemo(() => {
+        const sessionId = String(audiencePerformanceSession?.sessionId || '').trim();
+        const startedAtMs = Number(audiencePerformanceSession?.startedAtMs || room?.currentPerformanceMeta?.startedAtMs || room?.videoStartTimestamp || 0) || 0;
+        return sessionId || `${youtubeId || mediaUrl || 'media'}:${startedAtMs}`;
+    }, [audiencePerformanceSession?.sessionId, audiencePerformanceSession?.startedAtMs, mediaUrl, room?.currentPerformanceMeta?.startedAtMs, room?.videoStartTimestamp, youtubeId]);
+    const isAudiencePlaybackExpectedPlaying = useCallback(() => {
+        const state = String(audiencePerformanceSession?.playbackState || '').trim().toLowerCase();
+        if (state === 'paused' || state === 'ended' || state === 'error') return false;
+        if (state === 'playing' || state === 'starting' || state === 'buffering') return room?.videoPlaying !== false;
+        return room?.videoPlaying === true;
+    }, [audiencePerformanceSession?.playbackState, room?.videoPlaying]);
+    const getAudiencePlaybackTargetSec = useCallback(() => {
+        const session = audiencePerformanceSession || {};
+        const sessionSongId = String(session?.songId || '').trim();
+        const currentSongId = String(currentSinger?.id || currentSinger?.songId || '').trim();
+        const sessionMatchesSong = !sessionSongId || !currentSongId || sessionSongId === currentSongId;
+        const now = Date.now();
+        const shouldAdvance = isAudiencePlaybackExpectedPlaying();
+        const reportedPosition = Number(session?.playerPositionSec);
+        const reportAtMs = Number(session?.lastHeartbeatAtMs || session?.lastReportedAtMs || session?.playbackStartedAtMs || session?.startedAtMs || 0) || 0;
+        let targetSec = 0;
+        if (sessionMatchesSong && Number.isFinite(reportedPosition) && reportedPosition >= 0) {
+            targetSec = reportedPosition;
+            if (shouldAdvance && reportAtMs > 0) targetSec += Math.max(0, (now - reportAtMs) / 1000);
+        } else if (sessionMatchesSong) {
+            const sessionStartMs = Number(session?.playbackStartedAtMs || session?.startedAtMs || room?.currentPerformanceMeta?.startedAtMs || 0) || 0;
+            if (sessionStartMs > 0) targetSec = Math.max(0, (now - sessionStartMs) / 1000);
+        }
+        if (!(targetSec > 0) && room?.videoStartTimestamp) {
+            targetSec = Math.max(0, (now - room.videoStartTimestamp) / 1000);
+        }
+        const durationSec = Math.max(
+            0,
+            Number(session?.playerReportedDurationSec || session?.expectedDurationSec || room?.currentPerformanceMeta?.durationSec || room?.currentPerformanceMeta?.backingDurationSec || 0) || 0
+        );
+        return durationSec > 0 ? Math.min(targetSec, Math.max(0, durationSec - 0.25)) : Math.max(0, targetSec);
+    }, [audiencePerformanceSession, currentSinger?.id, currentSinger?.songId, isAudiencePlaybackExpectedPlaying, room?.currentPerformanceMeta?.backingDurationSec, room?.currentPerformanceMeta?.durationSec, room?.currentPerformanceMeta?.startedAtMs, room?.videoStartTimestamp]);
     const showAudienceVideoInline = (audienceVideoForced || showAudienceVideo) && !!mediaUrl && !isAudio;
     const showAudienceVideoActive = showAudienceVideoInline || showAudienceVideoFullscreen;
-    const audienceYoutubeFrameKey = `${youtubeId || ''}_${room?.videoStartTimestamp || 0}`;
+    const audienceIframeSrc = useMemo(() => {
+        if (!youtubeId) return null;
+        const initialStartSec = getAudiencePlaybackTargetSec();
+        const origin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
+        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&disablekb=1&fs=0&playsinline=1&mute=1&enablejsapi=1&origin=${origin}&rel=0&modestbranding=1&iv_load_policy=3&start=${Math.floor(Math.max(0, initialStartSec))}`;
+    }, [audiencePlaybackClockKey, showAudienceVideoActive, youtubeId]);
+    const audienceYoutubeFrameKey = `${youtubeId || ''}_${audiencePlaybackClockKey}`;
     const audienceYoutubeReady = !isYoutube || audienceYoutubeReadyKey === audienceYoutubeFrameKey;
 
     const syncAudienceVideoNow = useCallback(() => {
-        if (!audienceVideoRef.current || !room?.videoStartTimestamp) return;
+        if (!audienceVideoRef.current) return;
         const vid = audienceVideoRef.current;
-        const targetTime = (Date.now() - room.videoStartTimestamp) / 1000;
-        vid.currentTime = targetTime;
-        if (room?.videoPlaying) {
+        const targetTime = getAudiencePlaybackTargetSec();
+        if (Number.isFinite(targetTime)) vid.currentTime = targetTime;
+        if (isAudiencePlaybackExpectedPlaying()) {
             vid.play().catch(() => {});
+        } else if (!vid.paused) {
+            vid.pause();
         }
-    }, [room?.videoStartTimestamp, room?.videoPlaying]);
+    }, [getAudiencePlaybackTargetSec, isAudiencePlaybackExpectedPlaying]);
     const postAudienceYoutubeCommand = useCallback((func, args = []) => {
         if (!audienceIframeRef.current?.contentWindow) return false;
         audienceIframeRef.current.contentWindow.postMessage(
@@ -4245,8 +4269,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         return true;
     }, []);
     const syncAudienceYoutubeNow = useCallback(() => {
-        if (!audienceIframeRef.current?.contentWindow || !youtubeId || !room?.videoStartTimestamp) return;
-        const targetTime = Math.max(0, (Date.now() - room.videoStartTimestamp) / 1000);
+        if (!audienceIframeRef.current?.contentWindow || !youtubeId) return;
+        const targetTime = getAudiencePlaybackTargetSec();
         const currentTime = audienceYoutubeStateRef.current.currentTime;
         const hasKnownTime = Number.isFinite(currentTime);
         const drift = hasKnownTime ? Math.abs(currentTime - targetTime) : 0;
@@ -4255,8 +4279,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             audienceYoutubeLastSeekKeyRef.current = hasKnownTime ? `${audienceYoutubeFrameKey}:${Math.round(targetTime)}` : initialSeekKey;
             postAudienceYoutubeCommand('seekTo', [targetTime, true]);
         }
-        postAudienceYoutubeCommand(room?.videoPlaying ? 'playVideo' : 'pauseVideo', []);
-    }, [audienceYoutubeFrameKey, postAudienceYoutubeCommand, youtubeId, room?.videoStartTimestamp, room?.videoPlaying]);
+        postAudienceYoutubeCommand(isAudiencePlaybackExpectedPlaying() ? 'playVideo' : 'pauseVideo', []);
+    }, [audienceYoutubeFrameKey, getAudiencePlaybackTargetSec, isAudiencePlaybackExpectedPlaying, postAudienceYoutubeCommand, youtubeId]);
 
     const submitDoodleDrawing = useCallback(async () => {
         if (!roomCode || !user || !room?.doodleOke?.promptId || !activeUid) return;
@@ -4334,7 +4358,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (!showAudienceVideoActive || !isNativeVideo) return;
         const timer = setTimeout(syncAudienceVideoNow, 80);
         return () => clearTimeout(timer);
-    }, [showAudienceVideoActive, isNativeVideo, room?.videoStartTimestamp, syncAudienceVideoNow]);
+    }, [showAudienceVideoActive, isNativeVideo, audiencePlaybackClockKey, syncAudienceVideoNow]);
     useEffect(() => {
         if (!showAudienceVideoActive || !isYoutube || !youtubeId) return;
         const timer = setTimeout(syncAudienceYoutubeNow, 160);
@@ -4343,7 +4367,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             clearTimeout(timer);
             clearInterval(syncTimer);
         };
-    }, [showAudienceVideoActive, isYoutube, youtubeId, room?.videoPlaying, room?.videoStartTimestamp, syncAudienceYoutubeNow]);
+    }, [showAudienceVideoActive, isYoutube, youtubeId, room?.videoPlaying, audiencePlaybackClockKey, syncAudienceYoutubeNow]);
     useEffect(() => {
         if (typeof window === 'undefined' || !showAudienceVideoActive || !isYoutube || !youtubeId) return undefined;
         audienceYoutubeStateRef.current = { currentTime: null, playerState: null };
@@ -4406,12 +4430,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     }, [room?.activeMode]);
 
     useEffect(() => {
-        if (!showAudienceVideoActive || !isNativeVideo || !audienceVideoRef.current || !room?.videoStartTimestamp) return;
+        if (!showAudienceVideoActive || !isNativeVideo || !audienceVideoRef.current) return;
         const syncTimer = setInterval(() => {
             const vid = audienceVideoRef.current;
             if (!vid) return;
-            if (room?.videoPlaying) {
-                const targetTime = (Date.now() - room.videoStartTimestamp) / 1000;
+            if (isAudiencePlaybackExpectedPlaying()) {
+                const targetTime = getAudiencePlaybackTargetSec();
                 if (Math.abs(vid.currentTime - targetTime) > 0.6) vid.currentTime = targetTime;
                 if (vid.paused) vid.play().catch(() => {});
             } else if (!vid.paused) {
@@ -4419,7 +4443,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             }
         }, 1000);
         return () => clearInterval(syncTimer);
-    }, [showAudienceVideoActive, isNativeVideo, room?.videoPlaying, room?.videoStartTimestamp]);
+    }, [showAudienceVideoActive, isNativeVideo, getAudiencePlaybackTargetSec, isAudiencePlaybackExpectedPlaying]);
     const activeAvatarPreviewEmoji = avatarPreviewEmoji || form.emoji || user?.avatar || DEFAULT_EMOJI;
     const selectedAvatar = useMemo(() => {
         const selected = activeAvatarPreviewEmoji;
@@ -5463,22 +5487,52 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         setCrowdSelfieMomentOptIn(true);
     }, [crowdSelfieMomentArmKey, hasApprovedCrowdSelfie, hasPendingCrowdSelfie]);
 
-    const startCamera = useCallback(async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-                try { await videoRef.current.play(); } catch {
-                    // Autoplay can fail silently; ignore.
-                }
-            }
+    const startCamera = useCallback(async ({ force = false } = {}) => {
+        if (videoRef.current?.srcObject) {
             setCameraActive(true);
             setCameraError('');
-        } catch (err) {
-            console.error(err);
-            setCameraError('Camera permission is blocked. Enable it to continue.');
-            setCameraActive(false);
+            return true;
         }
+        if (cameraStartPromiseRef.current) return cameraStartPromiseRef.current;
+        const now = Date.now();
+        if (!force && cameraRetryAfterRef.current > now) return false;
+        if (!navigator.mediaDevices?.getUserMedia) {
+            setCameraError('Camera capture is not available in this browser.');
+            setCameraActive(false);
+            return false;
+        }
+        cameraStartPromiseRef.current = (async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                if (videoRef.current?.srcObject && videoRef.current.srcObject !== stream) {
+                    videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+                }
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    try { await videoRef.current.play(); } catch {
+                        // Autoplay can fail silently; capture can still become ready after metadata loads.
+                    }
+                } else {
+                    stream.getTracks().forEach((track) => track.stop());
+                    return false;
+                }
+                cameraRetryAfterRef.current = 0;
+                setCameraActive(true);
+                setCameraError('');
+                return true;
+            } catch (err) {
+                const expected = isExpectedCameraError(err);
+                cameraRetryAfterRef.current = Date.now() + (expected ? 8000 : 2500);
+                setCameraError(expected
+                    ? 'Camera is already in use or unavailable. Close other camera apps or tabs, then try again.'
+                    : 'Camera permission is blocked. Enable it to continue.');
+                setCameraActive(false);
+                return false;
+            } finally {
+                cameraStartPromiseRef.current = null;
+            }
+        })();
+        return cameraStartPromiseRef.current;
     }, []);
 
     // Selfie Cam / Selfie Challenge
@@ -6573,12 +6627,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         let canvas = captureSelfieCanvas({ cropMode: 'crowd' });
         if (!canvas) {
             if (!cameraActive || !videoRef.current?.srcObject) {
-                await startCamera();
+                const started = await startCamera();
+                if (!started) throw createCameraUnavailableError();
             }
-            await waitForCameraFrame();
+            const frameReady = await waitForCameraFrame();
+            if (!frameReady) throw createCameraUnavailableError('Camera is still warming up. Keep it open and tap again.');
             canvas = captureSelfieCanvas({ cropMode: 'crowd' });
         }
-        if (!canvas) throw new Error('Camera frame unavailable');
+        if (!canvas) throw createCameraUnavailableError('Camera frame unavailable');
         const blob = await canvasToJpegBlob(canvas, quality);
         const previewUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
             ? URL.createObjectURL(blob)
@@ -6809,12 +6865,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         let canvas = captureSelfieCanvas({ cropMode });
         if (!canvas) {
             if (!cameraActive || !videoRef.current?.srcObject) {
-                await startCamera();
+                const started = await startCamera();
+                if (!started) throw createCameraUnavailableError();
             }
-            await waitForCameraFrame();
+            const frameReady = await waitForCameraFrame();
+            if (!frameReady) throw createCameraUnavailableError('Camera is still warming up. Keep it open and tap again.');
             canvas = captureSelfieCanvas({ cropMode });
         }
-        if (!canvas) throw new Error('Camera frame unavailable');
+        if (!canvas) throw createCameraUnavailableError('Camera frame unavailable');
         const blob = await canvasToJpegBlob(canvas, quality);
         return uploadSelfieBlob(blob, suffix, { uploadMode });
     }, [cameraActive, captureSelfieCanvas, startCamera, uploadSelfieBlob, waitForCameraFrame]);
@@ -6831,6 +6889,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (code.includes('storage/unauthorized') || message.includes('403')) {
             return 'Photo upload was blocked. Keep the room open for a second and try again.';
         }
+        if (code.startsWith('camera/') || message.includes('device in use') || message.includes('could not start video source')) {
+            return 'Camera is already in use or unavailable. Close other camera apps or tabs, then try again.';
+        }
         if (message.includes('camera frame unavailable') || message.includes('missing selfie canvas')) {
             return 'Camera is still warming up. Keep it open and tap again.';
         }
@@ -6845,6 +6906,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
             videoRef.current.srcObject = null;
         }
+        cameraRetryAfterRef.current = 0;
         setCameraActive(false);
     }, []);
 
@@ -6908,7 +6970,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setCrowdSelfieSetupOpen(false);
             return true;
         } catch (error) {
-            console.error(error);
+            if (!isExpectedCameraError(error)) console.error(error);
             toast(resolveSelfieErrorMessage(error, 'Crowd selfie submit failed'));
             return false;
         } finally {
@@ -6942,7 +7004,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             logActivity('shared a selfie', EMOJI.camera);
             toast(`Snapped & Sent! ${EMOJI.camera}`);
         } catch (e) {
-            console.error(e);
+            if (!isExpectedCameraError(e)) console.error(e);
             toast(resolveSelfieErrorMessage(e, 'Selfie upload failed'));
         }
     };
@@ -6995,7 +7057,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setCrowdSelfieMomentOptIn(false);
             toast('Victory selfie sent!');
         } catch (e) {
-            console.error(e);
+            if (!isExpectedCameraError(e)) console.error(e);
             toast(resolveSelfieErrorMessage(e, 'Failed to send victory selfie'));
         }
     };
@@ -7048,7 +7110,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setCrowdSelfieMomentOptIn(false);
             toast('Victory selfie sent!');
         } catch (e) {
-            console.error(e);
+            if (!isExpectedCameraError(e)) console.error(e);
             toast(resolveSelfieErrorMessage(e, 'Failed to send victory selfie'));
         }
     };
@@ -7073,7 +7135,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             }
             toast(submission?.duplicate ? 'Selfie already submitted' : 'Selfie submitted');
         } catch (e) {
-            console.error(e);
+            if (!isExpectedCameraError(e)) console.error(e);
             toast(resolveSelfieErrorMessage(e, 'Selfie submit failed'));
         } finally {
             setSelfieChallengeSubmitting(false);
@@ -10008,8 +10070,78 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         const isLocalPlayer = isVoiceGame ? (!isScaleGroup && playerId === uid) : isParticipant;
         const inputSource = isVoiceGame ? gamePayload?.inputSource : undefined;
         const showSpectatorNotice = !isVoiceGame && !isParticipant;
+        const voiceInputMode = String(gamePayload?.voiceInput || '').trim().toLowerCase();
+        const hostRoomMicSource = inputSource === 'ambient' || inputSource === 'crowd' || inputSource === 'local';
+        const hostRoomMicPlayerId = playerId === 'GROUP' || playerId === 'AMBIENT';
+        const isHostRoomMicVoiceGame = isVoiceGame && voiceInputMode === 'host' && (hostRoomMicSource || hostRoomMicPlayerId);
+        const hideAudienceRoomMicVoiceOverlay = isHostRoomMicVoiceGame && isStreamlinedAudienceShell && takeoverMinimized;
+        const voiceTelemetry = gamePayload?.voiceTelemetry || {};
+        const voiceTelemetryLive = !!voiceTelemetry.active;
+        const voiceGameLabel = room?.activeMode === 'flappy_bird'
+            ? 'Pitch Runner'
+            : room?.activeMode === 'vocal_challenge'
+                ? 'Vocal Challenge'
+                : room?.activeMode === 'riding_scales'
+                    ? 'Riding Scales'
+                    : 'Voice Game';
+        const openRoomMicVoiceSongs = () => {
+            if (isStreamlinedAudienceShell) minimizeAudienceTakeover();
+            setTab('request');
+            setSongsTab('browse');
+        };
+        const openRoomMicVoiceQueue = () => {
+            if (isStreamlinedAudienceShell) minimizeAudienceTakeover();
+            setTab('request');
+            setSongsTab('queue');
+        };
 
-        if (!hideBingoOverlay) {
+        if (isHostRoomMicVoiceGame && !hideAudienceRoomMicVoiceOverlay) {
+            return (
+                <div className="absolute inset-0 z-[120] flex items-center justify-center bg-[#05070d] px-4 py-6 text-white">
+                    <div data-feature-id="audience-room-mic-voice-prompt" className="w-full max-w-md rounded-[28px] border border-cyan-200/20 bg-zinc-950/94 p-5 text-center shadow-[0_0_48px_rgba(34,211,238,0.18)]">
+                        <div className="text-[10px] font-black uppercase tracking-[0.32em] text-cyan-200">Room Voice Game</div>
+                        <div className="mt-2 text-3xl font-black text-white">{voiceGameLabel}</div>
+                        <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-zinc-200">
+                            Watch the main screen and sing with the room. The Host room mic is the controller for this round.
+                        </div>
+                        <div className={`mt-4 rounded-2xl border px-4 py-3 ${voiceTelemetryLive ? 'border-emerald-300/35 bg-emerald-400/10 text-emerald-100' : 'border-amber-300/35 bg-amber-400/10 text-amber-100'}`}>
+                            <div className="text-[10px] font-black uppercase tracking-[0.28em] opacity-80">Host Mic</div>
+                            <div className="mt-1 text-lg font-black">{voiceTelemetryLive ? 'Live and listening' : 'Waiting for host setup'}</div>
+                            <div className="mt-1 text-xs uppercase tracking-[0.18em] opacity-80">
+                                Note {String(voiceTelemetry.stableNote || voiceTelemetry.note || '--')} | Volume {Math.round(Number(voiceTelemetry.volumeNormalized || 0) * 100)}%
+                            </div>
+                        </div>
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={openRoomMicVoiceSongs}
+                                className="rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-black"
+                            >
+                                Add Song
+                            </button>
+                            <button
+                                type="button"
+                                onClick={openRoomMicVoiceQueue}
+                                className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-white"
+                            >
+                                Queue
+                            </button>
+                        </div>
+                        {isStreamlinedAudienceShell && (
+                            <button
+                                type="button"
+                                onClick={minimizeAudienceTakeover}
+                                className="mt-3 w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-zinc-200"
+                            >
+                                Keep Browsing
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        if (!hideBingoOverlay && !hideAudienceRoomMicVoiceOverlay) {
             return (
             <div className="absolute inset-0">
                 <GameContainer
@@ -10831,7 +10963,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     )}
                     {!isNativeVideo && youtubeId && (
                         <iframe
-                            key={`${youtubeId}_${room?.videoStartTimestamp || 0}`}
+                            key={audienceYoutubeFrameKey}
                             ref={audienceIframeRef}
                             className="absolute inset-0 w-full h-full pointer-events-none select-none"
                             src={audienceIframeSrc}
@@ -11461,6 +11593,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     });
     const lobbyPlayMaxPerMinute = lobbyRatePlan.maxPerMinute;
     const lobbyPlayRemaining = Math.max(0, lobbyPlayMaxPerMinute - lobbyPlayUsageCount);
+    const lobbyPlayUsagePct = lobbyPlayMaxPerMinute > 0
+        ? (lobbyPlayUsageCount / lobbyPlayMaxPerMinute) * 100
+        : 0;
     const lobbyPlayRateLimited = lobbyPlayRemaining <= 0;
     const lobbyPlayInteractionDisabled = lobbyPlayRateLimited || lobbyPlaygroundPaused;
     const lobbyVolleyTimeoutMs = getLobbyVolleyDynamicTimeoutMs(lobbyVolleyPreview || createLobbyVolleyState(), lobbyVolleyNowMs);
@@ -11469,17 +11604,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         && lobbyVolleyAgeMs >= lobbyVolleyTimeoutMs;
     const lobbyRelayObjective = deriveRelayObjective(lobbyVolleyPreview, lobbyVolleyNowMs);
     const lobbyLevelMeta = getLobbyVolleyLevelMeta(lobbyVolleyPreview || createLobbyVolleyState(), lobbyVolleyNowMs);
-    const lobbyCurrentUserUid = String(user?.uid || uid || activeUid || '').trim();
-    const lobbyCurrentParticipant = lobbyCurrentUserUid ? lobbyVolleyPreview?.participants?.[lobbyCurrentUserUid] : null;
-    const lobbyActiveUltimates = Array.isArray(lobbyVolleyPreview?.activeUltimates)
-        ? lobbyVolleyPreview.activeUltimates.filter((entry) => Number(entry?.expiresAtMs || 0) > lobbyVolleyNowMs)
-        : [];
-    const lobbyActiveUltimateIds = new Set(lobbyActiveUltimates.map((entry) => String(entry?.type || '').trim().toLowerCase()));
-    const lobbyRelayTargetMeta = getVolleyOrbBaseAction(lobbyRelayObjective?.targetType || '');
     const lobbyMobileMainLine = getVolleyOrbMobileMainLine({
         paused: lobbyPlaygroundPaused,
         timedOut: lobbyVolleyTimedOut,
-        relayActive: lobbyRelayObjective.active
+        relayActive: lobbyRelayObjective.active,
+        phaseLabel: lobbyLevelMeta.label
     });
     const primaryStageTabs = isStreamlinedAudienceShell ? ['home', 'request'] : ['home', 'request', 'social'];
     const activePrimaryStageTab = primaryStageTabs.includes(tab) ? tab : 'home';
@@ -11497,12 +11626,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         { key: 'queue', label: 'View Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
         ...(bracketSignupActive ? [{ key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }] : [])
     ];
-    const streamlinedPerformanceVotingBannerVisible = isStreamlinedAudienceShell && karaokePerformanceVotingOpen && tab === 'request';
-    const streamlinedPerformanceVotingBannerTitle = currentSinger?.singerName
-        ? `${currentSinger.singerName}${currentSinger?.songTitle ? ` - ${currentSinger.songTitle}` : ''}`
-        : (takeoverClapVotingActive
-            ? (room?.announcement?.headline || room?.announcement?.title || 'TV scene clap voting is live')
-            : 'Performance voting is live');
     const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
     const forceExpandedHomeStageCard = showAudienceVideoInline || showAudienceVideoFullscreen || inlineLyrics || viewLyrics;
     const homeStageInteractionState = showPopTriviaCard
@@ -11531,8 +11654,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 lobbyPlaygroundPaused
                     ? 'Volley Orb | Paused'
                     : lobbyRelayObjective.active
-                        ? 'Volley Orb | Hit target'
-                        : 'Volley Orb | Tap to launch'
+                        ? 'Volley Orb | Keep rising'
+                        : 'Volley Orb | Inflate together'
             )
             : 'Performance voting open';
 
@@ -11661,7 +11784,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         {item.label}
                                     </div>
                                     {item.key === 'home' && showPerformanceVotingPromptCta ? (
-                                        <span className="rounded-full border border-amber-200/70 bg-amber-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-black">
+                                        <span className="rounded-full border border-amber-100 bg-amber-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_0_18px_rgba(251,191,36,0.72)] animate-pulse">
                                             Live
                                         </span>
                                     ) : null}
@@ -11726,30 +11849,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 );
                             })}
                         </div>
-                        {streamlinedPerformanceVotingBannerVisible && (
-                            <button
-                                type="button"
-                                data-feature-id="singer-streamlined-performance-vote-banner"
-                                onClick={() => {
-                                    pulseNativeUiFeedback();
-                                    setTab('home');
-                                }}
-                                className="mt-2 flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-300/45 bg-amber-400/12 px-3 py-3 text-left text-amber-50 shadow-[0_10px_28px_rgba(251,191,36,0.18)]"
-                            >
-                                <div className="min-w-0">
-                                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">Vote live now</div>
-                                    <div className="mt-1 text-sm font-black text-white">
-                                        {takeoverClapVotingActive
-                                            ? 'A TV scene is live. Jump back to Party to clap vote.'
-                                            : 'A performance is on. Jump back to Party to vote and react.'}
-                                    </div>
-                                    <div className="mt-1 truncate text-xs text-amber-100/85">{streamlinedPerformanceVotingBannerTitle}</div>
-                                </div>
-                                <span className="shrink-0 rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-black">
-                                    Go Vote
-                                </span>
-                            </button>
-                        )}
                     </>
                 )}
             </div>
@@ -11784,11 +11883,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             if (newest) chatLastSeenRef.current = newest;
             setChatUnread(false);
         }
-    };
-    const openLoungeChat = () => {
-        if (isStreamlinedAudienceShell) return;
-        setTab('social');
-        setSocialTab('lounge');
     };
     const openStreamlinedPrimaryStageTab = (nextTab) => {
         pulseNativeUiFeedback();
@@ -11835,10 +11929,19 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             ? audienceReleaseChoiceLabels.slotScene
             : audienceReleaseChoiceLabels.keepQueueMoving;
         try {
-            await castRunOfShowReleaseWindowVote({
-                roomCode,
-                choice: safeChoice
-            });
+            if (audienceReleaseWindow?.audienceDecisionId) {
+                const mappedChoice = String(audienceReleaseWindow?.choiceAudienceDecisionIds?.[safeChoice] || '').trim().toLowerCase();
+                if (!mappedChoice) return;
+                await castAudienceDecisionVote({
+                    roomCode,
+                    choice: mappedChoice
+                });
+            } else {
+                await castRunOfShowReleaseWindowVote({
+                    roomCode,
+                    choice: safeChoice
+                });
+            }
             toast(`You voted for ${voteLabel}.`);
         } catch (error) {
             console.warn('Run of show release vote failed', error);
@@ -12626,7 +12729,22 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             <div className={`${showCompactHomeStageCard ? 'hidden ' : ''}p-4 border-t border-white/10`}>
                             <div className="flex items-start gap-3">
                             <div className="min-w-0 flex-1 text-left">
-                                <div className="text-[12px] text-indigo-300 uppercase tracking-widest font-bold mb-1">NOW PERFORMING</div>
+                                <div className="mb-1 flex flex-wrap items-center gap-2">
+                                    <span className="text-[12px] text-indigo-300 uppercase tracking-widest font-bold">NOW PERFORMING</span>
+                                    {isStreamlinedAudienceShell && karaokePerformanceVotingOpen && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                pulseNativeUiFeedback();
+                                                setTab('home');
+                                            }}
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-amber-200/70 bg-amber-300/18 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-50 shadow-[0_0_22px_rgba(251,191,36,0.32)] animate-pulse"
+                                        >
+                                            <i className="fa-solid fa-check-to-slot text-[9px]"></i>
+                                            Vote Now
+                                        </button>
+                                    )}
+                                </div>
                                 <div className="font-bold text-xl leading-none truncate text-white">{currentSinger.singerName}</div>
                                 <div className="text-sm text-indigo-200 italic truncate">{currentSinger.songTitle}</div>
                                 {nowPlayingLabel && (
@@ -12779,7 +12897,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     )}
                                                     {!isNativeVideo && youtubeId && (
                                                         <iframe
-                                                            key={`${youtubeId}_${room?.videoStartTimestamp || 0}`}
+                                                            key={audienceYoutubeFrameKey}
                                                             ref={audienceIframeRef}
                                                             className="absolute inset-0 w-full h-full pointer-events-none select-none"
                                                             src={audienceIframeSrc}
@@ -13203,94 +13321,33 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         )}
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-3 gap-2 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
-                                    <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                        Lvl {lobbyLevelMeta.level} {lobbyLevelMeta.label}
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                        Need {lobbyLevelMeta.targetActivePlayers}+ crowd
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                        {lobbyRelayObjective.active
-                                            ? `${lobbyRelayTargetMeta?.emoji || '🎯'} ${lobbyRelayTargetMeta?.label || 'Target'}`
-                                            : 'Launch'}
-                                    </span>
+                                <div className="rounded-2xl border border-white/12 bg-black/30 p-3">
+                                    <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
+                                        <span className="px-2 py-1 rounded-full border border-white/20 bg-black/45">
+                                            Level {lobbyLevelMeta.level} {lobbyLevelMeta.label}
+                                        </span>
+                                        <span className="px-2 py-1 rounded-full border border-white/20 bg-black/45">
+                                            Room mic leads
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 text-sm leading-snug text-cyan-50">
+                                        Make sound toward the room microphone. Your phone is backup air when the crowd needs a push.
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                      {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => {
-                                            const isRelayTarget = isVolleyOrbTargetInteraction({
-                                                relayActive: lobbyRelayObjective.active,
-                                                targetType: lobbyRelayObjective.targetType,
-                                                interactionId: interaction.id
-                                            });
-                                            return (
-                                                <button
-                                                    key={interaction.id}
-                                                    onClick={() => triggerLobbyPlayInteraction(interaction.id)}
-                                                    disabled={lobbyPlayInteractionDisabled}
-                                                    className={`relative overflow-hidden rounded-2xl border-2 px-3 py-3 flex flex-col items-center text-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
-                                                        isRelayTarget
-                                                            ? 'border-emerald-300 bg-gradient-to-b from-emerald-500/26 via-emerald-500/12 to-black/60 shadow-[0_0_18px_rgba(52,211,153,0.28)]'
-                                                            : `bg-gradient-to-b ${interaction.accentCard} ${interaction.accentBorder}`
-                                                    } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
-                                                >
-                                                    <div className="w-full flex items-center justify-between gap-2">
-                                                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full border border-white/15 bg-black/30 text-white/85">
-                                                            {interaction.cue}
-                                                        </span>
-                                                        {isRelayTarget ? (
-                                                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200/60 bg-emerald-500/25 text-emerald-50">
-                                                                TARGET
-                                                            </span>
-                                                        ) : (
-                                                            <span />
-                                                        )}
-                                                    </div>
-                                                    <span className="mt-2 text-5xl leading-none">{interaction.emoji}</span>
-                                                    <span className={`mt-2 text-lg font-black uppercase leading-none ${interaction.accentText}`}>{interaction.label}</span>
-                                                    <span className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-                                                        {interaction.id === 'wave' ? 'hold up' : interaction.id === 'laser' ? 'push up' : interaction.id === 'echo' ? 'next player' : 'grow streak'}
-                                                    </span>
-                                                </button>
-                                           );
-                                       })}
-                                  </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {LOBBY_PLAYGROUND_ULTIMATES.map((ultimate) => {
-                                        const cooldownRemainingMs = Math.max(
-                                            0,
-                                            (Number(lobbyCurrentParticipant?.lastUltimateAtMs || 0) + VOLLEY_ORB_ULTIMATE_COOLDOWN_MS) - lobbyVolleyNowMs
-                                        );
-                                        const cooldownReady = cooldownRemainingMs <= 0;
-                                        const cooldownPct = cooldownReady
-                                            ? 100
-                                            : Math.max(0, Math.min(100, 100 - ((cooldownRemainingMs / VOLLEY_ORB_ULTIMATE_COOLDOWN_MS) * 100)));
-                                        const activeUltimate = lobbyActiveUltimateIds.has(ultimate.id);
-                                        return (
-                                            <button
-                                                key={ultimate.id}
-                                                onClick={() => triggerLobbyPlayInteraction(ultimate.id)}
-                                                disabled={lobbyPlayInteractionDisabled || !cooldownReady}
-                                                className={`relative overflow-hidden rounded-2xl border px-3 py-3 flex items-center gap-3 text-left transition-all shadow-[0_10px_24px_rgba(0,0,0,0.38)] bg-gradient-to-b ${ultimate.accentCard} ${ultimate.accentBorder} ${(!cooldownReady || lobbyPlayInteractionDisabled) ? 'opacity-55 cursor-not-allowed' : 'active:scale-[0.98]'}`}
-                                            >
-                                                <span className="text-3xl leading-none">{ultimate.emoji}</span>
-                                                <span className="min-w-0 flex-1">
-                                                    <span className={`block text-sm font-black uppercase leading-none ${ultimate.accentText}`}>{ultimate.label}</span>
-                                                    <span className="mt-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">{ultimate.cue}</span>
-                                                </span>
-                                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${activeUltimate ? 'border-emerald-300/60 bg-emerald-500/20 text-emerald-50' : 'border-white/15 bg-black/30 text-white/80'}`}>
-                                                    {activeUltimate ? 'LIVE' : cooldownReady ? 'ULT' : `${Math.ceil(cooldownRemainingMs / 1000)}s`}
-                                                </span>
-                                                <span
-                                                    aria-hidden="true"
-                                                    className="absolute inset-x-0 bottom-0 h-1 bg-white/10"
-                                                >
-                                                    <span className="block h-full bg-cyan-300/85 transition-all duration-200" style={{ width: `${cooldownPct}%` }} />
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => triggerLobbyPlayInteraction('wave')}
+                                    disabled={lobbyPlayInteractionDisabled}
+                                    className={`relative overflow-hidden rounded-2xl border-2 border-cyan-200/80 bg-gradient-to-b from-cyan-300/28 via-sky-400/16 to-black/60 px-4 py-5 text-center shadow-[0_0_28px_rgba(34,211,238,0.24)] transition-all ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+                                >
+                                    <span className="absolute inset-x-6 bottom-3 h-1 rounded-full bg-white/10" aria-hidden="true">
+                                        <span className="block h-full rounded-full bg-cyan-200/90" style={{ width: `${Math.max(12, Math.min(100, lobbyPlayUsagePct))}%` }} />
+                                    </span>
+                                    <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">Backup Control</span>
+                                    <span className="mt-2 block text-4xl leading-none">{EMOJI.sparkle}</span>
+                                    <span className="mt-2 block text-2xl font-black uppercase leading-none text-white">Add Air</span>
+                                    <span className="mt-2 block text-xs font-bold uppercase tracking-[0.14em] text-white/70">Tap only when the orb needs help</span>
+                                </button>
                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
                                     Add Song to Start Karaoke
                                 </button>
@@ -13334,7 +13391,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     </div>
                                     <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-200">
                                         Reactions wake up once someone is on stage.
-                                        {howToPlayFeaturedGameLabels.length ? ` Tonight's game deck: ${howToPlayFeaturedGameLabels.join(' • ')}.` : ' Bonus games will explain themselves here when the host launches them.'}
+                                        {howToPlayFeaturedGameLabels.length ? ` Tonight's game deck: ${howToPlayFeaturedGameLabels.join(' ⬢ ')}.` : ' Bonus games will explain themselves here when the host launches them.'}
                                     </div>
                                     <button
                                         type="button"
@@ -13361,7 +13418,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                          ? 'Bid or add your song for the next spotlight'
                                                          : 'Search and add the next song'}
                                              </div>
-                                             <div className="mt-1 text-sm text-zinc-300">{queueSongsView.length} in queue • {allUsers.length || 0} here</div>
+                                             <div className="mt-1 text-sm text-zinc-300">{queueSongsView.length} in queue ⬢ {allUsers.length || 0} here</div>
                                          </div>
                                      </div>
                                      {selfServeTransitionMoment?.detail || selfServePresentation?.detail ? (
@@ -13395,7 +13452,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                          </button>
                                      </div>
                                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-zinc-400">
-                                         {queueSongsView.length} in queue • {allUsers.length || 0} here
+                                         {queueSongsView.length} in queue ⬢ {allUsers.length || 0} here
                                      </div>
                                  </div>
                              </>
@@ -13736,7 +13793,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         <div className="min-w-0">
                                             <div className="text-base font-bold text-white truncate">{user?.name || 'Guest'}</div>
                                             <div className="text-sm text-zinc-300">
-                                                Level {myFame.level} • {myFame.levelName}
+                                                Level {myFame.level} ⬢ {myFame.levelName}
                                             </div>
                                             <button onClick={() => setShowFameLevels(true)} className="mt-2 inline-flex items-center gap-2 text-[11px] font-bold text-cyan-200 bg-cyan-500/10 border border-cyan-400/30 px-2 py-1 rounded-full">
                                                 {EMOJI.star} View Fame Levels
@@ -14540,7 +14597,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             <div>
                                                 <div className={`text-sm uppercase tracking-[0.35em] ${isStreamlinedAudienceShell ? 'text-zinc-200/80' : 'text-pink-100/75'}`}>Manual Entry</div>
                                                 <div className="text-lg font-black text-white">
-                                                    {isStreamlinedAudienceShell ? 'Can’t find it? Type it manually' : 'Type it yourself in a full-screen form'}
+                                                    {isStreamlinedAudienceShell ? 'Can\'t find it? Type it manually' : 'Type it yourself in a full-screen form'}
                                                 </div>
                                                 {isStreamlinedAudienceShell ? (
                                                     <div className="mt-1 text-sm text-zinc-300">Best when you already know the song and artist.</div>
@@ -15558,3 +15615,4 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 };
 
 export default SingerApp;
+

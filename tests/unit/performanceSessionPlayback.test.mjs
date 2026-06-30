@@ -177,4 +177,47 @@ describe('performanceSessionPlayback', () => {
             }
         });
     });
+
+    it('normalizes first-song ready events into an allowed starting playback state', () => {
+        const nextWrite = buildPerformanceSessionPlaybackWrite({
+            event: {
+                type: 'ready',
+                durationSec: 205,
+                performanceSessionId: 'perf_song_b_9000',
+                performanceSongId: 'song_b',
+                performanceStartedAtMs: 9000,
+                performanceMediaUrl: 'https://youtu.be/song-b'
+            },
+            session: {
+                sessionId: 'perf_song_b_9000',
+                songId: 'song_b',
+                mediaUrl: 'https://youtu.be/song-b',
+                startedAtMs: 9000,
+                playbackState: 'starting'
+            },
+            currentPerformanceMeta: {
+                songId: 'song_b',
+                startedAtMs: 9000,
+                mediaUrl: 'https://youtu.be/song-b',
+                durationSec: 0,
+                backingDurationSec: 0
+            },
+            mediaUrl: 'https://youtu.be/song-b',
+            now: 9100
+        });
+
+        expect(nextWrite).toEqual({
+            dedupeKey: 'perf_song_b_9000:starting:0:205:',
+            patch: {
+                'currentPerformanceSession.lastReportedAtMs': 9100,
+                'currentPerformanceSession.playerReportedDurationSec': 205,
+                'currentPerformanceSession.playbackState': 'starting',
+                'currentPerformanceMeta.durationSec': 205,
+                'currentPerformanceMeta.backingDurationSec': 205,
+                'currentPerformanceMeta.durationSource': 'player_reported',
+                'currentPerformanceMeta.durationConfidence': 'high',
+                'currentPerformanceMeta.autoEndSafe': true
+            }
+        });
+    });
 });

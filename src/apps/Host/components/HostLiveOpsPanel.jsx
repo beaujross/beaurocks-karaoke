@@ -150,9 +150,11 @@ export default function HostLiveOpsPanel({
             ? runOfShowOnDeckItem
             : null;
     const nextSingerName = String(nextQueueSong?.singerName || '').trim();
+    const nextQueueSummaryText = String(nextQueueText || '').trim();
+    const nextQueueReasonBadge = String(nextQueueReasonLabel || '').trim();
     const nextSongTitle = String(nextQueueSong?.songTitle || '').trim();
     const nextSongArtist = String(nextQueueSong?.artist || '').trim();
-    const nextSingerLabel = nextQueueSong ? (nextSingerName || 'Guest') : 'No singer ready';
+    const nextSingerLabel = nextQueueSong ? (nextQueueSummaryText || nextSingerName || 'Guest') : 'No singer ready';
     const nextSingerSongDetail = nextQueueSong
         ? ([nextSongTitle || 'Song selected', nextSongArtist].filter(Boolean).join(' | '))
         : '';
@@ -179,7 +181,7 @@ export default function HostLiveOpsPanel({
             : (selfServePresentation?.detail || 'No singer ready'));
     const nextSingerCardMeta = selfServePresentation
         ? (selfServeTransitionMoment?.badgeLabel || selfServePresentation.badgeLabel)
-        : (nextQueueSong ? 'Ready' : 'Open');
+        : (nextQueueSong ? (nextQueueReasonBadge || 'Ready') : 'Open');
     const selfServeBanner = selfServePresentation ? (
         <div className={`mb-2 rounded-2xl border px-3 py-2.5 ${selfServeAccent.banner}`}>
             <div className="flex flex-wrap items-start justify-between gap-2">

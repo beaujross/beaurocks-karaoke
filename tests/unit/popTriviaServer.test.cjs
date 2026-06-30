@@ -71,7 +71,7 @@ test("popTriviaServer.test", async () => {
   assert.match(fallbackText, /Take On Me/);
   assert.doesNotMatch(
     fallbackText,
-    /production trick|might use|classic crowd move|usually helps most|guitar cable check|sets up the story|release-year|billboard|grammy|music video|record label/i
+    /QA Singer|production trick|might use|classic crowd move|usually helps most|guitar cable check|sets up the story|release-year|billboard|grammy|music video|record label|current singer|performer|microphone/i
   );
   const fallbackQuestions = normalizePopTriviaQuestions(fallbackRows, {
     idPrefix: "ROOM_fallback",
@@ -89,11 +89,11 @@ test("popTriviaServer.test", async () => {
     w3: "Random tempo changes",
   }, context);
   const strongScore = getPopTriviaRowQualityScore({
-    q: 'In "Take On Me", which cue tells the room the chorus hook is landing?',
-    correct: "The melody jumps up",
-    w1: "The intro gets quieter",
-    w2: "The outro starts",
-    w3: "The tempo vanishes",
+    q: 'For "Take On Me" by A-ha, which clue is about the song title?',
+    correct: "The title phrase",
+    w1: "A fake chart record",
+    w2: "An unrelated playlist note",
+    w3: "A random venue clue",
     category: "hook_recognition",
   }, context);
   assert.equal(strongScore > weakScore, true);
@@ -129,15 +129,15 @@ test("popTriviaServer.test", async () => {
         w3: "Random tempo changes",
       },
       {
-        q: 'In "Mystery YouTube Cut", what cue tells the room the chorus hook is landing?',
-        correct: "The repeatable line arrives",
-        w1: "The stage lights turn off",
-        w2: "The verse gets quieter",
-        w3: "The outro starts early",
+        q: 'For "Mystery YouTube Cut" by Indie Friend, which clue is safest for fans?',
+        correct: "The title and artist",
+        w1: "A made-up release year",
+        w2: "An unrelated rumor",
+        w3: "A random venue clue",
         category: "hook_recognition",
       },
     ],
-    fallbackRows,
+    fallbackRows: buildFallbackPopTriviaSeedRows({ songTitle: "Mystery YouTube Cut", artist: "Indie Friend", source: "youtube" }),
     limit: 4,
   });
   assert.equal(
@@ -161,28 +161,28 @@ test("popTriviaServer.test", async () => {
     },
     aiRows: [
       {
-        q: 'In "Take On Me", which moment tells the room the chorus is about to explode?',
-        correct: "The melody vaults upward",
-        w1: "The lights go dark",
-        w2: "The beat disappears",
-        w3: "The singer stops moving",
+        q: 'For "Take On Me" by A-ha, which phrase is the fan clue?',
+        correct: "Take On Me",
+        w1: "Hunting High and Low",
+        w2: "Synth-pop",
+        w3: "A-ha",
         category: "hook_recognition",
       },
       {
-        q: 'For "Take On Me", what keeps the first verse comfortable before the high hook arrives?',
-        correct: "Stay loose on the lower lines",
-        w1: "Push every note full volume",
-        w2: "Rush ahead of the groove",
-        w3: "Flatten the melody",
-        category: "performance",
+        q: 'Which listed album includes "Take On Me" by A-ha?',
+        correct: "Hunting High and Low",
+        w1: "A greatest-hits playlist",
+        w2: "A fan-made remix",
+        w3: "A tour poster",
+        category: "song_fact",
       },
       {
-        q: 'In "Take On Me", what gives the crowd the clearest entry into the big sing-along?',
-        correct: "A repeatable chorus line",
-        w1: "A hidden backing vocal",
-        w2: "An abrupt fade-out",
-        w3: "A spoken bridge",
-        category: "singalong",
+        q: 'Which genre tag fits "Take On Me" by A-ha?',
+        correct: "Synth-pop",
+        w1: "Bluegrass",
+        w2: "Opera",
+        w3: "Salsa",
+        category: "song_fact",
       },
     ],
     fallbackRows,
@@ -200,7 +200,16 @@ test("popTriviaServer.test", async () => {
 
   const cache = normalizePopTriviaSongCache({
     "take_on_me_a-ha": {
-      seedRows,
+      seedRows: [
+        ...buildFallbackPopTriviaSeedRows({ songTitle: "Take On Me", artist: "A-ha", year: 1985 }),
+        {
+          q: "What should the current singer do during Take On Me?",
+          correct: "Work the stage",
+          w1: "Mention A-ha",
+          w2: "Name the title",
+          w3: "Pick a fact",
+        },
+      ],
       songTitle: "Take On Me",
       artist: "A-ha",
       source: "ai",
@@ -208,7 +217,8 @@ test("popTriviaServer.test", async () => {
     },
   });
   assert.equal(Object.keys(cache).length, 1);
-  assert.equal(cache["take_on_me_a-ha"].seedRows.length, 2);
+  assert.equal(cache["take_on_me-a-ha"]?.seedRows?.length || cache["take_on_me_a-ha"].seedRows.length, 4);
+  assert.equal(cache["take_on_me_a-ha"].seedRows.some((row) => /current singer|stage/i.test(row.q)), false);
 
   const now = Date.now();
   assert.equal(
@@ -293,8 +303,8 @@ test("popTriviaServer.test", async () => {
   );
 
   const functionsSource = readFileSync("functions/index.js", "utf8");
-  assert.match(functionsSource, /Do not ask generic filler/);
-  assert.match(functionsSource, /At least 3 questions must mention the song title/);
-  assert.match(functionsSource, /If you cannot write a safe factual question, write a title\/performance question instead/);
+  assert.match(functionsSource, /Every question must focus on the requested song/);
+  assert.match(functionsSource, /Do not mention or ask about the current singer/);
+  assert.match(functionsSource, /If you cannot write a safe factual question, write a title, artist, hook, or arrangement question instead/);
   assert.match(functionsSource, /"category":"hook_recognition"/);
 });

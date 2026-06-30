@@ -3,7 +3,10 @@ import { usePitch } from '../../hooks/usePitch';
 import { db, doc, onSnapshot, updateDoc } from '../../lib/firebase';
 import { APP_ID, GAME_ASSETS, NOTE_NAMES } from '../../lib/assets';
 import { playSfx } from '../../lib/utils';
+import { playVoiceGameCue } from '../../lib/voiceGameSoundSystem';
 import { VOICE_GAME_FUN_DEFAULTS } from '../vocalGameTuning';
+import CrowdControlStartOverlay from '../shared/CrowdControlStartOverlay';
+import CrowdMicInputVisualizer from '../shared/CrowdMicInputVisualizer';
 
 const MAX_LIVES = VOICE_GAME_FUN_DEFAULTS.flappyBird.lives;
 const DEFAULT_DIFFICULTY = VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'easy';
@@ -18,6 +21,9 @@ const RANGE_PADDING = 3;
 const RECOVERY_SHIELD_MS = 1500;
 const HOST_ASSIST_DEFAULT_MS = 4000;
 const HOST_ASSIST_BANNER_MS = 2300;
+const TREND_DEADBAND_SEMITONES = 1;
+const LOW_CONFIDENCE_DRIFT = 0.18;
+const DEFAULT_HOST_MIC_LAUNCH_WARMUP_MS = 6200;
 
 const DIFFICULTY_CONFIG = Object.freeze({
     easy: {
@@ -42,6 +48,9 @@ const DIFFICULTY_CONFIG = Object.freeze({
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const lerp = (from, to, amount) => from + ((to - from) * amount);
+const playRunnerCue = (cue = 'hold', soundOptions = {}) => {
+    playVoiceGameCue('pitch_runner', cue, { ...soundOptions, intensity: cue === 'checkpoint' ? 1.16 : 1 });
+};
 
 const normalizeDifficulty = (value = '') => {
     const normalized = String(value || '').trim().toLowerCase();
@@ -62,6 +71,22 @@ const labelFromMidi = (midi) => {
     return `${NOTE_NAMES[noteIndex]}${octave}`;
 };
 
+const buildVoiceSignal = ({ pitch, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging, usesHostRoomMic }) => {
+    const pitchMidi = isSinging && confidence >= 0.24 ? clamp(midiFromPitch(pitch), 24, 96) : 0;
+    const energyMidi = usesHostRoomMic && !pitchMidi && volumeNormalized >= 0.055
+        ? clamp(Math.round(45 + (volumeNormalized * 30)), 24, 96)
+        : 0;
+    return {
+        pitch,
+        midi: pitchMidi || energyMidi,
+        label: pitchMidi ? labelFromMidi(pitchMidi) : (energyMidi ? 'ENERGY' : '--'),
+        confidence: pitchMidi ? confidence : Math.max(confidence, energyMidi ? 0.26 : 0),
+        volumeNormalized,
+        stableNote: pitchMidi ? stableNote : (energyMidi ? 'ENERGY' : stableNote),
+        stability: pitchMidi ? stability : Math.max(stability, energyMidi ? 0.22 : 0),
+        calibrating
+    };
+};
 const sanitizeRange = (lowestMidi, highestMidi) => {
     const low = clamp(Math.round(Number(lowestMidi || 46)), 30, 86);
     const high = clamp(Math.round(Number(highestMidi || 71)), low + 6, 92);
@@ -132,9 +157,15 @@ const createBaseState = (data = {}) => {
     const range = sanitizeRange(data.lowestMidi, data.highestMidi);
     const midpoint = Math.round((range.low + range.high) / 2);
     return {
+        playerId: String(data.playerId || 'AMBIENT'),
+        playerName: String(data.playerName || 'THE CROWD'),
+        playerAvatar: String(data.playerAvatar || 'MIC'),
+        inputSource: String(data.inputSource || 'ambient'),
+        voiceInput: String(data.voiceInput || ''),
         status: String(data.status || 'waiting'),
         difficulty,
         score: Math.max(0, Number(data.score || 0)),
+        gatesPassed: Math.max(0, Number(data.gatesPassed || 0)),
         lives: clamp(Number(data.lives || MAX_LIVES), 0, MAX_LIVES),
         lowestMidi: range.low,
         highestMidi: range.high,
@@ -146,10 +177,39 @@ const createBaseState = (data = {}) => {
         shieldUntil: Math.max(0, Number(data.shieldUntil || 0)),
         obstacles: Array.isArray(data.obstacles) ? data.obstacles.map((item) => ({ ...item })) : [],
         trail: Array.isArray(data.trail) ? data.trail.map((item) => ({ ...item })) : [],
+        voiceLaunchAtMs: Math.max(0, Number(data.voiceLaunchAtMs || 0)),
+        voiceLaunchWarmupMs: Math.max(0, Number(data.voiceLaunchWarmupMs || DEFAULT_HOST_MIC_LAUNCH_WARMUP_MS)),
+        launchCueId: Math.max(0, Number(data.launchCueId || 0)),
         timestamp: Math.max(0, Number(data.timestamp || Date.now()))
     };
 };
 
+const buildPitchRunnerRecap = (state = {}, data = {}) => {
+    const now = Date.now();
+    const gates = Math.max(0, Number(state.gatesPassed || 0));
+    const score = Math.max(0, Number(state.score || 0));
+    return {
+        active: true,
+        mode: 'flappy_bird',
+        title: 'Pitch Runner',
+        playerName: String(state.playerName || data.playerName || 'The Crowd'),
+        headline: `${gates} gates cleared`,
+        summary: gates >= 10 ? 'The room held the route and kept the pitch lane alive.' : 'Quick run logged. Reset and give the room another shot.',
+        createdAtMs: now,
+        tvUntilMs: now + 22000,
+        stats: [
+            { label: 'Score', value: score },
+            { label: 'Gates', value: gates },
+            { label: 'Range', value: `${labelFromMidi(state.lowestMidi)}-${labelFromMidi(state.highestMidi)}` },
+            { label: 'Difficulty', value: normalizeDifficulty(state.difficulty) }
+        ],
+        highlights: [
+            `${Math.max(0, Number(state.lives || 0))} lives left`,
+            state.currentLabel && state.currentLabel !== '--' ? `Last note ${state.currentLabel}` : 'Voice steering run',
+            state.inputSource === 'ambient' ? 'Crowd mic' : 'Solo mic'
+        ].filter(Boolean)
+    };
+};
 const defaultVoiceState = Object.freeze({
     pitch: 0,
     midi: 0,
@@ -163,21 +223,47 @@ const defaultVoiceState = Object.freeze({
 
 const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, gameState, view = 'tv' }) => {
     const data = useMemo(() => playerData || gameState || {}, [playerData, gameState]);
+    const soundOptions = useMemo(() => ({
+        soundPack: data.soundPack || null,
+        basePath: data.soundPackBasePath || data.soundPack?.basePath || undefined,
+        voiceRoomTuning: data.voiceRoomTuning || 'forgiving_room'
+    }), [data.soundPack, data.soundPackBasePath, data.voiceRoomTuning]);
     const controlSource = data.inputSource || inputSource || 'remote';
     const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
+    const usesHostRoomMic = isRoomControlled && String(data.voiceInput || '').trim().toLowerCase() === 'host';
+    const hostVoiceTelemetry = useMemo(() => data.voiceTelemetry || {}, [data.voiceTelemetry]);
+    const hostVoiceCapturedAtMs = Number(hostVoiceTelemetry?.capturedAtMs || hostVoiceTelemetry?.timestampMs || 0);
+    const hostVoiceAgeMs = hostVoiceCapturedAtMs > 0 ? Math.max(0, Date.now() - hostVoiceCapturedAtMs) : Number.POSITIVE_INFINITY;
+    const hostVoiceFresh = usesHostRoomMic && !!hostVoiceTelemetry?.active && hostVoiceCapturedAtMs > 0 && hostVoiceAgeMs <= 2200;
     const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
-    const isLocalInput = isController && inputSource !== 'remote';
-    const { pitch, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput, {
+    const isLocalInput = isController && inputSource !== 'remote' && !usesHostRoomMic;
+    const {
+        pitch: localPitch,
+        confidence: localConfidence,
+        volumeNormalized: localVolumeNormalized,
+        stableNote: localStableNote,
+        stability: localStability,
+        calibrating: localCalibrating,
+        isSinging: localIsSinging
+    } = usePitch(isLocalInput, {
         smoothingFactor: 0.36,
-        confidenceThreshold: 0.3,
-        singingThreshold: 0.03,
+        confidenceThreshold: 0.32,
+        singingThreshold: 0.032,
         stableNoteMs: 170,
-        noiseGateMultiplier: 1.22
+        noiseGateMultiplier: 1.26
     });
+    const pitch = hostVoiceFresh ? Number(hostVoiceTelemetry.pitch || 0) : localPitch;
+    const confidence = hostVoiceFresh ? Number(hostVoiceTelemetry.confidence || 0) : localConfidence;
+    const volumeNormalized = hostVoiceFresh ? Number(hostVoiceTelemetry.volumeNormalized || 0) : localVolumeNormalized;
+    const stableNote = hostVoiceFresh ? String(hostVoiceTelemetry.stableNote || hostVoiceTelemetry.note || '-') : localStableNote;
+    const stability = hostVoiceFresh ? Number(hostVoiceTelemetry.stability || 0) : localStability;
+    const calibrating = usesHostRoomMic ? !!hostVoiceTelemetry.calibrating : localCalibrating;
+    const isSinging = hostVoiceFresh ? !!hostVoiceTelemetry.isSinging || volumeNormalized >= 0.03 || confidence >= 0.22 : localIsSinging;
 
     const initialState = useMemo(() => createBaseState(data), [data]);
     const [gameStateLocal, setGameStateLocal] = useState(initialState);
     const [remoteVoice, setRemoteVoice] = useState(defaultVoiceState);
+    const [launchClockMs, setLaunchClockMs] = useState(() => Date.now());
     const [rangeSetup, setRangeSetup] = useState(() => ({
         low: null,
         high: null,
@@ -193,6 +279,8 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
     const rangeSetupRef = useRef(rangeSetup);
     const lastHostAssistIdRef = useRef('');
     const hostAssistBannerTimeoutRef = useRef(null);
+    const lastRunnerCueRef = useRef({ cue: '', at: 0 });
+    const hostRoomMicAutoStartRef = useRef(false);
 
     useEffect(() => {
         stateRef.current = gameStateLocal;
@@ -203,18 +291,17 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
     }, [rangeSetup]);
 
     useEffect(() => {
-        const nextMidi = isSinging && confidence >= 0.24 ? clamp(midiFromPitch(pitch), 24, 96) : 0;
-        voiceRef.current = {
+        voiceRef.current = buildVoiceSignal({
             pitch,
-            midi: nextMidi,
-            label: nextMidi ? labelFromMidi(nextMidi) : '--',
             confidence,
             volumeNormalized,
             stableNote,
             stability,
-            calibrating
-        };
-    }, [pitch, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging]);
+            calibrating,
+            isSinging,
+            usesHostRoomMic
+        });
+    }, [pitch, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging, usesHostRoomMic]);
 
     useEffect(() => {
         if (isController) return;
@@ -250,18 +337,40 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
     const syncToRoom = useCallback(async () => {
         if (!isController) return;
         const nextState = stateRef.current;
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
-            gameData: {
-                ...nextState,
-                voice: {
-                    ...voiceRef.current
-                },
-                timestamp: Date.now()
-            }
-        }).catch((error) => {
+        const patch = {
+            'gameData.playerId': String(nextState.playerId || data.playerId || 'AMBIENT'),
+            'gameData.playerName': String(nextState.playerName || data.playerName || 'THE CROWD'),
+            'gameData.playerAvatar': String(nextState.playerAvatar || data.playerAvatar || 'MIC'),
+            'gameData.inputSource': String(controlSource || data.inputSource || 'ambient'),
+            'gameData.voiceInput': usesHostRoomMic ? 'host' : String(nextState.voiceInput || data.voiceInput || ''),
+            'gameData.status': nextState.status,
+            'gameData.paused': !!nextState.paused,
+            'gameData.score': Number(nextState.score || 0),
+            'gameData.lives': Number(nextState.lives || 0),
+            'gameData.difficulty': normalizeDifficulty(nextState.difficulty),
+            'gameData.lowestMidi': Number(nextState.lowestMidi || 0),
+            'gameData.highestMidi': Number(nextState.highestMidi || 0),
+            'gameData.orbY': Number(nextState.orbY || 0),
+            'gameData.currentMidi': Number(nextState.currentMidi || 0),
+            'gameData.currentLabel': nextState.currentLabel || '--',
+            'gameData.targetMidi': Number(nextState.targetMidi || 0),
+            'gameData.obstacles': Array.isArray(nextState.obstacles) ? nextState.obstacles : [],
+            'gameData.trail': Array.isArray(nextState.trail) ? nextState.trail : [],
+            'gameData.gatesPassed': Number(nextState.gatesPassed || 0),
+            'gameData.shieldUntil': Number(nextState.shieldUntil || 0),
+            'gameData.voiceLaunchAtMs': Number(nextState.voiceLaunchAtMs || 0),
+            'gameData.voiceLaunchWarmupMs': Number(nextState.voiceLaunchWarmupMs || 0),
+            'gameData.launchCueId': Number(nextState.launchCueId || 0),
+            'gameData.lastRunnerCue': nextState.lastRunnerCue || null,
+            'gameData.voice': {
+                ...voiceRef.current
+            },
+            'gameData.timestamp': Date.now()
+        };
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), patch).catch((error) => {
             console.error('Pitch Runner sync error:', error);
         });
-    }, [isController, roomCode]);
+    }, [isController, roomCode, controlSource, usesHostRoomMic, data.playerId, data.playerName, data.playerAvatar, data.inputSource, data.voiceInput]);
 
     useEffect(() => {
         if (!isController) return undefined;
@@ -321,6 +430,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
             status: 'ready',
             paused: false,
             score: 0,
+            gatesPassed: 0,
             lives: MAX_LIVES,
             lowestMidi: range.low,
             highestMidi: range.high,
@@ -334,6 +444,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
     }, []);
 
     const startRun = useCallback(() => {
+        hostRoomMicAutoStartRef.current = true;
         setGameStateLocal((previous) => {
             const midpoint = Math.round((previous.lowestMidi + previous.highestMidi) / 2);
             lastSpawnAtRef.current = 0;
@@ -357,17 +468,72 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
     }, []);
 
     const resetRun = useCallback(() => {
+        hostRoomMicAutoStartRef.current = false;
         setRangeSetup({ low: null, high: null, sampleCount: 0 });
         setGameStateLocal((previous) => ({
             ...previous,
             status: 'waiting',
             paused: false,
             score: 0,
+            gatesPassed: 0,
             lives: MAX_LIVES,
             obstacles: [],
             trail: []
         }));
     }, []);
+
+    useEffect(() => {
+        if (!isController || !usesHostRoomMic || hostRoomMicAutoStartRef.current) return;
+        const currentStatus = stateRef.current?.status;
+        if (currentStatus !== 'waiting' && currentStatus !== 'ready') return;
+        const launchAtMs = Math.max(0, Number(stateRef.current?.voiceLaunchAtMs || data.voiceLaunchAtMs || 0));
+        if (launchAtMs && Date.now() < launchAtMs) return;
+        if (!hostVoiceFresh) return;
+
+        const liveMidi = voiceRef.current.midi || 57;
+        const lowCandidate = rangeSetupRef.current.low ?? (liveMidi - 7);
+        const highCandidate = rangeSetupRef.current.high ?? (liveMidi + 7);
+        const range = sanitizeRange(lowCandidate, highCandidate);
+        const midpoint = Math.round((range.low + range.high) / 2);
+
+        const autoStartTimer = setTimeout(() => {
+            hostRoomMicAutoStartRef.current = true;
+            setRangeSetup({
+                low: range.low,
+                high: range.high,
+                sampleCount: rangeSetupRef.current.sampleCount || 0
+            });
+            lastSpawnAtRef.current = 0;
+            lastTargetMidiRef.current = midpoint;
+            gameOverCalledRef.current = false;
+            setGameStateLocal((previous) => ({
+                ...previous,
+                status: 'playing',
+                paused: false,
+                score: 0,
+                gatesPassed: 0,
+                lives: MAX_LIVES,
+                lowestMidi: range.low,
+                highestMidi: range.high,
+                orbY: yForMidi(midpoint, range.low, range.high),
+                currentMidi: 0,
+                currentLabel: '--',
+                targetMidi: midpoint,
+                shieldUntil: Date.now() + 1400,
+                obstacles: [],
+                trail: []
+            }));
+        }, 0);
+        return () => clearTimeout(autoStartTimer);
+    }, [isController, usesHostRoomMic, hostVoiceFresh, data.voiceLaunchAtMs, gameStateLocal.status]);
+
+    useEffect(() => {
+        if (!usesHostRoomMic) return undefined;
+        const status = gameStateLocal.status;
+        if (status === 'playing' || status === 'gameover') return undefined;
+        const timer = setInterval(() => setLaunchClockMs(Date.now()), 250);
+        return () => clearInterval(timer);
+    }, [usesHostRoomMic, gameStateLocal.status]);
 
     const togglePause = useCallback(() => {
         setGameStateLocal((previous) => ({
@@ -395,13 +561,20 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
             const detectedMidi = voiceRef.current.midi
                 ? clamp(voiceRef.current.midi, lowestMidi - 2, highestMidi + 2)
                 : 0;
+            const voiceConfidence = clamp(Number(voiceRef.current.confidence || 0), 0, 1);
+            const voiceStability = clamp(Number(voiceRef.current.stability || 0), 0, 1);
+            const voiceStrength = clamp((voiceConfidence * 0.72) + (voiceStability * 0.28), 0, 1);
+            const safeTargetMidi = state.targetMidi || Math.round((lowestMidi + highestMidi) / 2);
+            const safeTargetY = yForMidi(safeTargetMidi, lowestMidi, highestMidi);
 
             let orbY = state.orbY;
             if (detectedMidi) {
                 const targetY = yForMidi(detectedMidi, lowestMidi, highestMidi);
-                orbY = lerp(orbY, targetY, 0.26);
+                const trendSmoothing = 0.12 + (voiceStrength * 0.18);
+                orbY = lerp(orbY, targetY, trendSmoothing);
             } else {
-                orbY = clamp(orbY + 0.78, TOP_PCT, 94);
+                orbY = lerp(orbY, safeTargetY, 0.035);
+                orbY = clamp(orbY + LOW_CONFIDENCE_DRIFT, TOP_PCT, 94);
             }
 
             let obstacles = state.obstacles
@@ -439,6 +612,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
             }
 
             let score = state.score;
+            let gatesPassed = Math.max(0, Number(state.gatesPassed || 0));
             let lives = state.lives;
             let status = state.status;
             let shieldUntil = state.shieldUntil;
@@ -446,6 +620,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
 
             const loseLife = (safeTargetMidi) => {
                 playSfx(GAME_ASSETS.fail);
+                playRunnerCue('recovery', soundOptions);
                 lives -= 1;
                 if (lives <= 0) {
                     status = 'gameover';
@@ -461,8 +636,15 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
                 const bounds = obstacleGapBounds(obstacle, lowestMidi, highestMidi);
                 if (!obstacle.scored && (obstacle.x + OBSTACLE_WIDTH) < ORB_X) {
                     obstacle.scored = true;
-                    score += 35;
-                    playSfx(GAME_ASSETS.coin);
+                    gatesPassed += 1;
+                    const checkpointHit = gatesPassed % 5 === 0;
+                    score += checkpointHit ? 95 : 35;
+                    if (checkpointHit) {
+                        shieldUntil = Math.max(Number(shieldUntil || 0), Date.now() + 1200);
+                        playRunnerCue('checkpoint', soundOptions);
+                    } else {
+                        playSfx(GAME_ASSETS.coin);
+                    }
                 }
                 const inCollisionX = obstacle.x < (ORB_X + 2.4) && (obstacle.x + OBSTACLE_WIDTH) > (ORB_X - 2.4);
                 const outsideGap = orbY < bounds.topY || orbY > bounds.bottomY;
@@ -482,6 +664,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
             const nextState = {
                 ...state,
                 score,
+                gatesPassed,
                 lives,
                 status,
                 shieldUntil,
@@ -498,6 +681,11 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
 
             if (status === 'gameover' && !gameOverCalledRef.current) {
                 gameOverCalledRef.current = true;
+                const recap = buildPitchRunnerRecap(nextState, data);
+                updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
+                    activeMode: 'karaoke',
+                    gameData: { recap }
+                }).catch((error) => console.error('Pitch Runner recap publish failed:', error));
                 if (typeof onGameOver === 'function') {
                     onGameOver(score);
                 }
@@ -508,7 +696,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
 
         frameId = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(frameId);
-    }, [gameStateLocal.status, isController, onGameOver]);
+    }, [gameStateLocal.status, isController, onGameOver, soundOptions]);
 
     const setDifficulty = (difficultyKey) => {
         if (!isController) return;
@@ -519,25 +707,27 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
         }));
     };
 
-    const visibleVoice = isController
-        ? {
-            pitch,
-            midi: isSinging && confidence >= 0.24 ? clamp(midiFromPitch(pitch), 24, 96) : 0,
-            label: isSinging && confidence >= 0.24 ? labelFromMidi(clamp(midiFromPitch(pitch), 24, 96)) : '--',
-            confidence,
-            volumeNormalized,
-            stableNote,
-            stability,
-            calibrating
-        }
-        : remoteVoice;
+    const liveVoice = buildVoiceSignal({
+        pitch,
+        confidence,
+        volumeNormalized,
+        stableNote,
+        stability,
+        calibrating,
+        isSinging,
+        usesHostRoomMic
+    });
+    const visibleVoice = isController ? liveVoice : remoteVoice;
     const visibleState = gameStateLocal;
     const visibleRange = sanitizeRange(visibleState.lowestMidi, visibleState.highestMidi);
     const displayMidi = buildDisplayMidiList(visibleRange.low, visibleRange.high);
     const activeTargetMidi = visibleState.targetMidi || Math.round((visibleRange.low + visibleRange.high) / 2);
     const activeTargetY = yForMidi(activeTargetMidi, visibleRange.low, visibleRange.high);
     const trailPath = buildTrailPath(visibleState.trail);
-    const renderNowMs = Number(visibleState.timestamp || 0);
+    const renderNowMs = Math.max(Number(visibleState.timestamp || 0), launchClockMs);
+    const launchAtMs = Math.max(0, Number(visibleState.voiceLaunchAtMs || data.voiceLaunchAtMs || 0));
+    const launchCountdownMs = launchAtMs ? Math.max(0, launchAtMs - renderNowMs) : 0;
+    const launchCountdownSec = Math.max(0, Math.ceil(launchCountdownMs / 1000));
     const shieldActive = Number(visibleState.shieldUntil || 0) > renderNowMs;
     const spectatorMessage = view === 'mobile' && isRoomControlled
         ? 'Crowd mic mode is active on the TV. Watch the run there or ask the host for solo mode.'
@@ -554,6 +744,52 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
     const currentLiveY = currentLiveMidi
         ? yForMidi(currentLiveMidi, previewRange.low, previewRange.high)
         : null;
+    const targetDeltaSemitones = currentLiveMidi ? currentLiveMidi - activeTargetMidi : 0;
+    const trendInstruction = !currentLiveMidi
+        ? 'Sing to find the lane'
+        : targetDeltaSemitones < -TREND_DEADBAND_SEMITONES
+            ? 'Sing higher'
+            : targetDeltaSemitones > TREND_DEADBAND_SEMITONES
+                ? 'Sing lower'
+                : 'Hold steady';
+    const trendToneClass = !currentLiveMidi
+        ? 'text-zinc-200 border-white/10 bg-black/45'
+        : targetDeltaSemitones < -TREND_DEADBAND_SEMITONES
+            ? 'text-emerald-100 border-emerald-300/30 bg-emerald-500/15'
+            : targetDeltaSemitones > TREND_DEADBAND_SEMITONES
+                ? 'text-pink-100 border-pink-300/30 bg-pink-500/15'
+                : 'text-cyan-100 border-cyan-300/30 bg-cyan-500/15';
+    const gatesPassed = Math.max(0, Number(visibleState.gatesPassed || 0));
+    const gatesUntilCheckpoint = gatesPassed > 0 ? (5 - (gatesPassed % 5 || 5)) : 5;
+    const checkpointLabel = shieldActive ? 'Shield active' : `${gatesUntilCheckpoint} gates to shield`;
+    const runnerCueKey = shieldActive
+        ? 'shield'
+        : trendInstruction === 'Sing higher'
+            ? 'higher'
+            : trendInstruction === 'Sing lower'
+                ? 'lower'
+                : trendInstruction === 'Hold steady'
+                    ? 'hold'
+                    : '';
+    const runnerCommand = shieldActive
+        ? { label: 'SHIELD RUN', helper: 'Checkpoint shield is active. Push through the gate.', toneClass: 'border-emerald-200/45 bg-emerald-400/15 text-emerald-100' }
+        : visibleState.status === 'playing'
+            ? { label: trendInstruction.toUpperCase(), helper: `Safe lane ${labelFromMidi(activeTargetMidi)}. Every 5 gates earns protection.`, toneClass: trendToneClass }
+            : visibleState.status === 'gameover'
+                ? { label: 'RUN OVER', helper: `${gatesPassed} gates cleared. Reset fast and try the route again.`, toneClass: 'border-pink-300/35 bg-pink-500/15 text-pink-100' }
+                : usesHostRoomMic
+                    ? { label: launchCountdownMs > 0 ? `STARTS IN ${launchCountdownSec}` : (hostVoiceFresh ? 'GO ON VOICE' : 'MIC CHECK'), helper: hostVoiceFresh ? `Live range ${previewLowLabel} to ${previewHighLabel}. Keep singing into the Host mic.` : 'Arm the Host mic and sing so the TV receives live telemetry.', toneClass: hostVoiceFresh ? 'border-cyan-300/30 bg-cyan-500/15 text-cyan-100' : 'border-amber-300/35 bg-amber-500/15 text-amber-100' }
+                    : { label: 'FIND YOUR LANE', helper: `Lock range ${previewLowLabel} to ${previewHighLabel}.`, toneClass: 'border-cyan-300/30 bg-cyan-500/15 text-cyan-100' };
+
+    useEffect(() => {
+        if (visibleState.status !== 'playing') return;
+        if (!runnerCueKey) return;
+        const now = Date.now();
+        const last = lastRunnerCueRef.current || { cue: '', at: 0 };
+        if (last.cue === runnerCueKey && (now - Number(last.at || 0)) < 1400) return;
+        lastRunnerCueRef.current = { cue: runnerCueKey, at: now };
+        playRunnerCue(runnerCueKey, soundOptions);
+    }, [runnerCueKey, soundOptions, visibleState.status]);
 
     return (
         <div className="relative h-full w-full overflow-hidden bg-[#0a0f1f] text-white">
@@ -561,38 +797,51 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(125,211,252,0.16),transparent_38%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.16),transparent_46%)]" />
             <div className="absolute inset-x-0 bottom-0 h-[16%] border-t border-pink-400/60 bg-gradient-to-t from-pink-500/20 via-pink-500/10 to-transparent" />
 
+            <CrowdControlStartOverlay
+                enabled={view === 'tv' && isController && usesHostRoomMic}
+                modeTitle="Pitch Runner"
+                nowMs={renderNowMs}
+                launchAtMs={launchAtMs}
+                warmupMs={Number(visibleState.voiceLaunchWarmupMs || data.voiceLaunchWarmupMs || DEFAULT_HOST_MIC_LAUNCH_WARMUP_MS)}
+                micReady={hostVoiceFresh}
+                requireMic={usesHostRoomMic}
+                live={view === 'tv' && isController && usesHostRoomMic && visibleState.status === 'playing'}
+                controlLabel="The crowd is steering the runner now."
+                instruction="Sing higher, lower, or hold steady together."
+                accent="cyan"
+            />
+            <CrowdMicInputVisualizer
+                enabled={view === 'tv' && usesHostRoomMic}
+                telemetry={hostVoiceTelemetry}
+                nowMs={renderNowMs}
+                label="Crowd Mic"
+                helper="Steering signal"
+                accent="cyan"
+                className="absolute left-5 top-[118px] w-[min(30vw,360px)]"
+            />
+
+            <div className="absolute inset-x-[12%] top-[16%] z-30 pointer-events-none flex justify-center">
+                <div className={`max-w-[980px] rounded-[28px] border px-7 py-4 text-center shadow-[0_0_42px_rgba(0,0,0,0.38)] ${runnerCommand.toneClass}`}>
+                    <div className="text-[10px] font-black uppercase tracking-[0.32em] opacity-75">Runner Command</div>
+                    <div className="mt-1 text-[clamp(2.6rem,7vw,6.6rem)] font-black leading-none text-white">{runnerCommand.label}</div>
+                    <div className="mt-2 text-[clamp(0.9rem,1.6vw,1.45rem)] font-black uppercase tracking-[0.16em] opacity-85">{runnerCommand.helper}</div>
+                </div>
+            </div>
+
             <div className="absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs uppercase tracking-[0.28em] text-zinc-300">
-                    <span>Pitch Runner</span>
-                    <span className="text-white">{visibleState.score}</span>
+                    <span>Voice Runner</span>
+                    <span className="text-white">{visibleState.score}</span><span className="text-cyan-200">{gatesPassed} gates</span>
                 </div>
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2">
-                    {['easy', 'normal', 'hard'].map((difficultyKey) => {
-                        const active = normalizeDifficulty(visibleState.difficulty) === difficultyKey;
-                        return (
-                            <button
-                                key={difficultyKey}
-                                type="button"
-                                onClick={() => setDifficulty(difficultyKey)}
-                                disabled={!isController}
-                                className={`min-w-[84px] rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.22em] transition ${
-                                    active
-                                        ? difficultyKey === 'easy'
-                                            ? 'bg-emerald-500 text-black'
-                                            : difficultyKey === 'hard'
-                                                ? 'bg-pink-500 text-white'
-                                                : 'bg-cyan-400 text-black'
-                                        : 'bg-white/10 text-zinc-300'
-                                } ${isController ? '' : 'cursor-default'}`}
-                            >
-                                {difficultyKey}
-                            </button>
-                        );
-                    })}
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2 text-xs font-black uppercase tracking-[0.22em] text-zinc-300">
+                    <span>Difficulty</span>
+                    <span className="rounded-full border border-cyan-200/30 bg-cyan-400/14 px-3 py-1 text-cyan-100">
+                        {normalizeDifficulty(visibleState.difficulty)}
+                    </span>
                 </div>
                 <div className="rounded-full border border-white/10 bg-black/45 px-4 py-2 text-right">
-                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-400">Lives</div>
-                    <div className="text-lg font-black text-white">{visibleState.lives}/{MAX_LIVES}</div>
+                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-400">Checkpoint</div>
+                    <div className="text-lg font-black text-white">{checkpointLabel}</div>
                 </div>
             </div>
 
@@ -672,12 +921,16 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
             )}
 
             <div className="absolute bottom-5 left-5 z-30 rounded-2xl border border-white/10 bg-black/55 px-4 py-3 text-sm uppercase tracking-[0.18em] text-zinc-200">
-                <div className="text-[10px] text-zinc-500">Voice</div>
+                <div className="text-[10px] text-zinc-500">Voice Trend</div>
                 <div className="mt-1 flex items-center gap-3">
                     <span className="text-white">{visibleVoice.label || visibleState.currentLabel || '--'}</span>
                     <span className="text-zinc-400">{Math.round((visibleVoice.confidence || 0) * 100)}%</span>
                     <span className="text-zinc-400">{Math.round((visibleVoice.volumeNormalized || 0) * 100)}%</span>
                 </div>
+            </div>
+            <div className={`absolute bottom-5 right-5 z-30 rounded-2xl border px-4 py-3 text-center text-sm uppercase tracking-[0.18em] ${trendToneClass}`}>
+                <div className="text-[10px] opacity-70">Runner Cue</div>
+                <div className="mt-1 text-lg font-black">{trendInstruction}</div>
             </div>
 
             {hostAssistBanner && (
@@ -690,7 +943,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
                 </div>
             )}
 
-            {isController && visibleState.status === 'playing' && (
+            {isController && !usesHostRoomMic && visibleState.status === 'playing' && (
                 <button
                     type="button"
                     onClick={togglePause}
@@ -708,7 +961,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
                 </div>
             )}
 
-            {isController && visibleState.status === 'waiting' && (
+            {isController && !usesHostRoomMic && visibleState.status === 'waiting' && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/65 px-6">
                     <div className="w-full max-w-3xl rounded-[28px] border border-white/10 bg-[#0d1326]/92 px-8 py-7 text-center shadow-[0_0_60px_rgba(0,0,0,0.4)]">
                         <div className="text-xs uppercase tracking-[0.4em] text-zinc-400">Range Setup</div>
@@ -766,13 +1019,13 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
                 </div>
             )}
 
-            {isController && visibleState.status === 'ready' && (
+            {isController && !usesHostRoomMic && visibleState.status === 'ready' && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/58 px-6">
                     <div className="w-full max-w-3xl rounded-[28px] border border-white/10 bg-[#0d1326]/92 px-8 py-7 text-center shadow-[0_0_60px_rgba(0,0,0,0.4)]">
                         <div className="text-xs uppercase tracking-[0.4em] text-zinc-400">Pitch Runner</div>
-                        <div className="mt-3 text-5xl font-black text-cyan-200">Ride The Note Gap</div>
+                        <div className="mt-3 text-5xl font-black text-cyan-200">Steer The Safe Lane</div>
                         <div className="mt-3 text-lg text-zinc-300">
-                            Match the target note line and keep the orb inside the opening. Your range is locked to {previewLowLabel} through {previewHighLabel}, and anyone in the room can help sing the lane.
+                            Sing higher, lower, or hold steady to drift the orb into the safe lane. Every 5 gates gives a checkpoint shield. Your range is locked to {previewLowLabel} through {previewHighLabel}, and anyone in the room can help steer.
                         </div>
                         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                             <button
@@ -808,8 +1061,8 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
                     <div className="w-full max-w-2xl rounded-[28px] border border-pink-400/25 bg-[#111729]/94 px-8 py-7 text-center">
                         <div className="text-xs uppercase tracking-[0.36em] text-zinc-400">Run Over</div>
                         <div className="mt-3 text-5xl font-black text-pink-300">Score {visibleState.score}</div>
-                        <div className="mt-2 text-lg text-zinc-300">Locked range {previewLowLabel} to {previewHighLabel}</div>
-                        {isController && (
+                        <div className="mt-2 text-lg text-zinc-300">{gatesPassed} gates passed | locked range {previewLowLabel} to {previewHighLabel}</div>
+                        {isController && !usesHostRoomMic && (
                             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                                 <button
                                     type="button"

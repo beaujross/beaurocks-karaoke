@@ -13,9 +13,9 @@ export const STREAMLINED_TAKEOVER_LIGHT_MODES = new Set([
 
 export const normalizeAudienceShellVariant = (value = '') => {
     const token = String(value || '').trim().toLowerCase();
-    return token === AUDIENCE_SHELL_VARIANTS.streamlined
-        ? AUDIENCE_SHELL_VARIANTS.streamlined
-        : AUDIENCE_SHELL_VARIANTS.classic;
+    return token === AUDIENCE_SHELL_VARIANTS.classic
+        ? AUDIENCE_SHELL_VARIANTS.classic
+        : AUDIENCE_SHELL_VARIANTS.streamlined;
 };
 
 export const deriveAudienceTakeoverKind = ({ activeMode = '', lightMode = '' } = {}) => {

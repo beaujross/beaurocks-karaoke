@@ -58,7 +58,7 @@ const normalizeGameDefaults = (value = {}, fallback = {}) => ({
 
 const normalizeAudienceShellVariant = (value = '', fallback = '') => {
     const token = String(value || fallback || '').trim().toLowerCase();
-    return token === 'streamlined' ? 'streamlined' : token === 'classic' ? 'classic' : '';
+    return token === 'classic' ? 'classic' : 'streamlined';
 };
 
 const normalizeRequestMode = (value = '', fallback = REQUEST_MODES.canonicalOpen) => {
@@ -107,7 +107,7 @@ export const BUILTIN_HOST_NIGHT_PRESETS = Object.freeze({
     casual: Object.freeze({
         id: 'casual',
         label: 'Casual Night',
-        description: 'Apple playlist vibe with visualizer-forward TV.',
+        description: 'Media-forward karaoke night with video prioritized on TV.',
         isBuiltIn: true,
         searchSources: Object.freeze({ local: true, youtube: true, itunes: true }),
         settings: Object.freeze({
@@ -118,7 +118,7 @@ export const BUILTIN_HOST_NIGHT_PRESETS = Object.freeze({
             autoBonusEnabled: true,
             autoBonusPoints: 25,
             autoDjDelaySec: 10,
-            showVisualizerTv: true,
+            showVisualizerTv: false,
             showLyricsTv: false,
             showScoring: false,
             hypeMeterDisplayMode: 'score_integrated',

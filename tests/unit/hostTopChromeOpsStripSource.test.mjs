@@ -26,9 +26,9 @@ test('host top chrome keeps the vibe meter but drops the redundant ops strip', (
   assert.doesNotMatch(source, /Ops Strip/);
   assert.match(hostAppSource, /const hostOpsStatus = useMemo/);
   assert.match(hostAppSource, /const topChromeYouTubeBudget = useMemo/);
-  assert.match(hostAppSource, /todaySearchListCallsRemaining/);
-  assert.match(hostAppSource, /dailySearchListCallLimit/);
-  assert.match(hostAppSource, /dailyGeneralDataUnitLimit/);
+  assert.match(hostAppSource, /freshSearchesLeft/);
+  assert.match(hostAppSource, /todayLiveCalls/);
+  assert.match(hostAppSource, /dailyQuotaUnits/);
   assert.match(hostAppSource, /getYouTubeQuotaBlockedUntilMs/);
   assert.match(hostAppSource, /youtubeBudgetStatus=\{topChromeYouTubeBudget\}/);
   assert.match(hostAppSource, /hostOpsStatus\?\.summary/);
@@ -96,4 +96,31 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
     /const queueAttentionBadgeClass = normalizedQueueAttentionNeedsHost[\s\S]*border-pink-100\/70[\s\S]*rgba\(236,72,153,0\.96\)[\s\S]*border-pink-300\/35[\s\S]*text-pink-50/,
     'HostTopChrome queue attention badge should use the branded pink badge treatment for both hot and soft states',
   );
+});
+
+test('host queue dropdown exposes One-Minute Mic live pacing controls', () => {
+  assert.match(source, /data-host-one-minute-mic-controls/);
+  assert.match(source, /Song length[\s\S]*One-Minute Mic[\s\S]*Full Songs/);
+  assert.match(source, /ONE_MINUTE_MIC_OPENING_PRESETS = Object\.freeze\(\[45, 60, 90\]\)/);
+  assert.match(source, /ONE_MINUTE_MIC_VOTE_WINDOW_PRESETS = Object\.freeze\(\[8, 12, 15, 20\]\)/);
+  assert.match(source, /quickRoomControls\.onSetOneMinuteMic\?\.\(true\)/);
+  assert.match(source, /quickRoomControls\.onSetOneMinuteMicTiming\?\.\(\{ openingWindowSec: event\.target\.value \}\)/);
+  assert.match(hostAppSource, /const setOneMinuteMicQuick = async \(enabled = false\) => \{/);
+  assert.match(hostAppSource, /performanceProgressionMode: nextEnabled \? 'one_minute_mic' : 'full_song'/);
+  assert.match(hostAppSource, /String\(room\?\.audienceDecision\?\.type \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'continue_or_rotate'[\s\S]*roomPatch\.audienceDecision = null/);
+  assert.match(hostAppSource, /oneMinuteMicEnabled: room\?\.oneMinuteMicEnabled === true \|\| String\(room\?\.performanceProgressionMode \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'one_minute_mic'/);
+  assert.match(hostAppSource, /onSetOneMinuteMic: setOneMinuteMicQuick/);
+  assert.match(hostAppSource, /onSetOneMinuteMicTiming: setOneMinuteMicTimingQuick/);
+});
+
+test('host queue dropdown exposes room control model choices above detailed pacing controls', () => {
+  assert.match(source, /ROOM_CONTROL_MODEL_OPTIONS = Object\.freeze\(\[[\s\S]*Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
+  assert.match(source, /data-host-room-control-model/);
+  assert.match(source, /Room control model[\s\S]*host-driven, host-assisted, or crowd-driven/);
+  assert.match(source, /activeRoomControlModel = quickRoomControls\?\.oneMinuteMicEnabled[\s\S]*'crowd_driven'[\s\S]*quickAutomationControls\?\.autoDj[\s\S]*'assisted_host'[\s\S]*'host_led'/);
+  assert.match(source, /quickRoomControls\.onApplyRoomControlModel\?\.\(option\.id\)/);
+  assert.match(hostAppSource, /const applyRoomControlModelQuick = async \(modelId = 'host_led'\) => \{/);
+  assert.match(hostAppSource, /autoDj: nextAutoDj[\s\S]*oneMinuteMicEnabled: nextOneMinuteMic[\s\S]*performanceProgressionMode: nextOneMinuteMic \? 'one_minute_mic' : 'full_song'/);
+  assert.match(hostAppSource, /!nextOneMinuteMic && \['continue_or_rotate', 'skip_performance'\]\.includes\(activeAudienceDecisionType\)[\s\S]*roomPatch\.audienceDecision = null/);
+  assert.match(hostAppSource, /onApplyRoomControlModel: applyRoomControlModelQuick/);
 });

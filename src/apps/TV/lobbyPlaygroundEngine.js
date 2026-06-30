@@ -21,6 +21,56 @@ const RELAY_WINDOW_MS = 2400;
 const ENERGY_DECAY_PER_SEC = 0.28;
 const ENERGY_GAIN_BASE = 1.8;
 const ENERGY_GAIN_PER_COUNT = 0.78;
+const VOICE_FRAME_STALE_MS = 1800;
+const VOICE_LIFT_MIN_INTERVAL_MS = 720;
+const VOICE_PARTICIPANT_UID = 'room_voice';
+const VOICE_TARGETS = Object.freeze([
+    Object.freeze({
+        phase: 'inflate',
+        minAltitudeFt: 0,
+        targetMidi: 43,
+        targetNote: 'Air',
+        headline: 'INFLATE THE ORB',
+        secondary: 'Any steady crowd sound fills the orb. Louder room air gets it off the floor.',
+        toleranceSemitones: 99,
+        minLift: 0.72,
+        gravityMultiplier: 0.72,
+        volumeOnly: true
+    }),
+    Object.freeze({
+        phase: 'lift',
+        minAltitudeFt: 26,
+        targetMidi: 52,
+        targetNote: 'E3',
+        headline: 'LIFT WITH A LOW TONE',
+        secondary: 'Add bass and baritone weight. The balloon is heavy until the room locks in.',
+        toleranceSemitones: 8,
+        minLift: 1.55,
+        gravityMultiplier: 1.05
+    }),
+    Object.freeze({
+        phase: 'shape',
+        minAltitudeFt: 76,
+        targetMidi: 60,
+        targetNote: 'C4',
+        headline: 'SHAPE THE CLIMB',
+        secondary: 'Move into a cleaner middle note. Volume still helps, but pitch starts steering.',
+        toleranceSemitones: 7,
+        minLift: 2.35,
+        gravityMultiplier: 1.18
+    }),
+    Object.freeze({
+        phase: 'orbit',
+        minAltitudeFt: 136,
+        targetMidi: 67,
+        targetNote: 'G4',
+        headline: 'BRIGHT NOTES FOR ORBIT',
+        secondary: 'High clear voices keep it airborne. Phones can still rescue the combo.',
+        toleranceSemitones: 6,
+        minLift: 3.05,
+        gravityMultiplier: 1.36
+    })
+]);
 const AIR_MULTIPLIER_STEP_MS = 7000;
 const AIR_MULTIPLIER_TEAM_BONUS_PER_USER = 0.25;
 const AIR_MULTIPLIER_HANDOFF_BONUS_PER_CHAIN = 0.08;
@@ -76,11 +126,11 @@ const TIER_DEFINITIONS = [
     { tier: 4, name: 'Neon Nova', threshold: 26, visualOnly: false, pointsBudget: 60, maxPointsPerUser: 24 }
 ];
 const LEVEL_DEFINITIONS = Object.freeze([
-    Object.freeze({ level: 0, tier: 0, label: 'Launch', gravityMultiplier: 0.92, relayBaseMs: 2600, speedMultiplier: 0.94, targetActivePlayers: 1 }),
-    Object.freeze({ level: 1, tier: 1, label: 'Warm Up', gravityMultiplier: 1, relayBaseMs: 2400, speedMultiplier: 1, targetActivePlayers: 2 }),
-    Object.freeze({ level: 2, tier: 2, label: 'Lift Off', gravityMultiplier: 1.14, relayBaseMs: 2200, speedMultiplier: 1.08, targetActivePlayers: 3 }),
-    Object.freeze({ level: 3, tier: 3, label: 'Skyline Pulse', gravityMultiplier: 1.28, relayBaseMs: 1980, speedMultiplier: 1.18, targetActivePlayers: 4 }),
-    Object.freeze({ level: 4, tier: 4, label: 'Neon Nova', gravityMultiplier: 1.42, relayBaseMs: 1760, speedMultiplier: 1.3, targetActivePlayers: 5 })
+    Object.freeze({ level: 0, tier: 0, label: 'Inflate', gravityMultiplier: 0.78, relayBaseMs: 3000, speedMultiplier: 0.9, targetActivePlayers: 1 }),
+    Object.freeze({ level: 1, tier: 1, label: 'Lift', gravityMultiplier: 0.96, relayBaseMs: 2800, speedMultiplier: 0.98, targetActivePlayers: 2 }),
+    Object.freeze({ level: 2, tier: 2, label: 'Shape', gravityMultiplier: 1.14, relayBaseMs: 2500, speedMultiplier: 1.08, targetActivePlayers: 3 }),
+    Object.freeze({ level: 3, tier: 3, label: 'Climb', gravityMultiplier: 1.3, relayBaseMs: 2200, speedMultiplier: 1.18, targetActivePlayers: 4 }),
+    Object.freeze({ level: 4, tier: 4, label: 'Orbit', gravityMultiplier: 1.48, relayBaseMs: 1950, speedMultiplier: 1.3, targetActivePlayers: 5 })
 ]);
 
 const COMBO_DEFINITIONS = {
@@ -213,6 +263,213 @@ export const getLobbyVolleyDecayPerSec = (state = createLobbyVolleyState(), nowM
         0.16,
         0.72
     );
+};
+
+const midiFromPitch = (pitch = 0) => {
+    const safePitch = Number(pitch || 0);
+    if (!Number.isFinite(safePitch) || safePitch <= 0) return null;
+    return 69 + (12 * Math.log2(safePitch / 440));
+};
+
+const deriveLobbyVoicePressure = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const safeNow = Number(nowMs || Date.now());
+    const peakAltitudeFt = Number(state?.peakAltitudeFt || 0);
+    const airborneMs = deriveAirborneMs(state, safeNow);
+    const tier = Number(state?.currentTier || 0);
+    const pressureAltitudeFt = Math.max(
+        peakAltitudeFt,
+        tier * 34,
+        Math.floor(Math.max(0, airborneMs) / 11500) * 28
+    );
+    return {
+        airborneMs,
+        pressureAltitudeFt,
+        pressurePct: clamp((pressureAltitudeFt / 170) * 100, 0, 100)
+    };
+};
+
+const getLobbyVoiceTargetIndex = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const { pressureAltitudeFt } = deriveLobbyVoicePressure(state, nowMs);
+    let index = 0;
+    VOICE_TARGETS.forEach((target, candidateIndex) => {
+        if (pressureAltitudeFt >= Number(target.minAltitudeFt || 0)) index = candidateIndex;
+    });
+    return clamp(index, 0, VOICE_TARGETS.length - 1);
+};
+
+export const deriveLobbyVoiceTarget = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const safeNow = Number(nowMs || Date.now());
+    const pressure = deriveLobbyVoicePressure(state, safeNow);
+    const index = getLobbyVoiceTargetIndex(state, safeNow);
+    const target = VOICE_TARGETS[index] || VOICE_TARGETS[0];
+    const airbornePressureLift = Math.max(0, Number(pressure.airborneMs || 0) - 10000) / 35000;
+    const requiredLift = clamp(Number(target.minLift || 1.2) + (index * 0.18) + airbornePressureLift, target.volumeOnly ? 0.65 : 1.1, 4.8);
+    const commandLabel = target.phase === 'inflate'
+        ? 'BLOW AIR'
+        : target.phase === 'lift'
+            ? 'RUMBLE LOW'
+            : target.phase === 'shape'
+                ? 'MATCH THE NOTE'
+                : 'HOLD ORBIT';
+    const commandHelper = target.phase === 'inflate'
+        ? 'Any steady crowd volume fills the orb. Pitch is optional in this phase.'
+        : target.phase === 'lift'
+            ? 'Low voices add weight and keep the orb rising.'
+            : target.phase === 'shape'
+                ? 'The room needs a cleaner shared note now.'
+                : 'High voices sustain orbit under pressure.';
+    return {
+        ...target,
+        ...pressure,
+        commandLabel,
+        commandHelper,
+        index,
+        totalTargets: VOICE_TARGETS.length,
+        requiredLift,
+        targetLabel: `${target.targetNote} zone`,
+        progressLabel: `${index + 1}/${VOICE_TARGETS.length}`,
+        pressureLabel: `${Math.round(pressure.pressurePct)}% pressure`,
+        requirementLabel: target.volumeOnly
+            ? `Need crowd air + ${requiredLift.toFixed(1)} lift`
+            : `Need ${target.targetNote} + ${requiredLift.toFixed(1)} lift`,
+        staleMs: VOICE_FRAME_STALE_MS
+    };
+};
+
+export const applyLobbyVoiceFrame = (state = createLobbyVolleyState(), voiceFrame = {}, nowMs = Date.now()) => {
+    const baseState = state && typeof state === 'object' ? state : createLobbyVolleyState();
+    const safeNow = Number(nowMs || Date.now());
+    const capturedAtMs = Number(voiceFrame?.capturedAtMs || voiceFrame?.timestampMs || 0);
+    const frameAgeMs = capturedAtMs > 0 ? Math.max(0, safeNow - capturedAtMs) : 0;
+    const activeUltimates = pruneActiveUltimates(baseState, safeNow);
+    const target = deriveLobbyVoiceTarget(baseState, safeNow);
+    const inactive = voiceFrame?.active === false || (capturedAtMs > 0 && frameAgeMs > VOICE_FRAME_STALE_MS);
+    const elapsedMs = Math.max(0, safeNow - Number(baseState.lastInteractionAtMs || safeNow));
+    const decayedEnergy = decayEnergy(
+        baseState.energy,
+        elapsedMs * Number(target.gravityMultiplier || 1),
+        getLobbyVolleyDecayPerSec(baseState, safeNow)
+    );
+
+    if (inactive) {
+        return {
+            ...baseState,
+            energy: decayedEnergy,
+            activeUltimates,
+            voice: {
+                ...(baseState.voice || {}),
+                active: false,
+                fresh: false,
+                target,
+                capturedAtMs,
+                lastAppliedAtMs: Number(baseState.voice?.lastAppliedAtMs || 0)
+            }
+        };
+    }
+
+    const pitch = Number(voiceFrame?.pitch || 0);
+    const midi = midiFromPitch(pitch);
+    const volume = clamp(Number(voiceFrame?.volumeNormalized ?? voiceFrame?.volume ?? 0), 0, 1);
+    const confidence = clamp(Number(voiceFrame?.confidence || 0), 0, 1);
+    const stability = clamp(Number(voiceFrame?.stability || 0), 0, 1);
+    const singing = !!voiceFrame?.isSinging || volume >= 0.08 || confidence >= 0.22;
+    const pitchDelta = midi === null ? null : Math.abs(midi - Number(target.targetMidi || 0));
+    const volumeOnly = !!target.volumeOnly;
+    const matchPct = volumeOnly
+        ? clamp((volume - 0.035) / 0.24, 0, 1)
+        : (pitchDelta === null
+            ? 0
+            : clamp(1 - (pitchDelta / Math.max(1, Number(target.toleranceSemitones || 8))), 0, 1));
+    const lowLaunchBonus = target.phase === 'lift' && midi !== null && midi <= Number(target.targetMidi || 52) + 6 ? 0.22 : 0;
+    const volumeLift = clamp((volume - 0.035) / (volumeOnly ? 0.2 : 0.3), 0, 1) * (volumeOnly ? 3.9 : 2.8);
+    const pitchLift = volumeOnly ? 0 : matchPct * (0.55 + (confidence * 0.45)) * 4.8;
+    const sustainLift = stability * volume * (volumeOnly ? 1.35 : 3.2);
+    const lift = singing ? clamp(volumeLift + pitchLift + sustainLift + lowLaunchBonus, 0, 10.5) : 0;
+    const requiredLift = Number(target.requiredLift || target.minLift || 1.2);
+    const effectiveLift = lift >= requiredLift ? lift : 0;
+    const lastVoiceLiftAtMs = Number(baseState.voice?.lastAppliedAtMs || baseState.lastVoiceLiftAtMs || 0);
+    const shouldStepStreak = effectiveLift > 0 && (safeNow - lastVoiceLiftAtMs) >= VOICE_LIFT_MIN_INTERVAL_MS;
+    const nextStreakCount = Number(baseState.streakCount || 0) + (shouldStepStreak ? 1 : 0);
+    const nextTier = getTierForStreak(nextStreakCount);
+    const airborneStartedAtMs = effectiveLift > 0
+        ? Number(baseState.airborneStartedAtMs || baseState.startedAtMs || safeNow)
+        : Number(baseState.airborneStartedAtMs || 0);
+    const roomVoiceParticipant = {
+        ...(baseState.participants?.[VOICE_PARTICIPANT_UID] || createParticipant({
+            uid: VOICE_PARTICIPANT_UID,
+            userName: 'Room Voice',
+            avatar: '',
+            type: 'voice_lift'
+        }, safeNow)),
+        uid: VOICE_PARTICIPANT_UID,
+        userName: 'Room Voice',
+        lastAtMs: effectiveLift > 0 ? safeNow : Number(baseState.participants?.[VOICE_PARTICIPANT_UID]?.lastAtMs || 0),
+        lastEventAtMs: effectiveLift > 0 ? safeNow : Number(baseState.participants?.[VOICE_PARTICIPANT_UID]?.lastEventAtMs || 0),
+        lastEventType: 'voice_lift',
+        events: Number(baseState.participants?.[VOICE_PARTICIPANT_UID]?.events || 0) + (shouldStepStreak ? 1 : 0),
+        weightedEvents: Number(baseState.participants?.[VOICE_PARTICIPANT_UID]?.weightedEvents || 0) + (effectiveLift > 0 ? matchPct : 0),
+        score: Number(baseState.participants?.[VOICE_PARTICIPANT_UID]?.score || 0) + effectiveLift,
+        byType: {
+            ...(baseState.participants?.[VOICE_PARTICIPANT_UID]?.byType || {}),
+            voice_lift: Number(baseState.participants?.[VOICE_PARTICIPANT_UID]?.byType?.voice_lift || 0) + (shouldStepStreak ? 1 : 0)
+        }
+    };
+    const participants = effectiveLift > 0
+        ? {
+            ...(baseState.participants || {}),
+            [VOICE_PARTICIPANT_UID]: roomVoiceParticipant
+        }
+        : (baseState.participants || {});
+    const nextEnergy = clamp(decayedEnergy + effectiveLift, 0, 100);
+    const promptHeadline = effectiveLift > 0
+        ? (target.phase === 'inflate' ? 'AIR IS FILLING - KEEP GOING' : target.headline)
+        : target.headline;
+    const promptSecondary = effectiveLift > 0
+        ? `${Math.round(matchPct * 100)}% match | ${target.requirementLabel} | hold it together`
+        : target.secondary;
+    const nextStateWithoutMultiplier = {
+        ...baseState,
+        streakCount: nextStreakCount,
+        energy: nextEnergy,
+        currentTier: nextTier.tier,
+        tierName: nextTier.name,
+        startedAtMs: effectiveLift > 0 ? Number(baseState.startedAtMs || safeNow) : Number(baseState.startedAtMs || 0),
+        airborneStartedAtMs,
+        airborneMs: airborneStartedAtMs ? Math.max(0, safeNow - airborneStartedAtMs) : 0,
+        lastInteractionAtMs: effectiveLift > 0 ? safeNow : Number(baseState.lastInteractionAtMs || 0),
+        lastInteractionType: effectiveLift > 0 ? 'voice_lift' : String(baseState.lastInteractionType || ''),
+        lastInteractionUid: effectiveLift > 0 ? VOICE_PARTICIPANT_UID : String(baseState.lastInteractionUid || ''),
+        participants,
+        activeUltimates,
+        voice: {
+            active: true,
+            fresh: capturedAtMs <= 0 || frameAgeMs <= VOICE_FRAME_STALE_MS,
+            target,
+            pitch,
+            midi,
+            note: String(voiceFrame?.note || ''),
+            stableNote: String(voiceFrame?.stableNote || ''),
+            volume,
+            confidence,
+            stability,
+            singing,
+            matchPct,
+            rawLift: lift,
+            lift: effectiveLift,
+            requiredLift,
+            pressurePct: Number(target.pressurePct || 0),
+            pressureLabel: String(target.pressureLabel || ''),
+            requirementLabel: String(target.requirementLabel || ''),
+            promptHeadline,
+            promptSecondary,
+            capturedAtMs: capturedAtMs || safeNow,
+            lastAppliedAtMs: effectiveLift > 0 ? safeNow : lastVoiceLiftAtMs
+        }
+    };
+    return {
+        ...nextStateWithoutMultiplier,
+        teamworkMultiplier: deriveTeamworkMultiplier(nextStateWithoutMultiplier, safeNow)
+    };
 };
 
 export const getLobbyVolleyAudienceRatePlan = (
@@ -727,6 +984,9 @@ export const LOBBY_PLAYGROUND_ENGINE_CONSTANTS = {
     COMBO_WINDOW_MS,
     MAX_PARTICIPANTS_PER_PAYOUT,
     PAYOUT_COOLDOWN_MS,
+    VOICE_FRAME_STALE_MS,
+    VOICE_LIFT_MIN_INTERVAL_MS,
+    VOICE_TARGETS,
     AIR_MULTIPLIER_STEP_MS,
     AIR_MULTIPLIER_CAP,
     RELAY_SEQUENCE,

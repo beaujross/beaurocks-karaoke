@@ -1,5 +1,6 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
@@ -43,6 +44,12 @@ const {
   selectPopTriviaSeedRows,
   shouldAttemptPopTriviaGeneration,
 } = require("./lib/popTrivia");
+const {
+  buildOneMinuteMicAdvancePlan,
+  buildOneMinuteMicFinalizePlan,
+  buildOneMinuteMicRoomPatch,
+  getOneMinuteMicFinalizeCandidate,
+} = require("./lib/audienceDecisionAutomation");
 const REACTION_POINT_COSTS = require("./lib/reactionPointCosts.json");
 const OFFICIAL_BEAUROCKS_DISCOVER_LISTINGS = require("./lib/officialBeauRocksDiscoverListings.json");
 const { shouldIncludeDiscoverListing } = require("./lib/discoverVisibility");
@@ -51,6 +58,9 @@ admin.initializeApp();
 const APP_ID = "bross-app";
 const POP_TRIVIA_CACHE_FIELD = "popTriviaSongCache";
 const ORGS_COLLECTION = "organizations";
+const ORG_MEDIA_UPLOAD_SESSIONS_COLLECTION = "media_upload_sessions";
+const ORG_MEDIA_ASSETS_COLLECTION = "media_assets";
+const LEGACY_HOST_MEDIA_ASSETS_COLLECTION = "host_media_assets";
 const STRIPE_SUBSCRIPTIONS_COLLECTION = "stripe_subscriptions";
 const DEFAULT_BEAUROCKS_LOGO_URL = "/images/logo-library/beaurocks-logo-neon trasnparent.png";
 
@@ -2146,7 +2156,7 @@ const buildProvisionedRoomData = ({
     autoBonusPoints: 25,
     applauseWarmupSec: 0,
     performanceIntroSec: 15,
-    applauseCountdownSec: 5,
+    applauseCountdownSec: 0,
     applauseMeasureSec: 5,
     hostName: resolvedHostName,
     hostUid,
@@ -2205,6 +2215,7 @@ const buildProvisionedRoomData = ({
     autoLyricsOnQueue: false,
     showPerformanceRecap: true,
     performanceRecapBreakdownMs: 7000,
+    performanceRecapScoreStepMs: 2600,
     performanceRecapLeaderboardMs: 7000,
     performanceRecapNextUpMs: 6000,
     popTriviaEnabled: true,
@@ -2461,7 +2472,10 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "lobbyPlaygroundPerUserCooldownMs",
   "lobbyPlaygroundStrictMode",
   "lobbyPlaygroundVisualOnly",
+  "lobbyVoiceTelemetry",
   "lobbyVolleyEnabled",
+  "lobbyVolleyLaunchId",
+  "lobbyVolleyStartedAtMs",
   "logoUrl",
   "lyricsMode",
   "marqueeDurationMs",
@@ -2471,9 +2485,11 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "marqueeShowMode",
   "mediaUrl",
   "missionControl",
+  "musicalMomentPresets",
   "mixFader",
   "pausedAt",
   "performanceRecapBreakdownMs",
+  "performanceRecapScoreStepMs",
   "performanceRecapLeaderboardMs",
   "performanceRecapNextUpMs",
   "performanceIntroSec",
@@ -2602,11 +2618,14 @@ const HOST_ROOM_NUMBER_ROOT_KEYS = new Set([
   "guitarSessionId",
   "lobbyPlaygroundMaxPerMinute",
   "lobbyPlaygroundPerUserCooldownMs",
+  "lobbyVolleyLaunchId",
+  "lobbyVolleyStartedAtMs",
   "marqueeDurationMs",
   "marqueeIntervalMs",
   "mixFader",
   "pausedAt",
   "performanceRecapBreakdownMs",
+  "performanceRecapScoreStepMs",
   "performanceRecapLeaderboardMs",
   "performanceRecapNextUpMs",
   "performanceIntroSec",
@@ -2678,6 +2697,7 @@ const HOST_ROOM_ARRAY_ROOT_KEYS = new Set([
   "bingoTurnOrder",
   "gameParticipants",
   "marqueeItems",
+  "musicalMomentPresets",
 ]);
 const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "announcement",
@@ -2708,6 +2728,7 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "hostUiPrefs",
   "karaokeBracket",
   "lastPerformance",
+  "lobbyVoiceTelemetry",
   "currentPerformanceSession",
   "photoOverlay",
   "queueSettings",
@@ -2774,6 +2795,11 @@ const HOST_ROOM_DOTTED_KEY_RULES = [
   {
     pattern: /^gameData\.hostAssist$/,
     label: "gameData.hostAssist",
+    validate: (value) => value === null || isPlainObject(value),
+  },
+  {
+    pattern: /^gameData\.voiceTelemetry$/,
+    label: "gameData.voiceTelemetry",
     validate: (value) => value === null || isPlainObject(value),
   },
 ];
@@ -3144,7 +3170,7 @@ const normalizeProvisionNightPresetPayload = (input = {}) => {
       autoLyricsOnQueue: settings.autoLyricsOnQueue === true,
       popTriviaEnabled: settings.popTriviaEnabled === true,
       gamePreviewId: typeof settings.gamePreviewId === "string" ? settings.gamePreviewId.trim().toLowerCase() : "",
-      audienceShellVariant: String(settings.audienceShellVariant || "").trim().toLowerCase() === "streamlined" ? "streamlined" : "classic",
+      audienceShellVariant: String(settings.audienceShellVariant || "").trim().toLowerCase() === "classic" ? "classic" : "streamlined",
       audienceFeatureAccess: normalizeProvisionAudienceFeatureAccess(settings.audienceFeatureAccess || {}),
       queueSettings: {
         limitMode: typeof queueSettings.limitMode === "string" ? queueSettings.limitMode.trim().toLowerCase() : "none",
@@ -3210,7 +3236,7 @@ const buildProvisionPresetOverridesFromConfig = (presetConfig = null) => {
     autoLyricsOnQueue: settings.autoLyricsOnQueue === true,
     popTriviaEnabled: settings.popTriviaEnabled === true,
     gamePreviewId: settings.gamePreviewId || null,
-    audienceShellVariant: settings.audienceShellVariant === "streamlined" ? "streamlined" : "classic",
+    audienceShellVariant: settings.audienceShellVariant === "classic" ? "classic" : "streamlined",
     audienceFeatureAccess: normalizeProvisionAudienceFeatureAccess(settings.audienceFeatureAccess || {}),
     queueSettings: {
       limitMode: settings?.queueSettings?.limitMode || "none",
@@ -10131,7 +10157,6 @@ const buildGeminiPrompt = (type, context) => {
   if (type === "pop_trivia_song") {
     const songTitle = String(singleSong?.songTitle || "").trim() || "Unknown Song";
     const artist = String(singleSong?.artist || "").trim() || "Unknown Artist";
-    const singerName = String(singleSong?.singerName || "").trim();
     const metadataConfidence = String(singleSong?.metadataConfidence || "").trim() || "limited";
     const sourceMode = String(singleSong?.sourceMode || "").trim() || "catalog";
     const metadata = (singleSong?.metadata && typeof singleSong.metadata === "object" && !Array.isArray(singleSong.metadata))
@@ -10140,27 +10165,27 @@ const buildGeminiPrompt = (type, context) => {
         .filter((entry) => !entry.endsWith(": "))
       : [];
     const metadataLine = metadata.length ? metadata.join(", ") : "none";
-    return `Create 4 high-quality multiple-choice karaoke pop-up trivia questions for "${songTitle}" by "${artist}".
+    return `Create 4 high-quality multiple-choice pop-up trivia questions about the requested song "${songTitle}" by "${artist}".
 Tone: funny, clever, and insightful (VH1 Pop-Up Video vibe), never mean.
-Audience: live karaoke crowd answering quickly on phones while the song plays.
+Audience: fans answering quickly on phones while the song plays.
 Known metadata: ${metadataLine}.
 Metadata confidence: ${metadataConfidence}.
 Source mode: ${sourceMode}.
-Current singer: ${singerName || "N/A"}.
 Rules:
 - Each question must be answerable in under 10 seconds.
-- Prefer questions that feel tied to this song or this live karaoke performance, not generic music theory.
+- Every question must focus on the requested song, the listed artist, or a safe fan-facing factoid about either one.
 - At least 3 questions must mention the song title, artist, or an unmistakable title phrase.
-- Use one of these categories per question: hook_recognition, performance, arrangement, crowd_moment, singalong, safe_fact.
-- Mix playful song facts, hook recognition, performance strategy, arrangement cues, and crowd moments.
+- Use one of these categories per question: song_fact, artist_fact, fan_fact, hook_recognition, arrangement, safe_fact.
+- Mix basic fan trivia, interesting factoids, hook recognition, title recognition, artist clues, and arrangement cues.
 - Do not ask generic filler such as "which song section sets up the story", "what usually helps most in karaoke", or "which production trick is common".
 - Keep each answer option concise (under 45 characters).
 - Wrong answers should be plausible and funny, not random nonsense.
+- Do not mention or ask about the current singer, performer, host, crowd, room, microphone, karaoke technique, or stage strategy.
 - Avoid obscure deep-cut facts and avoid speculation.
 - If metadata confidence is sparse or source mode is youtube/custom, do not invent release years, chart stats, album facts, music-video facts, or artist biography facts.
 - In sparse mode, do not ask "who released", "what year", "which album", award, chart, label, music-video, or biography questions.
-- In sparse mode, use karaoke-IQ questions anchored to the title/performance, hook recognition, arrangement cues, singer strategy, and crowd-energy questions that are answerable from the room without catalog facts.
-- If you cannot write a safe factual question, write a title/performance question instead.
+- In sparse mode, use title recognition, artist recognition, hook recognition, arrangement cues, or safe fan-observation questions that do not require catalog facts.
+- If you cannot write a safe factual question, write a title, artist, hook, or arrangement question instead.
 Format strictly as JSON array of objects:
 [{"q":"...","correct":"...","w1":"...","w2":"...","w3":"...","category":"hook_recognition"}]
 Do not include markdown.`;
@@ -12670,6 +12695,149 @@ exports.backfillPopTriviaOnRoomEnable = onDocumentUpdated(
   }
 );
 
+const processOneMinuteMicAutomationRoom = async ({ roomRef, roomCode = "", nowValue = nowMs() } = {}) => {
+  if (!roomRef) return { updated: false, reason: "missing_room_ref" };
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const safeRoomCode = normalizeRoomCode(roomCode || roomRef.id || "");
+  return db.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef);
+    if (!roomSnap.exists) return { updated: false, reason: "room_missing" };
+    const roomData = { ...(roomSnap.data() || {}), roomCode: safeRoomCode };
+
+    const finalizeCandidate = getOneMinuteMicFinalizeCandidate(roomData, nowValue);
+    if (finalizeCandidate?.songId) {
+      const songRef = rootRef.collection("karaoke_songs").doc(finalizeCandidate.songId);
+      const nextSongsQuery = rootRef
+        .collection("karaoke_songs")
+        .where("roomCode", "==", safeRoomCode)
+        .where("status", "in", ["assigned", "pending", "requested"])
+        .limit(8);
+      const [songSnap, nextSongsSnap] = await Promise.all([
+        tx.get(songRef),
+        tx.get(nextSongsQuery),
+      ]);
+      if (!songSnap.exists) return { updated: false, reason: "song_missing" };
+      const nextSongs = nextSongsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }));
+      const finalizePlan = buildOneMinuteMicFinalizePlan({
+        room: roomData,
+        song: { id: songSnap.id, ...(songSnap.data() || {}) },
+        nextSongs,
+        nowMs: nowValue,
+      });
+      if (finalizePlan?.roomPatch && finalizePlan?.songPatch) {
+        tx.update(songRef, {
+          ...finalizePlan.songPatch,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        tx.update(roomRef, {
+          ...finalizePlan.roomPatch,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        if (finalizePlan.performanceLog) {
+          tx.set(db.collection("performances").doc(), {
+            ...finalizePlan.performanceLog,
+            roomCode: safeRoomCode,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+        return { updated: true, finalized: true, command: "finish_performance" };
+      }
+    }
+
+    const advanceSongsQuery = rootRef
+      .collection("karaoke_songs")
+      .where("roomCode", "==", safeRoomCode)
+      .where("status", "in", ["assigned", "pending", "requested"])
+      .limit(8);
+    const advanceSongsSnap = await tx.get(advanceSongsQuery);
+    const advancePlan = buildOneMinuteMicAdvancePlan({
+      room: roomData,
+      songs: advanceSongsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) })),
+      nowMs: nowValue,
+    });
+    if (advancePlan?.roomPatch && advancePlan?.songPatch) {
+      const nextSongRef = rootRef.collection("karaoke_songs").doc(advancePlan.songId);
+      tx.update(nextSongRef, {
+        ...advancePlan.songPatch,
+        performingStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      tx.update(roomRef, {
+        ...advancePlan.roomPatch,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return { updated: true, advanced: true, songId: advancePlan.songId };
+    }
+
+    const patch = buildOneMinuteMicRoomPatch({
+      room: roomData,
+      roomCode: safeRoomCode,
+      nowMs: nowValue,
+    });
+    if (!patch || !Object.keys(patch).length) return { updated: false, reason: "no_patch" };
+    tx.update(roomRef, {
+      ...patch,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return {
+      updated: true,
+      opened: !!patch.audienceDecision && patch.audienceDecision.status === "open",
+      resolved: !!patch.audienceDecision && patch.audienceDecision.status === "resolved",
+      command: patch.audienceAutomationCommand?.action || "",
+    };
+  });
+};
+
+exports.runOneMinuteMicAutomation = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    timeZone: "UTC",
+    timeoutSeconds: 60,
+    memory: "256MiB",
+  },
+  async () => {
+    const rootRef = getRootRef();
+    const roomsById = new Map();
+    const [flagSnap, modeSnap] = await Promise.all([
+      rootRef.collection("rooms").where("oneMinuteMicEnabled", "==", true).limit(40).get(),
+      rootRef.collection("rooms").where("performanceProgressionMode", "==", "one_minute_mic").limit(40).get(),
+    ]);
+    flagSnap.docs.forEach((docSnap) => roomsById.set(docSnap.id, docSnap.ref));
+    modeSnap.docs.forEach((docSnap) => roomsById.set(docSnap.id, docSnap.ref));
+
+    const nowValue = nowMs();
+    const counters = {
+      scanned: roomsById.size,
+      updated: 0,
+      opened: 0,
+      resolved: 0,
+      commands: 0,
+      finalized: 0,
+      advanced: 0,
+      failed: 0,
+    };
+    for (const [roomCode, roomRef] of roomsById.entries()) {
+      try {
+        const result = await processOneMinuteMicAutomationRoom({ roomRef, roomCode, nowValue });
+        if (!result?.updated) continue;
+        counters.updated += 1;
+        if (result.opened) counters.opened += 1;
+        if (result.resolved) counters.resolved += 1;
+        if (result.command) counters.commands += 1;
+        if (result.finalized) counters.finalized += 1;
+        if (result.advanced) counters.advanced += 1;
+      } catch (error) {
+        counters.failed += 1;
+        console.warn("runOneMinuteMicAutomation room failed", { roomCode, message: error?.message || String(error) });
+      }
+    }
+    if (counters.updated || counters.failed) {
+      console.info("runOneMinuteMicAutomation", counters);
+    }
+    return counters;
+  }
+);
 exports.recoverPendingPopTrivia = onSchedule(
   {
     schedule: "every 10 minutes",
@@ -16189,6 +16357,241 @@ exports.uploadAudienceRoomPhoto = onCall({ cors: true }, async (request) => {
   };
 });
 
+const normalizeMediaUploadPurpose = (value = '') => {
+  const token = String(value || '').trim().toLowerCase();
+  return token === 'scene_image' ? 'scene_image' : 'scene_image';
+};
+
+const getMediaUploadPurposeConfig = (purpose = '') => {
+  const normalized = normalizeMediaUploadPurpose(purpose);
+  if (normalized === 'scene_image') {
+    return {
+      purpose: 'scene_image',
+      mediaType: 'image',
+      maxBytes: 20 * 1024 * 1024,
+      contentTypePattern: /^image\//,
+      titleFallback: 'Image Scene',
+    };
+  }
+  return null;
+};
+
+const buildStorageDownloadUrl = ({ bucketName = '', storagePath = '', token = '' }) => (
+  'https://firebasestorage.googleapis.com/v0/b/' + encodeURIComponent(bucketName) + '/o/' + encodeURIComponent(storagePath) + '?alt=media&token=' + encodeURIComponent(token)
+);
+
+const parseOrgMediaIncomingPath = (storagePath = '') => {
+  const match = String(storagePath || '').match(/^org_media\/([^/]+)\/incoming\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+  return {
+    orgId: sanitizeOrgToken(match[1] || ''),
+    sessionId: safeDirectoryString(match[2] || '', 120),
+    fileName: safeDirectoryString(match[3] || '', 180),
+  };
+};
+
+exports.createMediaUploadSession = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, 'create_media_upload_session', { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, 'create_media_upload_session');
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || '');
+  const purposeConfig = getMediaUploadPurposeConfig(request.data?.purpose || 'scene_image');
+  if (!purposeConfig) {
+    throw new HttpsError('invalid-argument', 'Unsupported upload purpose.');
+  }
+  const fileSize = Math.max(0, Number(request.data?.sizeBytes || 0) || 0);
+  if (!fileSize) {
+    throw new HttpsError('invalid-argument', 'sizeBytes is required.');
+  }
+  if (fileSize > purposeConfig.maxBytes) {
+    throw new HttpsError('invalid-argument', 'Scene images must be 20 MB or smaller.');
+  }
+  const mimeType = String(request.data?.mimeType || '').trim().toLowerCase();
+  if (!mimeType || !purposeConfig.contentTypePattern.test(mimeType)) {
+    throw new HttpsError('invalid-argument', 'Scene uploads must be image files.');
+  }
+
+  const { roomData, roomCode: safeRoomCode } = await ensureRoomHostAccess({
+    roomCode,
+    callerUid,
+    deniedMessage: 'Only room hosts can create media upload sessions.',
+  });
+  const ensured = await ensureOrganizationForUser({ uid: callerUid });
+  const roomOrgId = sanitizeOrgToken(roomData?.orgId || '');
+  const orgId = roomOrgId || ensured.orgId || buildOrgIdForUid(callerUid);
+  if (!orgId) {
+    throw new HttpsError('failed-precondition', 'Could not resolve host workspace.');
+  }
+
+  const rawFileName = safeDirectoryString(request.data?.fileName || 'scene-image', 160) || 'scene-image';
+  const safeFileName = rawFileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90) || 'scene-image.jpg';
+  const title = safeDirectoryString(request.data?.title || rawFileName.replace(/\.[^/.]+$/, ''), 180) || purposeConfig.titleFallback;
+  const folderId = safeDirectoryString(request.data?.folderId || '', 180);
+  const folderName = safeDirectoryString(request.data?.folderName || '', 180);
+  const nowValue = nowMs();
+  const expiresAtMs = nowValue + 30 * 60 * 1000;
+  const sessionId = 'session_' + nowValue.toString(36) + '_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  const assetId = 'asset_' + nowValue.toString(36) + '_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  const uploadPath = 'org_media/' + orgId + '/incoming/' + sessionId + '/' + safeFileName;
+  const sessionRef = orgsCollection().doc(orgId).collection(ORG_MEDIA_UPLOAD_SESSIONS_COLLECTION).doc(sessionId);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  await sessionRef.set({
+    id: sessionId,
+    sessionId,
+    assetId,
+    orgId,
+    ownerUid: callerUid,
+    createdByUid: callerUid,
+    roomCode: safeRoomCode,
+    roomCodes: [safeRoomCode].filter(Boolean),
+    purpose: purposeConfig.purpose,
+    mediaType: purposeConfig.mediaType,
+    status: 'pending_upload',
+    fileName: rawFileName,
+    safeFileName,
+    title,
+    folderId,
+    folderName,
+    mimeType,
+    maxBytes: purposeConfig.maxBytes,
+    expectedSizeBytes: fileSize,
+    uploadPath,
+    storagePath: uploadPath,
+    createdAt: now,
+    updatedAt: now,
+    createdAtMs: nowValue,
+    expiresAtMs,
+  }, { merge: true });
+
+  return {
+    ok: true,
+    orgId,
+    roomCode: safeRoomCode,
+    sessionId,
+    assetId,
+    uploadPath,
+    storagePath: uploadPath,
+    maxBytes: purposeConfig.maxBytes,
+    expiresAtMs,
+    status: 'pending_upload',
+  };
+});
+
+exports.finalizeOrgMediaUpload = onObjectFinalized(async (event) => {
+  const object = event.data || {};
+  const incomingPath = String(object.name || '');
+  const parsed = parseOrgMediaIncomingPath(incomingPath);
+  if (!parsed?.orgId || !parsed?.sessionId) return null;
+
+  const db = admin.firestore();
+  const bucket = admin.storage().bucket(object.bucket);
+  const bucketName = String(bucket?.name || object.bucket || '').trim();
+  const sessionRef = orgsCollection().doc(parsed.orgId).collection(ORG_MEDIA_UPLOAD_SESSIONS_COLLECTION).doc(parsed.sessionId);
+  const sessionSnap = await sessionRef.get();
+  if (!sessionSnap.exists) return null;
+  const session = sessionSnap.data() || {};
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const expectedPath = String(session.uploadPath || session.storagePath || '').trim();
+  if (expectedPath && expectedPath !== incomingPath) {
+    await sessionRef.set({ status: 'rejected', rejectionReason: 'unexpected_storage_path', updatedAt: now, finalizedAt: now }, { merge: true });
+    return null;
+  }
+  if (String(session.status || '') !== 'pending_upload') {
+    return null;
+  }
+  const contentType = String(object.contentType || session.mimeType || '').trim().toLowerCase();
+  const sizeBytes = Math.max(0, Number(object.size || 0) || 0);
+  const maxBytes = Math.max(1, Number(session.maxBytes || 0) || 0);
+  const purposeConfig = getMediaUploadPurposeConfig(session.purpose || 'scene_image');
+  if (!purposeConfig || !purposeConfig.contentTypePattern.test(contentType) || sizeBytes > maxBytes) {
+    await sessionRef.set({
+      status: 'rejected',
+      rejectionReason: sizeBytes > maxBytes ? 'file_too_large' : 'invalid_content_type',
+      actualSizeBytes: sizeBytes,
+      actualMimeType: contentType,
+      updatedAt: now,
+      finalizedAt: now,
+    }, { merge: true });
+    return null;
+  }
+
+  await sessionRef.set({ status: 'processing', actualSizeBytes: sizeBytes, actualMimeType: contentType, updatedAt: now, finalizedAt: now }, { merge: true });
+
+  const assetId = safeDirectoryString(session.assetId || ('asset_' + nowMs().toString(36)), 120);
+  const safeFileName = safeDirectoryString(session.safeFileName || parsed.fileName || 'scene-image', 180) || 'scene-image.jpg';
+  const renderablePath = 'org_media/' + parsed.orgId + '/assets/' + assetId + '/renderable/' + safeFileName;
+  const token = crypto.randomUUID();
+  await bucket.file(incomingPath).copy(bucket.file(renderablePath), {
+    metadata: {
+      contentType,
+      cacheControl: 'public,max-age=604800',
+      metadata: { firebaseStorageDownloadTokens: token },
+    },
+  });
+  const mediaUrl = buildStorageDownloadUrl({ bucketName, storagePath: renderablePath, token });
+  const title = safeDirectoryString(session.title || safeFileName.replace(/\.[^/.]+$/, ''), 180) || 'Image Scene';
+  const folderId = safeDirectoryString(session.folderId || '', 180);
+  const folderName = safeDirectoryString(session.folderName || '', 180);
+  const roomCode = normalizeRoomCode(session.roomCode || '');
+  const ownerUid = safeDirectoryString(session.ownerUid || session.createdByUid || '', 180);
+  const createdBy = safeDirectoryString(session.createdByName || 'Host', 180) || 'Host';
+  const assetPayload = {
+    id: assetId,
+    assetId,
+    orgId: parsed.orgId,
+    ownerUid,
+    createdByUid: ownerUid,
+    scope: 'org',
+    libraryScope: 'account',
+    roomCode,
+    roomCodes: [roomCode].filter(Boolean),
+    folderId,
+    folderName,
+    purpose: purposeConfig.purpose,
+    title,
+    artist: 'Scene Upload',
+    fileName: String(session.fileName || safeFileName),
+    safeFileName,
+    mediaType: purposeConfig.mediaType,
+    mimeType: contentType,
+    url: mediaUrl,
+    mediaUrl,
+    storagePath: renderablePath,
+    originalStoragePath: incomingPath,
+    renderableStoragePath: renderablePath,
+    size: sizeBytes,
+    sizeBytes,
+    status: 'ready',
+    source: 'org_media_ingest',
+    createdAt: session.createdAt || now,
+    createdAtMs: Number(session.createdAtMs || nowMs()) || nowMs(),
+    updatedAt: now,
+    readyAt: now,
+    createdBy,
+  };
+
+  const orgAssetRef = orgsCollection().doc(parsed.orgId).collection(ORG_MEDIA_ASSETS_COLLECTION).doc(assetId);
+  const legacyAssetRef = getRootRef().collection(LEGACY_HOST_MEDIA_ASSETS_COLLECTION).doc(assetId);
+  const batch = db.batch();
+  batch.set(orgAssetRef, assetPayload, { merge: true });
+  batch.set(legacyAssetRef, { ...assetPayload, collectionName: LEGACY_HOST_MEDIA_ASSETS_COLLECTION }, { merge: true });
+  batch.set(sessionRef, {
+    status: 'ready',
+    assetId,
+    assetPath: orgAssetRef.path,
+    legacyAssetPath: legacyAssetRef.path,
+    mediaUrl,
+    url: mediaUrl,
+    storagePath: renderablePath,
+    renderableStoragePath: renderablePath,
+    originalStoragePath: incomingPath,
+    updatedAt: now,
+    readyAt: now,
+  }, { merge: true });
+  await batch.commit();
+  return null;
+});
 exports.uploadHostSceneMedia = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "upload_host_scene_media", { perMinute: 24, perHour: 180 });
   enforceAppCheckIfEnabled(request, "upload_host_scene_media");
@@ -19175,6 +19578,112 @@ exports.executeRunOfShowAction = onCall({ cors: true }, async (request) => {
   };
 });
 
+const normalizeAudienceDecisionChoiceId = (value = "") => String(value || "")
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9_-]/g, "_")
+  .slice(0, 80);
+const getNormalizedRoomAudienceDecision = (roomData = {}) => {
+  const source = roomData?.audienceDecision && typeof roomData.audienceDecision === "object"
+    ? roomData.audienceDecision
+    : {};
+  const choices = Array.isArray(source?.choices)
+    ? source.choices
+      .map((choice) => ({
+        id: normalizeAudienceDecisionChoiceId(choice?.id || choice?.key || ""),
+        label: normalizeRunOfShowText(choice?.label || "", 140),
+      }))
+      .filter((choice) => choice.id)
+      .slice(0, 6)
+    : [];
+  const choiceIds = new Set(choices.map((choice) => choice.id));
+  const votesByUid = source?.votesByUid && typeof source.votesByUid === "object" && !Array.isArray(source.votesByUid)
+    ? Object.fromEntries(
+      Object.entries(source.votesByUid)
+        .map(([uid, choice]) => [normalizeUidToken(uid), normalizeAudienceDecisionChoiceId(choice)])
+        .filter(([uid, choice]) => uid && choiceIds.has(choice))
+    )
+    : {};
+  return {
+    active: source?.active === true || String(source?.status || "").trim().toLowerCase() === "open",
+    id: normalizeRunOfShowText(source?.id || "", 180),
+    type: normalizeRunOfShowText(source?.type || "", 80),
+    status: String(source?.status || "").trim().toLowerCase() || (source?.active === true ? "open" : ""),
+    openedAtMs: normalizeRunOfShowTimestamp(source?.openedAtMs || 0),
+    closesAtMs: normalizeRunOfShowTimestamp(source?.closesAtMs || 0),
+    resolvedAtMs: normalizeRunOfShowTimestamp(source?.resolvedAtMs || 0),
+    choices,
+    choiceIds,
+    votesByUid,
+  };
+};
+const isAudienceDecisionVotingOpen = (decision = {}, nowMsValue = nowMs()) => {
+  if (decision?.active !== true && decision?.status !== "open") return false;
+  if (normalizeRunOfShowTimestamp(decision?.resolvedAtMs || 0) > 0) return false;
+  const closesAtMs = normalizeRunOfShowTimestamp(decision?.closesAtMs || 0);
+  if (closesAtMs > 0 && nowMsValue >= closesAtMs) return false;
+  return true;
+};
+
+exports.castAudienceDecisionVote = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "cast_audience_decision_vote", { perMinute: 60, perHour: 360 });
+  enforceAppCheckIfEnabled(request, "cast_audience_decision_vote");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const choice = normalizeAudienceDecisionChoiceId(request.data?.choice || "");
+  if (!roomCode || !choice) {
+    throw new HttpsError("invalid-argument", "roomCode and a valid choice are required.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const nowValue = nowMs();
+
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+    ]);
+
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before voting.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const decision = getNormalizedRoomAudienceDecision(roomData);
+    if (!isAudienceDecisionVotingOpen(decision, nowValue)) {
+      throw new HttpsError("failed-precondition", "That audience decision is no longer active.");
+    }
+    if (!decision.choiceIds.has(choice)) {
+      throw new HttpsError("invalid-argument", "That choice is not available for this decision.");
+    }
+
+    tx.update(roomRef, {
+      [`audienceDecision.votesByUid.${callerUid}`]: choice,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const nextVotesByUid = {
+      ...(decision.votesByUid || {}),
+      [callerUid]: choice,
+    };
+    return {
+      ok: true,
+      roomCode,
+      decisionId: decision.id,
+      type: decision.type,
+      choice,
+      totalVotes: Object.values(nextVotesByUid).filter((value) => decision.choiceIds.has(String(value || "").trim().toLowerCase())).length,
+    };
+  });
+
+  return result;
+});
 exports.castRunOfShowReleaseWindowVote = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "cast_run_of_show_release_window_vote", { perMinute: 60, perHour: 360 });
   enforceAppCheckIfEnabled(request, "cast_run_of_show_release_window_vote");

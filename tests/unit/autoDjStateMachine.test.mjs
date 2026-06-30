@@ -154,3 +154,29 @@ test("Auto DJ queue advance intent waits for the configured post-performance del
     assert.equal(intent.delayMs, 6000);
     assert.equal(intent.songId, 'song_ready');
 });
+
+test("Auto DJ queue advance intent waits for the full post-performance recap hold", () => {
+    const intent = getAutoDjQueueAdvanceIntent({
+        autoDjEnabled: true,
+        activeMode: 'karaoke',
+        songs: [
+            {
+                id: 'song_after_recap',
+                status: 'requested',
+                mediaUrl: 'https://youtube.com/watch?v=afterrecap',
+                playbackReady: true
+            }
+        ],
+        lastPerformanceTs: 1000,
+        autoDjDelaySec: 5,
+        postPerformanceHoldMs: 21500,
+        now: 12000
+    });
+
+    assert.equal(intent.shouldStart, false);
+    assert.equal(intent.reason, 'waiting_delay');
+    assert.equal(intent.delayMs, 10500);
+    assert.equal(intent.startAfterMs, 22500);
+    assert.equal(intent.configuredDelayMs, 5000);
+    assert.equal(intent.postPerformanceHoldMs, 21500);
+});

@@ -69,6 +69,11 @@ const freezeMotion = async (page) => {
 };
 
 const dismissRulesOverlay = async (panel, timeoutMs) => {
+  const autoText = panel.getByText("Starting automatically").first();
+  if (await autoText.isVisible().catch(() => false)) {
+    await autoText.waitFor({ state: "hidden", timeout: timeoutMs });
+    return;
+  }
   const continueText = panel.getByText("Tap to continue").first();
   const isVisible = await continueText.isVisible().catch(() => false);
   if (!isVisible) return;

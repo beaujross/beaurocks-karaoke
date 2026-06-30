@@ -52,7 +52,7 @@ test("volleyOrbUiState.test", () => {
       timedOut: false,
       relayActive: false,
     }),
-    "Tap to launch",
+    "Inflate together",
   );
   assert.equal(
     getVolleyOrbMobileMainLine({
@@ -60,7 +60,7 @@ test("volleyOrbUiState.test", () => {
       timedOut: false,
       relayActive: true,
     }),
-    "Hit target",
+    "Keep it rising",
   );
   assert.equal(
     getVolleyOrbMobileMainLine({
@@ -68,7 +68,7 @@ test("volleyOrbUiState.test", () => {
       timedOut: true,
       relayActive: true,
     }),
-    "Save it",
+    "Add air now",
   );
   assert.equal(
     getVolleyOrbMobileMainLine({
@@ -86,8 +86,8 @@ test("volleyOrbUiState.test", () => {
       volleyExpired: false,
     }),
     {
-      headline: "Join In",
-      secondary: "Any tap launches",
+      headline: "Blow To Inflate",
+      secondary: "Make sound toward the room mic",
     },
   );
   assert.deepEqual(
@@ -97,8 +97,8 @@ test("volleyOrbUiState.test", () => {
       volleyExpired: false,
     }),
     {
-      headline: "Pass It",
-      secondary: "New player hits target",
+      headline: "Keep It Rising",
+      secondary: "The room voice is driving the climb",
     },
   );
   assert.deepEqual(
@@ -108,8 +108,8 @@ test("volleyOrbUiState.test", () => {
       volleyExpired: false,
     }),
     {
-      headline: "Save It",
-      secondary: "Any tap now",
+      headline: "More Air",
+      secondary: "Make a bigger sound together",
     },
   );
   assert.deepEqual(
@@ -119,8 +119,8 @@ test("volleyOrbUiState.test", () => {
       volleyExpired: true,
     }),
     {
-      headline: "Restart",
-      secondary: "Any tap relaunches",
+      headline: "Inflate Again",
+      secondary: "Crowd volume relaunches the orb",
     },
   );
 

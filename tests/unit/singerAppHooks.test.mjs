@@ -75,6 +75,41 @@ test("SingerApp declares bracket signup state before streamlined tight15 effects
   );
 });
 
+test("SingerApp treats host-room-mic vocal games as audience prompts instead of duplicate game screens", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const isHostRoomMicVoiceGame = isVoiceGame && voiceInputMode === 'host' && \(hostRoomMicSource \|\| hostRoomMicPlayerId\);/,
+    "SingerApp should detect crowd voice games driven by the Host room mic",
+  );
+  assert.match(
+    source,
+    /data-feature-id="audience-room-mic-voice-prompt"/,
+    "SingerApp should render a dedicated lightweight audience prompt for Host room mic voice games",
+  );
+  assert.match(
+    source,
+    /Watch the main screen and sing with the room\. The Host room mic is the controller for this round\./,
+    "SingerApp should tell audience members to use the room mic and main screen instead of local game visuals",
+  );
+  assert.match(
+    source,
+    /setTab\('request'\);\s*setSongsTab\('browse'\);/,
+    "SingerApp should let guests leave the room-mic prompt and add songs",
+  );
+  assert.match(
+    source,
+    /setTab\('request'\);\s*setSongsTab\('queue'\);/,
+    "SingerApp should let guests leave the room-mic prompt and view the queue",
+  );
+  assert.match(
+    source,
+    /if \(!hideBingoOverlay && !hideAudienceRoomMicVoiceOverlay\)/,
+    "SingerApp should avoid falling through to the full GameContainer when the room-mic prompt is minimized",
+  );
+});
+
 test("SingerApp keeps event bonus messaging automatic and renders reaction cooldown inside the button shell", () => {
   const source = readFileSync(singerAppPath, "utf8");
 
@@ -265,23 +300,18 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /const streamlinedPerformanceVotingBannerVisible = isStreamlinedAudienceShell && karaokePerformanceVotingOpen && tab === 'request';/,
-    "SingerApp should detect when streamlined guests are in Songs while a live performance vote is happening",
+    /item\.key === 'home' && showPerformanceVotingPromptCta[\s\S]*animate-pulse/,
+    "SingerApp should mark the Party tab with a pulsing live badge when voting is open away from home",
+  );
+  assert.doesNotMatch(
+    source,
+    /data-feature-id="singer-streamlined-performance-vote-banner"|Vote live now|Go Vote/,
+    "SingerApp should not duplicate the streamlined Songs stage area with a full voting banner",
   );
   assert.match(
     source,
-    /item\.key === 'home' && showPerformanceVotingPromptCta/,
-    "SingerApp should mark the Party tab as live when voting is open away from home",
-  );
-  assert.match(
-    source,
-    /data-feature-id="singer-streamlined-performance-vote-banner"/,
-    "SingerApp should surface a dedicated voting callout inside streamlined Songs",
-  );
-  assert.match(
-    source,
-    /A TV scene is live\. Jump back to Party to clap vote\.|A performance is on\. Jump back to Party to vote and react\./,
-    "SingerApp should tell streamlined guests exactly why they should leave search and go back to Party",
+    /NOW PERFORMING[\s\S]*Vote Now[\s\S]*setTab\('home'\)/,
+    "SingerApp should surface a compact vote tag inside the now-performing stage card",
   );
   const streamlinedStageNavRenderIndex = source.indexOf("{streamlinedStageNav}");
   const omnipresentStageAreaIndex = source.indexOf("/* Omnipresent Stage Area */");
@@ -985,5 +1015,70 @@ test("SingerApp presents the premium blossom reaction with themed icon motion", 
     source,
     /animate-reaction-option-blossom/,
     "SingerApp should give the blossom reaction button its own themed motion treatment.",
+  );
+});
+
+test("SingerApp audience video sync uses the active performance session clock", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+  assert.match(source, /const audiencePerformanceSession = room\?\.currentPerformanceSession \|\| \{\};/);
+  assert.match(source, /const getAudiencePlaybackTargetSec = useCallback/);
+  assert.match(source, /session\?\.playerPositionSec/);
+  assert.match(source, /session\?\.lastHeartbeatAtMs \|\| session\?\.lastReportedAtMs/);
+  assert.match(source, /const audienceYoutubeFrameKey = `\$\{youtubeId \|\| ''\}_\$\{audiencePlaybackClockKey\}`;/);
+  assert.match(source, /postAudienceYoutubeCommand\(isAudiencePlaybackExpectedPlaying\(\) \? 'playVideo' : 'pauseVideo'/);
+});
+
+
+test("SingerApp backs off expected camera-in-use failures instead of retry-spamming selfie capture", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const EXPECTED_CAMERA_ERROR_NAMES = new Set\(\['NotReadableError',[\s\S]*'OverconstrainedError'\]\);/,
+    "SingerApp should classify browser camera lock and permission failures as expected camera errors",
+  );
+  assert.match(
+    source,
+    /const cameraStartPromiseRef = useRef\(null\);[\s\S]*const cameraRetryAfterRef = useRef\(0\);/,
+    "SingerApp should dedupe in-flight getUserMedia calls and keep a retry cooldown",
+  );
+  assert.match(
+    source,
+    /if \(!force && cameraRetryAfterRef\.current > now\) return false;/,
+    "SingerApp should avoid immediately retrying camera startup after a browser camera-in-use failure",
+  );
+  assert.match(
+    source,
+    /cameraRetryAfterRef\.current = Date\.now\(\) \+ \(expected \? 8000 : 2500\);/,
+    "Expected camera failures should pause retries long enough to stop console spam",
+  );
+  assert.match(
+    source,
+    /const started = await startCamera\(\);\s*if \(!started\) throw createCameraUnavailableError\(\);/,
+    "Selfie capture should stop after a failed camera start instead of waiting for an impossible frame",
+  );
+  assert.match(
+    source,
+    /if \(!isExpectedCameraError\(e\)\) console\.error\(e\);/,
+    "Expected camera errors should be surfaced as UI messages without console error spam",
+  );
+  assert.match(
+    source,
+    /Camera is already in use or unavailable\. Close other camera apps or tabs, then try again\./,
+    "Camera-in-use failures should tell guests how to recover",
+  );
+});
+
+test("SingerApp declares lounge chat opener before takeover render branches use it", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+  const declarationIndex = source.indexOf("const openLoungeChat = useCallback");
+  const firstUseIndex = source.indexOf("onClick={openLoungeChat}");
+  assert.ok(declarationIndex > 0, "SingerApp should declare openLoungeChat as an early callback");
+  assert.ok(firstUseIndex > 0, "SingerApp should use openLoungeChat in takeover controls");
+  assert.ok(declarationIndex < firstUseIndex, "openLoungeChat must be initialized before render branches reference it");
+  assert.doesNotMatch(
+    source,
+    /const openLoungeChat = \(\) => \{[\s\S]*?setSocialTab\('lounge'\);[\s\S]*?\};\s*const openStreamlinedPrimaryStageTab/,
+    "SingerApp should not keep the late openLoungeChat declaration after render branches"
   );
 });

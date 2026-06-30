@@ -14,6 +14,10 @@ export const usePitch = (isActive, options = {}) => {
     const [calibrating, setCalibrating] = useState(false);
     const [noiseFloor, setNoiseFloor] = useState(0);
     const [isSinging, setIsSinging] = useState(false);
+    const [streamActive, setStreamActive] = useState(false);
+    const [micStatus, setMicStatus] = useState('idle');
+    const [micError, setMicError] = useState('');
+    const [audioState, setAudioState] = useState('');
 
     const {
         minVolumeThreshold = 0.02,
@@ -25,7 +29,8 @@ export const usePitch = (isActive, options = {}) => {
         confidenceThreshold = 0.6,
         singingThreshold = 0.08,
         stableNoteMs = 350,
-        uiUpdateIntervalMs = 50
+        uiUpdateIntervalMs = 50,
+        deviceId = ''
     } = options;
 
     const opts = useMemo(() => ({
@@ -38,7 +43,8 @@ export const usePitch = (isActive, options = {}) => {
         confidenceThreshold,
         singingThreshold,
         stableNoteMs,
-        uiUpdateIntervalMs
+        uiUpdateIntervalMs,
+        deviceId
     }), [
         minVolumeThreshold,
         noiseGateMultiplier,
@@ -49,7 +55,8 @@ export const usePitch = (isActive, options = {}) => {
         confidenceThreshold,
         singingThreshold,
         stableNoteMs,
-        uiUpdateIntervalMs
+        uiUpdateIntervalMs,
+        deviceId
     ]);
 
     // Internal refs to maintain state without re-render thrashing inside the audio loop
@@ -63,9 +70,17 @@ export const usePitch = (isActive, options = {}) => {
     const calibratingRef = useRef(false);
     const lastUiUpdateRef = useRef(0);
 
+    const closeAudioContext = () => {
+        const ctx = audioCtx.current;
+        audioCtx.current = null;
+        if (ctx && ctx.state !== 'closed') {
+            ctx.close().catch(() => {});
+        }
+    };
+
     useEffect(() => {
         if(!isActive) { 
-            if(audioCtx.current) { audioCtx.current.close(); audioCtx.current = null; } 
+            closeAudioContext();
             if(streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; } 
             setTimeout(() => {
                 setPitch(0);
@@ -79,6 +94,10 @@ export const usePitch = (isActive, options = {}) => {
                 calibratingRef.current = false;
                 setNoiseFloor(0);
                 setIsSinging(false);
+                setStreamActive(false);
+                setMicStatus('idle');
+                setMicError('');
+                setAudioState('');
             }, 0);
             return; 
         }
@@ -153,23 +172,34 @@ export const usePitch = (isActive, options = {}) => {
             return { pitch: calculatedPitch, volume: rms, confidence }; 
         };
         
-        const start = async () => { 
-            try { 
+        const start = async () => {
+            try {
+                setMicStatus('starting');
+                setMicError('');
+                setStreamActive(false);
+                setAudioState('');
+                if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+                    throw new Error('Microphone capture is not available in this browser.');
+                }
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     audio: { 
                         echoCancellation: true, 
                         autoGainControl: true, 
-                        noiseSuppression: true 
+                        noiseSuppression: true,
+                        ...(opts.deviceId ? { deviceId: { exact: opts.deviceId } } : {})
                     } 
                 }); 
-                streamRef.current = stream; 
-                
-                audioCtx.current = new (window.AudioContext || window.webkitAudioContext)(); 
+                streamRef.current = stream;
+                setStreamActive(true);
+
+                audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
+                setAudioState(audioCtx.current.state || 'running');
                 
                 // Robust resume handling
                 if (audioCtx.current.state === 'suspended') {
                     await audioCtx.current.resume();
                 }
+                setAudioState(audioCtx.current.state || 'running');
                 
                 analyser = audioCtx.current.createAnalyser(); 
                 analyser.fftSize = 2048; 
@@ -181,6 +211,7 @@ export const usePitch = (isActive, options = {}) => {
                 noiseFloorRef.current = 0;
                 calibratingRef.current = true;
                 setCalibrating(true);
+                setMicStatus('calibrating');
 
                 const update = () => { 
                     if (!analyser) return;
@@ -199,6 +230,7 @@ export const usePitch = (isActive, options = {}) => {
                             setNoiseFloor(noiseFloorRef.current);
                             calibratingRef.current = false;
                             setCalibrating(false);
+                            setMicStatus('live');
                         }
                     }
 
@@ -242,9 +274,19 @@ export const usePitch = (isActive, options = {}) => {
                     raf = requestAnimationFrame(update); 
                 }; 
                 update(); 
-            } catch(e) { 
-                console.error("Mic Error", e); 
+            } catch(e) {
+                console.error("Mic Error", e);
+                const message = e?.message || String(e || 'Microphone failed to start.');
+                const name = e?.name || 'MicError';
                 setNote("ERR");
+                setPitch(0);
+                setConfidence(0);
+                setVolumeNormalized(0);
+                setIsSinging(false);
+                setStreamActive(false);
+                setAudioState('');
+                setMicError(`${name}: ${message}`);
+                setMicStatus(name === 'NotAllowedError' || name === 'SecurityError' ? 'blocked' : 'error');
             } 
         }; 
         start(); 
@@ -252,10 +294,11 @@ export const usePitch = (isActive, options = {}) => {
         return () => { 
             if(raf) cancelAnimationFrame(raf); 
             if(source) source.disconnect(); 
-            if(audioCtx.current) audioCtx.current.close(); 
-            if(streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop()); 
+            closeAudioContext();
+            if(streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop());
+            setStreamActive(false);
         };
     }, [isActive, opts]);
 
-    return { pitch, volume, note, confidence, volumeNormalized, stableNote, stability, calibrating, noiseFloor, isSinging };
+    return { pitch, volume, note, confidence, volumeNormalized, stableNote, stability, calibrating, noiseFloor, isSinging, streamActive, micStatus, micError, audioState };
 };

@@ -63,3 +63,18 @@ test('PublicTV extends the post-performance flow with a branded next-up beat', (
   assert.match(source, /brandTheme=\{tvAudienceBrandTheme\}/);
   assert.match(source, /logoUrl=\{room\?\.logoUrl \|\| ASSETS\.logo\}/);
 });
+test('PublicTV next-up overlay spotlights the performer taking the stage', () => {
+  assert.match(source, /featuredPerformer = null/);
+  assert.match(source, /const featured = featuredPerformer \|\| lineup\[0\] \|\| null;/);
+  assert.match(source, /Now Taking The Stage/);
+  assert.match(source, /featuredPerformer=\{recapFeaturedPerformer\}/);
+  assert.match(source, /supportingLineup\.length > 0 \? supportingLineup\.map/);
+});
+
+test('PublicTV can promote an audience spotlight onto the Mainstage panel', () => {
+  assert.match(source, /const spotlightMainstageActive = !!\(/);
+  assert.match(source, /spotlightPayload\?\.mainstage/);
+  assert.match(source, /Mainstage Spotlight/);
+  assert.match(source, /spotlightMainstageProgressPct/);
+  assert.match(source, /Phones can cheer/);
+});

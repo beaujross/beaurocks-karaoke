@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "voice-games-produced-v1",
+  "label": "Voice Games Produced Pack",
+  "basePath": "/audio/voice-games",
+  "assetsAvailable": false,
+  "notes": "Slot manifest for produced SFX. Keep assetsAvailable false until files exist so browsers use procedural fallback without 404s.",
+  "modes": {
+    "pitch_runner": { "cues": { "higher": { "assets": ["pitch-runner-higher.webm", "pitch-runner-higher.mp3"] }, "lower": { "assets": ["pitch-runner-lower.webm", "pitch-runner-lower.mp3"] }, "hold": { "assets": ["pitch-runner-hold.webm", "pitch-runner-hold.mp3"] }, "shield": { "assets": ["pitch-runner-shield.webm", "pitch-runner-shield.mp3"] }, "checkpoint": { "assets": ["pitch-runner-checkpoint.webm", "pitch-runner-checkpoint.mp3"] }, "recovery": { "assets": ["pitch-runner-recovery.webm", "pitch-runner-recovery.mp3"] } } },
+    "team_pong": { "cues": { "save": { "assets": ["team-pong-save.webm", "team-pong-save.mp3"] }, "spike": { "assets": ["team-pong-spike.webm", "team-pong-spike.mp3"] }, "shield": { "assets": ["team-pong-shield.webm", "team-pong-shield.mp3"] }, "slowmo": { "assets": ["team-pong-slowmo.webm", "team-pong-slowmo.mp3"] }, "redirect": { "assets": ["team-pong-redirect.webm", "team-pong-redirect.mp3"] }, "charge": { "assets": ["team-pong-charge.webm", "team-pong-charge.mp3"] }, "danger": { "assets": ["team-pong-danger.webm", "team-pong-danger.mp3"] } } },
+    "vocal_challenge": { "cues": { "guide": { "assets": ["vocal-challenge-guide.webm", "vocal-challenge-guide.mp3"] }, "lock": { "assets": ["vocal-challenge-lock.webm", "vocal-challenge-lock.mp3"] }, "close": { "assets": ["vocal-challenge-close.webm", "vocal-challenge-close.mp3"] }, "save": { "assets": ["vocal-challenge-save.webm", "vocal-challenge-save.mp3"] } } },
+    "riding_scales": { "cues": { "guide": { "assets": ["riding-scales-guide.webm", "riding-scales-guide.mp3"] }, "breath": { "assets": ["riding-scales-breath.webm", "riding-scales-breath.mp3"] }, "lock": { "assets": ["riding-scales-lock.webm", "riding-scales-lock.mp3"] }, "checkpoint": { "assets": ["riding-scales-checkpoint.webm", "riding-scales-checkpoint.mp3"] }, "save": { "assets": ["riding-scales-save.webm", "riding-scales-save.mp3"] } } },
+    "musical_moments": { "cues": { "nailed": { "assets": ["musical-moments-nailed.webm", "musical-moments-nailed.mp3"] }, "lift": { "assets": ["musical-moments-lift.webm", "musical-moments-lift.mp3"] }, "close": { "assets": ["musical-moments-close.webm", "musical-moments-close.mp3"] }, "early": { "assets": ["musical-moments-early.webm", "musical-moments-early.mp3"] }, "late": { "assets": ["musical-moments-late.webm", "musical-moments-late.mp3"] }, "countdown": { "assets": ["musical-moments-countdown.webm", "musical-moments-countdown.mp3"] } } },
+    "vocal_rocket": { "cues": { "ignition": { "assets": ["vocal-rocket-ignition.webm", "vocal-rocket-ignition.mp3"] }, "lift": { "assets": ["vocal-rocket-lift.webm", "vocal-rocket-lift.mp3"] }, "climb": { "assets": ["vocal-rocket-climb.webm", "vocal-rocket-climb.mp3"] }, "orbit": { "assets": ["vocal-rocket-orbit.webm", "vocal-rocket-orbit.mp3"] }, "hit": { "assets": ["vocal-rocket-hit.webm", "vocal-rocket-hit.mp3"] }, "warning": { "assets": ["vocal-rocket-warning.webm", "vocal-rocket-warning.mp3"] }, "reset": { "assets": ["vocal-rocket-reset.webm", "vocal-rocket-reset.mp3"] } } }
+  }
+}

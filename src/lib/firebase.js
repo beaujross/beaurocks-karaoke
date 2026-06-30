@@ -684,6 +684,11 @@ const uploadAudienceRoomPhoto = async (payload = {}) => {
   return data || null;
 };
 
+const createMediaUploadSession = async (payload = {}) => {
+  await requireAppCheckToken('createMediaUploadSession');
+  const data = await callFunction('createMediaUploadSession', payload || {});
+  return data || null;
+};
 const uploadHostSceneMedia = async (payload = {}) => {
   await requireAppCheckToken("uploadHostSceneMedia");
   const data = await callFunction("uploadHostSceneMedia", payload || {});
@@ -901,6 +906,12 @@ const executeRunOfShowAction = async (payload = {}) => {
 const castRunOfShowReleaseWindowVote = async (payload = {}) => {
   await requireAppCheckToken("castRunOfShowReleaseWindowVote");
   const data = await callFunction("castRunOfShowReleaseWindowVote", payload || {});
+  return data || null;
+};
+
+const castAudienceDecisionVote = async (payload = {}) => {
+  await requireAppCheckToken("castAudienceDecisionVote");
+  const data = await callFunction("castAudienceDecisionVote", payload || {});
   return data || null;
 };
 
@@ -1246,9 +1257,11 @@ export {
   submitAudienceEmailCapture,
   updateAudienceIdentity,
   uploadAudienceRoomPhoto,
+  createMediaUploadSession,
   uploadHostSceneMedia,
   submitAudienceQueueSong,
   castRunOfShowReleaseWindowVote,
+  castAudienceDecisionVote,
   syncSelfServeAuctionState,
   castKaraokeBracketVote,
   manageKaraokeBracket,

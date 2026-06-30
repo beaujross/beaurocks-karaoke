@@ -40,6 +40,37 @@ Account policy:
 Implementation note:
 - `npm run qa:release:core-night` currently resolves to the secure host-room hands-off runner.
 
+### Authenticated Admin Workspace QA On Windows
+
+Use this for live production host-admin smoke without putting the QA password in shell history.
+
+First run or credential rotation:
+
+```powershell
+npm run qa:admin:prod:secure:win -- -SaveCredential
+```
+
+Normal run after the credential is stored:
+
+```powershell
+npm run qa:admin:prod:secure:win
+```
+
+Credential cleanup:
+
+```powershell
+npm run qa:admin:prod:secure:win -- -ForgetCredential
+```
+
+The Windows secure runner:
+- stores the QA host credential outside the repo under the current Windows user profile
+- uses Windows DPAPI via `Export-Clixml`
+- requires `QA_APP_CHECK_DEBUG_TOKEN` and `QA_ALLOWED_HOST_EMAILS`
+- rejects a stored QA email that is not allowlisted
+- injects `QA_HOST_EMAIL` and `QA_HOST_PASSWORD` only into the child QA process
+- writes `tmp\qa-admin-prod.sanitized.log`
+- redacts email-shaped strings and the credential values from logs
+
 Optional policy hardening:
 - set `QA_ALLOWED_HOST_EMAILS` to enforce dedicated QA-only account(s)
 - set `QA_BLOCKED_HOST_EMAILS` for additional denylist

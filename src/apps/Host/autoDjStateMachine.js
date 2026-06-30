@@ -2,6 +2,7 @@ const STEP_IDS = ['stage', 'applause', 'scoring', 'transition'];
 const APPLAUSE_PHASES = new Set(['applause_countdown', 'applause', 'applause_result']);
 
 const clampDelaySec = (value = 10) => Math.max(2, Math.min(45, Number(value || 10) || 10));
+const clampPostPerformanceHoldMs = (value = 0) => Math.max(0, Math.min(60000, Math.round(Number(value || 0) || 0)));
 
 const defaultIsQueueEntryPlayable = (song = {}, { appleMusicEnabled = true } = {}) => {
     const mediaResolutionStatus = String(song?.mediaResolutionStatus || '').trim().toLowerCase();
@@ -54,6 +55,7 @@ export const getAutoDjQueueAdvanceIntent = ({
     appleMusicEnabled = true,
     lastPerformanceTs = 0,
     autoDjDelaySec = 10,
+    postPerformanceHoldMs = 0,
     now = Date.now(),
     isQueueEntryPlayable = defaultIsQueueEntryPlayable
 } = {}) => {
@@ -96,17 +98,20 @@ export const getAutoDjQueueAdvanceIntent = ({
 
     const configuredDelaySec = clampDelaySec(autoDjDelaySec);
     const configuredDelayMs = configuredDelaySec * 1000;
+    const effectiveDelayMs = Math.max(configuredDelayMs, clampPostPerformanceHoldMs(postPerformanceHoldMs));
     const safeLastPerformanceTs = Math.max(0, Number(lastPerformanceTs || 0) || 0);
     const safeNow = Number(now || Date.now()) || Date.now();
     const delayMs = safeLastPerformanceTs
-        ? Math.max(0, Math.round((safeLastPerformanceTs + configuredDelayMs) - safeNow))
+        ? Math.max(0, Math.round((safeLastPerformanceTs + effectiveDelayMs) - safeNow))
         : 0;
     if (delayMs > 0) {
         return {
             shouldStart: false,
             reason: 'waiting_delay',
             delayMs,
-            startAfterMs: safeLastPerformanceTs + configuredDelayMs,
+            startAfterMs: safeLastPerformanceTs + effectiveDelayMs,
+            configuredDelayMs,
+            postPerformanceHoldMs: effectiveDelayMs,
             songId: next.id,
             queueCount: queued.length
         };
@@ -117,6 +122,7 @@ export const getAutoDjQueueAdvanceIntent = ({
         queued.length,
         safeLastPerformanceTs,
         configuredDelayMs,
+        effectiveDelayMs,
         next.mediaUrl || '',
         next.youtubeId || '',
         next.appleMusicId || '',

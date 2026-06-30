@@ -33,6 +33,36 @@ service firebase.storage {
       return /databases/(default)/documents/artifacts/bross-app/public/data/rooms/$(roomCode);
     }
 
+
+    function organizationMemberDocPath(orgId, uid) {
+      return /databases/(default)/documents/organizations/$(orgId)/members/$(uid);
+    }
+
+    function mediaUploadSessionDocPath(orgId, sessionId) {
+      return /databases/(default)/documents/organizations/$(orgId)/media_upload_sessions/$(sessionId);
+    }
+
+    function isOrganizationMember(orgId) {
+      return isAuthed()
+        && firestore.exists(organizationMemberDocPath(orgId, request.auth.uid));
+    }
+
+    function isOrgMediaUploadSessionOwner(orgId, sessionId) {
+      return isAuthed()
+        && firestore.exists(mediaUploadSessionDocPath(orgId, sessionId))
+        && firestore.get(mediaUploadSessionDocPath(orgId, sessionId)).data.ownerUid == request.auth.uid;
+    }
+
+    function isAllowedOrgMediaIncomingUpload(orgId, sessionId, fileName) {
+      return request.resource != null
+        && isOrgMediaUploadSessionOwner(orgId, sessionId)
+        && firestore.get(mediaUploadSessionDocPath(orgId, sessionId)).data.status == 'pending_upload'
+        && firestore.get(mediaUploadSessionDocPath(orgId, sessionId)).data.safeFileName == fileName
+        && request.resource.size <= firestore.get(mediaUploadSessionDocPath(orgId, sessionId)).data.maxBytes
+        && request.resource.contentType != null
+        && request.resource.contentType.matches('^image/.*$');
+    }
+
     function roomUserDocPath(roomCode, uid) {
       return /databases/(default)/documents/artifacts/bross-app/public/data/room_users/$(roomCode + "_" + uid);
     }
@@ -87,6 +117,18 @@ service firebase.storage {
         && request.resource.size <= 12 * 1024 * 1024
         && request.resource.contentType != null
         && request.resource.contentType.matches('^image/.*$');
+    }
+
+
+    match /org_media/{orgId}/incoming/{sessionId}/{fileName} {
+      allow read: if isOrganizationMember(orgId) || isOrgMediaUploadSessionOwner(orgId, sessionId);
+      allow create: if isAllowedOrgMediaIncomingUpload(orgId, sessionId, fileName);
+      allow update, delete: if false;
+    }
+
+    match /org_media/{orgId}/assets/{assetId}/{fileName=**} {
+      allow read: if isOrganizationMember(orgId) || isSuperAdmin();
+      allow write: if false;
     }
 
     match /room_uploads/{roomCode}/{fileName=**} {

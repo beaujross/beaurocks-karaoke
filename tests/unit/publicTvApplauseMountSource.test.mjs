@@ -53,8 +53,13 @@ test('PublicTV rehydrates applause overlay state from live room mode transitions
   );
   assert.match(
     source,
-    /applause-charge-leds[\s\S]*Audio activity is live - warm the room up before the meter opens/,
-    'PublicTV applause warm-up should use the LED meter treatment and explicit live-audio copy.',
+    /if \(applauseWarmupSec \+ applauseCountdownSec <= 0\) \{[\s\S]*setApplauseStep\('measuring'\);[\s\S]*activeMode: 'applause'/,
+    'PublicTV should skip the pre-meter phase when applause warm-up and countdown are both zero.',
+  );
+  assert.match(
+    source,
+    /const DEFAULT_APPLAUSE_COUNTDOWN_SEC = 0;/,
+    'PublicTV applause countdown should default to no pre-meter delay.',
   );
   assert.match(
     source,

@@ -17,7 +17,7 @@ const PRESETS = {
             autoDj: true,
             autoBgMusic: true,
             autoPlayMedia: true,
-            showVisualizerTv: true,
+            showVisualizerTv: false,
             showLyricsTv: false,
             showScoring: false,
             hypeMeterDisplayMode: 'score_integrated',

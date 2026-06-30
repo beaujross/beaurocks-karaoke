@@ -355,6 +355,10 @@ service cloud.firestore {
         'questionId',
         'songId',
         'sessionId',
+        'spotlightSessionId',
+        'spotlightKind',
+        'spotlightMode',
+        'spotlightUserId',
         'team',
         'isFree',
         'isVote'
@@ -1357,6 +1361,37 @@ service cloud.firestore {
             )
           )
           && (
+            !request.resource.data.keys().hasAny(['spotlightSessionId'])
+            || request.resource.data.spotlightSessionId == null
+            || (
+              request.resource.data.spotlightSessionId is string
+              && request.resource.data.spotlightSessionId.size() > 0
+              && request.resource.data.spotlightSessionId.size() <= 180
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['spotlightKind'])
+            || (
+              request.resource.data.spotlightKind is string
+              && request.resource.data.spotlightKind in ['audience_spotlight', 'tight15_showcase']
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['spotlightMode'])
+            || (
+              request.resource.data.spotlightMode is string
+              && request.resource.data.spotlightMode in ['cheer', 'qa', 'roast']
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['spotlightUserId'])
+            || (
+              request.resource.data.spotlightUserId is string
+              && request.resource.data.spotlightUserId.size() > 0
+              && request.resource.data.spotlightUserId.size() <= 128
+            )
+          )
+          && (
             !request.resource.data.keys().hasAny(['team'])
             || (
               request.resource.data.team is string
@@ -1426,6 +1461,21 @@ service cloud.firestore {
         allow read: if isBrossApp(appId);
         allow write: if false;
       }
+    }
+
+
+    match /organizations/{orgId}/media_upload_sessions/{sessionId} {
+      allow read: if isAuthed()
+        && (
+          isOrganizationMember(orgId)
+          || resource.data.ownerUid == request.auth.uid
+        );
+      allow write: if false;
+    }
+
+    match /organizations/{orgId}/media_assets/{assetId} {
+      allow read: if isOrganizationMember(orgId);
+      allow write: if false;
     }
 
     match /organizations/{orgId}/youtube_indexes/{indexId} {

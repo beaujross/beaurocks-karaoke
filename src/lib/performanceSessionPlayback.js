@@ -80,7 +80,9 @@ export const buildPerformanceSessionPlaybackWrite = ({
 
     const playbackState = eventType === 'heartbeat'
         ? (normalizeKey(session?.playbackState).toLowerCase() || 'playing')
-        : eventType;
+        : eventType === 'ready'
+            ? 'starting'
+            : eventType;
     const nowValue = Number(now || Date.now()) || Date.now();
     const currentTimeSec = Math.max(0, Number(event?.currentTimeSec || 0));
     const durationSec = Math.max(0, Number(event?.durationSec || 0));

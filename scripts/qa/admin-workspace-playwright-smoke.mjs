@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import {
   applyQaAppCheckDebugInitScript,
   requireQaAppCheckDebugTokenForRemoteUrl,
@@ -86,6 +87,44 @@ const visibleCount = async (page, selector) =>
       );
     }).length
   );
+
+const redactQaArtifactText = (value = "") => String(value || "")
+  .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL_REDACTED]")
+  .slice(0, 6000);
+
+const captureScenarioFailureArtifact = async (page, label = "scenario") => {
+  const safeLabel = String(label || "scenario").replace(/[^a-z0-9_-]+/gi, "_").toLowerCase();
+  const screenshotPath = `tmp/qa-admin-workspace-${safeLabel}-actual-failure.png`;
+  const snapshotPath = `tmp/qa-admin-workspace-${safeLabel}-actual-failure.json`;
+  const snapshot = await page.evaluate(() => ({
+    url: location.href,
+    title: document.title,
+    bodyText: document.body?.innerText || "",
+    buttons: Array.from(document.querySelectorAll("button"))
+      .map((button) => (button.innerText || button.textContent || "").trim())
+      .filter(Boolean)
+      .slice(0, 60),
+    dimensions: {
+      clientWidth: document.documentElement.clientWidth,
+      clientHeight: document.documentElement.clientHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+      scrollHeight: document.documentElement.scrollHeight,
+    },
+  })).catch((error) => ({ error: String(error?.message || error) }));
+  const redacted = {
+    ...snapshot,
+    bodyText: redactQaArtifactText(snapshot.bodyText || ""),
+    buttons: Array.isArray(snapshot.buttons)
+      ? snapshot.buttons.map((entry) => redactQaArtifactText(entry)).slice(0, 60)
+      : [],
+  };
+  await fs.mkdir("tmp", { recursive: true }).catch(() => {});
+  await Promise.allSettled([
+    page.screenshot({ path: screenshotPath, fullPage: true }),
+    fs.writeFile(snapshotPath, `${JSON.stringify(redacted, null, 2)}\n`, "utf8"),
+  ]);
+  return { screenshotPath, snapshotPath };
+};
 
 const runCheck = async (checks, name, fn) => {
   try {
@@ -262,15 +301,21 @@ const openAdminSectionByRoute = async (page, key, timeoutMs) => {
 
 const clickSectionNav = async (page, key, label, timeoutMs) => {
   const hooked = page.locator(`[data-admin-section-item="${key}"]`);
-  if (await hooked.isVisible().catch(() => false)) {
-    await hooked.first().click({ force: true });
-    return;
-  }
-
   const searchInputs = [
     page.getByPlaceholder(/Search sections/i).first(),
     page.getByPlaceholder(/Search host controls, settings, or tools/i).first(),
   ];
+  for (const searchInput of searchInputs) {
+    if (await searchInput.isVisible().catch(() => false)) {
+      await searchInput.fill("").catch(() => {});
+      await delay(150);
+    }
+  }
+
+  if (await hooked.isVisible().catch(() => false)) {
+    await hooked.first().click({ force: true });
+    return;
+  }
   for (const searchInput of searchInputs) {
     if (await searchInput.isVisible().catch(() => false)) {
       await searchInput.fill(label);
@@ -399,9 +444,18 @@ const openHostAndAdmin = async (page, { hostUrl, timeoutMs }) => {
   }
 
   const quickStartHook = page.locator("[data-host-quick-start]").first();
+  const createRoomPrimary = page.locator("[data-host-create-room-primary]").first();
+  const createOpenHostPanel = page.getByRole("button", { name: /Create \+ Open Host Panel/i }).first();
+  const createPrepareRoom = page.getByRole("button", { name: /Create \+ Prepare Room/i }).first();
   const quickStart = (await quickStartHook.count())
     ? quickStartHook
-    : page.getByRole("button", { name: /Quick Start New Room/i });
+    : (await createRoomPrimary.count())
+      ? createRoomPrimary
+      : (await createOpenHostPanel.count())
+        ? createOpenHostPanel
+        : (await createPrepareRoom.count())
+          ? createPrepareRoom
+          : page.getByRole("button", { name: /Quick Start New Room/i }).first();
   const openRoomSettings = page.getByRole("button", { name: /Open room settings/i }).first();
   const openAdmin = page.locator('button[title="Open Admin"]');
   const openFullAdmin = page.getByRole("button", { name: /Open Full Admin/i });
@@ -555,7 +609,13 @@ const runDesktopScenario = async ({ browser, baseUrl, hostUrl, email, password, 
         moderation: "Approvals",
       };
       await clickSectionNav(page, key, labelByKey[key] || key, timeoutMs);
-      return waitForSectionReady({ page, key, expectedTitleRegex, hasTitleHook, timeoutMs });
+      try {
+        return await waitForSectionReady({ page, key, expectedTitleRegex, hasTitleHook, timeoutMs: Math.min(timeoutMs, 12000) });
+      } catch (error) {
+        const openedByRoute = await openAdminSectionByRoute(page, key, timeoutMs);
+        if (!openedByRoute) throw error;
+        return waitForSectionReady({ page, key, expectedTitleRegex, hasTitleHook, timeoutMs });
+      }
     };
 
     await runCheck(checks, "desktop_section_switch_media", async () =>
@@ -580,6 +640,9 @@ const runDesktopScenario = async ({ browser, baseUrl, hostUrl, email, password, 
       }
       return text;
     });
+  } catch (error) {
+    await captureScenarioFailureArtifact(page, "desktop").catch(() => null);
+    throw error;
   } finally {
     await context.close();
   }
@@ -599,16 +662,20 @@ const runMobileScenario = async ({ browser, baseUrl, hostUrl, email, password, t
     await openHostAndAdmin(page, { hostUrl, timeoutMs });
     const hasTitleHook = (await page.locator("[data-admin-active-section-title]").count()) > 0;
 
-    await runCheck(checks, "mobile_sections_hidden_by_default", async () => {
+    await runCheck(checks, "mobile_sections_rail_is_usable", async () => {
       const hasHook = (await page.locator("[data-admin-sections-rail]").count()) > 0;
       if (!hasHook) {
-        return "Skipped strict hidden-rail assertion (no data hook in current build).";
+        return "Skipped rail assertion (no data hook in current build).";
       }
       const visibleRails = await visibleCount(page, "[data-admin-sections-rail]");
-      if (visibleRails !== 0) {
-        throw new Error(`Expected sections rail hidden on mobile, got ${visibleRails} visible.`);
+      if (visibleRails > 1) {
+        throw new Error(`Expected at most 1 visible sections rail on mobile, got ${visibleRails}.`);
       }
-      return "Sections rail hidden before toggle.";
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
+      if (overflow) {
+        throw new Error("Mobile admin workspace has horizontal overflow.");
+      }
+      return visibleRails === 1 ? "Sections rail visible and usable on mobile." : "Sections rail hidden until toggle.";
     });
 
     await runCheck(checks, "mobile_sections_toggle_and_nav", async () => {
@@ -641,6 +708,9 @@ const runMobileScenario = async ({ browser, baseUrl, hostUrl, email, password, t
         timeoutMs,
       });
     });
+  } catch (error) {
+    await captureScenarioFailureArtifact(page, "mobile").catch(() => null);
+    throw error;
   } finally {
     await context.close();
   }

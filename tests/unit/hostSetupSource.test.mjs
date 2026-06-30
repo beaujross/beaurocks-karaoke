@@ -225,33 +225,48 @@ test('room formats are optional while room creation centers on defaults', () => 
   );
   assert.match(
     launchPadBrowserSource,
-    /Room defaults/,
-    'Room creation should frame preset-backed setup as room defaults.',
+    /Starting point/,
+    'Room creation should frame preset-backed setup as a starting point rather than an internal preset editor.',
   );
   assert.match(
     launchPadBrowserSource,
     /<select[\s\S]*value=\{resolvedLaunchPresetId\}/,
-    'Room creation should use a compact defaults selector instead of a wall of preset cards.',
+    'Room creation should use a compact starting-point selector instead of a wall of preset cards.',
   );
   assert.match(
     launchPadBrowserSource,
-    /Defaults configure queue, requests, search, TV\/crowd layers, automation, and audience access\./,
-    'Room defaults should explain the product areas affected by the selected preset.',
+    /Choose the starting behavior for queue, requests, search, TV\/crowd layers, automation, and guest access\./,
+    'The starting point should explain the product areas affected by the selected setup.',
   );
   assert.match(
     launchPadBrowserSource,
     /selectedPresetImpactRows\.map\(\(row\) =>/,
-    'Room creation should show a concise impact preview for the selected defaults.',
+    'Room creation should show a concise impact preview for the selected starting point.',
   );
   assert.match(
     launchPadBrowserSource,
-    /Start time optional/,
-    'Room start time should be framed as optional instead of a required primary field.',
+    /Start now/,
+    'Room start time should remain optional and default to starting now.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /How should points work\?/,
+    'Room creation should make the launch points and rewards model a first-class decision.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /Standard Points[\s\S]*Event Credits[\s\S]*Fundraiser Room[\s\S]*Custom Economy/,
+    'Room creation should expose concrete economy choices without opening the full credits editor.',
   );
   assert.match(
     launchPadBrowserSource,
     /Planning ahead\?/,
     'Secondary show-plan creation should be tucked behind a planning disclosure.',
+  );
+  assert.doesNotMatch(
+    launchPadBrowserSource,
+    /Credits and promos|EventCreditsConfigPanel|Manage saved defaults/,
+    'Room creation should not embed full credits or preset-management editors.',
   );
   assert.doesNotMatch(
     launchPadBrowserSource,
@@ -624,4 +639,68 @@ test('host game control pad submissions remain scrollable above the launchpad', 
     /(?:doodleSubmissions|selfieSubmissions)\.slice\(0, 8\)\.map/,
     'Host review surfaces should not hide submitted game media behind an arbitrary eight-item cap.',
   );
+});
+
+test('doodle-oke host reveal awards the winner from the host surface', () => {
+  assert.match(
+    hostAppSource,
+    /const revealDoodleWinner = async \(\) => \{[\s\S]*await awardWinnerPoints\(winnerUid, rewardPoints, nextWinner\.name, \{[\s\S]*awardKey: `doodle_\$\{roomCode\}_\$\{promptId \|\| 'round'\}`,[\s\S]*source: 'doodle_oke'[\s\S]*winnerAwardedAt: nowMs\(\)/,
+    'Doodle-oke reveal should award the selected winner through the host-authorized points callable.',
+  );
+  assert.doesNotMatch(
+    hostAppSource,
+    /Winner reveal sent to TV\. The top doodle gets the round reward\./,
+    'Doodle-oke host copy should not imply that TV is responsible for the winner award.',
+  );
+});
+
+test('host top chrome exposes quick rewards in the deck dropdown style', () => {
+  const topChromeSource = readFileSync(topChromePath, 'utf8');
+
+  assert.match(
+    topChromeSource,
+    /data-feature-id="deck-rewards-menu-toggle"/,
+    'The live deck should expose a dedicated quick rewards dropdown.',
+  );
+  assert.match(
+    topChromeSource,
+    /const fireRoomReward = React\.useCallback[\s\S]*onDropBonus\(amount\)/,
+    'Room rewards should use the existing room bonus drop path.',
+  );
+  assert.match(
+    topChromeSource,
+    /const fireUserReward = React\.useCallback[\s\S]*onGiftPointsToUser\(targetUid, amount\)/,
+    'Individual rewards should use the existing host gift path.',
+  );
+  assert.match(
+    topChromeSource,
+    /quickMenuPanelClass[\s\S]*Quick Rewards/,
+    'Rewards should render inside the same top chrome dropdown styling primitives as the other host menus.',
+  );
+  assert.match(
+    topChromeSource,
+    /QUICK_REWARD_REFILL_PRESETS[\s\S]*friendly[\s\S]*timedLobbyPoints: 25/,
+    'Rewards should expose concrete auto-refill presets instead of burying credit pacing in full settings.',
+  );
+  assert.match(
+    topChromeSource,
+    /const updateQuickTimedRefill = React\.useCallback[\s\S]*eventCredits: buildProvisionEventCreditsPayload\(nextCredits\)/,
+    'Timed refill quick controls should persist through the normalized event credits payload.',
+  );
+  assert.match(
+    topChromeSource,
+    /Auto refill[\s\S]*openOpsSection\('audience\.monetization'\)[\s\S]*Full Credits Settings/,
+    'Rewards should show only quick credit pacing and link to the full credits editor for deeper settings.',
+  );
+});
+
+test('room setup exposes host-led assisted-host and crowd-driven launch decisions', () => {
+  assert.match(hostAppSource, /ROOM_CONTROL_MODEL_OPTIONS = Object\.freeze\(\[[\s\S]*Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
+  assert.match(hostAppSource, /data-room-setup-control-model/);
+  assert.match(hostAppSource, /Decide who drives the room before launch/);
+  assert.match(hostAppSource, /Host-Led protects full songs[\s\S]*Crowd-Driven enables One-Minute Mic and Auto-DJ/);
+  assert.match(hostAppSource, /currentRoomControlModelId = room\?\.oneMinuteMicEnabled === true[\s\S]*'crowd_driven'[\s\S]*autoDj[\s\S]*'assisted_host'[\s\S]*'host_led'/);
+  assert.match(hostAppSource, /onClick=\{\(\) => \{ void applyRoomControlModelQuick\(option\.id\); \}\}/);
+  assert.match(hostAppSource, /safeModel === 'crowd_driven'[\s\S]*nextAutoDj = safeModel !== 'host_led'/);
+  assert.match(hostAppSource, /Host-led full songs restored/);
 });

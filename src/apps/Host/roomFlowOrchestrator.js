@@ -133,6 +133,7 @@ export const getRoomFlowSnapshot = ({
     runOfShowPolicy = {},
     runOfShowPendingCountsById = {},
     autoDjDelaySec = 10,
+    postPerformanceHoldMs = 0,
     now = Date.now(),
     isQueueEntryPlayable = defaultIsQueueEntryPlayable
 } = {}) => {
@@ -183,6 +184,7 @@ export const getRoomFlowSnapshot = ({
         appleMusicEnabled,
         lastPerformanceTs,
         autoDjDelaySec,
+        postPerformanceHoldMs,
         now,
         isQueueEntryPlayable
     });

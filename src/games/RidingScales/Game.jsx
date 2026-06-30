@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { usePitch } from '../../hooks/usePitch';
 import { db, doc, updateDoc, collection, query, where, getDocs, writeBatch, increment } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
+import { playVoiceGameGuideTone } from '../../lib/voiceGameSoundSystem';
+import CrowdControlStartOverlay from '../shared/CrowdControlStartOverlay';
+import CrowdMicInputVisualizer from '../shared/CrowdMicInputVisualizer';
 import {
     VOICE_GAME_FUN_DEFAULTS,
     buildRidingScalesStepMsList,
@@ -36,6 +39,12 @@ const centsBetween = (freqA, freqB) => (freqA > 0 && freqB > 0 ? (1200 * Math.lo
 const SCALE_ASSIST_DEFAULT_MS = 6500;
 const SCALE_ASSIST_BANNER_MS = 2400;
 
+const buildGameDataPatch = (payload = {}) => Object.entries(payload).reduce((patch, [key, value]) => {
+    if (key === 'voiceTelemetry') return patch;
+    patch[`gameData.${key}`] = value;
+    return patch;
+}, {});
+
 const buildSequence = (length, difficulty) => {
     const seq = [];
     let idx = Math.floor(Math.random() * SCALE_NOTES.length);
@@ -54,29 +63,78 @@ const buildSequence = (length, difficulty) => {
     return seq;
 };
 
+const buildRidingScalesRecap = (state = {}, gameData = {}) => {
+    const now = Date.now();
+    const bestRound = Math.max(1, Number(state.bestRound || state.round || 1));
+    const checkpointCount = Math.max(0, Number(state.checkpointCount || 0));
+    const phraseLocks = Array.isArray(state.phraseLocks) ? state.phraseLocks.length : 0;
+    return {
+        active: true,
+        mode: 'riding_scales',
+        title: 'Riding Scales',
+        playerName: String(gameData.playerName || (gameData.playerId === 'GROUP' ? 'The Crowd' : 'Singer')),
+        headline: `Round ${bestRound} reached`,
+        summary: checkpointCount > 0 ? 'The room built a longer scale and banked checkpoints.' : 'The scale run is logged. Reset quickly for another climb.',
+        createdAtMs: now,
+        tvUntilMs: now + 22000,
+        stats: [
+            { label: 'Best round', value: bestRound },
+            { label: 'Checkpoints', value: checkpointCount },
+            { label: 'Locks', value: phraseLocks },
+            { label: 'Strikes', value: `${Math.max(0, Number(state.strikes || 0))}/${Math.max(1, Number(gameData.maxStrikes || 3))}` }
+        ],
+        highlights: [
+            gameData.mode === 'crowd' ? 'Crowd scale' : 'Spotlight turns',
+            `${Math.max(0, Number(state.sequence?.length || 0))} note phrase`,
+            gameData.guideTone === false ? 'No guide tone' : 'Guide tone on'
+        ]
+    };
+};
 const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSource, view = 'tv', user }) => {
     const gameData = useMemo(() => (playerData || gameState || {}), [playerData, gameState]);
+    const soundOptions = useMemo(() => ({
+        soundPack: gameData.soundPack || null,
+        basePath: gameData.soundPackBasePath || gameData.soundPack?.basePath || undefined,
+        voiceRoomTuning: gameData.voiceRoomTuning || 'forgiving_room'
+    }), [gameData.soundPack, gameData.soundPackBasePath, gameData.voiceRoomTuning]);
     const controlSource = gameData.inputSource || inputSource || 'remote';
     const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
+    const usesHostRoomMic = isRoomControlled && String(gameData.voiceInput || '').trim().toLowerCase() === 'host';
+    const hostVoiceTelemetry = useMemo(() => gameData.voiceTelemetry || {}, [gameData.voiceTelemetry]);
+    const hostVoiceCapturedAtMs = Number(hostVoiceTelemetry?.capturedAtMs || hostVoiceTelemetry?.timestampMs || 0);
+    const hostVoiceAgeMs = hostVoiceCapturedAtMs > 0 ? Math.max(0, Date.now() - hostVoiceCapturedAtMs) : Number.POSITIVE_INFINITY;
+    const hostVoiceFresh = usesHostRoomMic && !!hostVoiceTelemetry?.active && hostVoiceCapturedAtMs > 0 && hostVoiceAgeMs <= 2200;
     const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
-    const isLocalInput = isController && inputSource !== 'remote';
-    const { pitch, stableNote, note, confidence, isSinging } = usePitch(isLocalInput, {
+    const isLocalInput = isController && inputSource !== 'remote' && !usesHostRoomMic;
+    const {
+        pitch: localPitch,
+        stableNote: localStableNote,
+        note: localNote,
+        confidence: localConfidence,
+        isSinging: localIsSinging,
+        volumeNormalized: localVolumeNormalized
+    } = usePitch(isLocalInput, {
         smoothingFactor: 0.42,
-        confidenceThreshold: 0.3,
-        singingThreshold: 0.03,
+        confidenceThreshold: 0.32,
+        singingThreshold: 0.032,
         stableNoteMs: 180,
-        noiseGateMultiplier: 1.24
+        noiseGateMultiplier: 1.28
     });
+    const pitch = hostVoiceFresh ? Number(hostVoiceTelemetry.pitch || 0) : localPitch;
+    const stableNote = hostVoiceFresh ? String(hostVoiceTelemetry.stableNote || hostVoiceTelemetry.note || '-') : localStableNote;
+    const note = hostVoiceFresh ? String(hostVoiceTelemetry.note || '-') : localNote;
+    const confidence = hostVoiceFresh ? Number(hostVoiceTelemetry.confidence || 0) : localConfidence;
+    const volumeNormalized = hostVoiceFresh ? Number(hostVoiceTelemetry.volumeNormalized || 0) : localVolumeNormalized;
+    const isSinging = hostVoiceFresh ? !!hostVoiceTelemetry.isSinging || confidence >= 0.2 : localIsSinging;
 
     const [localState, setLocalState] = useState(null);
     const [rewarded, setRewarded] = useState(false);
     const [hostAssistBanner, setHostAssistBanner] = useState(null);
+    const [launchClockMs, setLaunchClockMs] = useState(() => Date.now());
 
     const stateRef = useRef(null);
     const matchRef = useRef({ note: '-', since: 0 });
-    const audioRef = useRef(null);
-    const oscRef = useRef(null);
-    const gainRef = useRef(null);
+
     const lastToneIndexRef = useRef(null);
     const rewardRef = useRef(false);
     const endRef = useRef(false);
@@ -84,6 +142,12 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     const pitchRef = useRef(pitch);
     const lastHostAssistIdRef = useRef('');
     const hostAssistBannerTimeoutRef = useRef(null);
+
+    useEffect(() => {
+        if (view !== 'tv') return undefined;
+        const timer = setInterval(() => setLaunchClockMs(Date.now()), 180);
+        return () => clearInterval(timer);
+    }, [view]);
 
     const maxStrikes = Number(gameData.maxStrikes || VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes);
     const rewardPerRound = Number(gameData.rewardPerRound || VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound);
@@ -102,7 +166,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     const writeState = useCallback(async (payload) => {
         await updateDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode),
-            { gameData: payload }
+            buildGameDataPatch(payload)
         );
     }, [roomCode]);
 
@@ -113,6 +177,9 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         const length = 3;
         const sequence = buildSequence(length, difficulty);
         const stepMsList = buildRidingScalesStepMsList(length, round, difficulty);
+        const now = Date.now();
+        const requestedLaunchAt = Math.max(0, Number(gameData.voiceLaunchAtMs || 0));
+        const launchAt = usesHostRoomMic ? Math.max(now + introDurationMs, requestedLaunchAt) : now + introDurationMs;
         const init = {
             ...gameData,
             phase: 'playback',
@@ -123,19 +190,26 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
             stepMsList,
             playbackIndex: 0,
             inputIndex: 0,
-            nextAt: Date.now() + stepMsList[0],
+            nextAt: launchAt + stepMsList[0],
             detectedNote: '-',
             summaryUntil: null,
             assistUntil: null,
             assistCharges: 1,
-            introEndsAt: Date.now() + introDurationMs,
-            lastPhaseChangeAt: Date.now(),
-            lastNoteAdvanceAt: Date.now(),
-            lastUpdated: Date.now()
+            phraseLocks: [],
+            checkpointCount: 0,
+            checkpointHistory: [],
+            lastCheckpoint: null,
+            introEndsAt: launchAt,
+            voiceLaunchAtMs: launchAt,
+            voiceLaunchWarmupMs: Math.max(0, Number(gameData.voiceLaunchWarmupMs || introDurationMs)),
+            launchCueId: Math.max(0, Number(gameData.launchCueId || 0)),
+            lastPhaseChangeAt: launchAt,
+            lastNoteAdvanceAt: launchAt,
+            lastUpdated: now
         };
         syncState(init);
         writeState(init);
-    }, [isController, difficulty, gameData, syncState, writeState, introDurationMs]);
+    }, [isController, difficulty, gameData, syncState, writeState, introDurationMs, usesHostRoomMic]);
 
     useEffect(() => {
         const t = setTimeout(() => ensureInit(), 0);
@@ -229,9 +303,22 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         const loop = setInterval(() => {
             const state = { ...stateRef.current };
             const current = Date.now();
-            const displayNote = stableNote !== '-' ? stableNote : note;
+            const energyPulse = usesHostRoomMic && gameData.mode === 'crowd' && volumeNormalized >= 0.075;
+            const displayNote = stableNote !== '-' ? stableNote : (energyPulse ? 'POWER' : note);
             state.detectedNote = displayNote;
             const assistActive = Number(state.assistUntil || 0) > current;
+            const launchAtMs = Math.max(0, Number(state.introEndsAt || state.voiceLaunchAtMs || 0));
+            const waitingForLaunch = (state.phase === 'playback' || state.phase === 'input') && launchAtMs > current;
+            if (waitingForLaunch) {
+                if (usesHostRoomMic) {
+                    state.inputSource = controlSource;
+                    state.voiceInput = 'host';
+                }
+                state.lastUpdated = current;
+                syncState(state);
+                flushStateWrite(state);
+                return;
+            }
 
             if (state.phase === 'summary') {
                 if (state.summaryUntil && current >= state.summaryUntil) {
@@ -260,23 +347,47 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                 const tuneWindow = assistActive ? 200 : 160;
                 const relaxedConfidence = assistActive ? 0.18 : 0.28;
                 const exactNote = displayNote === targetNote || stableNote === targetNote;
+                const energyStepMatch = usesHostRoomMic && gameData.mode === 'crowd' && volumeNormalized >= (assistActive ? 0.065 : 0.095);
                 const isMatch = isSinging
-                    && confidence >= relaxedConfidence
-                    && (exactNote || Math.abs(centsOff) <= tuneWindow);
+                    && (confidence >= relaxedConfidence || energyStepMatch)
+                    && (exactNote || Math.abs(centsOff) <= tuneWindow || energyStepMatch);
                 if (isMatch) {
                     if (matchRef.current.note !== targetNote) {
                         matchRef.current = { note: targetNote, since: current };
                     } else if (current - matchRef.current.since >= Math.max(80, Math.round(holdMs * (assistActive ? 0.65 : 1)))) {
+                        const lockEntry = {
+                            at: current,
+                            round: Number(state.round || 1),
+                            index: Number(state.inputIndex || 0),
+                            note: targetNote
+                        };
+                        state.phraseLocks = [
+                            ...(Array.isArray(state.phraseLocks) ? state.phraseLocks.filter((entry) => Number(entry?.index) !== Number(state.inputIndex || 0)) : []),
+                            lockEntry
+                        ].slice(-10);
                         const nextInput = state.inputIndex + 1;
                         if (nextInput >= state.sequence.length) {
+                            const checkpoint = {
+                                at: current,
+                                round: Number(state.round || 1),
+                                length: Number(state.sequence?.length || 0),
+                                phrase: Array.isArray(state.sequence) ? state.sequence.join('-') : ''
+                            };
                             const nextRound = state.round + 1;
                             const nextLen = state.sequence.length + getRidingScalesLengthIncrement(state.round, difficulty);
                             const nextSeq = buildSequence(nextLen, difficulty);
                             const nextSteps = buildRidingScalesStepMsList(nextLen, nextRound, difficulty);
+                            state.checkpointCount = Math.max(0, Number(state.checkpointCount || 0)) + 1;
+                            state.lastCheckpoint = checkpoint;
+                            state.checkpointHistory = [
+                                checkpoint,
+                                ...(Array.isArray(state.checkpointHistory) ? state.checkpointHistory : [])
+                            ].slice(0, 4);
                             state.round = nextRound;
                             state.bestRound = Math.max(state.bestRound || 1, state.round);
                             state.sequence = nextSeq;
                             state.stepMsList = nextSteps;
+                            state.phraseLocks = [];
                             state.playbackIndex = 0;
                             state.inputIndex = 0;
                             state.phase = 'playback';
@@ -297,6 +408,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                         state.phase = 'playback';
                         state.playbackIndex = 0;
                         state.inputIndex = 0;
+                        state.phraseLocks = [];
                         state.nextAt = current + clamp((state.stepMsList?.[0] || 900) + 320, 1100, 2200);
                         state.lastPhaseChangeAt = current;
                         state.lastNoteAdvanceAt = current;
@@ -315,6 +427,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                             state.round = fallbackRound;
                             state.sequence = resetSeq;
                             state.stepMsList = resetSteps;
+                            state.phraseLocks = [];
                             state.playbackIndex = 0;
                             state.inputIndex = 0;
                             state.phase = 'playback';
@@ -327,6 +440,10 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                 }
             }
 
+            if (usesHostRoomMic) {
+                state.inputSource = controlSource;
+                state.voiceInput = 'host';
+            }
             state.lastUpdated = current;
             syncState(state);
             flushStateWrite(state);
@@ -336,7 +453,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
             cancelled = true;
             clearInterval(loop);
         };
-    }, [isController, stableNote, note, confidence, isSinging, maxStrikes, difficulty, holdMs, writeState, syncState]);
+    }, [isController, stableNote, note, confidence, isSinging, maxStrikes, difficulty, holdMs, writeState, syncState, usesHostRoomMic, hostVoiceFresh, controlSource, volumeNormalized, gameData.mode]);
 
     useEffect(() => {
         if (!localState || !guideTone) return;
@@ -348,27 +465,15 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         const toneNote = localState.sequence?.[localState.playbackIndex];
         if (!toneNote) return;
         const freq = NOTE_FREQ[toneNote] || 440;
-        if (!audioRef.current) {
-            audioRef.current = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        const ctx = audioRef.current;
-        if (ctx.state === 'suspended') ctx.resume();
-        if (!gainRef.current) {
-            gainRef.current = ctx.createGain();
-            gainRef.current.gain.value = 0.08;
-            gainRef.current.connect(ctx.destination);
-        }
-        if (oscRef.current) {
-            oscRef.current.stop();
-        }
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        osc.connect(gainRef.current);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.2);
-        oscRef.current = osc;
-    }, [localState, guideTone, view, isController]);
+        const toneDurationSec = clamp(((localState.stepMsList?.[localState.playbackIndex] || getRidingScalesStepMs(localState.round, difficulty)) / 1000) * 0.72, 0.45, 1.35);
+        playVoiceGameGuideTone({
+            mode: 'riding_scales',
+            cue: 'guide',
+            frequency: freq,
+            durationSec: toneDurationSec,
+            intensity: 1.08
+        });
+    }, [localState, guideTone, view, isController, difficulty, soundOptions]);
 
     useEffect(() => {
         if (!isController || rewarded || !localState || localState.phase !== 'over') return;
@@ -423,6 +528,10 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                         strikes: 0,
                         round: 1,
                         bestRound: 1,
+                        phraseLocks: [],
+                        checkpointCount: 0,
+                        checkpointHistory: [],
+                        lastCheckpoint: null,
                         startedAt: Date.now()
                     }
                 }).catch(() => {});
@@ -434,7 +543,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         endRef.current = true;
         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
             activeMode: 'karaoke',
-            gameData: null
+            gameData: { recap: buildRidingScalesRecap(localState, gameData) }
         }).catch(() => {});
     }, [localState, view, roomCode, gameData, isController]);
 
@@ -457,16 +566,35 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         ? metaList.find((p) => p.id === (gameData.participants || [])[Math.min((gameData.turnIndex || 0) + 1, (gameData.participants || []).length - 1)])
         : null;
     const showSummary = localState.phase === 'summary';
+    const phraseLocks = Array.isArray(localState.phraseLocks) ? localState.phraseLocks : [];
+    const lockedNoteIndexes = new Set(phraseLocks.map((entry) => Number(entry?.index || 0)));
+    const checkpointHistory = Array.isArray(localState.checkpointHistory) ? localState.checkpointHistory.slice(0, 4) : [];
+    const phraseLockPct = clamp((phraseLocks.length / Math.max(1, Number(localState.sequence?.length || 1))) * 100, 0, 100);
+    const checkpointCount = Math.max(0, Number(localState.checkpointCount || 0));
     const earnedPoints = (localState.bestRound || 1) * rewardPerRound;
-    const renderNowMs = Number(localState.lastUpdated || localState.nextAt || 0);
+    const renderNowMs = Math.max(Number(localState.lastUpdated || localState.nextAt || 0), launchClockMs);
     const assistActive = Number(localState.assistUntil || 0) > renderNowMs;
-    const introActive = Number(localState.introEndsAt || 0) > renderNowMs;
+    const introActive = Number(localState.introEndsAt || localState.voiceLaunchAtMs || 0) > renderNowMs;
+    const launchCountdownSec = Math.max(0, Math.ceil((Number(localState.introEndsAt || localState.voiceLaunchAtMs || 0) - renderNowMs) / 1000));
+    const preGameActive = introActive;
     const phaseWindowMs = Math.max(1, Number(localState.nextAt || 0) - Number(localState.lastNoteAdvanceAt || renderNowMs));
     const phaseProgressPct = (localState.phase === 'playback' || localState.phase === 'input')
         ? clamp(((Number(localState.nextAt || renderNowMs) - renderNowMs) / phaseWindowMs) * 100, 0, 100)
         : 0;
     const showCuePulse = (localState.phase === 'playback' || localState.phase === 'input')
         && renderNowMs - Number(localState.lastNoteAdvanceAt || 0) < 850;
+    const breathWindowActive = localState.phase === 'input' && !showCuePulse && phaseProgressPct > 68;
+    const scaleCommand = preGameActive
+        ? { label: introActive ? `STARTS IN ${launchCountdownSec}` : 'MIC CHECK', helper: hostVoiceFresh ? 'Host mic is live. Keep the room singing until GO.' : 'Host mic is not feeding this scale yet. Arm it and sing into the room mic.', toneClass: hostVoiceFresh ? 'border-cyan-200/45 bg-cyan-400/14 text-cyan-100' : 'border-amber-200/45 bg-amber-400/14 text-amber-100' }
+        : localState.phase === 'playback'
+        ? { label: 'LISTEN', helper: `Memorize ${targetNote || 'the next note'}. No scoring yet.`, toneClass: 'border-cyan-200/45 bg-cyan-400/14 text-cyan-100' }
+        : assistActive
+            ? { label: 'SCALE SAVE', helper: 'Replay buffer is armed. Keep the phrase alive.', toneClass: 'border-emerald-200/45 bg-emerald-400/14 text-emerald-100' }
+            : breathWindowActive
+                ? { label: 'BREATHE', helper: 'Reset your voice, then lock the next note.', toneClass: 'border-amber-200/45 bg-amber-400/14 text-amber-100' }
+                : showCuePulse
+                    ? { label: 'LOCK NOTE', helper: `Target ${targetNote || '-'}. Close notes count.`, toneClass: 'border-pink-200/45 bg-pink-400/14 text-pink-100' }
+                    : { label: 'REPEAT', helper: `Echo the pattern. ${Math.max(0, Number(localState.sequence?.length || 0))} notes in play.`, toneClass: 'border-pink-200/40 bg-pink-400/12 text-pink-100' };
 
     return (
         <div className="relative w-full h-full bg-black text-white font-saira overflow-hidden">
@@ -501,6 +629,28 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                     )}
                 </div>
             </div>
+            <CrowdControlStartOverlay
+                enabled={view === 'tv' && gameData.mode === 'crowd'}
+                modeTitle="Riding Scales"
+                nowMs={renderNowMs}
+                launchAtMs={Number(localState.introEndsAt || localState.voiceLaunchAtMs || 0)}
+                warmupMs={Number(localState.voiceLaunchWarmupMs || gameData.voiceLaunchWarmupMs || introDurationMs)}
+                micReady={!usesHostRoomMic || hostVoiceFresh}
+                requireMic={usesHostRoomMic}
+                live={(localState.phase === 'playback' || localState.phase === 'input') && !introActive}
+                controlLabel="The crowd is riding the scale now."
+                instruction="Listen for the guide notes, then echo the scale as a room."
+                accent="emerald"
+            />
+            <CrowdMicInputVisualizer
+                enabled={view === 'tv' && gameData.mode === 'crowd'}
+                telemetry={hostVoiceTelemetry}
+                nowMs={renderNowMs}
+                label="Crowd Mic"
+                helper="Scale input"
+                accent="emerald"
+                className="absolute bottom-6 left-8 w-[min(30vw,360px)]"
+            />
             {hostAssistBanner && (
                 <div className="absolute top-[104px] left-1/2 -translate-x-1/2 z-40 pointer-events-none">
                     <div className="rounded-2xl border border-cyan-200/50 bg-gradient-to-r from-cyan-300/95 via-sky-300/95 to-emerald-300/90 px-6 py-3 text-center shadow-[0_0_32px_rgba(34,211,238,0.35)] animate-pulse">
@@ -510,24 +660,24 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                     </div>
                 </div>
             )}
-            <div className="absolute top-[112px] left-1/2 -translate-x-1/2 z-30">
-                <div className={`rounded-2xl border px-5 py-2.5 text-center text-sm md:text-base uppercase tracking-[0.18em] shadow-[0_0_24px_rgba(0,0,0,0.35)] ${
-                    localState.phase === 'playback'
-                        ? 'border-cyan-300/50 bg-cyan-500/15 text-cyan-100'
-                        : 'border-pink-300/50 bg-pink-500/15 text-pink-100'
-                }`}>
-                    {localState.phase === 'playback' ? 'Listen To Sequence' : 'Repeat It Now'}
+            <div className="pointer-events-none absolute inset-x-[10%] top-[112px] z-30 flex justify-center">
+                <div className={`max-w-[960px] rounded-[30px] border px-7 py-4 text-center shadow-[0_0_42px_rgba(0,0,0,0.36)] ${scaleCommand.toneClass}`}>
+                    <div className="text-[10px] font-black uppercase tracking-[0.32em] opacity-75">Scale Command</div>
+                    <div className="mt-1 text-[clamp(2.5rem,7vw,6.5rem)] font-black leading-none text-white">{scaleCommand.label}</div>
+                    <div className="mt-2 text-[clamp(0.9rem,1.6vw,1.4rem)] font-black uppercase tracking-[0.16em] opacity-85">{scaleCommand.helper}</div>
                 </div>
             </div>
-            {introActive && (
+            {preGameActive && gameData.mode !== 'crowd' && (
                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 px-6 text-center pointer-events-none">
                     <div className="max-w-3xl rounded-[2rem] border border-white/10 bg-black/72 px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.4)]">
-                        <div className="text-xs uppercase tracking-[0.34em] text-zinc-400">{gameData.playerId === 'GROUP' ? 'Crowd Warmup' : 'Warmup'}</div>
+                        <div className="text-xs uppercase tracking-[0.34em] text-zinc-400">{gameData.playerId === 'GROUP' ? 'Crowd Launch' : 'Warmup'}</div>
                         <div className="mt-3 text-4xl md:text-5xl font-black text-cyan-200">
-                            {gameData.playerId === 'GROUP' ? 'Listen first, then answer together' : 'Listen first, then answer back'}
+                            {introActive ? `Starts in ${launchCountdownSec}` : 'Waiting for host mic'}
                         </div>
                         <div className="mt-3 text-lg text-zinc-300">
-                            Misses can replay the pattern, so keep going even if the first try is messy.
+                            {hostVoiceFresh
+                                ? 'Host mic is live. Listen through GO, then echo the scale together.'
+                                : 'Arm the Host mic and sing into the room mic before the scale begins.'}
                         </div>
                     </div>
                 </div>
@@ -544,7 +694,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                             <div className={`h-full transition-all duration-150 ${localState.phase === 'playback' ? 'bg-gradient-to-r from-cyan-300 via-sky-300 to-indigo-300' : 'bg-gradient-to-r from-pink-300 via-fuchsia-300 to-amber-300'}`} style={{ width: `${phaseProgressPct}%` }} />
                         </div>
                         <div className="mt-2 text-sm text-zinc-300 uppercase tracking-[0.16em]">
-                            {assistActive ? 'Scale save armed.' : showCuePulse ? 'Cue changed. Stay with it.' : localState.phase === 'playback' ? 'Listen for the next note.' : 'Close notes count, so keep going.'}
+                            {assistActive ? 'Scale save armed.' : breathWindowActive ? 'Breath window. Prepare, then lock the note.' : showCuePulse ? 'Cue changed. Stay with it.' : localState.phase === 'playback' ? 'Listen for the next note.' : 'Close notes count, so keep going.'}
                         </div>
                     </div>
                     <div className="rounded-3xl border border-white/10 bg-black/40 p-4">
@@ -582,9 +732,32 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                     </div>
                 </div>
 
+                <div className="rounded-3xl border border-white/10 bg-black/40 p-4">
+                    <div className="flex items-center justify-between text-sm uppercase tracking-[0.2em] text-zinc-300 mb-3">
+                        <span>Scale Locks</span>
+                        <span>{checkpointCount} checkpoints</span>
+                    </div>
+                    <div className="h-3 rounded-full border border-white/10 bg-white/10 overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-cyan-300 via-emerald-300 to-amber-300 transition-all duration-150" style={{ width: `${phraseLockPct}%` }} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {checkpointHistory.length ? checkpointHistory.map((entry, idx) => (
+                            <div key={`${entry.round}-${entry.at || idx}`} className="rounded-2xl border border-emerald-300/30 bg-emerald-500/12 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-emerald-100/75">Checkpoint</div>
+                                <div className="mt-1 text-lg font-black text-white">Round {entry.round}</div>
+                                <div className="text-xs uppercase tracking-[0.12em] text-emerald-100/75 truncate">{entry.phrase || `${entry.length || 0} notes`}</div>
+                            </div>
+                        )) : (
+                            <div className="col-span-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.16em] text-zinc-400">
+                                Lock every note in the phrase to bank a checkpoint.
+                            </div>
+                        )}
+                    </div>
+                </div>
+
                 <div className="flex flex-wrap gap-2">
                     {localState.sequence.map((n, idx) => (
-                        <div key={`${n}-${idx}`} className={`px-3 py-1.5 rounded-full text-base md:text-xl font-bold border ${localState.phase === 'playback' && idx === localState.playbackIndex ? 'border-cyan-300 text-cyan-200 bg-cyan-500/10' : localState.phase === 'input' && idx === localState.inputIndex ? 'border-pink-300 text-pink-200 bg-pink-500/10' : 'border-white/10 text-zinc-400 bg-black/20'}`}>
+                        <div key={`${n}-${idx}`} className={`px-3 py-1.5 rounded-full text-base md:text-xl font-bold border ${lockedNoteIndexes.has(idx) ? 'border-emerald-300 text-emerald-100 bg-emerald-500/15' : localState.phase === 'playback' && idx === localState.playbackIndex ? 'border-cyan-300 text-cyan-200 bg-cyan-500/10' : localState.phase === 'input' && idx === localState.inputIndex ? 'border-pink-300 text-pink-200 bg-pink-500/10' : 'border-white/10 text-zinc-400 bg-black/20'}`}>
                             {n}
                         </div>
                     ))}
@@ -596,7 +769,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                     <div className="bg-zinc-900/90 border border-white/10 rounded-3xl px-8 py-6 max-w-lg">
                         <div className="text-base uppercase tracking-[0.24em] text-zinc-300">Round Summary</div>
                         <div className="text-5xl md:text-6xl font-bebas text-cyan-300 mt-2">Round {localState.bestRound}</div>
-                        <div className="text-lg md:text-xl text-zinc-300 mt-1">Strikes {localState.strikes}/{maxStrikes}</div>
+                        <div className="text-lg md:text-xl text-zinc-300 mt-1">Strikes {localState.strikes}/{maxStrikes} | {checkpointCount} checkpoints</div>
                         <div className="text-3xl md:text-4xl font-bold text-white mt-4">+{earnedPoints} pts</div>
                         {isTurnsMode && nextTurnMeta?.name && (
                             <div className="text-base uppercase tracking-[0.2em] text-zinc-400 mt-4">Next up: {nextTurnMeta.name}</div>

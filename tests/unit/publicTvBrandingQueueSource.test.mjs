@@ -186,3 +186,9 @@ test('PublicTV logo flourish stays subtle and honors reduced-motion preferences'
     'The logo flourish should disable motion for reduced-motion users.',
   );
 });
+
+test('PublicTV cinema QR includes explicit Join Now copy', () => {
+  assert.match(tvSource, /floating \? \(/);
+  assert.match(tvSource, /Join Now/);
+  assert.match(tvSource, /Scan to sing/);
+});

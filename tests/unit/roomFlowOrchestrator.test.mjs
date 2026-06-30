@@ -280,3 +280,34 @@ test('roomFlowOrchestrator arms dead-air recovery when run-of-show is blocked an
     assert.equal(flow.deadAirIntent.song.title, 'Mr. Brightside');
     assert.equal(flow.owner, ROOM_FLOW_OWNERS.deadAirRecovery);
 });
+
+test('roomFlowOrchestrator keeps Auto DJ waiting until the recap and next-up hold clears', () => {
+    const flow = getRoomFlowSnapshot({
+        roomCode: 'ROOM7',
+        room: {
+            activeMode: 'karaoke',
+            autoDjDelaySec: 5,
+            autoDj: true,
+        },
+        songs: [
+            {
+                id: 'song_after_recap',
+                status: 'requested',
+                mediaUrl: 'https://youtube.com/watch?v=afterrecap',
+                playbackReady: true,
+                priorityScore: 1,
+            },
+        ],
+        autoDjEnabled: true,
+        lastPerformanceTs: 1000,
+        queuedCount: 1,
+        performingCount: 0,
+        postPerformanceHoldMs: 21500,
+        now: 12000,
+    });
+
+    assert.equal(flow.owner, ROOM_FLOW_OWNERS.queueReady);
+    assert.equal(flow.autoDjIntent.shouldStart, false);
+    assert.equal(flow.autoDjIntent.reason, 'waiting_delay');
+    assert.equal(flow.autoDjIntent.startAfterMs, 22500);
+});

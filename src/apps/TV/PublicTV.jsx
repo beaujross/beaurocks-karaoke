@@ -3,11 +3,13 @@
  * narrowly scoped manual memoization. A safe refactor needs to be broken into smaller passes.
  */
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent, callFunction, updateRoomAsHost } from '../../lib/firebase';
+import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent, callFunction } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
 import { ASSETS, STORM_SFX } from '../../lib/assets';
 import QRCode from 'qrcode';
 import { averageBand } from '../../lib/utils';
+import { playVoiceGameCue } from '../../lib/voiceGameSoundSystem';
+import CrowdMicInputVisualizer from '../../games/shared/CrowdMicInputVisualizer';
 import AudioVisualizer from '../../components/AudioVisualizer';
 import Stage from '../../components/Stage';
 import GameContainer from '../../components/GameContainer';
@@ -29,6 +31,8 @@ import {
 import {
     createLobbyVolleyState,
     applyLobbyInteraction,
+    applyLobbyVoiceFrame,
+    deriveLobbyVoiceTarget,
     deriveAirborneMs,
     deriveTeamworkMultiplier,
     deriveRelayObjective,
@@ -62,6 +66,7 @@ import {
     isRunOfShowReleaseWindowVotingOpen,
     normalizeRunOfShowDirector
 } from '../../lib/runOfShowDirector';
+import { buildAudienceDecisionFromReleaseWindow, buildReleaseWindowFromAudienceDecision } from '../../lib/audienceDecision';
 import { requiresBackingHostReview } from '../../lib/requestModes';
 
 function isVipSongForUsers(song, roomUsers = []) {
@@ -309,9 +314,16 @@ const RunOfShowReleaseWindowOverlay = ({
     releaseWindow = null,
     songs = [],
     roles = {},
-    nowValue = Date.now()
+    nowValue = Date.now(),
+    displayMode = 'takeover'
 }) => {
     if (!releaseWindow || !isRunOfShowReleaseWindowVotingOpen(releaseWindow, nowValue)) return null;
+    const isGlassOverlay = String(displayMode || '').trim().toLowerCase() === 'glass_overlay';
+    const audienceDecision = buildAudienceDecisionFromReleaseWindow(releaseWindow, {
+        displayMode: isGlassOverlay ? 'glass_overlay' : 'takeover',
+        nowMs: nowValue
+    });
+    const decisionChoicesById = Object.fromEntries((audienceDecision.choices || []).map((choice) => [choice.id, choice]));
     const governanceMode = String(releaseWindow?.governanceMode || '').trim().toLowerCase();
     const subjectType = String(releaseWindow?.subjectType || '').trim().toLowerCase();
     const tally = getRunOfShowReleaseWindowTally(releaseWindow || {}, roles || {});
@@ -340,8 +352,8 @@ const RunOfShowReleaseWindowOverlay = ({
     const choices = [
         {
             key: 'slot_scene',
-            label: String(releaseWindow?.choiceLabels?.slot_scene || '').trim() || (isSongFaceOff ? 'Song A' : 'Option A'),
-            detail: String(releaseWindow?.choiceDetails?.slot_scene || '').trim()
+            label: decisionChoicesById.slot_scene?.label || (isSongFaceOff ? 'Song A' : 'Option A'),
+            detail: decisionChoicesById.slot_scene?.detail
                 || String(slotSceneSong?.singerName || slotSceneSong?.name || '').trim()
                 || 'Ready now',
             subline: String(slotSceneSong?.artist || slotSceneSong?.artistName || '').trim() || 'Vote option',
@@ -351,8 +363,8 @@ const RunOfShowReleaseWindowOverlay = ({
         },
         {
             key: 'keep_queue_moving',
-            label: String(releaseWindow?.choiceLabels?.keep_queue_moving || '').trim() || (isSongFaceOff ? 'Song B' : 'Option B'),
-            detail: String(releaseWindow?.choiceDetails?.keep_queue_moving || '').trim()
+            label: decisionChoicesById.keep_queue_moving?.label || (isSongFaceOff ? 'Song B' : 'Option B'),
+            detail: decisionChoicesById.keep_queue_moving?.detail
                 || String(keepQueueMovingSong?.singerName || keepQueueMovingSong?.name || '').trim()
                 || 'Ready now',
             subline: String(keepQueueMovingSong?.artist || keepQueueMovingSong?.artistName || '').trim() || 'Vote option',
@@ -365,14 +377,14 @@ const RunOfShowReleaseWindowOverlay = ({
     const secondaryChoice = choices[1];
 
     const renderChoiceCard = (choice) => (
-        <div key={choice.key} className={`relative overflow-hidden rounded-[2rem] border bg-[linear-gradient(160deg,rgba(9,12,21,0.98),rgba(17,24,39,0.92))] shadow-[0_24px_64px_rgba(0,0,0,0.42)] ${choice.accentClass}`}>
+        <div key={choice.key} className={`relative overflow-hidden border bg-[linear-gradient(160deg,rgba(9,12,21,0.96),rgba(17,24,39,0.88))] shadow-[0_24px_64px_rgba(0,0,0,0.42)] ${isGlassOverlay ? 'rounded-[1.5rem]' : 'rounded-[2rem]'} ${choice.accentClass}`}>
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_42%)] opacity-60" />
             <div className="absolute inset-x-8 top-6 h-16 rounded-full bg-white/8 blur-2xl" />
-            <div className="relative flex h-full flex-col p-8">
+            <div className={`relative flex h-full flex-col ${isGlassOverlay ? 'p-5' : 'p-8'}`}>
                 <div className="flex items-start justify-between gap-4">
                     <div>
                         <div className={`text-sm font-black uppercase tracking-[0.3em] ${choice.labelClass}`}>{choice.label}</div>
-                        <div className="mt-4 text-[clamp(2.3rem,4.4vw,5rem)] font-bebas leading-[0.94] tracking-[0.02em] text-white">
+                        <div className={`${isGlassOverlay ? 'mt-2 text-[clamp(1.9rem,3.3vw,3.7rem)]' : 'mt-4 text-[clamp(2.3rem,4.4vw,5rem)]'} font-bebas leading-[0.94] tracking-[0.02em] text-white`}>
                             {choice.detail}
                         </div>
                         <div className="mt-3 text-[clamp(1rem,1.55vw,1.35rem)] text-zinc-300">{choice.subline}</div>
@@ -382,14 +394,14 @@ const RunOfShowReleaseWindowOverlay = ({
                     </div>
                 </div>
                 <div className="mt-auto flex items-end justify-between gap-6">
-                    <div className="max-w-[22rem] text-lg text-zinc-300">
+                    <div className={`${isGlassOverlay ? 'max-w-[18rem] text-sm' : 'max-w-[22rem] text-lg'} text-zinc-300`}>
                         {isSongFaceOff
                             ? 'Phones pick the next featured song.'
                             : isSlotFill
                                 ? 'Phones help decide who fills the slot.'
                                 : 'Phones steer the next room moment.'}
                     </div>
-                    <div className="h-40 w-40 shrink-0 overflow-hidden rounded-[1.6rem] border border-white/10 bg-white/6 shadow-[0_18px_44px_rgba(0,0,0,0.28)]">
+                    <div className={`${isGlassOverlay ? 'h-28 w-28 rounded-[1.15rem]' : 'h-40 w-40 rounded-[1.6rem]'} shrink-0 overflow-hidden border border-white/10 bg-white/6 shadow-[0_18px_44px_rgba(0,0,0,0.28)]`}>
                         {choice.artworkUrl ? (
                             <img src={choice.artworkUrl} alt={choice.label} className="h-full w-full object-cover" />
                         ) : (
@@ -404,14 +416,24 @@ const RunOfShowReleaseWindowOverlay = ({
     );
 
     return (
-        <div className="public-tv fixed inset-0 z-[194] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.26),transparent_36%),radial-gradient(circle_at_bottom,rgba(244,114,182,0.2),transparent_34%),linear-gradient(160deg,#020617,#081120_38%,#111827)] text-white">
-            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:72px_72px] opacity-20" />
-            <div className="absolute -left-20 top-[-10%] h-[28rem] w-[28rem] rounded-full bg-cyan-400/18 blur-3xl" />
-            <div className="absolute -right-24 bottom-[-12%] h-[30rem] w-[30rem] rounded-full bg-pink-500/18 blur-3xl" />
-            <div className="absolute left-1/2 top-1/2 h-[24rem] w-[24rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-white/[0.03] blur-2xl" />
-            <div className="relative z-10 flex h-full flex-col px-10 py-10">
+        <div
+            data-tv-release-window-display-mode={isGlassOverlay ? 'glass_overlay' : 'takeover'}
+            data-tv-audience-decision-type={audienceDecision.type}
+            className={isGlassOverlay
+                ? 'public-tv pointer-events-none fixed inset-0 z-[194] overflow-hidden bg-black/42 text-white backdrop-blur-[2px]'
+                : 'public-tv fixed inset-0 z-[194] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.26),transparent_36%),radial-gradient(circle_at_bottom,rgba(244,114,182,0.2),transparent_34%),linear-gradient(160deg,#020617,#081120_38%,#111827)] text-white'}
+        >
+            {!isGlassOverlay && (
+                <>
+                    <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:72px_72px] opacity-20" />
+                    <div className="absolute -left-20 top-[-10%] h-[28rem] w-[28rem] rounded-full bg-cyan-400/18 blur-3xl" />
+                    <div className="absolute -right-24 bottom-[-12%] h-[30rem] w-[30rem] rounded-full bg-pink-500/18 blur-3xl" />
+                    <div className="absolute left-1/2 top-1/2 h-[24rem] w-[24rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-white/[0.03] blur-2xl" />
+                </>
+            )}
+            <div className={`relative z-10 flex h-full flex-col ${isGlassOverlay ? 'justify-end px-8 pb-8 pt-6' : 'px-10 py-10'}`}>
                 <div className="flex items-start justify-between gap-8">
-                    <div className="max-w-[70vw]">
+                    <div className={isGlassOverlay ? 'max-w-[62vw] rounded-[1.6rem] border border-white/12 bg-black/42 px-5 py-4 shadow-[0_24px_70px_rgba(0,0,0,0.36)]' : 'max-w-[70vw]'}>
                         <div className="text-sm font-black uppercase tracking-[0.34em] text-cyan-100/78">
                             {selfServeDecisionPresentation
                                 ? selfServeDecisionPresentation.eyebrow
@@ -421,10 +443,10 @@ const RunOfShowReleaseWindowOverlay = ({
                                     ? (isCoHostVote ? 'Co-Host Slot Fill' : 'Audience Slot Fill')
                                     : (isCoHostVote ? 'Co-Host Decision' : 'Room Vote')}
                         </div>
-                        <div className="mt-4 text-[clamp(2.9rem,5.5vw,6.4rem)] font-bebas leading-[0.94] tracking-[0.02em] text-white drop-shadow-[0_12px_40px_rgba(0,0,0,0.42)]">
+                        <div className={`${isGlassOverlay ? 'mt-2 text-[clamp(2rem,3.6vw,4.3rem)]' : 'mt-4 text-[clamp(2.9rem,5.5vw,6.4rem)]'} font-bebas leading-[0.94] tracking-[0.02em] text-white drop-shadow-[0_12px_40px_rgba(0,0,0,0.42)]`}>
                             {String(releaseWindow?.prompt || 'What should happen next?').trim()}
                         </div>
-                        <div className="mt-4 text-[clamp(1rem,1.8vw,1.45rem)] text-zinc-200/86">
+                        <div className={`${isGlassOverlay ? 'mt-2 text-[clamp(0.9rem,1.45vw,1.15rem)]' : 'mt-4 text-[clamp(1rem,1.8vw,1.45rem)]'} text-zinc-200/86`}>
                             {selfServeDecisionPresentation
                                 ? `${selfServeDecisionPresentation.helper} Vote now at ${voteHost} with room code ${String(roomCode || '').trim().toUpperCase() || 'ROOM'}.`
                                 : isCoHostVote
@@ -436,7 +458,7 @@ const RunOfShowReleaseWindowOverlay = ({
                             {selfServeDecisionPresentation ? selfServeDecisionPresentation.liveLabel : 'Crowd energy is live'}
                         </div>
                     </div>
-                    <div className="flex shrink-0 flex-col items-end gap-3">
+                    <div className={`flex shrink-0 flex-col items-end gap-3 ${isGlassOverlay ? 'rounded-[1.6rem] border border-white/12 bg-black/42 px-4 py-4 shadow-[0_24px_70px_rgba(0,0,0,0.36)]' : ''}`}>
                         <div className="rounded-full border border-white/12 bg-black/35 px-5 py-2 text-sm font-black uppercase tracking-[0.24em] text-zinc-100 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
                             {tally.totalVotes || 0} total votes
                         </div>
@@ -449,15 +471,15 @@ const RunOfShowReleaseWindowOverlay = ({
                         </div>
                     </div>
                 </div>
-                <div className="mt-8 flex items-center justify-center">
+                <div className={`${isGlassOverlay ? 'mt-4' : 'mt-8'} flex items-center justify-center`}>
                     <div className="rounded-full border border-white/10 bg-white/[0.05] px-6 py-2 text-base font-black uppercase tracking-[0.34em] text-zinc-200 shadow-[0_20px_40px_rgba(0,0,0,0.24)]">
                         {selfServeDecisionPresentation ? selfServeDecisionPresentation.decisionLabel : 'Pick the next moment'}
                     </div>
                 </div>
-                <div className="mt-8 grid flex-1 grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)] gap-8">
+                <div className={`${isGlassOverlay ? 'mt-4 max-h-[42vh] flex-none grid-cols-[minmax(0,1fr)_100px_minmax(0,1fr)] gap-5' : 'mt-8 flex-1 grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)] gap-8'} grid`}>
                     {renderChoiceCard(primaryChoice)}
                     <div className="flex items-center justify-center">
-                        <div className="flex h-32 w-32 items-center justify-center rounded-full border border-white/12 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),rgba(255,255,255,0.03))] text-4xl font-black uppercase tracking-[0.28em] text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+                        <div className={`${isGlassOverlay ? 'h-24 w-24 text-3xl' : 'h-32 w-32 text-4xl'} flex items-center justify-center rounded-full border border-white/12 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),rgba(255,255,255,0.03))] font-black uppercase tracking-[0.28em] text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]`}>
                             VS
                         </div>
                     </div>
@@ -467,7 +489,6 @@ const RunOfShowReleaseWindowOverlay = ({
         </div>
     );
 };
-
 const SelfServeTransitionOverlay = ({
     transitionMoment = null,
 }) => {
@@ -645,77 +666,77 @@ const normalizeStormLayer = (layer = '') => {
 
 const LOBBY_PLAY_EFFECTS = {
     lobby_play_wave: {
-        label: 'Save',
-        icon: '🛟',
+        label: 'Add Air',
+        icon: emoji(0x1F6DF),
         accent: 'from-cyan-300/80 to-blue-400/80',
         motion: 'wave',
         aura: 'rgba(34,211,238,0.45)',
-        particles: ['🛟', '🌊', '💫']
+        particles: [emoji(0x1F6DF), emoji(0x1F30A), emoji(0x1F4AB)]
     },
     lobby_play_laser: {
-        label: 'Lift',
-        icon: '🚀',
+        label: 'Thrust',
+        icon: emoji(0x1F680),
         accent: 'from-fuchsia-300/80 to-cyan-300/80',
         motion: 'laser',
         aura: 'rgba(232,121,249,0.42)',
-        particles: ['🚀', '✨', '💥']
+        particles: [emoji(0x1F680), emoji(0x2728), emoji(0x1F4A5)]
     },
     lobby_play_echo: {
-        label: 'Pass',
-        icon: '🔁',
+        label: 'Steady',
+        icon: emoji(0x1F501),
         accent: 'from-blue-300/80 to-indigo-400/80',
         motion: 'echo',
         aura: 'rgba(96,165,250,0.4)',
-        particles: ['🔁', '🌊', '💫']
+        particles: [emoji(0x1F501), emoji(0x1F30A), emoji(0x1F4AB)]
     },
     lobby_play_confetti: {
-        label: 'Burst',
-        icon: '💥',
+        label: 'Burst Air',
+        icon: emoji(0x1F4A5),
         accent: 'from-pink-300/80 to-yellow-300/80',
         motion: 'confetti',
         aura: 'rgba(244,114,182,0.38)',
-        particles: ['💥', '🎉', '🌟']
+        particles: [emoji(0x1F4A5), emoji(0x1F389), emoji(0x1F31F)]
     },
     lobby_play_ultimate_feather: {
         label: 'Float',
-        icon: '🪶',
+        icon: emoji(0x1FAB6),
         accent: 'from-emerald-300/80 to-cyan-300/80',
         motion: 'wave',
         aura: 'rgba(74,222,128,0.42)',
-        particles: ['🪶', '💨']
+        particles: [emoji(0x1FAB6), emoji(0x1F4A8)]
     },
     lobby_play_ultimate_lens: {
         label: 'Shrink',
-        icon: '🔍',
+        icon: emoji(0x1F50D),
         accent: 'from-amber-300/80 to-yellow-200/80',
         motion: 'echo',
         aura: 'rgba(251,191,36,0.36)',
-        particles: ['🔍', '✨']
+        particles: [emoji(0x1F50D), emoji(0x2728)]
     },
     lobby_play_ultimate_magnet: {
         label: 'Catch-All',
-        icon: '🧲',
+        icon: emoji(0x1F9F2),
         accent: 'from-fuchsia-300/80 to-violet-300/80',
         motion: 'pulse_bloom',
         aura: 'rgba(217,70,239,0.38)',
-        particles: ['🧲', '⚡']
+        particles: [emoji(0x1F9F2), emoji(0x26A1)]
     },
     lobby_play_ultimate_rocket: {
-        label: 'Bounce',
-        icon: '🚀',
+        label: 'Launch',
+        icon: emoji(0x1F680),
         accent: 'from-rose-300/80 to-orange-300/80',
         motion: 'spark_shower_bridge',
         aura: 'rgba(251,113,133,0.4)',
-        particles: ['🚀', '💥']
+        particles: [emoji(0x1F680), emoji(0x1F4A5)]
     }
 };
 
-const LOBBY_PLAY_GUIDE = VOLLEY_ORB_BASE_ACTIONS.map((item) => ({
-    id: item.id,
-    action: item.label,
-    detail: item.cue,
-    timing: item.shortCue
-}));
+const LOBBY_PLAY_GUIDE = Object.freeze([
+    Object.freeze({ id: 'wave', action: 'Add Air', detail: 'Fill the orb faster', timing: 'tap for air' }),
+    Object.freeze({ id: 'laser', action: 'Thrust', detail: 'Push the launch higher', timing: 'tap for lift' }),
+    Object.freeze({ id: 'echo', action: 'Steady', detail: 'Hold the climb together', timing: 'tap to stabilize' }),
+    Object.freeze({ id: 'confetti', action: 'Burst Air', detail: 'Pop a combo boost', timing: 'tap on cue' })
+]);
 
 const getLobbyPlayEffect = (type = '') => {
     const key = String(type || '').trim().toLowerCase();
@@ -790,38 +811,7 @@ const parseAwardFailureCode = (error = null) => {
     return raw;
 };
 
-const isPermissionDeniedError = (error = null) => {
-    const raw = String(error?.code || error?.message || "").toLowerCase();
-    return raw.includes("permission-denied") || raw.includes("missing or insufficient permissions");
-};
 
-const buildPerformanceSessionHostFallbackUpdate = (room = {}, patch = {}) => {
-    const sessionPatch = {};
-    const metaPatch = {};
-    Object.entries(patch || {}).forEach(([key, value]) => {
-        const normalizedKey = String(key || "");
-        if (normalizedKey.startsWith("currentPerformanceSession.")) {
-            sessionPatch[normalizedKey.slice("currentPerformanceSession.".length)] = value;
-        } else if (normalizedKey.startsWith("currentPerformanceMeta.")) {
-            metaPatch[normalizedKey.slice("currentPerformanceMeta.".length)] = value;
-        }
-    });
-
-    const updates = {};
-    if (Object.keys(sessionPatch).length) {
-        updates.currentPerformanceSession = {
-            ...(room?.currentPerformanceSession || {}),
-            ...sessionPatch
-        };
-    }
-    if (Object.keys(metaPatch).length) {
-        updates.currentPerformanceMeta = {
-            ...(room?.currentPerformanceMeta || {}),
-            ...metaPatch
-        };
-    }
-    return updates;
-};
 const LOBBY_PLAYGROUND_REWARD_SOURCE = 'lobby_playground';
 const LOBBY_AWARD_VISUAL_WINDOW_MS = 4200;
 const LOBBY_COMBO_WINDOW_MS = 4600;
@@ -931,14 +921,21 @@ const getLobbyOrbTopPct = ({
     );
 };
 
-const LOBBY_ALTITUDE_CAMERA_TARGET_TOP_PCT = 52;
-const LOBBY_ALTITUDE_MAX_CAMERA_SHIFT_PCT = 42;
-const LOBBY_ALTITUDE_MAX_TRACKED_FT = 140;
+const LOBBY_VOLLEY_PHASE_VISUALS = Object.freeze({
+    inflate: Object.freeze({ label: 'Inflate', action: 'Room voice fills the balloon', phone: 'Phones add backup air', tone: 'cyan', icon: 'fa-wind' }),
+    lift: Object.freeze({ label: 'Launch', action: 'Low voices ignite lift', phone: 'Phones add thrust', tone: 'amber', icon: 'fa-fire-flame-curved' }),
+    shape: Object.freeze({ label: 'Climb', action: 'Match the note to steer', phone: 'Phones steady the climb', tone: 'fuchsia', icon: 'fa-wave-square' }),
+    orbit: Object.freeze({ label: 'Orbit', action: 'High voices sustain orbit', phone: 'Phones rescue drops', tone: 'emerald', icon: 'fa-satellite' }),
+});
+const LOBBY_VOLLEY_PHASE_ORDER = Object.freeze(['inflate', 'lift', 'shape', 'orbit']);
+const LOBBY_ALTITUDE_CAMERA_TARGET_TOP_PCT = 50;
+const LOBBY_ALTITUDE_MAX_CAMERA_SHIFT_PCT = 64;
+const LOBBY_ALTITUDE_MAX_TRACKED_FT = 220;
 const LOBBY_ALTITUDE_MILESTONES = Object.freeze([
-    Object.freeze({ id: 'roofbreak', minFt: 24, label: 'Roof Break', pointsBudget: 16, maxPointsPerUser: 6 }),
-    Object.freeze({ id: 'skyline', minFt: 48, label: 'Skyline', pointsBudget: 24, maxPointsPerUser: 9 }),
-    Object.freeze({ id: 'cloudline', minFt: 72, label: 'Cloudline', pointsBudget: 36, maxPointsPerUser: 12 }),
-    Object.freeze({ id: 'stratosphere', minFt: 96, label: 'Stratosphere', pointsBudget: 52, maxPointsPerUser: 16 })
+    Object.freeze({ id: 'inflated', minFt: 24, label: 'Inflated', pointsBudget: 16, maxPointsPerUser: 6 }),
+    Object.freeze({ id: 'roofbreak', minFt: 58, label: 'Roof Break', pointsBudget: 24, maxPointsPerUser: 9 }),
+    Object.freeze({ id: 'cloudline', minFt: 104, label: 'Cloudline', pointsBudget: 36, maxPointsPerUser: 12 }),
+    Object.freeze({ id: 'orbit', minFt: 168, label: 'Orbit Gate', pointsBudget: 52, maxPointsPerUser: 16 })
 ]);
 
 const getLobbyVolleyAltitudeState = ({
@@ -965,29 +962,29 @@ const getLobbyVolleyAltitudeState = ({
     const streakCount = Math.max(0, Number(state?.streakCount || 0));
     const energyNorm = clampLobby(energy, 0, 100) / 100;
     const climbPct = clampLobby(
-        (Math.max(0, airborneMs - 1200) / 1000) * (0.86 + (energyNorm * 0.44))
-        + (Math.max(0, teamworkMultiplier - 1) * 4.9)
-        + (Math.max(0, streakCount - 4) * 0.46)
-        + (energyNorm * 6.5)
-        + (Math.max(0, Number(levelSpeed || 1) - 1) * 10)
-        + (shrinkActive ? 4 : 0),
+        (Math.max(0, airborneMs - 900) / 1000) * (1.05 + (energyNorm * 0.62))
+        + (Math.max(0, teamworkMultiplier - 1) * 6.2)
+        + (Math.max(0, streakCount - 3) * 0.64)
+        + (energyNorm * 9.4)
+        + (Math.max(0, Number(levelSpeed || 1) - 1) * 14)
+        + (shrinkActive ? 5.5 : 0),
         0,
-        64
+        92
     );
-    const climbProgress = clampLobby(climbPct / 64, 0, 1);
+    const climbProgress = clampLobby(climbPct / 92, 0, 1);
     const worldTopPct = baseTopPct - climbPct;
     const desiredVisibleTopPct = clampLobby(
-        LOBBY_ALTITUDE_CAMERA_TARGET_TOP_PCT + ((1 - energyNorm) * 4.5) - (climbProgress * 3.5),
-        47,
-        58
+        LOBBY_ALTITUDE_CAMERA_TARGET_TOP_PCT + ((1 - energyNorm) * 3.2) - (climbProgress * 5.5),
+        42,
+        56
     );
-    const proactiveCameraShiftPct = Math.max(0, climbPct - 8) * 0.15;
+    const proactiveCameraShiftPct = Math.max(0, climbPct - 4) * 0.46;
     const cameraShiftPct = clampLobby(
         Math.max(0, desiredVisibleTopPct - worldTopPct) + proactiveCameraShiftPct,
         0,
         LOBBY_ALTITUDE_MAX_CAMERA_SHIFT_PCT
     );
-    const altitudeFt = Math.round(Math.min(LOBBY_ALTITUDE_MAX_TRACKED_FT, climbPct * 2.3));
+    const altitudeFt = Math.round(Math.min(LOBBY_ALTITUDE_MAX_TRACKED_FT, climbPct * 2.55));
     return {
         climbPct,
         altitudeFt,
@@ -1845,7 +1842,7 @@ const AnimatedPoints = ({ value, combo = 0, showComboCharge = true }) => {
     
     return (
         <div
-            className={`tv-score-charge tv-score-charge-${comboTier} relative flex items-center gap-3 overflow-hidden rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur-md transition-transform duration-200 md:gap-4 md:px-6 md:py-4 2xl:px-7 2xl:py-5 ${showPulse ? 'tv-score-charge-pulse' : ''}`}
+            className={`tv-score-charge tv-score-charge-${comboTier} relative flex items-center gap-2 overflow-hidden rounded-xl border px-3 py-2.5 shadow-2xl backdrop-blur-md transition-transform duration-300 md:gap-3 md:px-4 md:py-3 2xl:px-5 2xl:py-4 ${showPulse ? 'tv-score-charge-pulse' : ''}`}
             style={{ '--score-charge': `${comboPct}%` }}
         >
             <div className="tv-score-charge-glow" />
@@ -1879,6 +1876,29 @@ const AnimatedPoints = ({ value, combo = 0, showComboCharge = true }) => {
             </div>
         </div>
     );
+};
+
+const RecapCountUpNumber = ({ value = 0, active = false, completed = false, durationMs = 1100, className = '' }) => {
+    const [display, setDisplay] = useState(0);
+    useEffect(() => {
+        const target = Math.max(0, Math.round(Number(value) || 0));
+        if (!active) {
+            setDisplay(completed ? target : 0);
+            return undefined;
+        }
+        let frameId = 0;
+        const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const run = (timestamp) => {
+            const now = typeof timestamp === 'number' ? timestamp : Date.now();
+            const progress = Math.min(1, Math.max(0, (now - startedAt) / Math.max(180, durationMs)));
+            const eased = 1 - Math.pow(1 - progress, 3);
+            setDisplay(Math.round(target * eased));
+            if (progress < 1) frameId = requestAnimationFrame(run);
+        };
+        frameId = requestAnimationFrame(run);
+        return () => cancelAnimationFrame(frameId);
+    }, [active, completed, durationMs, value]);
+    return <div className={className}>{active || completed ? display : ''}</div>;
 };
 
 const LEADERBOARD_MODE_DEFS = Object.freeze([
@@ -2131,8 +2151,9 @@ const LeaderboardOverlay = ({ users, songs, premiumBadgeLabel = 'VIP' }) => {
 const DEFAULT_PERFORMANCE_RECAP_BREAKDOWN_MS = 7000;
 const DEFAULT_PERFORMANCE_RECAP_LEADERBOARD_MS = 7000;
 const DEFAULT_PERFORMANCE_RECAP_NEXT_UP_MS = 6000;
+const DEFAULT_PERFORMANCE_RECAP_SCORE_STEP_MS = 2600;
 const DEFAULT_APPLAUSE_WARMUP_SEC = 0;
-const DEFAULT_APPLAUSE_COUNTDOWN_SEC = 5;
+const DEFAULT_APPLAUSE_COUNTDOWN_SEC = 0;
 const DEFAULT_APPLAUSE_MEASURE_SEC = 5;
 
 const buildRoomLeaderboardStats = (users = [], songs = []) => {
@@ -2232,8 +2253,11 @@ const LeaderboardStackOverlay = ({ users, songs, premiumBadgeLabel = 'VIP' }) =>
 
 const PerformanceNextUpOverlay = ({
     nextUp = [],
+    featuredPerformer = null,
     queueCount = 0,
     queueWaitSec = 0,
+    roomCode = '',
+    joinUrl = '',
     brandTheme = null,
     logoUrl = '',
     brandTitle = '',
@@ -2241,8 +2265,20 @@ const PerformanceNextUpOverlay = ({
 }) => {
     const theme = useMemo(() => getRunOfShowTakeoverTheme('cyan', brandTheme), [brandTheme]);
     const lineup = Array.isArray(nextUp) ? nextUp.slice(0, 3) : [];
+    const featured = featuredPerformer || lineup[0] || null;
+    const featuredId = String(featured?.id || '').trim();
+    const supportingLineup = featured
+        ? lineup.filter((song, index) => {
+            const songId = String(song?.id || '').trim();
+            if (featuredId && songId) return songId !== featuredId;
+            return index !== 0;
+        }).slice(0, 2)
+        : lineup;
+    const featuredEmoji = String(featured?.singerAvatar || featured?.avatar || featured?.emoji || '').trim() || EMOJI.microphone;
     const displayLogoUrl = String(logoUrl || ASSETS.logo || '').trim() || ASSETS.logo;
     const totalQueueCount = Math.max(lineup.length, Number(queueCount || 0));
+    const roomCodeLabel = String(roomCode || '').trim().toUpperCase() || 'ROOM';
+    const emptyQueueQrValue = String(joinUrl || '').trim() || (roomCodeLabel !== 'ROOM' ? `/?room=${roomCodeLabel}` : '/');
     const shellStyle = {
         background: `radial-gradient(circle at 16% 18%, ${withAudienceBrandAlpha(theme.primaryColor, 0.24)} 0%, transparent 24%), radial-gradient(circle at 82% 18%, ${withAudienceBrandAlpha(theme.secondaryColor, 0.2)} 0%, transparent 22%), radial-gradient(circle at 52% 100%, ${withAudienceBrandAlpha(theme.accentColor, 0.16)} 0%, transparent 30%), linear-gradient(180deg, rgba(5,8,22,0.98), rgba(2,6,18,1))`
     };
@@ -2263,11 +2299,11 @@ const PerformanceNextUpOverlay = ({
                                 Next Up On Stage
                             </div>
                             <div className="mt-5 text-5xl font-black uppercase leading-[0.88] text-transparent bg-clip-text md:text-7xl 2xl:text-[7rem]" style={theme.headlineStyle}>
-                                {lineup.length > 0 ? 'Queue keeps moving' : 'The next singer is loading'}
+                                {featured ? 'Give it up for the next singer' : 'The queue is wide open'}
                             </div>
                             <div className="mt-4 text-xl uppercase tracking-[0.24em] text-zinc-200 md:text-2xl 2xl:text-[2rem]">
-                                {lineup.length > 0
-                                    ? `Showing the next ${lineup.length} singer${lineup.length === 1 ? '' : 's'} on deck`
+                                {featured
+                                    ? `${featured.singerName || 'Next singer'} is taking the stage now`
                                     : 'Scan in and request a song to keep the stage hot'}
                             </div>
                         </div>
@@ -2288,8 +2324,65 @@ const PerformanceNextUpOverlay = ({
                         </div>
                     </div>
 
+                    {!featured ? (
+                        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center 2xl:grid-cols-[minmax(0,1fr)_440px]">
+                            <div className="relative overflow-hidden rounded-[2.4rem] border border-cyan-300/24 bg-[linear-gradient(135deg,rgba(8,16,34,0.96),rgba(28,10,44,0.92),rgba(4,30,44,0.9))] px-7 py-8 shadow-[0_28px_90px_rgba(0,0,0,0.46)] md:px-10 md:py-10 2xl:px-12 2xl:py-12">
+                                <div className="absolute inset-x-0 top-0 h-2" style={theme.progressStyle}></div>
+                                <div className="relative z-10">
+                                    <div className="inline-flex items-center gap-3 rounded-full border border-fuchsia-300/30 bg-fuchsia-300/12 px-4 py-2 text-[12px] font-black uppercase tracking-[0.32em] text-fuchsia-100">
+                                        <i className="fa-solid fa-qrcode" />
+                                        Queue Is Open
+                                    </div>
+                                    <div className="mt-6 text-[clamp(3.4rem,8vw,8rem)] font-black uppercase leading-[0.84] text-white drop-shadow-[0_0_40px_rgba(34,211,238,0.18)]">
+                                        Who wants the next song?
+                                    </div>
+                                    <div className="mt-5 max-w-[58rem] text-[clamp(1.35rem,2.4vw,3rem)] font-black leading-tight text-cyan-100">
+                                        Scan the code, join room {roomCodeLabel}, and add yourself to the lineup.
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="rounded-[2.4rem] border border-white/12 bg-black/34 p-6 text-center shadow-[0_28px_90px_rgba(0,0,0,0.44)] backdrop-blur-xl md:p-7 2xl:p-8">
+                                <div className="mx-auto inline-flex rounded-[2rem] border-[3px] border-white/85 bg-white p-3 shadow-[0_0_42px_rgba(255,255,255,0.16)]">
+                                    <LocalQrImage value={emptyQueueQrValue} size={300} alt="Join QR" className="h-64 w-64 object-cover 2xl:h-72 2xl:w-72" />
+                                </div>
+                                <div className="mt-5 text-[0.82rem] font-black uppercase tracking-[0.28em] text-cyan-100/80">Join Now</div>
+                                <div className="mt-2 font-bebas text-6xl tracking-[0.16em] text-white 2xl:text-7xl">{roomCodeLabel}</div>
+                                <div className="mt-2 text-sm uppercase tracking-[0.2em] text-zinc-200/80 2xl:text-base">Request a song from your phone</div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)] lg:items-stretch 2xl:gap-8">
+                            <div className="relative flex min-h-[18rem] items-center justify-center overflow-hidden rounded-[2.4rem] border border-cyan-300/24 bg-[radial-gradient(circle_at_50%_28%,rgba(34,211,238,0.28),transparent_36%),linear-gradient(145deg,rgba(8,14,30,0.96),rgba(20,8,36,0.9))] shadow-[0_28px_90px_rgba(0,0,0,0.46)]">
+                                <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,rgba(255,255,255,0.08)_0_1px,transparent_1px_18px)] opacity-35" />
+                                <div className="absolute h-56 w-56 rounded-full border border-cyan-200/20 shadow-[0_0_90px_rgba(34,211,238,0.28)] motion-safe:animate-ping" />
+                                <div className="relative z-10 flex h-44 w-44 items-center justify-center rounded-full border border-white/18 bg-black/38 text-8xl shadow-[0_0_54px_rgba(34,211,238,0.26)] md:h-56 md:w-56 md:text-[8rem] 2xl:h-64 2xl:w-64 2xl:text-[9rem]">
+                                    {featuredEmoji}
+                                </div>
+                            </div>
+                            <div className="relative overflow-hidden rounded-[2.4rem] border border-white/12 bg-[linear-gradient(135deg,rgba(8,12,28,0.96),rgba(25,9,42,0.9),rgba(4,28,42,0.9))] px-6 py-6 shadow-[0_28px_90px_rgba(0,0,0,0.46)] md:px-8 md:py-8 2xl:px-10 2xl:py-10">
+                                <div className="absolute inset-x-0 top-0 h-2" style={theme.progressStyle}></div>
+                                <div className="relative z-10">
+                                    <div className="inline-flex items-center gap-3 rounded-full border border-yellow-300/30 bg-yellow-300/12 px-4 py-2 text-[12px] font-black uppercase tracking-[0.32em] text-yellow-100">
+                                        <i className="fa-solid fa-person-rays" />
+                                        Now Taking The Stage
+                                    </div>
+                                    <div className="mt-6 text-[clamp(3.2rem,8vw,8rem)] font-black uppercase leading-[0.82] text-white drop-shadow-[0_0_40px_rgba(34,211,238,0.18)]">
+                                        {featured.singerName || 'Next singer'}
+                                    </div>
+                                    <div className="mt-5 text-[clamp(1.4rem,3vw,3.25rem)] font-black leading-tight text-cyan-100">
+                                        {featured.songTitle || 'Song loading'}
+                                    </div>
+                                    {!!featured.artist && (
+                                        <div className="mt-3 text-sm uppercase tracking-[0.28em] text-zinc-300 md:text-lg 2xl:text-2xl">
+                                            {featured.artist}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     <div className="mt-10 grid gap-4 md:grid-cols-3 2xl:gap-6">
-                        {lineup.length > 0 ? lineup.map((song, index) => {
+                        {supportingLineup.length > 0 ? supportingLineup.map((song, index) => {
                             const isVip = !!song?.isVip || (song?.vipLevel || 0) > 0;
                             const accentStyle = index === 0
                                 ? theme.progressStyle
@@ -2303,9 +2396,9 @@ const PerformanceNextUpOverlay = ({
                                     <div className="flex items-start justify-between gap-4">
                                         <div>
                                             <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-400">
-                                                {index === 0 ? 'Now loading' : index === 1 ? 'On deck' : 'Then after'}
+                                                {index === 0 ? 'On deck' : 'Then after'}
                                             </div>
-                                            <div className="mt-3 text-4xl font-black leading-none text-white md:text-5xl">#{index + 1}</div>
+                                            <div className="mt-3 text-4xl font-black leading-none text-white md:text-5xl">#{index + 2}</div>
                                         </div>
                                         {isVip && (
                                             <span className="rounded-full bg-yellow-300 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-black shadow-[0_0_20px_rgba(253,224,71,0.5)]">
@@ -2328,13 +2421,7 @@ const PerformanceNextUpOverlay = ({
                                     </div>
                                 </div>
                             );
-                        }) : (
-                            <div className="md:col-span-3 rounded-[2rem] border border-white/12 bg-[linear-gradient(145deg,rgba(10,14,28,0.94),rgba(7,10,18,0.94))] px-6 py-8 text-center shadow-[0_26px_80px_rgba(0,0,0,0.42)]">
-                                <div className="text-[12px] uppercase tracking-[0.3em] text-zinc-400">Queue is open</div>
-                                <div className="mt-4 text-3xl font-black text-white md:text-5xl">No singers queued right now</div>
-                                <div className="mt-3 text-lg text-zinc-200 md:text-2xl">Scan the room code and request a song to keep the lineup moving.</div>
-                            </div>
-                        )}
+                        }) : null}
                     </div>
                 </div>
             </div>
@@ -2577,6 +2664,8 @@ const PublicTV = ({ roomCode }) => {
     const [recap, setRecap] = useState(null);
     const [started, setStarted] = useState(false);
     const [audioCtx, setAudioCtx] = useState(null);
+    const tvUiCueLastPlayedRef = useRef({});
+    const recapUiCueStageRef = useRef('');
     const balladLights = useMemo(() => ([
         { left: '4%', bottom: '6%', size: '260px', sway: '8s', delay: '0s', opacity: '0.7' },
         { left: '16%', bottom: '10%', size: '300px', sway: '9s', delay: '0.7s', opacity: '0.8' },
@@ -2713,17 +2802,6 @@ const PublicTV = ({ roomCode }) => {
         try {
             await updateDoc(doc(db, "artifacts", APP_ID, "public", "data", "rooms", roomCode), nextWrite.patch);
         } catch (error) {
-            if (isPermissionDeniedError(error)) {
-                try {
-                    const hostFallbackUpdate = buildPerformanceSessionHostFallbackUpdate(room, nextWrite.patch);
-                    if (Object.keys(hostFallbackUpdate).length) {
-                        await updateRoomAsHost(roomCode, hostFallbackUpdate);
-                        return;
-                    }
-                } catch (fallbackError) {
-                    console.warn("Failed to report performance session playback through host fallback", fallbackError);
-                }
-            }
             console.warn("Failed to report performance session playback", error);
             performanceSessionWriteKeyRef.current = "";
         }
@@ -2760,10 +2838,11 @@ const PublicTV = ({ roomCode }) => {
     }, [isMarketingDemoEmbed]);
     useEffect(() => {
         const previewActive = room?.tvPreviewOverlay?.active === true;
+        const vocalGameRecapActive = room?.gameData?.recap?.active === true;
         const announcementActive = !!room?.announcement?.active;
         const runOfShowClockActive = room?.runOfShowEnabled === true
             || (Number(room?.currentPerformanceMeta?.startedAtMs || 0) > 0 && Number(room?.currentPerformanceMeta?.durationSec || 0) > 0);
-        if (!previewActive && !announcementActive && !runOfShowClockActive) return undefined;
+        if (!previewActive && !vocalGameRecapActive && !announcementActive && !runOfShowClockActive) return undefined;
         setTakeoverNowMs(nowMs());
         const timer = setInterval(() => setTakeoverNowMs(nowMs()), 500);
         return () => clearInterval(timer);
@@ -2774,6 +2853,8 @@ const PublicTV = ({ roomCode }) => {
         room?.tvPreviewOverlay?.active,
         room?.tvPreviewOverlay?.startedAtMs,
         room?.tvPreviewOverlay?.durationSec,
+        room?.gameData?.recap?.active,
+        room?.gameData?.recap?.tvUntilMs,
         room?.announcement?.active,
         room?.announcement?.startedAtMs
     ]);
@@ -3291,6 +3372,20 @@ const PublicTV = ({ roomCode }) => {
             ...(lobbyCueLastPlayedRef.current || {}),
             [cue]: nowMsValue
         };
+        const sharedRocketCue = {
+            launch: 'lift',
+            relay: 'climb',
+            tier: 'orbit',
+            warning: 'warning',
+            reset: 'reset',
+            hit: 'hit'
+        }[cue] || 'hit';
+        if (playVoiceGameCue('vocal_rocket', sharedRocketCue, {
+            intensity,
+            soundPack: room?.gameData?.soundPack || null,
+            basePath: room?.gameData?.soundPackBasePath || room?.gameData?.soundPack?.basePath || undefined,
+            voiceRoomTuning: room?.gameData?.voiceRoomTuning || 'forgiving_room'
+        })) return;
         if (ctx.state === 'suspended') {
             ctx.resume().catch(() => {});
         }
@@ -3403,7 +3498,7 @@ const PublicTV = ({ roomCode }) => {
                 scheduleNoise({ startOffsetSec: 0.01, durationSec: 0.08, gainScale: 0.0038, frequency: 1500, sweepTo: 3400, q: 2.2 });
                 break;
         }
-    }, [audioCtx]);
+    }, [audioCtx, room?.gameData?.soundPack, room?.gameData?.soundPackBasePath, room?.gameData?.voiceRoomTuning]);
 
     useEffect(() => {
         playStormLayerPulseRef.current = playStormLayerPulse;
@@ -3412,6 +3507,111 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         playLobbyVolleyCueRef.current = playLobbyVolleyCue;
     }, [playLobbyVolleyCue]);
+    const playTvUiCue = useCallback((cue = 'tick', { intensity = 1 } = {}) => {
+        if (!audioCtx) return;
+        const ctx = audioCtx;
+        const nowMsValue = nowMs();
+        const throttles = {
+            recap_start: 520,
+            score_tick: 180,
+            score_bonus: 220,
+            total_reveal: 700,
+            next_up: 700,
+            sweep: 260,
+            select: 160
+        };
+        const minGapMs = Number(throttles[cue] || 180);
+        const lastPlayedAt = Number(tvUiCueLastPlayedRef.current?.[cue] || 0);
+        if (nowMsValue - lastPlayedAt < minGapMs) return;
+        tvUiCueLastPlayedRef.current = {
+            ...(tvUiCueLastPlayedRef.current || {}),
+            [cue]: nowMsValue
+        };
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+        }
+        const now = ctx.currentTime;
+        const gainBoost = Math.max(0.55, Math.min(1.65, Number(intensity || 1)));
+        const scheduleTone = (freq, durationSec, offsetSec = 0, gainScale = 0.018, type = 'triangle', endFreq = null) => {
+            const startAt = now + offsetSec;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(Math.max(50, Number(freq || 440)), startAt);
+            if (endFreq && endFreq !== freq) {
+                osc.frequency.exponentialRampToValueAtTime(Math.max(50, Number(endFreq)), startAt + Math.max(0.04, durationSec));
+            }
+            gain.gain.setValueAtTime(0.0001, startAt);
+            gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, gainScale * gainBoost), startAt + 0.008);
+            gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.04, durationSec));
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(startAt);
+            osc.stop(startAt + durationSec + 0.06);
+        };
+        const scheduleNoise = (durationSec = 0.12, offsetSec = 0, gainScale = 0.006, startFreq = 1200, endFreq = 4800) => {
+            const startAt = now + offsetSec;
+            const frameCount = Math.max(1, Math.floor(ctx.sampleRate * (durationSec + 0.04)));
+            const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < frameCount; i += 1) {
+                data[i] = (Math.random() * 2) - 1;
+            }
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(Math.max(80, startFreq), startAt);
+            filter.frequency.exponentialRampToValueAtTime(Math.max(80, endFreq), startAt + Math.max(0.04, durationSec));
+            filter.Q.setValueAtTime(1.8, startAt);
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0.0001, startAt);
+            gain.gain.exponentialRampToValueAtTime(Math.max(0.00015, gainScale * gainBoost), startAt + 0.006);
+            gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.04, durationSec));
+            source.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            source.start(startAt);
+            source.stop(startAt + durationSec + 0.05);
+        };
+        switch (cue) {
+            case 'recap_start':
+                scheduleNoise(0.28, 0, 0.008, 360, 3200);
+                scheduleTone(196, 0.22, 0, 0.018, 'sine', 392);
+                scheduleTone(523, 0.18, 0.08, 0.018, 'triangle', 784);
+                break;
+            case 'score_bonus':
+                scheduleTone(392, 0.13, 0, 0.018, 'triangle');
+                scheduleTone(659, 0.15, 0.05, 0.021, 'square');
+                scheduleTone(988, 0.22, 0.11, 0.016, 'triangle');
+                scheduleNoise(0.16, 0.03, 0.005, 1800, 7600);
+                break;
+            case 'total_reveal':
+                scheduleNoise(0.34, 0, 0.01, 420, 5200);
+                scheduleTone(220, 0.24, 0, 0.02, 'sine');
+                scheduleTone(330, 0.3, 0.06, 0.023, 'triangle');
+                scheduleTone(523, 0.38, 0.13, 0.026, 'sawtooth');
+                scheduleTone(1046, 0.28, 0.25, 0.014, 'triangle');
+                break;
+            case 'next_up':
+                scheduleNoise(0.22, 0, 0.008, 520, 4300);
+                scheduleTone(294, 0.18, 0, 0.018, 'triangle');
+                scheduleTone(440, 0.2, 0.07, 0.02, 'triangle');
+                scheduleTone(740, 0.22, 0.15, 0.015, 'square');
+                break;
+            case 'sweep':
+                scheduleNoise(0.18, 0, 0.006, 900, 6800);
+                scheduleTone(740, 0.11, 0.02, 0.011, 'triangle', 1480);
+                break;
+            case 'score_tick':
+            case 'select':
+            default:
+                scheduleTone(587, 0.09, 0, 0.014, 'triangle');
+                scheduleTone(880, 0.12, 0.045, 0.014, 'square');
+                scheduleNoise(0.08, 0.01, 0.0035, 1800, 5200);
+                break;
+        }
+    }, [audioCtx]);
 
     useEffect(() => {
         triggerStormLightningRef.current = triggerStormLightning;
@@ -4833,14 +5033,30 @@ const PublicTV = ({ roomCode }) => {
             Math.round(Number(room?.performanceRecapNextUpMs ?? DEFAULT_PERFORMANCE_RECAP_NEXT_UP_MS) || DEFAULT_PERFORMANCE_RECAP_NEXT_UP_MS)
         )
     );
-    const performanceRecapTotalMs = performanceRecapBreakdownMs + performanceRecapLeaderboardMs + performanceRecapNextUpMs;
+    const performanceRecapScoreStepMs = Math.max(
+        1800,
+        Math.min(
+            4200,
+            Math.round(Number(room?.performanceRecapScoreStepMs ?? DEFAULT_PERFORMANCE_RECAP_SCORE_STEP_MS) || DEFAULT_PERFORMANCE_RECAP_SCORE_STEP_MS)
+        )
+    );
+    const lastPerformanceScoreCardCount = Math.max(
+        2,
+        Math.min(3, 2 + (Math.max(0, Number(room?.lastPerformance?.hostBonus || 0)) > 0 ? 1 : 0))
+    );
+    const performanceRecapScoreFinalHoldMs = Math.max(5200, Math.min(9000, Math.round(performanceRecapScoreStepMs * 2.25)));
+    const effectivePerformanceRecapBreakdownMs = Math.max(
+        performanceRecapBreakdownMs,
+        540 + (lastPerformanceScoreCardCount * performanceRecapScoreStepMs) + 700 + performanceRecapScoreFinalHoldMs
+    );
+    const performanceRecapTotalMs = effectivePerformanceRecapBreakdownMs + performanceRecapLeaderboardMs + performanceRecapNextUpMs;
     const applauseWarmupSec = Math.max(
         0,
-        Math.min(8, Math.round(Number(room?.applauseWarmupSec ?? DEFAULT_APPLAUSE_WARMUP_SEC) || DEFAULT_APPLAUSE_WARMUP_SEC))
+        Math.min(8, Math.round(Number(room?.applauseWarmupSec ?? DEFAULT_APPLAUSE_WARMUP_SEC) || 0))
     );
     const applauseCountdownSec = Math.max(
-        1,
-        Math.min(8, Math.round(Number(room?.applauseCountdownSec ?? DEFAULT_APPLAUSE_COUNTDOWN_SEC) || DEFAULT_APPLAUSE_COUNTDOWN_SEC))
+        0,
+        Math.min(8, Math.round(Number(room?.applauseCountdownSec ?? DEFAULT_APPLAUSE_COUNTDOWN_SEC) || 0))
     );
     const applauseMeasureSec = Math.max(
         2,
@@ -4941,6 +5157,13 @@ const PublicTV = ({ roomCode }) => {
             if (applauseResetRef.current) {
                 clearTimeout(applauseResetRef.current);
                 applauseResetRef.current = null;
+            }
+            if (applauseWarmupSec + applauseCountdownSec <= 0) {
+                setApplauseStep('measuring');
+                setMeasure(applauseMeasureSec);
+                setApplauseMax(0);
+                updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'applause' });
+                return;
             }
             setApplauseStep('celebrate');
             setCelebrateCountdown(Math.max(0, applauseWarmupSec + applauseCountdownSec));
@@ -5114,7 +5337,7 @@ const PublicTV = ({ roomCode }) => {
                 ? (String(liveItem?.assignedPerformerName || current?.singerName || 'Performance Live').trim() || 'Performance Live')
                 : (String(liveItem?.presentationPlan?.headline || liveItem?.title || getRunOfShowItemLabel(liveItem?.type || '')).trim() || 'Run Of Show');
             const liveSubtitle = isPerformance
-                ? [liveItem?.songTitle || current?.songTitle, liveItem?.artistName || current?.artist].filter(Boolean).join(' · ')
+                ? [liveItem?.songTitle || current?.songTitle, liveItem?.artistName || current?.artist].filter(Boolean).join(' \u00B7 ')
                 : (String(
                     liveItem?.presentationPlan?.subhead
                     || liveItem?.notes
@@ -5513,17 +5736,41 @@ const PublicTV = ({ roomCode }) => {
         ? currentPerformanceHypeScore + Math.max(0, Number(current?.applauseScore || 0)) + Math.max(0, Number(current?.hostBonus || 0))
         : 0;
     const showScoring = room?.showScoring !== false;
-    const spotlightUser = room?.spotlightUser?.id
-        ? roomUsers.find((u) => resolveRoomUserUid(u) === room.spotlightUser.id)
+    const spotlightRawPayload = room?.spotlightUser || null;
+    const spotlightExpiresAtMs = Number(spotlightRawPayload?.expiresAtMs || 0);
+    const spotlightExpired = spotlightExpiresAtMs > 0 && spotlightExpiresAtMs <= Date.now();
+    const spotlightPayload = spotlightExpired ? null : spotlightRawPayload;
+    const spotlightDurationMs = Math.max(1, Number(spotlightPayload?.durationMs || 0));
+    const spotlightCreatedAtMs = Number(spotlightPayload?.createdAtMs || 0);
+    const spotlightProgressPct = spotlightExpiresAtMs > 0 && spotlightCreatedAtMs > 0
+        ? Math.max(0, Math.min(100, ((spotlightExpiresAtMs - Date.now()) / spotlightDurationMs) * 100))
+        : 100;
+    const spotlightUser = spotlightPayload?.id
+        ? roomUsers.find((u) => resolveRoomUserUid(u) === spotlightPayload.id)
         : null;
-    const spotlightKind = inferSpotlightKind(room?.spotlightUser || null);
-    const audienceSpotlightMode = normalizeAudienceSpotlightMode(room?.spotlightUser?.mode);
+    const spotlightKind = inferSpotlightKind(spotlightPayload || null);
+    const audienceSpotlightMode = normalizeAudienceSpotlightMode(spotlightPayload?.mode);
     const audienceSpotlightPrompt = spotlightKind === SPOTLIGHT_KINDS.audience
-        ? buildAudienceSpotlightPrompt(audienceSpotlightMode, room?.spotlightUser?.prompt?.index)
+        ? buildAudienceSpotlightPrompt(audienceSpotlightMode, spotlightPayload?.prompt?.index)
         : null;
     const audienceSpotlightModeMeta = getAudienceSpotlightModeMeta(audienceSpotlightMode);
+    const spotlightMainstage = spotlightPayload?.mainstage && typeof spotlightPayload.mainstage === 'object'
+        ? spotlightPayload.mainstage
+        : null;
+    const spotlightMainstageExpiresAtMs = Number(spotlightMainstage?.expiresAtMs || 0);
+    const spotlightMainstageActive = !!(
+        spotlightMainstage?.active
+        && spotlightKind === SPOTLIGHT_KINDS.audience
+        && (spotlightUser || spotlightPayload?.id)
+        && (spotlightMainstageExpiresAtMs <= 0 || spotlightMainstageExpiresAtMs > Date.now())
+    );
+    const spotlightMainstageDurationMs = Math.max(1, Number(spotlightMainstage?.durationMs || spotlightPayload?.durationMs || 0));
+    const spotlightMainstageStartedAtMs = Number(spotlightMainstage?.startedAtMs || spotlightPayload?.createdAtMs || 0);
+    const spotlightMainstageProgressPct = spotlightMainstageExpiresAtMs > 0 && spotlightMainstageStartedAtMs > 0
+        ? Math.max(0, Math.min(100, ((spotlightMainstageExpiresAtMs - Date.now()) / spotlightMainstageDurationMs) * 100))
+        : spotlightProgressPct;
     const spotlightTopTight15 = extractTopTight15({
-        spotlightPayload: room?.spotlightUser || null,
+        spotlightPayload: spotlightPayload || null,
         roomUser: spotlightUser || null
     });
     const lobbyForcedObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
@@ -5536,6 +5783,19 @@ const PublicTV = ({ roomCode }) => {
         lightMode: room?.lightMode
     });
     const lobbyCompactHudMode = lobbyVolleySceneActive;
+    useEffect(() => {
+        if (!lobbyVolleySceneActive || lobbyObjectiveIsTeamPong) return;
+        const telemetry = room?.lobbyVoiceTelemetry || null;
+        if (!telemetry) return;
+        const safeNow = nowMs();
+        const capturedAtMs = Number(telemetry?.capturedAtMs || telemetry?.timestampMs || 0);
+        if (capturedAtMs > 0 && (safeNow - capturedAtMs) > 2200) return;
+        setLobbyVolleyState((prev) => {
+            const next = applyLobbyVoiceFrame(prev || createLobbyVolleyState(), telemetry, safeNow);
+            lobbyVolleyStateRef.current = next;
+            return next;
+        });
+    }, [lobbyVolleySceneActive, lobbyObjectiveIsTeamPong, room?.lobbyVoiceTelemetry]);
     useEffect(() => {
         if (sidebarRotateRef.current) {
             clearInterval(sidebarRotateRef.current);
@@ -5665,24 +5925,24 @@ const PublicTV = ({ roomCode }) => {
     const lobbyVolleyParallaxEase = 1 - ((1 - lobbyVolleyAltitudeProgress) ** 2);
     const lobbyVolleyCameraShiftPct = Number(lobbyOrbAltitudeState.cameraShiftPct || 0);
     const lobbyVolleyNearShiftPct = clampLobby(
-        lobbyVolleyCameraShiftPct * (1.08 + (lobbyVolleyParallaxEase * 0.24)),
+        lobbyVolleyCameraShiftPct * (1.18 + (lobbyVolleyParallaxEase * 0.32)),
         0,
-        58
+        82
     );
     const lobbyVolleyMidShiftPct = clampLobby(
-        lobbyVolleyCameraShiftPct * (0.84 + (lobbyVolleyParallaxEase * 0.08)),
+        lobbyVolleyCameraShiftPct * (0.9 + (lobbyVolleyParallaxEase * 0.16)),
         0,
-        46
+        62
     );
     const lobbyVolleyFarShiftPct = clampLobby(
-        lobbyVolleyCameraShiftPct * (0.52 + (lobbyVolleyParallaxEase * 0.12)),
+        lobbyVolleyCameraShiftPct * (0.56 + (lobbyVolleyParallaxEase * 0.18)),
         0,
-        32
+        44
     );
     const lobbyVolleySkyShiftPct = clampLobby(
-        lobbyVolleyCameraShiftPct * (0.26 + (lobbyVolleyParallaxEase * 0.08)),
+        lobbyVolleyCameraShiftPct * (0.3 + (lobbyVolleyParallaxEase * 0.12)),
         0,
-        16
+        26
     );
     const lobbyIdleOrbLiftPct = lobbyHasActiveVolley
         ? 0
@@ -5697,11 +5957,11 @@ const PublicTV = ({ roomCode }) => {
     );
     const lobbyAltitudeMarkers = useMemo(() => {
         if (lobbyObjectiveIsTeamPong) return [];
-        const markerValues = [0, 50, 100, LOBBY_ALTITUDE_MAX_TRACKED_FT]
+        const markerValues = [0, 40, 80, 140, 180, LOBBY_ALTITUDE_MAX_TRACKED_FT]
             .filter((value, index, list) => list.indexOf(value) === index)
             .sort((a, b) => a - b);
         return markerValues.map((altitudeFt) => {
-            const topPct = clampLobby(lobbyAltitudeMarkerBaseTopPct - (altitudeFt / 2.3), -18, 142);
+            const topPct = clampLobby(lobbyAltitudeMarkerBaseTopPct - (altitudeFt / 2.55), -18, 142);
             return {
                 altitudeFt,
                 topPct,
@@ -5826,10 +6086,65 @@ const PublicTV = ({ roomCode }) => {
     const lobbyInstructionCopy = getVolleyOrbTvInstructionCopy({
         warningState: lobbyWarningState,
         hasActiveVolley: lobbyHasActiveVolley,
-        volleyExpired: lobbyVolleyExpired
+        volleyExpired: lobbyVolleyExpired,
+        phaseLabel: lobbyLevelMeta.label
     });
-    const lobbyInstructionHeadline = lobbyInstructionCopy.headline;
-    const lobbyInstructionSecondary = lobbyInstructionCopy.secondary;
+    const lobbyVoiceTarget = deriveLobbyVoiceTarget(lobbyVolleyState, lobbyNow);
+    const lobbyVoiceState = lobbyVolleyState?.voice || null;
+    const lobbyVoiceFresh = !lobbyObjectiveIsTeamPong
+        && !!lobbyVoiceState?.fresh
+        && (lobbyNow - Number(lobbyVoiceState?.capturedAtMs || 0)) <= 2200;
+    const lobbyVoiceDisplayTarget = lobbyVoiceState?.target || lobbyVoiceTarget;
+    const lobbyVoiceMatchPct = clampLobby(Number(lobbyVoiceState?.matchPct || 0) * 100, 0, 100);
+    const lobbyVoiceRawLift = clampLobby(Number(lobbyVoiceState?.rawLift || 0), 0, 10.5);
+    const lobbyVoiceRequiredLift = Math.max(0, Number(lobbyVoiceState?.requiredLift || lobbyVoiceDisplayTarget?.requiredLift || 0));
+    const lobbyVoicePressurePct = clampLobby(Number(lobbyVoiceState?.pressurePct ?? lobbyVoiceDisplayTarget?.pressurePct ?? 0), 0, 100);
+    const lobbyVoiceRequirementLabel = String(lobbyVoiceState?.requirementLabel || lobbyVoiceDisplayTarget?.requirementLabel || lobbyVoiceDisplayTarget?.targetLabel || 'Find the target zone');
+    const lobbyVoiceCommandLabel = String(lobbyVoiceState?.commandLabel || lobbyVoiceDisplayTarget?.commandLabel || 'RUMBLE LOW');
+    const lobbyVoiceCommandHelper = String(lobbyVoiceState?.commandHelper || lobbyVoiceDisplayTarget?.commandHelper || lobbyVoiceRequirementLabel);
+    const lobbyVoicePhaseLabel = String(lobbyVoiceDisplayTarget?.phase || 'ignition').replace(/_/g, ' ').toUpperCase();
+    const lobbyVoiceLiftReady = lobbyVoiceFresh && lobbyVoiceRawLift >= lobbyVoiceRequiredLift;
+    const lobbyVolleyPhaseKey = LOBBY_VOLLEY_PHASE_VISUALS[String(lobbyVoiceDisplayTarget?.phase || '').trim().toLowerCase()]
+        ? String(lobbyVoiceDisplayTarget?.phase || '').trim().toLowerCase()
+        : 'inflate';
+    const lobbyVolleyPhaseVisual = LOBBY_VOLLEY_PHASE_VISUALS[lobbyVolleyPhaseKey] || LOBBY_VOLLEY_PHASE_VISUALS.inflate;
+    const lobbyVolleyPhaseIndex = Math.max(0, LOBBY_VOLLEY_PHASE_ORDER.indexOf(lobbyVolleyPhaseKey));
+    const lobbyVoiceLiftRatio = lobbyVoiceRequiredLift > 0
+        ? clampLobby(lobbyVoiceRawLift / lobbyVoiceRequiredLift, 0, 1.65)
+        : 0;
+    const lobbyOrbAirPct = clampLobby(
+        Math.max(
+            lobbyOrbEnergy,
+            lobbyVoicePressurePct,
+            lobbyVoiceFresh ? lobbyVoiceMatchPct : 0,
+            lobbyHasActiveVolley ? lobbyVolleyAltitudeProgress * 100 : 0
+        ),
+        0,
+        100
+    );
+    const lobbyOrbInflationScale = clampLobby(
+        0.78 + (lobbyOrbAirPct / 310) + (lobbyVoiceLiftReady ? 0.06 : 0) + (lobbyVolleyPhaseIndex * 0.025),
+        0.76,
+        1.22
+    );
+    const lobbyOrbThrustOpacity = clampLobby((lobbyVoiceLiftRatio * 0.52) + (lobbyVolleyAltitudeProgress * 0.42), 0, 1);
+    const lobbyOrbThrustScale = clampLobby(0.44 + (lobbyVoiceLiftRatio * 0.68) + (lobbyVolleyAltitudeProgress * 0.34), 0.38, 1.68);
+    const lobbyOrbCameraSpeedPct = clampLobby(
+        (lobbyVolleyNearShiftPct * 1.05) + (lobbyVolleyAltitudeProgress * 36) + (lobbyVoiceLiftRatio * 24),
+        0,
+        100
+    );    const lobbyVoiceInstructionCopy = !lobbyObjectiveIsTeamPong
+        ? {
+            headline: lobbyVoiceFresh
+                ? String(lobbyVoiceState?.promptHeadline || lobbyVoiceTarget.headline)
+                : String(lobbyVoiceTarget.headline || 'LOW RUMBLE TO LAUNCH'),
+            secondary: lobbyVoiceFresh
+                ? String(lobbyVoiceState?.promptSecondary || lobbyVoiceTarget.secondary)
+                : String(lobbyVoiceTarget.secondary || 'Use the room mic to lift the orb with sustained notes.')
+        }
+        : null;
+    const lobbyInstructionHeadline = (!lobbyObjectiveIsTeamPong && lobbyVoiceCommandLabel) || lobbyVoiceInstructionCopy?.headline || lobbyInstructionCopy.headline;
+    const lobbyInstructionSecondary = (!lobbyObjectiveIsTeamPong && lobbyVoiceCommandHelper) || lobbyVoiceInstructionCopy?.secondary || lobbyInstructionCopy.secondary;
     const lobbyGuideFocusEntries = useMemo(() => {
         if (lobbyObjectiveIsTeamPong) return [];
         return LOBBY_PLAY_GUIDE
@@ -6324,6 +6639,37 @@ const PublicTV = ({ roomCode }) => {
         if (!recapPulseKey) return;
         triggerTipPulse(recapPulseKey);
     }, [recapPulseKey, triggerTipPulse]);
+    useEffect(() => {
+        if (!recap) {
+            recapUiCueStageRef.current = '';
+            return;
+        }
+        const recapStartMs = getTimestampMs(recap.timestamp) || recapNowMs;
+        const recapAgeMs = Math.max(0, recapNowMs - recapStartMs);
+        const hasBonus = Math.max(0, Number(recap?.hostBonus || 0)) > 0;
+        const scoreCueIntroMs = 540;
+        const scoreCueCount = hasBonus ? 3 : 2;
+        const scoreCueStepMs = performanceRecapScoreStepMs;
+        const scoreCueFinalHoldMs = Math.max(3800, Math.min(6800, Math.round(scoreCueStepMs * 2)));
+        const scoreCueBreakdownMs = Math.max(
+            performanceRecapBreakdownMs,
+            scoreCueIntroMs + (scoreCueCount * scoreCueStepMs) + 700 + scoreCueFinalHoldMs
+        );
+        const totalRevealAtMs = scoreCueIntroMs + (scoreCueCount * scoreCueStepMs) + 700;
+        let cueStage = 'recap_start';
+        if (recapAgeMs >= scoreCueBreakdownMs + performanceRecapLeaderboardMs) cueStage = 'next_up';
+        else if (recapAgeMs >= totalRevealAtMs) cueStage = 'total_reveal';
+        else if (hasBonus && recapAgeMs >= scoreCueIntroMs + (scoreCueStepMs * 2)) cueStage = 'score_bonus';
+        else if (recapAgeMs >= scoreCueIntroMs + scoreCueStepMs) cueStage = 'score_applause';
+        else if (recapAgeMs >= scoreCueIntroMs) cueStage = 'score_vibe';
+        if (recapUiCueStageRef.current === cueStage) return;
+        recapUiCueStageRef.current = cueStage;
+        if (cueStage === 'score_vibe' || cueStage === 'score_applause') {
+            playTvUiCue('score_tick', { intensity: cueStage === 'score_applause' ? 1.08 : 1 });
+            return;
+        }
+        playTvUiCue(cueStage, { intensity: cueStage === 'total_reveal' ? 1.28 : 1.05 });
+    }, [performanceRecapBreakdownMs, performanceRecapLeaderboardMs, performanceRecapScoreStepMs, playTvUiCue, recap, recapNowMs]);
     const hasMarqueeContent = (marqueeItems.length > 0) || messages.length > 0;
     const isShortViewport = viewportSize.height <= 820;
     const isVeryShortViewport = viewportSize.height <= 700;
@@ -6429,14 +6775,19 @@ const PublicTV = ({ roomCode }) => {
         && Number(activeAnnouncement?.durationSec || 0) > 0
         && Number(activeAnnouncement?.startedAtMs || 0) > 0
         && (Number(activeAnnouncement.startedAtMs) + (Number(activeAnnouncement.durationSec) * 1000)) <= nowMs();
+    const activeRoomAudienceReleaseWindow = room?.audienceDecision && typeof room.audienceDecision === 'object'
+        ? buildReleaseWindowFromAudienceDecision(room.audienceDecision, { nowMs: takeoverNowMs })
+        : null;
     const activeReleaseWindow = room?.runOfShowDirector?.releaseWindow && typeof room.runOfShowDirector.releaseWindow === 'object'
         ? room.runOfShowDirector.releaseWindow
-        : null;
+        : (activeRoomAudienceReleaseWindow?.active ? activeRoomAudienceReleaseWindow : null);
     const tvReleaseWindowVisible = !!(
         activeReleaseWindow
         && ['crowd_signal', 'crowd_vote', 'cohost_vote'].includes(String(activeReleaseWindow?.governanceMode || '').trim().toLowerCase())
         && isRunOfShowReleaseWindowVotingOpen(activeReleaseWindow, takeoverNowMs)
     );
+    const tvReleaseWindowGlassOverlayVisible = !!(!applauseOverlayVisible && tvReleaseWindowVisible && activeGameCartridgeMode);
+    const tvReleaseWindowTakeoverVisible = !!(!tvReleaseWindowGlassOverlayVisible && tvReleaseWindowVisible);
     const selfServeIdleAttractVisible = !!(
         selfServeMode
         && room?.activeMode === 'karaoke'
@@ -6464,6 +6815,11 @@ const PublicTV = ({ roomCode }) => {
         && !chatTvFullscreenActive
         && !recap
     );
+    const vocalGameRecap = room?.gameData?.recap && typeof room.gameData.recap === 'object' ? room.gameData.recap : null;
+    const vocalGameRecapTvActive = !!(
+        vocalGameRecap?.active
+        && Number(vocalGameRecap?.tvUntilMs || 0) > takeoverNowMs
+    );
     const purchaseCelebrationBlocked = Boolean(
         (!applauseOverlayVisible && tvPreviewOverlay && !tvPreviewExpired)
         || (!applauseOverlayVisible && roundWinnersMoment && !roundWinnersMomentExpired)
@@ -6474,6 +6830,7 @@ const PublicTV = ({ roomCode }) => {
         || (!applauseOverlayVisible && chatTvFullscreenActive)
         || (!applauseOverlayVisible && tvReleaseWindowVisible)
         || (!applauseOverlayVisible && selfServeTransitionOverlayVisible)
+        || (!applauseOverlayVisible && vocalGameRecapTvActive)
         || (room?.activeMode === 'doodle_oke' && room?.doodleOke)
         || activeGameCartridgeMode
         || (!applauseOverlayVisible && recap)
@@ -6522,7 +6879,7 @@ const PublicTV = ({ roomCode }) => {
             <div className="absolute inset-0 z-[212] pointer-events-none flex items-center justify-center">
                 {celebrationIsMoneyRain && (
                     <div className="bonus-drop-rainfield" aria-hidden="true">
-                        {['ðŸ’¸', 'ðŸ’°', 'ðŸ’µ', 'ðŸª™', 'âœ¨', 'ðŸŒŸ', 'ðŸ’¸', 'ðŸ¤‘'].map((icon, idx) => (
+                        {[emoji(0x1F4B8), emoji(0x1F4B0), emoji(0x1F4B5), emoji(0x1FA99), emoji(0x2728), emoji(0x1F31F), emoji(0x1F4B8), emoji(0x1F911)].map((icon, idx) => (
                             <span
                                 key={`bonus-purchase-rain-${idx}`}
                                 className="bonus-drop-rain-item"
@@ -6540,11 +6897,11 @@ const PublicTV = ({ roomCode }) => {
                 <div className={`bonus-drop-burst ${celebrationIsMoneyRain ? 'bonus-drop-burst-money' : ''}`}>
                     {celebrationIsMoneyRain && (
                         <div className="bonus-drop-moneyline">
-                            <span className="bonus-drop-avatar">{purchaseCelebrationBurst.buyerAvatar || 'ðŸ¤‘'}</span>
-                            <span>ðŸ’°</span>
-                            <span>ðŸ’¸</span>
-                            <span>ðŸ’°</span>
-                            <span>ðŸª©</span>
+                            <span className="bonus-drop-avatar">{purchaseCelebrationBurst.buyerAvatar || emoji(0x1F911)}</span>
+                            <span>{emoji(0x1F4B0)}</span>
+                            <span>{emoji(0x1F4B8)}</span>
+                            <span>{emoji(0x1F4B0)}</span>
+                            <span>{emoji(0x1FAA9)}</span>
                         </div>
                     )}
                     <div className="bonus-drop-title">
@@ -6555,7 +6912,7 @@ const PublicTV = ({ roomCode }) => {
                     </div>
                     <div className="bonus-drop-sub">
                         {purchaseCelebrationBurst.amountCents > 0
-                            ? `$${(purchaseCelebrationBurst.amountCents / 100).toFixed(2)} â€¢ `
+                            ? `$${(purchaseCelebrationBurst.amountCents / 100).toFixed(2)} \u2022 `
                             : ''}
                         {purchaseCelebrationBurst.subtitle
                             || (purchaseCelebrationBurst.badgeAwarded
@@ -6582,7 +6939,53 @@ const PublicTV = ({ roomCode }) => {
     if (!applauseOverlayVisible && roundWinnersMoment && !roundWinnersMomentExpired) {
         return withPurchaseCelebrationOverlay(<RoundWinnersPodiumOverlay moment={roundWinnersMoment} />);
     }
-    if (!applauseOverlayVisible && room?.activeScreen === 'leaderboard') {
+    if (!applauseOverlayVisible && vocalGameRecapTvActive) {
+        const recapStats = Array.isArray(vocalGameRecap.stats) ? vocalGameRecap.stats.slice(0, 4) : [];
+        const recapHighlights = Array.isArray(vocalGameRecap.highlights) ? vocalGameRecap.highlights.filter(Boolean).slice(0, 3) : [];
+        return withPurchaseCelebrationOverlay(
+            <div className="absolute inset-0 z-[204] overflow-hidden bg-[radial-gradient(circle_at_22%_18%,rgba(34,211,238,0.24),transparent_30%),radial-gradient(circle_at_78%_28%,rgba(236,72,153,0.22),transparent_28%),linear-gradient(180deg,#030712,#06030d_48%,#020617)] text-white font-saira">
+                <RunOfShowStatusHud hud={runOfShowHud} />
+                <div className="absolute inset-x-0 top-0 h-1.5 bg-zinc-950/80">
+                    <div className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-200" style={{ width: `${Math.max(0, Math.min(100, ((Number(vocalGameRecap.tvUntilMs || 0) - takeoverNowMs) / 22000) * 100))}%` }} />
+                </div>
+                <div className="absolute inset-0 opacity-70" aria-hidden="true">
+                    <div className="absolute left-[10%] top-[-8%] h-[70%] w-[18%] origin-top -skew-x-12 bg-gradient-to-b from-cyan-200/20 to-transparent blur-sm" />
+                    <div className="absolute right-[12%] top-[-8%] h-[70%] w-[18%] origin-top skew-x-12 bg-gradient-to-b from-fuchsia-200/20 to-transparent blur-sm" />
+                    <div className="absolute inset-x-[8%] bottom-[12%] h-px bg-gradient-to-r from-transparent via-white/22 to-transparent" />
+                </div>
+                <div className="relative z-10 flex h-full flex-col items-center justify-center px-8 text-center">
+                    <div className="inline-flex items-center gap-3 rounded-full border border-cyan-200/28 bg-cyan-300/12 px-5 py-2 text-[11px] font-black uppercase tracking-[0.34em] text-cyan-100 md:text-sm">
+                        <i className="fa-solid fa-microphone-lines" />
+                        Vocal Game Recap
+                    </div>
+                    <div className="mt-5 text-[clamp(1.2rem,2.4vw,2.3rem)] font-black uppercase tracking-[0.24em] text-fuchsia-100/90">
+                        {vocalGameRecap.title || 'Voice Game'} {vocalGameRecap.playerName ? `| ${vocalGameRecap.playerName}` : ''}
+                    </div>
+                    <h1 className="mt-4 max-w-[min(94vw,1320px)] font-bebas text-[clamp(4.5rem,10vw,10rem)] leading-[0.82] text-white drop-shadow-[0_14px_42px_rgba(0,0,0,0.55)]">
+                        {vocalGameRecap.headline || 'Run Complete'}
+                    </h1>
+                    <div className="mt-5 max-w-[980px] text-[clamp(1.15rem,2.1vw,2rem)] font-semibold leading-snug text-zinc-200">
+                        {vocalGameRecap.summary || 'Nice run. Keep the show moving.'}
+                    </div>
+                    <div className="mt-9 grid w-full max-w-[1120px] grid-cols-2 gap-4 md:grid-cols-4">
+                        {recapStats.map((stat, idx) => (
+                            <div key={`${stat.label || 'stat'}_${idx}`} className="rounded-[1.6rem] border border-white/12 bg-black/42 px-5 py-5 text-center shadow-[0_0_34px_rgba(0,0,0,0.24)]">
+                                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400 md:text-xs">{stat.label || 'Stat'}</div>
+                                <div className="mt-2 text-[clamp(2rem,4.8vw,4.8rem)] font-black leading-none text-white">{stat.value ?? '--'}</div>
+                            </div>
+                        ))}
+                    </div>
+                    {recapHighlights.length > 0 && (
+                        <div className="mt-7 flex flex-wrap items-center justify-center gap-3 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-100 md:text-sm">
+                            {recapHighlights.map((highlight, idx) => (
+                                <span key={`${highlight}_${idx}`} className="rounded-full border border-white/14 bg-white/[0.07] px-4 py-2">{highlight}</span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }    if (!applauseOverlayVisible && room?.activeScreen === 'leaderboard') {
         return withPurchaseCelebrationOverlay(
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
@@ -6711,7 +7114,7 @@ const PublicTV = ({ roomCode }) => {
             </div>
         );
     }
-    if (!applauseOverlayVisible && tvReleaseWindowVisible) {
+    if (!applauseOverlayVisible && tvReleaseWindowTakeoverVisible) {
         return withPurchaseCelebrationOverlay(
             <RunOfShowReleaseWindowOverlay
                 roomCode={roomCode}
@@ -6892,6 +7295,16 @@ const PublicTV = ({ roomCode }) => {
                     rulesToken={room?.gameRulesId}
                     view="tv"
                 />
+                {tvReleaseWindowGlassOverlayVisible ? (
+                    <RunOfShowReleaseWindowOverlay
+                        roomCode={roomCode}
+                        releaseWindow={activeReleaseWindow}
+                        songs={songs}
+                        roles={room?.runOfShowRoles || {}}
+                        nowValue={takeoverNowMs}
+                        displayMode="glass_overlay"
+                    />
+                ) : null}
             </>
         );
     }
@@ -6938,6 +7351,20 @@ const PublicTV = ({ roomCode }) => {
             };
         };
         const recapSongMeta = parseRecapSongTitle(rawSongTitle, recap.artist || recap.displayArtist || '');
+        const recapTitleClampStyle = {
+            display: '-webkit-box',
+            WebkitLineClamp: isVeryShortViewport ? 1 : 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            overflowWrap: 'anywhere'
+        };
+        const recapMetaClampStyle = {
+            display: '-webkit-box',
+            WebkitLineClamp: 1,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            overflowWrap: 'anywhere'
+        };
         const vibeScore = Math.max(0, Number(recap.hypeScore || 0));
         const applauseScore = Math.max(0, Math.round(recap.applauseScore || 0));
         const hostBonus = Math.max(0, Number(recap.hostBonus || 0));
@@ -6953,7 +7380,6 @@ const PublicTV = ({ roomCode }) => {
         const beatTaps = Math.max(0, Number(vibeStats?.strobe?.totalTaps || 0));
         const triviaQuestions = Math.max(0, Number(popTriviaSummary?.questionCount || 0));
         const triviaPlayers = Math.max(0, Number(popTriviaSummary?.participantCount || 0));
-        const triviaAnswers = Math.max(0, Number(popTriviaSummary?.answerCount || 0));
         const topFanGifted = Math.max(0, Number(topFan?.pointsGifted || 0));
         const recapProgressPct = Math.max(16, Math.min(100, Math.round((totalPoints / 300) * 100)));
         const scoreBreakdownCards = [
@@ -7011,8 +7437,24 @@ const PublicTV = ({ roomCode }) => {
         ].filter(Boolean).slice(0, 3);
         const recapStartMs = getTimestampMs(recap.timestamp) || recapNowMs;
         const recapAgeMs = Math.max(0, recapNowMs - recapStartMs);
-        const recapLeaderboardPhaseStartMs = performanceRecapBreakdownMs;
-        const recapNextUpPhaseStartMs = performanceRecapBreakdownMs + performanceRecapLeaderboardMs;
+        const recapScoreIntroMs = 540;
+        const recapScoreStepMs = performanceRecapScoreStepMs;
+        const recapScoreFocusIndex = Math.max(
+            -1,
+            Math.min(scoreBreakdownCards.length - 1, Math.floor((recapAgeMs - recapScoreIntroMs) / recapScoreStepMs))
+        );
+        const recapScoreVisibleCount = Math.max(0, Math.min(scoreBreakdownCards.length, recapScoreFocusIndex + 1));
+        const recapScoreCountDurationMs = Math.max(1200, Math.min(3200, recapScoreStepMs - 260));
+        const recapScoreTotalRevealMs = recapScoreIntroMs + (scoreBreakdownCards.length * recapScoreStepMs) + 700;
+        const recapScoreTotalVisible = recapAgeMs >= recapScoreTotalRevealMs;
+        const recapDetailsVisible = recapAgeMs >= recapScoreTotalRevealMs + Math.min(2200, Math.max(1200, Math.round(recapScoreStepMs * 0.85)));
+        const recapScoreFinalHoldMs = Math.max(5200, Math.min(9000, Math.round(recapScoreStepMs * 2.25)));
+        const recapBreakdownPhaseMs = Math.max(
+            performanceRecapBreakdownMs,
+            recapScoreTotalRevealMs + recapScoreFinalHoldMs
+        );
+        const recapLeaderboardPhaseStartMs = recapBreakdownPhaseMs;
+        const recapNextUpPhaseStartMs = recapBreakdownPhaseMs + performanceRecapLeaderboardMs;
         const recapLeaderboardPhase = recapAgeMs >= recapLeaderboardPhaseStartMs && recapAgeMs < recapNextUpPhaseStartMs;
         const recapNextUpPhase = recapAgeMs >= recapNextUpPhaseStartMs;
         const rankedPerformanceLeaderboard = buildPerformanceLeaderboardStats(songs, roomUsers, recap);
@@ -7042,12 +7484,23 @@ const PublicTV = ({ roomCode }) => {
             acc[entryKey] = previousRank - Number(entry.rank || 0);
             return acc;
         }, {});
+        const recapNextUpSnapshot = Array.isArray(recap?.nextUpSnapshot)
+            ? recap.nextUpSnapshot.filter((entry) => entry && (entry.songTitle || entry.singerName || entry.id)).slice(0, 3)
+            : [];
+        const recapNextUpLineup = recapNextUpSnapshot.length ? recapNextUpSnapshot : nextUp.slice(0, 3);
+        const liveNextStagePerformer = current && String(current?.id || '').trim() !== String(recap?.id || recap?.songDocId || '').trim()
+            ? current
+            : null;
+        const recapFeaturedPerformer = liveNextStagePerformer || recapNextUpLineup[0] || null;
         if (recapNextUpPhase) {
             return (
                 <PerformanceNextUpOverlay
-                    nextUp={nextUp.slice(0, 3)}
+                    nextUp={recapNextUpLineup}
+                    featuredPerformer={recapFeaturedPerformer}
                     queueCount={allQueue.length}
                     queueWaitSec={queueWaitSec}
+                    roomCode={roomCode}
+                    joinUrl={joinUrl}
                     brandTheme={tvAudienceBrandTheme}
                     logoUrl={room?.logoUrl || ASSETS.logo}
                     brandTitle={tvBrandTitle}
@@ -7117,9 +7570,9 @@ const PublicTV = ({ roomCode }) => {
                 <div className="absolute right-[-4rem] top-[10%] h-72 w-72 rounded-full bg-cyan-400/16 blur-3xl" />
                 <div className="absolute bottom-[-5rem] left-[28%] h-64 w-64 rounded-full bg-amber-300/12 blur-3xl" />
 
-                <div className="relative z-10 flex min-h-full items-center justify-center px-4 py-3 md:px-6 md:py-5 2xl:px-10 2xl:py-8">
-                    <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-[1800px] flex-col overflow-hidden rounded-[2.4rem] border border-white/12 bg-[linear-gradient(145deg,rgba(16,20,35,0.95),rgba(8,10,20,0.92))] shadow-[0_30px_120px_rgba(0,0,0,0.6)] md:max-h-[calc(100vh-2.5rem)]">
-                        <div className="relative shrink-0 overflow-hidden border-b border-white/10 px-5 py-4 md:px-7 md:py-5">
+                <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 py-2 md:px-5 md:py-4 2xl:px-8 2xl:py-6">
+                    <div className="flex h-[calc(100vh-1rem)] w-full max-w-[1800px] flex-col overflow-hidden rounded-[2rem] border border-white/12 bg-[linear-gradient(145deg,rgba(16,20,35,0.95),rgba(8,10,20,0.92))] shadow-[0_30px_120px_rgba(0,0,0,0.6)] md:h-[calc(100vh-1.5rem)] 2xl:rounded-[2.4rem]">
+                        <div className="relative shrink-0 overflow-hidden border-b border-white/10 px-4 py-3 md:px-6 md:py-4">
                             <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(251,191,36,0.16),rgba(244,114,182,0.08),rgba(34,211,238,0.12))]" />
                             <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
                                 <div className="flex flex-wrap items-center gap-3">
@@ -7148,21 +7601,21 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                         </div>
 
-                        <div className="min-h-0 overflow-y-auto overscroll-contain">
-                            <div className="grid gap-4 p-5 md:grid-cols-[minmax(0,1.2fr)_minmax(420px,0.95fr)] md:gap-6 md:p-6 2xl:gap-8 2xl:p-8">
-                            <div className="space-y-4 md:space-y-5">
-                                <div className="relative overflow-hidden rounded-[2.2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(16,18,34,0.94),rgba(26,11,37,0.9),rgba(5,28,40,0.9))] p-5 md:p-6 2xl:p-8">
+                        <div className="min-h-0 flex-1 overflow-hidden">
+                            <div className="grid h-full min-h-0 gap-3 p-4 md:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)] md:gap-4 md:p-5 2xl:gap-6 2xl:p-6">
+                            <div className="min-h-0 space-y-3 md:space-y-4">
+                                <div className="relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-[linear-gradient(135deg,rgba(16,18,34,0.94),rgba(26,11,37,0.9),rgba(5,28,40,0.9))] p-5 md:p-6 2xl:p-7">
                                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_16%,rgba(250,204,21,0.18),transparent_24%),radial-gradient(circle_at_84%_18%,rgba(34,211,238,0.18),transparent_18%)]" />
-                                    <div className="relative z-10 flex flex-col gap-6 xl:flex-row xl:items-center xl:gap-8">
+                                    <div className="relative z-10 flex min-h-0 flex-col gap-4 xl:flex-row xl:items-center xl:gap-6">
                                         <div className="relative shrink-0">
                                             {recap.albumArtUrl ? (
                                                 <img
                                                     src={recap.albumArtUrl}
                                                     alt={recap.songTitle}
-                                                    className="h-36 w-36 rounded-[1.8rem] border border-white/15 object-cover shadow-[0_18px_45px_rgba(0,0,0,0.4)] md:h-44 md:w-44 2xl:h-56 2xl:w-56"
+                                                    className="h-28 w-28 rounded-[1.4rem] border border-white/15 object-cover shadow-[0_18px_45px_rgba(0,0,0,0.4)] md:h-36 md:w-36 2xl:h-44 2xl:w-44"
                                                 />
                                             ) : (
-                                                <div className="flex h-36 w-36 items-center justify-center rounded-[1.8rem] border border-white/15 bg-white/6 text-6xl text-yellow-200 shadow-[0_18px_45px_rgba(0,0,0,0.35)] md:h-44 md:w-44 2xl:h-56 2xl:w-56 2xl:text-8xl">
+                                                <div className="flex h-28 w-28 items-center justify-center rounded-[1.4rem] border border-white/15 bg-white/6 text-5xl text-yellow-200 shadow-[0_18px_45px_rgba(0,0,0,0.35)] md:h-36 md:w-36 md:text-6xl 2xl:h-44 2xl:w-44 2xl:text-7xl">
                                                     <i className="fa-solid fa-microphone-lines" />
                                                 </div>
                                             )}
@@ -7171,43 +7624,61 @@ const PublicTV = ({ roomCode }) => {
                                             <div className="text-[12px] uppercase tracking-[0.36em] text-cyan-100/90 md:text-sm">
                                                 Just finished on stage
                                             </div>
-                                            <div className="mt-4 text-4xl font-black leading-[0.9] text-white md:text-6xl xl:text-[4.8rem] 2xl:text-[6rem]">
+                                            <div className="mt-3 text-4xl font-black leading-[0.9] text-white md:text-6xl 2xl:text-[5.4rem]" style={recapTitleClampStyle}>
                                                 {recapSongMeta.title}
                                             </div>
                                             {(recapSongMeta.artist || recapSongMeta.source) && (
-                                                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-base uppercase tracking-[0.22em] text-cyan-100 md:text-lg 2xl:text-[1.45rem]">
+                                                <div className="mt-2 flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 text-sm uppercase tracking-[0.18em] text-cyan-100 md:text-base 2xl:text-lg" style={recapMetaClampStyle}>
                                                     {recapSongMeta.artist && <span>{recapSongMeta.artist}</span>}
                                                     {recapSongMeta.artist && recapSongMeta.source && <span className="text-white/30">/</span>}
                                                     {recapSongMeta.source && <span>{recapSongMeta.source}</span>}
                                                 </div>
                                             )}
-                                            <div className="mt-5 text-3xl font-black leading-none text-fuchsia-200 md:text-5xl xl:text-[3.7rem] 2xl:text-[4.5rem]">
+                                            <div className="mt-3 max-w-full truncate text-3xl font-black leading-none text-fuchsia-200 md:text-5xl 2xl:text-[4.1rem]">
                                                 {recap.singerName}
-                                            </div>
-                                            <div className="mt-2 text-base uppercase tracking-[0.28em] text-zinc-300 md:text-lg 2xl:text-[1.35rem]">
-                                                {performanceTier}
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="grid gap-4 md:grid-cols-3">
-                                    {scoreBreakdownCards.map((item) => (
-                                        <div
-                                            key={item.key}
-                                            className={`relative overflow-hidden rounded-[1.8rem] border px-5 py-4 md:px-6 md:py-5 2xl:px-7 2xl:py-6 ${item.tone}`}
-                                        >
-                                            <div className={`absolute inset-0 bg-gradient-to-br ${item.accent}`} />
-                                            <div className="relative z-10">
-                                                <div className="text-[12px] uppercase tracking-[0.28em] text-white/80">{item.label}</div>
-                                                <div className="mt-3 text-5xl font-black leading-none text-white md:text-6xl 2xl:text-[5.2rem]">{item.value}</div>
+                                <div className="grid gap-3 md:grid-cols-3 2xl:gap-4">
+                                    {scoreBreakdownCards.map((item, index) => {
+                                        const active = !recapScoreTotalVisible && index === recapScoreFocusIndex;
+                                        const completed = recapScoreTotalVisible || index < recapScoreFocusIndex;
+                                        const visible = active || completed || index < recapScoreVisibleCount;
+                                        return (
+                                            <div
+                                                key={item.key}
+                                                className={`recap-score-arrival relative overflow-hidden rounded-[1.4rem] border px-5 py-4 transition-all duration-700 md:px-6 md:py-5 2xl:px-7 2xl:py-6 ${item.tone} ${active ? 'opacity-100 translate-y-0 scale-[1.03] shadow-[0_0_48px_rgba(255,255,255,0.16)]' : visible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-90'}`}
+                                                style={{ animationDelay: `${index * 90}ms` }}
+                                            >
+                                                <div className={`absolute inset-0 bg-gradient-to-br ${item.accent}`} />
+                                                <div className="absolute -inset-12 bg-[conic-gradient(from_90deg,rgba(250,204,21,0.18),rgba(244,114,182,0.2),rgba(34,211,238,0.18),rgba(250,204,21,0.18))] opacity-0 blur-2xl recap-prism-aura" />
+                                                <div className="absolute right-4 top-4 h-3 w-3 rounded-full bg-white/80 shadow-[0_0_18px_rgba(255,255,255,0.9)] recap-score-spark" />
+                                                <div className="absolute bottom-5 left-6 h-2 w-2 rounded-full bg-cyan-200/80 shadow-[0_0_16px_rgba(34,211,238,0.9)] recap-score-spark delay-100" />
+                                                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/55 to-transparent" />
+                                                <div className="relative z-10">
+                                                    <div className="text-sm uppercase tracking-[0.28em] text-white/80 2xl:text-base">{item.label}</div>
+                                                    {visible ? (
+                                                        <RecapCountUpNumber
+                                                            key={`${recapTs || recap.songTitle || 'recap'}-${item.key}`}
+                                                            value={item.value}
+                                                            active={active}
+                                                            completed={completed}
+                                                            durationMs={recapScoreCountDurationMs}
+                                                            className="mt-3 text-5xl font-black leading-none text-white md:text-7xl 2xl:text-[7.2rem]"
+                                                        />
+                                                    ) : (
+                                                        <div className="mt-3 text-5xl font-black leading-none text-white md:text-7xl 2xl:text-[7.2rem]">...</div>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
 
-                                {crowdMomentCards.length > 0 && (
-                                    <div className="grid gap-4 md:grid-cols-3">
+                                {recapDetailsVisible && crowdMomentCards.length > 0 && (
+                                    <div className={`grid gap-4 transition-all duration-500 md:grid-cols-3 ${recapDetailsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5 pointer-events-none'}`}>
                                         {crowdMomentCards.map((item) => (
                                             <div
                                                 key={item.key}
@@ -7224,25 +7695,29 @@ const PublicTV = ({ roomCode }) => {
                                 )}
                             </div>
 
-                            <div className="space-y-4 md:space-y-5">
-                                <div className="relative overflow-hidden rounded-[2.2rem] border border-yellow-300/24 bg-[linear-gradient(180deg,rgba(255,214,102,0.10),rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-5 md:p-6 2xl:p-8">
+                            <div className="min-h-0 space-y-3 md:space-y-4">
+                                <div className={`recap-total-reveal relative overflow-hidden rounded-[1.8rem] border border-yellow-300/24 bg-[linear-gradient(180deg,rgba(255,214,102,0.14),rgba(244,114,182,0.08),rgba(34,211,238,0.07),rgba(255,255,255,0.03))] p-5 transition-all duration-700 md:p-7 2xl:p-9 ${recapScoreTotalVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-12 scale-90 pointer-events-none'}`}>
                                     <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-yellow-200/60 to-transparent" />
                                     <div className="absolute right-5 top-5 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
                                         {tvScoreLabel}
                                     </div>
                                     <div className="text-[12px] uppercase tracking-[0.38em] text-yellow-100">Final Score</div>
-                                    <div className="mt-4 text-[5.5rem] font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-white to-yellow-300 md:text-[8.5rem] xl:text-[10rem] 2xl:text-[12rem]">
-                                        {totalPoints}
-                                    </div>
-                                    <div className="mt-2 text-xl font-black uppercase tracking-[0.34em] text-yellow-100/90 md:text-2xl 2xl:text-[1.8rem]">
+                                    <RecapCountUpNumber
+                                        key={`${recapTs || recap.songTitle || 'recap'}-total`}
+                                        value={totalPoints}
+                                        active={recapScoreTotalVisible}
+                                        durationMs={2300}
+                                        className="mt-4 text-7xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-fuchsia-100 via-white to-cyan-200 md:text-[9.5rem] xl:text-[10.5rem] 2xl:text-[12rem]"
+                                    />
+                                    <div className="mt-3 text-2xl font-black uppercase tracking-[0.34em] text-yellow-100/90 md:text-4xl 2xl:text-[3rem]">
                                         Total Points
                                     </div>
-                                    <div className="mt-6 rounded-[1.8rem] border border-white/10 bg-black/25 p-5 md:p-6 2xl:p-7">
-                                        <div className="flex items-center justify-between gap-4 text-base text-zinc-200 md:text-lg 2xl:text-[1.35rem]">
+                                    <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-black/25 p-5 md:p-6 2xl:p-7">
+                                        <div className="flex items-center justify-between gap-4 text-lg text-zinc-200 md:text-2xl 2xl:text-[2rem]">
                                             <span>Room energy</span>
                                             <span className="font-black text-white">{performanceTier}</span>
                                         </div>
-                                        <div className="mt-4 h-4 overflow-hidden rounded-full bg-white/8 2xl:h-5">
+                                        <div className="mt-5 h-5 overflow-hidden rounded-full bg-white/8 2xl:h-7">
                                             <div
                                                 className="h-full rounded-full bg-gradient-to-r from-fuchsia-400 via-amber-300 to-cyan-300"
                                                 style={{ width: `${recapProgressPct}%` }}
@@ -7251,40 +7726,30 @@ const PublicTV = ({ roomCode }) => {
                                     </div>
                                 </div>
 
-                                <div className="rounded-[2rem] border border-white/10 bg-black/20 p-5 md:p-6 2xl:p-7">
-                                    <div className="flex items-center justify-between gap-4">
+                                {recapDetailsVisible && (
+                                <div className="rounded-[1.8rem] border border-white/10 bg-black/20 p-5 transition-all duration-500 md:p-6 2xl:p-7">
+                                    <div className="flex items-center justify-between gap-5">
                                         <div>
-                                            <div className="text-[11px] uppercase tracking-[0.34em] text-zinc-300">Crowd Snapshot</div>
-                                            <div className="mt-2 text-xl font-black text-white md:text-2xl 2xl:text-[2rem]">Room moments from this performance</div>
+                                            <div className="text-xs uppercase tracking-[0.34em] text-zinc-300 2xl:text-sm">Score Locked</div>
+                                            <div className="mt-3 text-3xl font-black leading-tight text-white md:text-4xl 2xl:text-[3.4rem]">Added to tonight's board</div>
                                         </div>
                                         <img
                                             src={room?.logoUrl || ASSETS.logo}
                                             alt={tvLogoAlt}
-                                            className="h-14 w-auto object-contain opacity-90 drop-shadow-[0_0_24px_rgba(34,211,238,0.2)] 2xl:h-16"
+                                            className="h-16 w-auto object-contain opacity-90 drop-shadow-[0_0_24px_rgba(34,211,238,0.2)] 2xl:h-20"
                                         />
                                     </div>
-                                    <div className="mt-5 grid grid-cols-1 gap-3">
-                                        {topFanGifted > 0 && (
-                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-4">
-                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Top fan</div>
-                                                <div className="mt-2 text-2xl font-black text-white md:text-3xl 2xl:text-[2.3rem]">
-                                                    {topFan?.avatar || EMOJI.sparkle} {topFan?.name || 'Crowd favorite'} - {topFanGifted} pts
-                                                </div>
-                                            </div>
-                                        )}
-                                        {(guitarHits > 0 || beatTaps > 0 || triviaPlayers > 0) && (
-                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-4">
-                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Live interaction</div>
-                                                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-3 text-lg font-black text-white md:text-2xl 2xl:text-[1.9rem]">
-                                                    {guitarHits > 0 && <span>{guitarHits} guitar hits</span>}
-                                                    {beatTaps > 0 && <span>{beatTaps} beat taps</span>}
-                                                    {triviaPlayers > 0 && <span>{triviaPlayers} trivia players</span>}
-                                                    {triviaAnswers > 0 && <span>{triviaAnswers} trivia answers</span>}
-                                                </div>
-                                            </div>
-                                        )}
+                                    <div className="mt-6 rounded-[1.5rem] border border-cyan-300/16 bg-cyan-300/8 px-5 py-5">
+                                        <div className="text-sm uppercase tracking-[0.28em] text-cyan-100/80 2xl:text-base">Next screen</div>
+                                        <div className="mt-3 text-2xl font-black leading-tight text-white md:text-3xl 2xl:text-[2.7rem]">
+                                            Performance leaderboard
+                                        </div>
+                                        <div className="mt-2 text-base font-semibold leading-snug text-zinc-200 md:text-lg 2xl:text-[1.45rem]">
+                                            The room ranking updates after the final score lands.
+                                        </div>
                                     </div>
                                 </div>
+                                )}
                             </div>
                         </div>
                         </div>
@@ -7379,7 +7844,7 @@ const PublicTV = ({ roomCode }) => {
                 : 'absolute right-3 top-3 md:right-5 md:top-5 2xl:right-8 2xl:top-8 z-[160]')
             : '';
         const cardClass = floating
-            ? 'rounded-2xl border-[3px] border-fuchsia-300/45 bg-black/58 p-2 shadow-[0_0_30px_rgba(0,0,0,0.28)] backdrop-blur-xl'
+            ? 'rounded-2xl border-[3px] border-fuchsia-300/45 bg-black/62 p-2 shadow-[0_0_30px_rgba(0,0,0,0.28)] backdrop-blur-xl'
             : `${isTinyHostPreviewMode ? 'p-2 rounded-xl' : lobbyCompactHudMode ? 'p-2 md:p-3 lg:-mt-1' : 'p-3 md:p-3.5 lg:-mt-2'} ${isTinyHostPreviewMode ? '' : 'md:rounded-3xl'} rounded-2xl shadow-lg border-[3px] border-fuchsia-400/45 bg-black/35 backdrop-blur-xl`;
         const qrFrameClass = floating
             ? 'shrink-0 rounded-2xl border-[3px] border-white/80 bg-white p-1.5 shadow-[0_0_22px_rgba(255,255,255,0.14)]'
@@ -7391,7 +7856,14 @@ const PublicTV = ({ roomCode }) => {
         return (
             <div className={shellClass}>
                 <div className={cardClass}>
-                    <div className={floating ? 'flex items-center justify-center' : 'flex items-start justify-between gap-3'}>
+                    <div className={floating ? 'flex items-center justify-center gap-2 md:gap-3' : 'flex items-start justify-between gap-3'}>
+                        {floating ? (
+                            <div className="min-w-[5.5rem] text-left leading-none">
+                                <div className="text-[0.7rem] font-black uppercase tracking-[0.24em] text-fuchsia-100 md:text-xs">Join Now</div>
+                                <div className="mt-1 font-bebas text-2xl tracking-[0.12em] text-white md:text-3xl">{roomCode}</div>
+                                <div className="mt-1 text-[0.58rem] font-bold uppercase tracking-[0.16em] text-cyan-100/80 md:text-[0.68rem]">Scan to sing</div>
+                            </div>
+                        ) : null}
                         {!floating ? (
                             <div className="min-w-0 flex-1 text-left">
                                 {selfServeRulesCard ? (
@@ -7561,7 +8033,7 @@ const PublicTV = ({ roomCode }) => {
                 <div className="absolute inset-0 z-[210] pointer-events-none flex items-center justify-center">
                     {showMoneyRainCelebration && (
                         <div className="bonus-drop-rainfield" aria-hidden="true">
-                            {['💸', '💰', '🪙', '💵', '✨', '🤑'].map((icon, idx) => (
+                            {[emoji(0x1F4B8), emoji(0x1F4B0), emoji(0x1FA99), emoji(0x1F4B5), emoji(0x2728), emoji(0x1F911)].map((icon, idx) => (
                                 <span
                                     key={`bonus-host-rain-${idx}`}
                                     className="bonus-drop-rain-item"
@@ -7587,7 +8059,7 @@ const PublicTV = ({ roomCode }) => {
                 <div className="absolute inset-0 z-[212] pointer-events-none flex items-center justify-center">
                     {purchaseCelebrationIsMoneyRain && (
                         <div className="bonus-drop-rainfield" aria-hidden="true">
-                            {['💸', '💰', '💵', '🪙', '✨', '🌟', '💸', '🤑'].map((icon, idx) => (
+                            {[emoji(0x1F4B8), emoji(0x1F4B0), emoji(0x1F4B5), emoji(0x1FA99), emoji(0x2728), emoji(0x1F31F), emoji(0x1F4B8), emoji(0x1F911)].map((icon, idx) => (
                                 <span
                                     key={`bonus-purchase-rain-${idx}`}
                                     className="bonus-drop-rain-item"
@@ -7605,11 +8077,11 @@ const PublicTV = ({ roomCode }) => {
                     <div className={`bonus-drop-burst ${purchaseCelebrationIsMoneyRain ? 'bonus-drop-burst-money' : ''}`}>
                         {purchaseCelebrationIsMoneyRain && (
                             <div className="bonus-drop-moneyline">
-                                <span className="bonus-drop-avatar">{purchaseCelebrationBurst.buyerAvatar || '🤑'}</span>
-                                <span>💰</span>
-                                <span>💸</span>
-                                <span>💰</span>
-                                <span>🪩</span>
+                                <span className="bonus-drop-avatar">{purchaseCelebrationBurst.buyerAvatar || emoji(0x1F911)}</span>
+                                <span>{emoji(0x1F4B0)}</span>
+                                <span>{emoji(0x1F4B8)}</span>
+                                <span>{emoji(0x1F4B0)}</span>
+                                <span>{emoji(0x1FAA9)}</span>
                             </div>
                         )}
                         <div className="bonus-drop-title">
@@ -7620,7 +8092,7 @@ const PublicTV = ({ roomCode }) => {
                         </div>
                         <div className="bonus-drop-sub">
                             {purchaseCelebrationBurst.amountCents > 0
-                                ? `$${(purchaseCelebrationBurst.amountCents / 100).toFixed(2)} • `
+                                ? `$${(purchaseCelebrationBurst.amountCents / 100).toFixed(2)} \u2022 `
                                 : ''}
                             {purchaseCelebrationBurst.subtitle
                                 || (purchaseCelebrationBurst.badgeAwarded
@@ -7742,12 +8214,12 @@ const PublicTV = ({ roomCode }) => {
                         </div>
                         {stormLayerLeaders.length > 0 && (
                             <div className="mt-2.5 text-[11px] md:text-xs text-zinc-100 uppercase tracking-[0.1em]">
-                                Leaders: {stormLayerLeaders.map((leader) => `${leader.avatar} ${leader.user} (${leader.total})`).join(' • ')}
+                                Leaders: {stormLayerLeaders.map((leader) => `${leader.avatar} ${leader.user} (${leader.total})`).join(' \u2022 ')}
                             </div>
                         )}
                         {stormRecentLayerEvents.length > 0 && (
                             <div className="mt-1.5 text-[11px] md:text-xs text-zinc-200 truncate">
-                                Latest: {stormRecentLayerEvents.map((event) => `${event.avatar || EMOJI.sparkle} ${event.user} ${event.layerLabel.toLowerCase()}${event.count > 1 ? ` x${event.count}` : ''}`).join(' • ')}
+                                Latest: {stormRecentLayerEvents.map((event) => `${event.avatar || EMOJI.sparkle} ${event.user} ${event.layerLabel.toLowerCase()}${event.count > 1 ? ` x${event.count}` : ''}`).join(' \u2022 ')}
                             </div>
                         )}
                     </div>
@@ -8268,7 +8740,7 @@ const PublicTV = ({ roomCode }) => {
                                         </div>
                                     )}
                                 </div>
-                            </div>
+                                                        </div>
                         )}
                         <div
                             className={`tv-hype-meter absolute top-0 left-0 w-full h-12 md:h-14 z-[70] border-b border-white/15 flex items-center shadow-[0_6px_18px_rgba(0,0,0,0.45)] transition-all duration-500 ${combo > 88 ? 'tv-hype-meter-inferno' : combo > 62 ? 'tv-hype-meter-hot' : combo > 34 ? 'tv-hype-meter-charged' : ''} ${showTopHypeMeter ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-6 pointer-events-none'}`}
@@ -8293,6 +8765,53 @@ const PublicTV = ({ roomCode }) => {
                             <div className="absolute left-[90%] top-0 h-full w-1 bg-purple-400/60 -translate-x-1/2"></div>
                             <div className="absolute left-[90%] top-1.5 -translate-x-1/2 text-sm md:text-lg font-bold text-purple-200 bg-black/70 px-2 md:px-3 py-1 rounded">4x</div>
                         </div>
+                        {spotlightMainstageActive && (
+                            <div className="absolute inset-0 z-[95] overflow-hidden bg-[linear-gradient(180deg,rgba(2,6,23,0.96),rgba(12,8,18,0.96))]">
+                                <div className="absolute inset-x-0 top-0 h-1.5 bg-yellow-950/70">
+                                    <div className="h-full bg-gradient-to-r from-yellow-200 via-cyan-200 to-fuchsia-200 transition-[width] duration-500" style={{ width: spotlightMainstageProgressPct + '%' }} />
+                                </div>
+                                <div className="absolute inset-0 opacity-80" aria-hidden="true">
+                                    <div className="absolute left-[7%] top-0 h-full w-[16%] origin-top -skew-x-12 bg-gradient-to-b from-yellow-200/18 via-yellow-200/7 to-transparent blur-sm" />
+                                    <div className="absolute right-[9%] top-0 h-full w-[14%] origin-top skew-x-12 bg-gradient-to-b from-cyan-200/16 via-cyan-300/6 to-transparent blur-sm" />
+                                    <div className="absolute left-0 right-0 top-[18%] h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                                    <div className="absolute bottom-0 left-0 right-0 h-[34%] bg-[linear-gradient(180deg,transparent,rgba(236,72,153,0.12))]" />
+                                </div>
+                                <div className="relative z-10 flex h-full flex-col items-center justify-center px-8 py-12 text-center">
+                                    <div className="inline-flex items-center gap-3 rounded-full border border-yellow-200/32 bg-yellow-300/12 px-5 py-2 text-[11px] font-black uppercase tracking-[0.32em] text-yellow-100 md:text-sm">
+                                        <i className="fa-solid fa-star" />
+                                        Mainstage Spotlight
+                                    </div>
+                                    <div className="mt-7 text-[clamp(5rem,13vw,12rem)] leading-none drop-shadow-[0_0_40px_rgba(250,204,21,0.24)]">
+                                        {spotlightPayload?.avatar || spotlightUser?.avatar || EMOJI.star}
+                                    </div>
+                                    <h1 className="mt-4 max-w-[min(94vw,1280px)] break-words font-bebas text-[clamp(4rem,10vw,10rem)] leading-[0.82] text-white drop-shadow-[0_10px_36px_rgba(0,0,0,0.45)]">
+                                        {spotlightPayload?.name || spotlightUser?.name || 'Guest'}
+                                    </h1>
+                                    <div className="mt-4 text-[clamp(1rem,2.4vw,2rem)] font-black uppercase tracking-[0.24em] text-cyan-100/90">
+                                        {spotlightPayload?.msg || getAudienceSpotlightModeMeta(audienceSpotlightMode).label}
+                                    </div>
+                                    {audienceSpotlightPrompt && (
+                                        <div className="mt-8 w-full max-w-[1040px] rounded-[1.6rem] border border-cyan-200/24 bg-black/42 px-6 py-5 text-left shadow-[0_0_42px_rgba(34,211,238,0.12)] md:px-8 md:py-6">
+                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                <div className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-200 md:text-sm">
+                                                    {audienceSpotlightPrompt.title}
+                                                </div>
+                                                <div className="rounded-full border border-cyan-200/28 bg-cyan-300/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-50 md:text-xs">
+                                                    {audienceSpotlightModeMeta.label}
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 text-[clamp(1.35rem,3.4vw,3.25rem)] font-black leading-tight text-white">
+                                                {audienceSpotlightPrompt.body}
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-[11px] font-black uppercase tracking-[0.22em] text-zinc-100 md:text-sm">
+                                        <span className="rounded-full border border-fuchsia-200/26 bg-fuchsia-400/12 px-4 py-2">Phones can cheer</span>
+                                        <span className="rounded-full border border-yellow-200/26 bg-yellow-300/12 px-4 py-2">Host controls the moment</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {room?.activeMode === 'selfie_cam' ? (
                             <div className="absolute inset-0 z-50 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.24),rgba(0,0,0,0)_32%),radial-gradient(circle_at_82%_18%,rgba(34,211,238,0.18),rgba(0,0,0,0)_22%),linear-gradient(180deg,rgba(3,7,18,0.76),rgba(2,6,23,0.9))]">
                                 <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),transparent_34%,rgba(255,255,255,0.03))]" />
@@ -8405,15 +8924,18 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                          )}
 
-                         {(spotlightUser || room?.spotlightUser?.id) && (
-                            <div className="p-3 md:p-5 rounded-2xl md:rounded-3xl bg-black/70 border border-yellow-400/30 shadow-[0_0_25px_rgba(234,179,8,0.2)] text-center">
+                         {(spotlightUser || spotlightPayload?.id) && (
+                            <div className="relative overflow-hidden p-3 md:p-5 rounded-2xl md:rounded-3xl bg-black/76 border border-yellow-400/35 shadow-[0_0_42px_rgba(234,179,8,0.24)] text-center">
+                                <div className="absolute inset-x-0 top-0 h-1 bg-yellow-950/60">
+                                    <div className="h-full bg-gradient-to-r from-yellow-200 via-cyan-200 to-pink-200 transition-[width] duration-500" style={{ width: spotlightProgressPct + '%' }} />
+                                </div>
                                 <div className="text-xs md:text-sm uppercase tracking-[0.24em] md:tracking-[0.3em] text-yellow-300">
                                     {spotlightKind === SPOTLIGHT_KINDS.tight15 ? 'Tight 15 Showcase' : 'Audience Spotlight'}
                                 </div>
-                                <div className="text-3xl md:text-5xl mt-2">{room?.spotlightUser?.avatar || spotlightUser?.avatar || EMOJI.star}</div>
-                                <div className="text-xl md:text-3xl font-bold text-white mt-2 truncate">{room?.spotlightUser?.name || spotlightUser?.name || 'Guest'}</div>
-                                {room?.spotlightUser?.msg && (
-                                    <div className="text-sm md:text-base text-yellow-200 mt-1">{room.spotlightUser.msg}</div>
+                                <div className="text-3xl md:text-5xl mt-2">{spotlightPayload?.avatar || spotlightUser?.avatar || EMOJI.star}</div>
+                                <div className="text-xl md:text-3xl font-bold text-white mt-2 truncate">{spotlightPayload?.name || spotlightUser?.name || 'Guest'}</div>
+                                {spotlightPayload?.msg && (
+                                    <div className="text-sm md:text-base text-yellow-200 mt-1">{spotlightPayload.msg}</div>
                                 )}
                                 {spotlightKind === SPOTLIGHT_KINDS.audience && audienceSpotlightPrompt && (
                                     <div className="mt-3 text-left bg-cyan-500/10 border border-cyan-300/30 rounded-xl px-3 py-3">
@@ -8430,12 +8952,12 @@ const PublicTV = ({ roomCode }) => {
                                         </div>
                                     </div>
                                 )}
-                                {showExtendedSpotlightMeta && spotlightKind === SPOTLIGHT_KINDS.tight15 && room?.spotlightUser?.challengeSong?.songTitle && (
+                                {showExtendedSpotlightMeta && spotlightKind === SPOTLIGHT_KINDS.tight15 && spotlightPayload?.challengeSong?.songTitle && (
                                     <div className="mt-2 text-left bg-cyan-500/10 border border-cyan-300/30 rounded-xl px-3 py-2">
                                         <div className="text-xs md:text-sm uppercase tracking-[0.24em] text-cyan-200 mb-1">Showcase Pick</div>
                                         <div className="text-sm md:text-base text-cyan-50 truncate">
-                                            {room.spotlightUser.challengeSong.songTitle}
-                                            {room?.spotlightUser?.challengeSong?.artist ? ` - ${room.spotlightUser.challengeSong.artist}` : ''}
+                                            {spotlightPayload.challengeSong.songTitle}
+                                            {spotlightPayload?.challengeSong?.artist ? ` - ${spotlightPayload.challengeSong.artist}` : ''}
                                         </div>
                                     </div>
                                 )}
@@ -8501,6 +9023,46 @@ const PublicTV = ({ roomCode }) => {
                                             <div className="text-[12px] md:text-[14px] uppercase tracking-[0.24em] text-cyan-100/90 mb-1.5">Now</div>
                                             <div className="text-lg md:text-2xl 2xl:text-3xl font-black text-white leading-tight">{lobbyInstructionHeadline}</div>
                                             <div className="mt-1.5 text-sm md:text-lg text-cyan-100/90 leading-snug">{lobbyInstructionSecondary}</div>
+                                            {!lobbyObjectiveIsTeamPong && (
+                                                <div className="mt-3 rounded-2xl border border-cyan-200/25 bg-cyan-950/30 px-3 py-3">
+                                                    <div className="flex items-center justify-between gap-2 text-[10px] md:text-xs uppercase tracking-[0.18em] text-cyan-100/90">
+                                                        <span>Vocal Rocket</span>
+                                                        <span>{lobbyVoicePhaseLabel} {lobbyVoiceDisplayTarget?.progressLabel || ''}</span>
+                                                    </div>
+                                                    <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                                                        <div className="rounded-xl border border-white/10 bg-black/35 px-2 py-2">
+                                                            <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-400">Target</div>
+                                                            <div className="text-lg md:text-xl font-black text-white">{lobbyVoiceDisplayTarget?.targetNote || '-'}</div>
+                                                        </div>
+                                                        <div className="rounded-xl border border-white/10 bg-black/35 px-2 py-2">
+                                                            <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-400">Match</div>
+                                                            <div className="text-lg md:text-xl font-black text-white">{lobbyVoiceFresh ? `${Math.round(lobbyVoiceMatchPct)}%` : 'WAIT'}</div>
+                                                        </div>
+                                                        <div className={`rounded-xl border px-2 py-2 ${lobbyVoiceLiftReady ? 'border-emerald-300/40 bg-emerald-500/14' : 'border-amber-300/35 bg-amber-500/12'}`}>
+                                                            <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-300">Lift</div>
+                                                            <div className="text-lg md:text-xl font-black text-white">{lobbyVoiceRawLift.toFixed(1)}/{lobbyVoiceRequiredLift.toFixed(1)}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-2 h-2 rounded-full overflow-hidden border border-white/15 bg-black/45">
+                                                        <div className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-amber-300 transition-all duration-200" style={{ width: `${lobbyVoicePressurePct}%` }} />
+                                                    </div>
+                                                    <CrowdMicInputVisualizer
+                                                        enabled={!lobbyObjectiveIsTeamPong}
+                                                        telemetry={room?.lobbyVoiceTelemetry || lobbyVoiceState || {}}
+                                                        nowMs={lobbyNow}
+                                                        activeOverride={lobbyVoiceFresh}
+                                                        label="Vocal Rocket"
+                                                        helper="Lift signal"
+                                                        accent="cyan"
+                                                        compact
+                                                        className="mt-3"
+                                                    />
+                                                    <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] md:text-xs uppercase tracking-[0.14em] text-cyan-100/85">
+                                                        <span>{lobbyVoiceRequirementLabel}</span>
+                                                        <span>{Math.round(lobbyVoicePressurePct)}% pressure</span>
+                                                    </div>
+                                                </div>
+                                            )}
                                             {autoCrowdMomentActive && autoCrowdMomentType === 'volley' && (
                                                 <div className="mt-2 text-[11px] md:text-xs text-cyan-100/85">{autoCrowdMomentDetail}</div>
                                             )}
@@ -8710,7 +9272,7 @@ const PublicTV = ({ roomCode }) => {
                         {selfieLeadingSubmission && room?.selfieChallenge?.status === 'voting' && (
                             <div className="mt-3 text-center text-sm md:text-base text-cyan-200">
                                 Leading right now: <span className="font-black text-white">{selfieLeadingSubmission.userName || 'Guest'}</span> with <span className="font-black text-fuchsia-200">{selfieVoteCounts[selfieLeadingSubmission.uid] || 0}</span> votes
-                            </div>
+                                                        </div>
                         )}
                     </div>
                     <div className="relative z-10 grid flex-1 min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.95fr)]">
@@ -9282,7 +9844,7 @@ const PublicTV = ({ roomCode }) => {
                                 {lobbyVolleyCloudBands.map((cloud) => (
                                     <div
                                         key={cloud.id}
-                                        className="absolute pointer-events-none"
+                                        className="absolute pointer-events-none transition-[top,opacity,transform] duration-700 ease-out"
                                         style={{
                                             top: `${cloud.topPct}%`,
                                             left: `${cloud.leftPct}%`,
@@ -9297,7 +9859,7 @@ const PublicTV = ({ roomCode }) => {
                                 {lobbyVolleyParallaxPlatforms.map((platform) => (
                                     <div
                                         key={platform.id}
-                                        className="absolute pointer-events-none"
+                                        className="absolute pointer-events-none transition-[top,transform] duration-700 ease-out"
                                         style={{
                                             top: `${platform.topPct}%`,
                                             left: `${platform.leftPct}%`,
@@ -9378,17 +9940,20 @@ const PublicTV = ({ roomCode }) => {
                                     </div>
                                 ))}
                                 <div
-                                    className="absolute z-[3] -translate-x-1/2 -translate-y-1/2 transition-[top,left] duration-200 ease-out"
+                                    className="absolute z-[3] -translate-x-1/2 -translate-y-1/2 transition-[top,left] duration-500 ease-out"
                                     style={{ top: `${lobbyOrbRenderTopPct}%`, left: `${lobbyOrbRenderLeftPct}%` }}
                                 >
                                     <div
-                                        className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''} ${lobbyOrbSkinUrl ? 'lobby-volley-orb-shell-custom' : ''} ${lobbyRelayObjective.active ? 'lobby-volley-orb-shell-relay' : ''}`}
+                                        className={`lobby-volley-orb-shell lobby-volley-orb-phase-${lobbyVolleyPhaseKey} ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''} ${lobbyOrbSkinUrl ? 'lobby-volley-orb-shell-custom' : ''} ${lobbyRelayObjective.active ? 'lobby-volley-orb-shell-relay' : ''}`}
                                         style={{
                                             '--orb-energy-norm': `${Math.max(0, Math.min(1, lobbyOrbEnergy / 100))}`,
                                             '--lobby-volley-orb-size': `${Math.max(120, Number(lobbyVolleySceneMetrics?.orbSizePx || 280))}px`,
                                             '--lobby-volley-orb-scale': `${Number(lobbyVolleySceneMetrics?.orbScale || 0.78)}`,
                                             '--lobby-volley-orb-content-scale': `${Number(lobbyVolleySceneMetrics?.orbContentScale || 0.84)}`,
-                                            '--lobby-volley-participant-size': `${Math.max(18, Number(lobbyVolleySceneMetrics?.participantSizePx || 27))}px`
+                                            '--lobby-volley-participant-size': `${Math.max(18, Number(lobbyVolleySceneMetrics?.participantSizePx || 27))}px`,
+                                            '--lobby-volley-inflation-scale': lobbyOrbInflationScale.toFixed(4),
+                                            '--lobby-volley-thrust-opacity': lobbyOrbThrustOpacity.toFixed(4),
+                                            '--lobby-volley-thrust-scale': lobbyOrbThrustScale.toFixed(4)
                                         }}
                                     >
                                         {lobbyHasCustomOrbSkin && (
@@ -9412,6 +9977,18 @@ const PublicTV = ({ roomCode }) => {
                                                 <span className="lobby-volley-orb-seam lobby-volley-orb-seam-bottom" />
                                             </div>
                                         )}
+                                        <>
+                                                <div className="lobby-volley-orb-air-rings" aria-hidden="true">
+                                                    <span />
+                                                    <span />
+                                                    <span />
+                                                </div>
+                                                <div className="lobby-volley-orb-thrust" aria-hidden="true">
+                                                    <span className="lobby-volley-orb-thrust-core" />
+                                                    <span className="lobby-volley-orb-thrust-spark lobby-volley-orb-thrust-spark-a" />
+                                                    <span className="lobby-volley-orb-thrust-spark lobby-volley-orb-thrust-spark-b" />
+                                                </div>
+                                            </>
                                         <div
                                             className={`lobby-volley-orb-core ${lobbyOrbSkinUrl ? 'lobby-volley-orb-core-custom' : ''}`}
                                             style={{
@@ -9473,6 +10050,42 @@ const PublicTV = ({ roomCode }) => {
                                                 </div>
                                             </>
                                         )}
+                                    </div>
+                                </div>
+                                <div className="absolute left-[5%] top-[9%] w-[min(31vw,430px)] rounded-[24px] border border-cyan-200/30 bg-black/42 px-4 py-3 shadow-[0_0_28px_rgba(34,211,238,0.16)] backdrop-blur-md">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Crowd Controls</div>
+                                            <div className="mt-1 text-[24px] md:text-[34px] leading-none font-bebas text-white">{lobbyVolleyPhaseVisual.label}</div>
+                                        </div>
+                                        <div className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/18 bg-white/8 text-cyan-100">
+                                            <i className={`fa-solid ${lobbyVolleyPhaseVisual.icon}`}></i>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 grid gap-2 text-[11px] uppercase tracking-[0.14em] text-white/82">
+                                        <div className="flex items-center justify-between gap-2 rounded-xl border border-cyan-200/18 bg-cyan-500/10 px-3 py-2">
+                                            <span>Room mic</span>
+                                            <span className="font-black text-cyan-100">{lobbyVolleyPhaseVisual.action}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-2 rounded-xl border border-fuchsia-200/18 bg-fuchsia-500/10 px-3 py-2">
+                                            <span>Phone tap</span>
+                                            <span className="font-black text-fuchsia-100">{lobbyVolleyPhaseVisual.phone}</span>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-4 gap-1.5">
+                                        {LOBBY_VOLLEY_PHASE_ORDER.map((phaseId, phaseIndex) => {
+                                            const phaseMeta = LOBBY_VOLLEY_PHASE_VISUALS[phaseId] || LOBBY_VOLLEY_PHASE_VISUALS.inflate;
+                                            const activePhase = phaseId === lobbyVolleyPhaseKey;
+                                            const clearedPhase = phaseIndex < lobbyVolleyPhaseIndex;
+                                            return (
+                                                <div key={`volley-phase-${phaseId}`} className={`rounded-full border px-2 py-1 text-center text-[9px] font-black uppercase tracking-[0.1em] ${activePhase ? 'border-cyan-200/70 bg-cyan-300/20 text-cyan-50' : clearedPhase ? 'border-emerald-200/35 bg-emerald-500/12 text-emerald-100' : 'border-white/12 bg-white/5 text-white/42'}`}>
+                                                    {phaseMeta.label}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="mt-3 h-2 rounded-full border border-white/14 bg-black/38 overflow-hidden">
+                                        <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-amber-300 to-fuchsia-300 transition-all duration-300" style={{ width: `${Math.max(4, lobbyOrbCameraSpeedPct)}%` }} />
                                     </div>
                                 </div>
                                 <div className="absolute left-[5%] bottom-[10.5%] rounded-[24px] border border-cyan-200/34 bg-[linear-gradient(180deg,rgba(2,6,23,0.74),rgba(8,15,42,0.58))] px-4 py-3 shadow-[0_0_28px_rgba(34,211,238,0.14)] backdrop-blur-md">
@@ -9626,7 +10239,7 @@ const PublicTV = ({ roomCode }) => {
                                         })}
                                     </div>
                                 </div>
-                            </div>
+                                                        </div>
                         )}
                     </div>
                 )}
@@ -9876,14 +10489,14 @@ const PublicTV = ({ roomCode }) => {
                                     <div className="text-[clamp(1.1rem,2vw,1.8rem)] font-black leading-tight text-white">Pick your side before timer ends</div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 text-xl text-white">
-                                    <div className="bg-[linear-gradient(145deg,rgba(7,22,27,0.98),rgba(15,49,60,0.95))] border border-teal-300/35 rounded-xl px-4 py-6 text-center font-bold">Sing every duet</div>
-                                    <div className="bg-[linear-gradient(145deg,rgba(24,10,22,0.98),rgba(64,20,47,0.95))] border border-pink-300/35 rounded-xl px-4 py-6 text-center font-bold">Run the DJ booth</div>
+                                    <div className="bg-[linear-gradient(145deg,rgba(24,10,22,0.98),rgba(64,20,47,0.95))] border border-pink-300/35 rounded-xl px-4 py-6 text-center font-bold">Sing every duet</div>
+                                    <div className="bg-[linear-gradient(145deg,rgba(7,22,27,0.98),rgba(15,49,60,0.95))] border border-teal-300/35 rounded-xl px-4 py-6 text-center font-bold">Run the DJ booth</div>
                                 </div>
                             </div>
                         ) : (
                             <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4 text-zinc-300">
                                 Preview enabled. Launch to start the full game.
-                            </div>
+                                                        </div>
                         )}
                     </div>
                 </div>
@@ -9930,7 +10543,7 @@ const PublicTV = ({ roomCode }) => {
                 68% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.72), calc(var(--reaction-rise-y, 96px) * -0.38), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.62)); }
                 100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 1.22), calc(var(--reaction-rise-y, 96px) * -0.72), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
               }
-              @keyframes points-burst { 0% { opacity: 0; transform: translateY(10px) scale(0.6); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px) scale(1.2); } }
+              @keyframes points-burst { 0% { opacity: 0; transform: translateY(12px) scale(0.55); } 22% { opacity: 1; transform: translateY(-2px) scale(1.12); } 70% { opacity: 0.86; } 100% { opacity: 0; transform: translateY(-34px) scale(1.45); } }
               @keyframes applause-meter-aurora { 0%, 100% { transform: translate3d(-2%, 0, 0) scale(1); opacity: 0.72; } 50% { transform: translate3d(2%, -1%, 0) scale(1.04); opacity: 0.94; } }
               @keyframes applause-meter-beam-sweep { 0% { opacity: 0; transform: translateX(-24vw) rotate(var(--beam-tilt, -8deg)); } 20% { opacity: 0.5; } 78% { opacity: 0.32; } 100% { opacity: 0; transform: translateX(28vw) rotate(var(--beam-tilt, -8deg)); } }
               @keyframes applause-meter-spark-rise { 0% { opacity: 0; transform: translate3d(0, 22px, 0) scale(0.62) rotate(0deg); } 18% { opacity: 0.95; } 100% { opacity: 0; transform: translate3d(var(--spark-x, 0px), -110px, 0) scale(1.08) rotate(var(--spark-rot, 18deg)); } }
@@ -9940,10 +10553,15 @@ const PublicTV = ({ roomCode }) => {
               @keyframes applause-front-pulse { 0%, 100% { opacity: 0.68; transform: translateX(-3px) scaleY(0.92); } 48% { opacity: 1; transform: translateX(5px) scaleY(1.12); } }
               @keyframes applause-spark-fly { 0% { opacity: 0; transform: translate3d(-14px, 12px, 0) scale(0.68); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate3d(32px, -28px, 0) scale(1.18); } }
               @keyframes applause-number-flare { 0%, 100% { text-shadow: 0 0 18px rgba(251,191,36,0.52), 0 0 36px rgba(34,211,238,0.18); } 50% { text-shadow: 0 0 30px rgba(251,191,36,0.88), 0 0 58px rgba(248,113,113,0.5), 0 0 80px rgba(34,211,238,0.28); } }
-              @keyframes score-charge-hit { 0% { transform: scale(1); filter: brightness(1); } 28% { transform: scale(1.08); filter: brightness(1.38); } 56% { transform: scale(0.99); filter: brightness(1.12); } 100% { transform: scale(1); filter: brightness(1); } }
+              @keyframes score-charge-hit { 0% { transform: scale(1); filter: brightness(1); } 24% { transform: scale(1.1); filter: brightness(1.55) saturate(1.2); } 58% { transform: scale(1.02); filter: brightness(1.28) saturate(1.3); } 100% { transform: scale(1); filter: brightness(1); } }
               @keyframes score-charge-scan { 0% { transform: translateX(-120%) skewX(-14deg); opacity: 0; } 20% { opacity: 0.72; } 100% { transform: translateX(160%) skewX(-14deg); opacity: 0; } }
-              @keyframes score-delta-rise { 0% { opacity: 0; transform: translateY(12px) scale(0.8); } 24% { opacity: 1; transform: translateY(-4px) scale(1.08); } 100% { opacity: 0; transform: translateY(-34px) scale(1.22); } }
+              @keyframes score-delta-rise { 0% { opacity: 0; transform: translateY(16px) scale(0.72); } 18% { opacity: 1; transform: translateY(-6px) scale(1.18); } 68% { opacity: 1; transform: translateY(-18px) scale(1.12); } 100% { opacity: 0; transform: translateY(-46px) scale(1.34); } }
               @keyframes score-number-flare { 0%, 100% { text-shadow: 0 0 18px rgba(251,191,36,0.52), 0 0 32px rgba(34,211,238,0.18); } 50% { text-shadow: 0 0 28px rgba(251,191,36,0.82), 0 0 52px rgba(248,113,113,0.45), 0 0 70px rgba(34,211,238,0.28); } }
+              @keyframes recap-score-arrival-pop { 0% { opacity: 0; transform: translateY(72px) scale(0.62) rotate(-5deg); filter: brightness(0.62) saturate(0.7); } 26% { opacity: 1; transform: translateY(-22px) scale(1.2) rotate(2.4deg); filter: brightness(1.85) saturate(1.65); } 48% { opacity: 1; transform: translateY(8px) scale(0.96) rotate(-1deg); filter: brightness(1.3) saturate(1.32); } 72% { opacity: 1; transform: translateY(-3px) scale(1.035) rotate(0.4deg); filter: brightness(1.18) saturate(1.18); } 100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); filter: brightness(1); } }
+              @keyframes recap-score-shimmer { 0% { transform: translateX(-145%) skewX(-18deg); opacity: 0; } 18% { opacity: 0.9; } 54% { opacity: 0.58; } 100% { transform: translateX(190%) skewX(-18deg); opacity: 0; } }
+              @keyframes recap-prism-pulse { 0% { opacity: 0; transform: scale(0.8) rotate(0deg); } 24% { opacity: 0.88; transform: scale(1.08) rotate(18deg); } 62% { opacity: 0.46; transform: scale(1.18) rotate(42deg); } 100% { opacity: 0; transform: scale(1.28) rotate(72deg); } }
+              @keyframes recap-score-spark-pop { 0% { opacity: 0; transform: translate3d(0, 18px, 0) scale(0.4); } 22% { opacity: 1; transform: translate3d(10px, -12px, 0) scale(1.35); } 70% { opacity: 0.8; transform: translate3d(-8px, -28px, 0) scale(0.95); } 100% { opacity: 0; transform: translate3d(16px, -44px, 0) scale(0.62); } }
+              @keyframes recap-total-impact { 0% { opacity: 0; transform: translateY(92px) scale(0.58) rotate(-1.5deg); filter: brightness(0.68) saturate(0.72); } 24% { opacity: 1; transform: translateY(-28px) scale(1.22) rotate(1.2deg); filter: brightness(2) saturate(1.8); } 50% { opacity: 1; transform: translateY(9px) scale(0.94) rotate(-0.5deg); filter: brightness(1.38) saturate(1.45); } 76% { opacity: 1; transform: translateY(-4px) scale(1.04) rotate(0.2deg); filter: brightness(1.22) saturate(1.22); } 100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); } }
               @keyframes hype-charge-flow { 0% { background-position: 0% 50%; } 100% { background-position: 180% 50%; } }
               @keyframes hype-charge-front { 0%, 100% { opacity: 0.62; transform: translateX(-2px) scaleY(0.92); } 45% { opacity: 1; transform: translateX(3px) scaleY(1.08); } }
               @keyframes hype-spark-fly { 0% { opacity: 0; transform: translate3d(-10px, 10px, 0) scale(0.7); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate3d(26px, -22px, 0) scale(1.1); } }
@@ -10135,9 +10753,11 @@ const PublicTV = ({ roomCode }) => {
               @keyframes lobby-screen-confetti-fall { 0% { opacity: 0; transform: translate3d(0, -12vh, 0) rotate(0deg) scale(0.8); } 12% { opacity: 0.95; } 100% { opacity: 0; transform: translate3d(var(--fall-sway, 0px), 108vh, 0) rotate(var(--fall-rot, 80deg)) scale(1.04); } }
               @keyframes lobby-link-pulse { 0% { stroke-dashoffset: 22; } 100% { stroke-dashoffset: 0; } }
               @keyframes lobby-link-node-pop { 0%, 100% { transform: scale(0.86); opacity: 0.8; } 50% { transform: scale(1.38); opacity: 1; } }
-              @keyframes lobby-orb-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-6px); } }
+              @keyframes lobby-orb-float { 0%, 100% { transform: translateY(0px) scale(var(--lobby-volley-inflation-scale)); } 50% { transform: translateY(-6px) scale(calc(var(--lobby-volley-inflation-scale) + 0.018)); } }
               @keyframes lobby-orb-glow { 0%, 100% { filter: drop-shadow(0 0 18px rgba(45,212,191,0.56)); } 50% { filter: drop-shadow(0 0 38px rgba(236,72,153,0.64)); } }
-              @keyframes lobby-orb-relay-thrum { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.035); } 70% { transform: scale(1.01); } }
+              @keyframes lobby-orb-relay-thrum { 0%, 100% { transform: scale(var(--lobby-volley-inflation-scale)); } 35% { transform: scale(calc(var(--lobby-volley-inflation-scale) + 0.052)); } 70% { transform: scale(calc(var(--lobby-volley-inflation-scale) + 0.018)); } }
+              @keyframes lobby-orb-air-ring { 0% { opacity: 0; transform: scale(0.72); } 18% { opacity: calc(0.22 + (var(--orb-energy-norm) * 0.42)); } 100% { opacity: 0; transform: scale(1.42); } }
+              @keyframes lobby-orb-thrust-spark { 0%, 100% { opacity: 0.22; transform: translate3d(0,0,0) scale(0.78); } 50% { opacity: 0.82; transform: translate3d(var(--spark-x, 0px), 15px, 0) scale(1.06); } }
               @keyframes lobby-orb-custom-aurora { 0%, 100% { opacity: 0.48; transform: scale(0.92); } 50% { opacity: 0.9; transform: scale(1.08); } }
               @keyframes lobby-orb-custom-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
               @keyframes lobby-orb-custom-badge-drift { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-4px) scale(1.018); } }
@@ -10316,10 +10936,18 @@ const PublicTV = ({ roomCode }) => {
               .public-tv:not(.motion-safe-fx) .applause-charge-front,
               .public-tv:not(.motion-safe-fx) .applause-charge-sparks i,
               .public-tv:not(.motion-safe-fx) .applause-meter-number { animation: none; }
+              .motion-safe-fx .recap-score-arrival.opacity-100 { animation: recap-score-arrival-pop 1280ms cubic-bezier(.16,1.28,.16,1) both; box-shadow: 0 26px 86px rgba(0,0,0,0.48), 0 0 46px rgba(255,255,255,0.12), 0 0 70px rgba(244,114,182,0.08); }
+              .motion-safe-fx .recap-score-arrival.opacity-100::after { content: ''; position: absolute; inset: 0; width: 54%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.54), rgba(34,211,238,0.26), transparent); animation: recap-score-shimmer 1700ms ease-out both; pointer-events: none; }
+              .motion-safe-fx .recap-score-arrival.opacity-100 .recap-prism-aura { animation: recap-prism-pulse 1800ms ease-out both; }
+              .motion-safe-fx .recap-score-arrival.opacity-100 .recap-score-spark { animation: recap-score-spark-pop 1600ms ease-out both; }
+              .motion-safe-fx .recap-score-arrival.opacity-100 .recap-score-spark.delay-100 { animation-delay: 120ms; }
+              .motion-safe-fx .recap-total-reveal.opacity-100 { animation: recap-total-impact 1650ms cubic-bezier(.14,1.28,.14,1) both; box-shadow: 0 28px 110px rgba(0,0,0,0.54), 0 0 80px rgba(250,204,21,0.16), 0 0 90px rgba(34,211,238,0.12); }
+              .motion-safe-fx .recap-total-reveal.opacity-100::after { content: ''; position: absolute; inset: -24%; background: radial-gradient(circle at 50% 28%, rgba(250,204,21,0.42), transparent 36%), radial-gradient(circle at 35% 48%, rgba(244,114,182,0.3), transparent 42%), radial-gradient(circle at 68% 52%, rgba(34,211,238,0.3), transparent 46%), conic-gradient(from 120deg at 50% 42%, rgba(250,204,21,0.12), rgba(244,114,182,0.16), rgba(34,211,238,0.14), rgba(250,204,21,0.12)); pointer-events: none; animation: recap-prism-pulse 2100ms ease-out 1; }
               .tv-score-charge {
                 --score-charge: 0%;
                 isolation: isolate;
-                min-width: clamp(14rem, 22vw, 23rem);
+                min-width: clamp(11rem, 14vw, 17rem);
+                max-width: min(18rem, 24vw);
                 background:
                   linear-gradient(90deg, rgba(34,211,238,0.22) 0 var(--score-charge), rgba(15,23,42,0.82) var(--score-charge) 100%),
                   radial-gradient(circle at 18% 12%, rgba(255,255,255,0.2), rgba(255,255,255,0) 32%),
@@ -10357,7 +10985,7 @@ const PublicTV = ({ roomCode }) => {
                 z-index: 1;
               }
               .motion-safe-fx .tv-score-charge-scan { animation: score-charge-scan 2.4s ease-in-out infinite; }
-              .motion-safe-fx .tv-score-charge-pulse { animation: score-charge-hit 0.42s cubic-bezier(0.2, 0.75, 0.26, 1.25); }
+              .motion-safe-fx .tv-score-charge-pulse { animation: score-charge-hit 0.78s cubic-bezier(0.2, 0.75, 0.26, 1.25); }
               .tv-score-charge-meter {
                 position: absolute;
                 left: 0;
@@ -10402,13 +11030,15 @@ const PublicTV = ({ roomCode }) => {
                 top: -0.8rem;
                 right: 1.25rem;
                 z-index: 5;
-                color: #fef3c7;
+                background: linear-gradient(90deg, #fef3c7, #facc15, #fb7185, #22d3ee);
+                -webkit-background-clip: text;
+                color: transparent;
                 font-weight: 900;
                 font-size: clamp(1.1rem, 2vw, 1.85rem);
                 text-shadow: 0 0 16px rgba(250,204,21,0.76), 0 0 28px rgba(248,113,113,0.46);
               }
-              .motion-safe-fx .tv-score-delta { animation: score-delta-rise 0.88s ease-out both; }
-              .points-burst { position: absolute; width: 8px; height: 8px; border-radius: 9999px; background: #facc15; box-shadow: 0 0 12px rgba(250, 204, 21, 0.7); animation: points-burst 0.6s ease-out forwards; }
+              .motion-safe-fx .tv-score-delta { animation: score-delta-rise 1.55s ease-out both; }
+              .points-burst { position: absolute; width: 8px; height: 8px; border-radius: 9999px; background: #facc15; box-shadow: 0 0 12px rgba(250, 204, 21, 0.7); animation: points-burst 1.2s ease-out forwards; }
               .points-burst-a { top: -6px; left: 18px; }
               .points-burst-b { top: 6px; right: 10px; background: #22d3ee; box-shadow: 0 0 12px rgba(34, 211, 238, 0.7); }
               .points-burst-c { bottom: -4px; left: 40px; background: #f472b6; box-shadow: 0 0 12px rgba(244, 114, 182, 0.7); }
@@ -10762,6 +11392,85 @@ const PublicTV = ({ roomCode }) => {
                   0 0 calc(48px + (54px * var(--orb-energy-norm))) rgba(236,72,153,0.5);
                 animation: lobby-orb-float 2.8s ease-in-out infinite, lobby-orb-glow 2.8s ease-in-out infinite;
               }
+              .lobby-volley-orb-phase-inflate {
+                box-shadow:
+                  inset 0 0 34px rgba(255,255,255,0.32),
+                  inset 0 -14px 28px rgba(10,15,32,0.3),
+                  0 0 calc(44px + (54px * var(--orb-energy-norm))) rgba(103,232,249,0.62),
+                  0 0 calc(38px + (42px * var(--orb-energy-norm))) rgba(255,255,255,0.22);
+              }
+              .lobby-volley-orb-phase-lift {
+                box-shadow:
+                  inset 0 0 30px rgba(255,255,255,0.26),
+                  inset 0 -16px 28px rgba(10,15,32,0.35),
+                  0 0 calc(38px + (44px * var(--orb-energy-norm))) rgba(251,191,36,0.58),
+                  0 0 calc(48px + (60px * var(--orb-energy-norm))) rgba(236,72,153,0.46);
+              }
+              .lobby-volley-orb-phase-shape {
+                box-shadow:
+                  inset 0 0 30px rgba(255,255,255,0.25),
+                  inset 0 -14px 28px rgba(10,15,32,0.34),
+                  0 0 calc(38px + (50px * var(--orb-energy-norm))) rgba(236,72,153,0.58),
+                  0 0 calc(42px + (56px * var(--orb-energy-norm))) rgba(34,211,238,0.48);
+              }
+              .lobby-volley-orb-phase-orbit {
+                box-shadow:
+                  inset 0 0 34px rgba(255,255,255,0.28),
+                  inset 0 -14px 28px rgba(10,15,32,0.34),
+                  0 0 calc(52px + (70px * var(--orb-energy-norm))) rgba(52,211,153,0.58),
+                  0 0 calc(58px + (72px * var(--orb-energy-norm))) rgba(125,211,252,0.52);
+              }
+              .lobby-volley-orb-air-rings {
+                position: absolute;
+                inset: -22%;
+                border-radius: 9999px;
+                pointer-events: none;
+                z-index: 1;
+                opacity: calc(0.35 + (var(--orb-energy-norm) * 0.45));
+              }
+              .lobby-volley-orb-air-rings span {
+                position: absolute;
+                inset: 9%;
+                border-radius: 9999px;
+                border: 2px solid rgba(186,230,253,0.34);
+                box-shadow: 0 0 22px rgba(103,232,249,0.22);
+                animation: lobby-orb-air-ring 2.1s ease-out infinite;
+              }
+              .lobby-volley-orb-air-rings span:nth-child(2) { animation-delay: 0.62s; border-color: rgba(250,204,21,0.28); }
+              .lobby-volley-orb-air-rings span:nth-child(3) { animation-delay: 1.18s; border-color: rgba(244,114,182,0.26); }
+              .lobby-volley-orb-thrust {
+                position: absolute;
+                left: 50%;
+                top: 70%;
+                width: 38%;
+                height: 48%;
+                transform: translateX(-50%) scaleY(var(--lobby-volley-thrust-scale));
+                transform-origin: top center;
+                opacity: var(--lobby-volley-thrust-opacity);
+                pointer-events: none;
+                z-index: 1;
+                filter: blur(0.2px) drop-shadow(0 0 18px rgba(251,191,36,0.42));
+              }
+              .lobby-volley-orb-thrust-core {
+                position: absolute;
+                inset: 0 20%;
+                border-radius: 0 0 9999px 9999px;
+                background:
+                  radial-gradient(circle at 50% 12%, rgba(255,255,255,0.92), rgba(255,255,255,0) 28%),
+                  linear-gradient(180deg, rgba(250,204,21,0.86), rgba(236,72,153,0.42) 52%, rgba(34,211,238,0) 100%);
+                clip-path: polygon(50% 0%, 76% 28%, 64% 100%, 50% 78%, 35% 100%, 24% 28%);
+              }
+              .lobby-volley-orb-thrust-spark {
+                position: absolute;
+                top: 22%;
+                width: 9px;
+                height: 9px;
+                border-radius: 9999px;
+                background: rgba(250,204,21,0.9);
+                animation: lobby-orb-thrust-spark 0.72s ease-in-out infinite;
+              }
+              .lobby-volley-orb-thrust-spark-a { left: 24%; --spark-x: -7px; }
+              .lobby-volley-orb-thrust-spark-b { right: 22%; --spark-x: 8px; animation-delay: 0.18s; background: rgba(103,232,249,0.88); }
               .lobby-volley-orb-shell-relay {
                 animation:
                   lobby-orb-float 2.2s ease-in-out infinite,

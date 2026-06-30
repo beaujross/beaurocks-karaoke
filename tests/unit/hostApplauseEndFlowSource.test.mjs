@@ -65,3 +65,25 @@ test('backing review prompt stays in the stage rail and uses stable later-dismis
     'The stage rail prompt should appear as applause starts so hosts can review while the room is already in the end-of-song beat.',
   );
 });
+test('host performance recap carries next-up and applause has a persisted fallback deadline', () => {
+  assert.match(
+    source,
+    /const buildNextUpSnapshot = useCallback\(\(excludeSongId = ''\) => \{[\s\S]*singerAvatar: String\(song\?\.singerAvatar \|\| song\?\.avatar \|\| song\?\.emoji \|\| ''\)\.trim\(\),[\s\S]*lineupPosition: index \+ 1[\s\S]*\}, \[assigned, queue\]\);/s,
+    'HostQueueTab should capture the ready lineup when finalizing a performance.',
+  );
+  assert.match(
+    source,
+    /const nextUpSnapshot = buildNextUpSnapshot\(id\);[\s\S]*nextUpSnapshot,[\s\S]*nextUpSnapshotCreatedAtMs: performanceEndedAtMs,/s,
+    'The finalized recap payload should carry a stable next-up snapshot for the public TV recap loop.',
+  );
+  assert.match(
+    source,
+    /autoFinalizeDeadlineMs[\s\S]*applauseSubject = autoFinalize[\s\S]*autoFinalize: true,[\s\S]*autoFinalizeSongId: songId,[\s\S]*autoFinalizeDeadlineMs/s,
+    'Auto-finalizing applause should persist its recovery deadline in the room subject.',
+  );
+  assert.match(
+    source,
+    /applause_deadline_elapsed[\s\S]*runUpdateStatus\(pendingSongId, 'performed'\)/s,
+    'The host should finalize from the persisted applause deadline when the TV countdown path does not report back.',
+  );
+});

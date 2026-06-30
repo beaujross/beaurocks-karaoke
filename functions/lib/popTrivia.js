@@ -5,15 +5,19 @@ const DEFAULT_POP_TRIVIA_MAX_QUESTIONS = 4;
 const POP_TRIVIA_PENDING_RETRY_AFTER_MS = 45 * 1000;
 const POP_TRIVIA_FAILED_RETRY_AFTER_MS = 5 * 60 * 1000;
 const POP_TRIVIA_FACT_HEAVY_PATTERN = /\b(what year|which year|release(?:d)?|release year|billboard|chart|grammy|award|which album|album\b|soundtrack|label\b|music video|director\b|producer\b|written by|city\b|country\b|born\b|debut|number one|top 10|peak(?:ed)? at)\b/i;
-const POP_TRIVIA_LOW_QUALITY_PATTERN = /\b(which production trick is common|what usually helps most|classic crowd move|sets up the story or mood|artist might use|like the kind .* might use|random tempo changes|guitar cable check|start packing up|go completely silent|turning away from the crowd|ignoring the rhythm)\b/i;
-const POP_TRIVIA_KARAOKE_ANCHOR_PATTERN = /\b(karaoke|singer|sing|sings|mic|microphone|stage|crowd|room|hook|chorus|verse|bridge|intro|outro|beat|rhythm|tempo|key|melody|harmony|lyric|backing track|track|performance|performer|energy|join in|sing-along|singalong)\b/i;
+const POP_TRIVIA_LOW_QUALITY_PATTERN = /\b(which production trick is common|what usually helps most|classic crowd move|sets up the story or mood|artist might use|like the kind .* might use|random tempo changes|guitar cable check|start packing up|go completely silent|turning away from the crowd|ignoring the rhythm|singer strategy|crowd-energy|current singer|live karaoke performance)\b/i;
+const POP_TRIVIA_SONG_ANCHOR_PATTERN = /\b(hook|chorus|verse|bridge|intro|outro|beat|rhythm|tempo|key|melody|harmony|lyric|title phrase|song title|artist|band|duo|group|fan|fans|fact|factoid|album|release|genre|soundtrack)\b/i;
+const POP_TRIVIA_PERFORMER_REFERENCE_PATTERN = /\b(karaoke|singer|sings|sing it|mic|microphone|stage|crowd|room|performance|performer|backing track|join in|sing-along|singalong)\b/i;
 const POP_TRIVIA_ALLOWED_CATEGORIES = new Set([
   "arrangement",
   "crowd_moment",
+  "artist_fact",
+  "fan_fact",
   "hook_recognition",
   "performance",
   "safe_fact",
   "singalong",
+  "song_fact",
 ]);
 
 const getTimestampMs = (value) => {
@@ -134,55 +138,91 @@ const buildPopTriviaSongContext = (song = {}) => {
 const buildFallbackPopTriviaSeedRows = (song = {}) => {
   const context = buildPopTriviaSongContext(song);
   const songTitle = cleanText(context.songTitle || "this song", "this song");
-  const artist = cleanText(context.artist || "the artist", "the artist");
-  const singerName = cleanText(context.singerName || "the singer", "the singer");
-  const hasLove = /\blove|heart|baby|kiss|sweet|dream\b/i.test(songTitle);
-  const hasNight = /\bnight|dance|party|fire|hot|uptown|funk|groove\b/i.test(songTitle);
-  const emotionalCue = hasLove
-    ? "the feeling behind the title"
-    : hasNight
-      ? "the room-energy cue in the title"
-      : "the title phrase";
-  const crowdMove = hasNight ? "Move with the beat" : "Sing the hook back";
+  const artist = cleanText(context.artist || "the listed artist", "the listed artist");
+  const album = cleanText(context.metadata?.album || "");
+  const releaseYear = cleanText(context.metadata?.releaseYear || "");
+  const genre = cleanText(context.metadata?.genre || "");
 
-  return [
+  const rows = [
     {
-      q: `For karaoke, what should the room listen for first in "${songTitle}"?`,
-      correct: "The title or hook phrase",
-      w1: "A quiet verse detail",
-      w2: "A random crowd chant",
-      w3: "The final fade-out",
+      q: `Which artist is listed for "${songTitle}"?`,
+      correct: artist,
+      w1: "A different artist",
+      w2: "A playlist curator",
+      w3: "A fan nickname",
+      category: "artist_fact",
+      source: "fallback",
+    },
+    {
+      q: `For "${songTitle}" by ${artist}, what is the safest fan clue to recognize first?`,
+      correct: "The title phrase",
+      w1: "A random backstage rumor",
+      w2: "An unrelated nickname",
+      w3: "A fake chart record",
       category: "hook_recognition",
       source: "fallback",
     },
-    {
-      q: `If ${singerName} wants "${songTitle}" to land fast, what is the strongest crowd cue?`,
-      correct: crowdMove,
-      w1: "Wait silently for the bridge",
-      w2: "Ignore the chorus timing",
-      w3: "Guess a random backstage fact",
-      category: "crowd_moment",
+  ];
+
+  if (releaseYear) {
+    const yearNumber = Number(releaseYear);
+    const wrongYears = Number.isFinite(yearNumber) && yearNumber > 1900
+      ? [String(yearNumber - 3), String(yearNumber + 2), String(yearNumber + 7)]
+      : ["A different year", "The previous decade", "Unknown"];
+    rows.push({
+      q: `What release year is listed for "${songTitle}" by ${artist}?`,
+      correct: releaseYear,
+      w1: wrongYears[0],
+      w2: wrongYears[1],
+      w3: wrongYears[2],
+      category: "song_fact",
       source: "fallback",
-    },
-    {
-      q: `What makes "${songTitle}" by ${artist} safest as a pop-up trivia prompt?`,
-      correct: emotionalCue,
-      w1: "A random trivia rumor",
-      w2: "A made-up backstage story",
-      w3: "A fake fan nickname",
+    });
+  } else if (album) {
+    rows.push({
+      q: `Which album is listed with "${songTitle}" by ${artist}?`,
+      correct: album,
+      w1: "A greatest-hits playlist",
+      w2: "A tour poster",
+      w3: "A fan-made remix",
+      category: "song_fact",
+      source: "fallback",
+    });
+  } else {
+    rows.push({
+      q: `What kind of trivia clue is safest for "${songTitle}" by ${artist}?`,
+      correct: "A song or artist clue",
+      w1: "An unrelated music rumor",
+      w2: "A made-up release year",
+      w3: "An unrelated music prompt",
       category: "safe_fact",
       source: "fallback",
-    },
-    {
-      q: `When the hook of "${songTitle}" arrives, what should the karaoke screen help everyone do?`,
-      correct: "Find the singalong moment",
-      w1: "Hide the lyric timing",
-      w2: "Change the song key randomly",
-      w3: "Mute the backing rhythm",
-      category: "singalong",
+    });
+  }
+
+  rows.push({
+    q: `Which detail best keeps this pop-up trivia about "${songTitle}"?`,
+    correct: artist === "Unknown" ? "The requested song title" : `The song by ${artist}`,
+    w1: "An unrelated show detail",
+    w2: "A playlist note",
+    w3: "A random playlist fact",
+    category: "fan_fact",
+    source: "fallback",
+  });
+
+  if (genre && rows.length < DEFAULT_POP_TRIVIA_MAX_QUESTIONS) {
+    rows.push({
+      q: `Which genre is listed for "${songTitle}" by ${artist}?`,
+      correct: genre,
+      w1: "A different genre",
+      w2: "A venue type",
+      w3: "A chart position",
+      category: "song_fact",
       source: "fallback",
-    },
-  ];
+    });
+  }
+
+  return rows.slice(0, DEFAULT_POP_TRIVIA_MAX_QUESTIONS);
 };
 const normalizePopTriviaSeedRows = (rows = [], options = {}) => {
   if (!Array.isArray(rows)) return [];
@@ -281,14 +321,20 @@ const normalizePopTriviaSongCache = (value = {}) => {
   Object.entries(value).forEach(([key, entry]) => {
     const safeKey = sanitizePopTriviaCacheKey(key);
     if (!safeKey || !entry || typeof entry !== "object" || Array.isArray(entry)) return;
+    const cacheSong = {
+      songTitle: cleanText(entry?.songTitle || ""),
+      artist: cleanText(entry?.artist || ""),
+      source: cleanText(entry?.source || "cache") || "cache",
+    };
+    const cacheContext = buildPopTriviaSongContext(cacheSong);
     const seedRows = normalizePopTriviaSeedRows(entry?.seedRows || entry?.rows || entry?.questions || [], {
       limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
-    });
+    }).filter((row) => !isLowQualityPopTriviaRow(row, cacheContext));
     if (!seedRows.length) return;
     next[safeKey] = {
       seedRows,
-      songTitle: cleanText(entry?.songTitle || ""),
-      artist: cleanText(entry?.artist || ""),
+      songTitle: cacheSong.songTitle,
+      artist: cacheSong.artist,
       source: cleanText(entry?.source || "ai") || "ai",
       updatedAtMs: Math.max(0, Number(entry?.updatedAtMs || getTimestampMs(entry?.updatedAt) || 0)),
     };
@@ -325,8 +371,9 @@ const getPopTriviaRowQualityScore = (entry = {}, context = {}) => {
   if (question.length >= 35 && question.length <= 150) score += 2;
   else score -= 2;
 
-  if (includesMeaningfulSongText(question, context)) score += 3;
-  if (POP_TRIVIA_KARAOKE_ANCHOR_PATTERN.test(haystack)) score += 2;
+  if (includesMeaningfulSongText(question, context)) score += 4;
+  if (POP_TRIVIA_SONG_ANCHOR_PATTERN.test(haystack)) score += 2;
+  if (POP_TRIVIA_PERFORMER_REFERENCE_PATTERN.test(haystack)) score -= 6;
   if (POP_TRIVIA_ALLOWED_CATEGORIES.has(cleanText(entry?.category || "").toLowerCase())) score += 1;
   if (optionText.length >= 4) score += 1;
   if (optionText.some((option) => option.length > 55)) score -= 2;
@@ -348,6 +395,7 @@ const isLowQualityPopTriviaRow = (entry = {}, context = {}) => {
     : [entry?.correct, entry?.w1, entry?.w2, entry?.w3];
   const haystack = [question, ...options.map((option) => cleanText(option)).filter(Boolean)].join(" ");
   if (!question || POP_TRIVIA_LOW_QUALITY_PATTERN.test(haystack)) return true;
+  if (POP_TRIVIA_PERFORMER_REFERENCE_PATTERN.test(haystack)) return true;
   if (isFactHeavyPopTriviaRow(entry) && context?.metadataConfidence === "sparse") return true;
   if (["youtube", "custom"].includes(context?.sourceMode) && isFactHeavyPopTriviaRow(entry)) return true;
   return getPopTriviaRowQualityScore(entry, context) < 1;

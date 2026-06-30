@@ -110,7 +110,12 @@ const BingoGame = ({ gameState, onSuggest, view, onClose }) => {
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 animate-pulse"></div> 
             
             {showWin && bingoWin && (
-                <div className="absolute inset-0 z-[130] bg-black/80 flex items-center justify-center" onClick={() => setShowWin(false)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setShowWin(false); }}
+                <div
+                    className="absolute inset-0 z-[130] bg-black/80 flex items-center justify-center"
+                    onClick={isMobile ? () => setShowWin(false) : undefined}
+                    role={isMobile ? "button" : "status"}
+                    tabIndex={isMobile ? 0 : undefined}
+                    onKeyDown={isMobile ? (e) => { if (e.key === 'Escape' || e.key === 'Enter') setShowWin(false); } : undefined}
                 >
                     <div className="max-w-3xl w-full bg-zinc-900/95 border border-white/10 rounded-3xl p-10 text-center">
                         <div className="text-sm uppercase tracking-[0.24em] text-zinc-400 mb-2">Bingo Win</div>
@@ -119,7 +124,7 @@ const BingoGame = ({ gameState, onSuggest, view, onClose }) => {
                         {bingoWin.reward && (
                             <div className="text-lg text-cyan-200">Reward: {bingoWin.reward}</div>
                         )}
-                        <div className="text-sm text-zinc-400 mt-6">Tap to continue</div>
+                        <div className="text-sm text-zinc-400 mt-6">{isMobile ? 'Tap to continue' : 'Continuing automatically'}</div>
                     </div>
                 </div>
             )}

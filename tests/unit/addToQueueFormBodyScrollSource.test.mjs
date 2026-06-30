@@ -18,12 +18,12 @@ test('AddToQueueFormBody keeps YouTube/autocomplete results inside a dedicated s
   );
   assert.match(
     source,
-    /host-autocomplete-results absolute left-0 right-0 top-full mt-2 z-50 flex max-h-\[min\(72dvh,calc\(100dvh-8rem\)\)\] flex-col overflow-hidden/,
-    'Floating autocomplete results should stay bounded to viewport height and clip into an internal scroller',
+    /host-autocomplete-results absolute left-0 right-0 top-full mt-2 z-50 flex max-h-\[clamp\(20rem,calc\(100dvh-9rem\),82dvh\)\] flex-col overflow-hidden/,
+    'Floating autocomplete results should use the available viewport height while still clipping into an internal scroller',
   );
   assert.match(
     source,
-    /mt-2 flex min-h-0 max-h-\[min\(56dvh,36rem\)\] flex-1 flex-col overflow-hidden/,
-    'Docked add-tab results should also keep a bounded internal scroll lane',
+    /mt-2 flex min-h-0 flex-1 basis-0 flex-col overflow-hidden/,
+    'Docked add-tab results should fill the available add workspace and keep an internal scroll lane',
   );
 });
