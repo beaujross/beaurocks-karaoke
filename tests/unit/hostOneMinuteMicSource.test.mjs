@@ -8,15 +8,14 @@ const source = readFileSync('src/apps/Host/components/HostQueueTab.jsx', 'utf8')
 test('HostQueueTab opens and resolves One-Minute Mic continue-or-rotate decisions', () => {
   assert.match(source, /AUDIENCE_DECISION_TYPES/);
   assert.match(source, /buildContinueOrRotateDecision/);
-  assert.match(source, /resolveAudienceDecision/);
   assert.match(source, /oneMinuteMicEnabled/);
   assert.match(source, /performanceProgressionMode \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'one_minute_mic'/);
   assert.match(source, /oneMinuteMicOpeningWindowSec/);
   assert.match(source, /oneMinuteMicVoteWindowSec/);
   assert.match(source, /audienceDecision: buildContinueOrRotateDecision/);
   assert.match(source, /One-Minute Mic decision failed to open/);
-  assert.match(source, /resolution\.resolutionAction === 'wrap_and_rotate'/);
-  assert.match(source, /handleFinishPerformance\(subjectSongId\)/);
+  assert.match(source, /callFunction\('syncOneMinuteMicRoom'/);
+  assert.match(source, /Wrapping with a quick fade/);
   assert.match(source, /Crowd unlocked the rest of the song\./);
 });
 

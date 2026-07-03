@@ -96,6 +96,15 @@ The dropdown should then show detailed controls in this order:
 4. Request, queue, search, and ready-check details
 
 This keeps the interaction consistent: choose the operating model first, then tune the underlying mechanics.
+### Audience Display Control Model
+
+Audience-on-TV controls should follow the same hierarchy as room automation controls:
+
+- Room setup owns the operating model: Host-Led, Assisted Host, or Crowd-Driven. This is a launch-time intent decision.
+- Audience > On TV owns persistent casting configuration: selected guests, Commentator Row, Lobby Wall, reaction visibility, and role-based fills like co-hosts or most-active guests.
+- The TV dropdown owns fast show-time toggles only: Off, Commentator Row, and Lobby Wall.
+
+This prevents dropdown navigation from becoming a second setup screen while still giving the host a fast way to turn the audience layer on or off during a live night. Any mode that changes who participates, who is selected, or how reactions behave belongs in the Audience tab. Any action that simply changes what Public TV is showing now can live in the TV dropdown.
 
 ## Acceptance Criteria
 

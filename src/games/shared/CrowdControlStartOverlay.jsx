@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- shared game module exports a pure launch-state helper used by tests and runtime. */
 import React from 'react';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value || 0)));

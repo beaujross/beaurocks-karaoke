@@ -216,10 +216,10 @@ test('HostQueueTab renders the extracted queue runtime shell with a TV library l
 
   const markup = await renderQueueTabMarkup();
 
-  assert.match(markup, /data-feature-id="host-panel-layout-controls"/);
-  assert.match(markup, /Expand All/);
-  assert.match(markup, /Collapse All/);
-  assert.match(markup, /Reset/);
+  assert.doesNotMatch(markup, /data-feature-id="host-panel-layout-controls"/);
+  assert.doesNotMatch(markup, /Expand All/);
+  assert.doesNotMatch(markup, /Collapse All/);
+  assert.doesNotMatch(markup, /Reset/);
   assert.match(markup, /data-feature-id="queue-workspace-top-chrome"/);
   assert.match(markup, /data-feature-id="host-live-ops-panel"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
@@ -236,7 +236,7 @@ test('HostQueueTab still renders the runtime shell when its UI is hidden', async
     commandPaletteRequestToken: 3,
   });
 
-  assert.match(markup, /data-feature-id="host-panel-layout-controls"/);
+  assert.doesNotMatch(markup, /data-feature-id="host-panel-layout-controls"/);
   assert.match(markup, /data-feature-id="host-live-ops-panel"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.doesNotMatch(markup, /data-feature-id="panel-tv-moments"/);
@@ -523,7 +523,10 @@ test('HostQueueTab protects the live lineup and exposes quick between-song inser
   });
 
   assert.match(markup, /Up Next/);
-  assert.match(markup, /Ready Queue/);
+  assert.match(markup, /Live Queue Order/);
+  assert.match(markup, /Next/);
+  assert.match(markup, /Then/);
+  assert.match(markup, /Q3/);
   assert.doesNotMatch(markup, /Lock the lineup|Lineup protected|Queue needs attention/);
   assert.doesNotMatch(markup, /Trivia Next/);
   assert.doesNotMatch(markup, /Winner Next/);

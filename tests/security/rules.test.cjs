@@ -877,6 +877,45 @@ async function run() {
         })
       );
     }],
+
+    ["firestore: audience user can create commentator row reaction metadata", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/reactions/reaction_commentator_hot_take`).set({
+          roomCode: ROOM_CODE,
+          type: "commentator_hot_take",
+          count: 1,
+          uid: GUEST_UID,
+          userName: "Guest",
+          avatar: "????",
+          isVip: false,
+          isFree: true,
+          audienceDisplaySessionId: "audience_display_commentator_row_123",
+          audienceDisplayMode: "commentator_row",
+          audienceDisplayRole: "commentator",
+          timestamp: new Date(),
+        })
+      );
+    }],
+
+    ["firestore: audience user cannot create invalid commentator row role", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/reactions/reaction_commentator_invalid_role`).set({
+          roomCode: ROOM_CODE,
+          type: "commentator_hot_take",
+          count: 1,
+          uid: GUEST_UID,
+          userName: "Guest",
+          avatar: "????",
+          isFree: true,
+          audienceDisplaySessionId: "audience_display_commentator_row_123",
+          audienceDisplayMode: "commentator_row",
+          audienceDisplayRole: "host",
+        })
+      );
+    }],
+
     ["firestore: audience user cannot spoof reaction uid", async () => {
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
       await assertFails(

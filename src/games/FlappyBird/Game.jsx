@@ -698,14 +698,6 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
         return () => cancelAnimationFrame(frameId);
     }, [gameStateLocal.status, isController, onGameOver, soundOptions]);
 
-    const setDifficulty = (difficultyKey) => {
-        if (!isController) return;
-        const nextDifficulty = normalizeDifficulty(difficultyKey);
-        setGameStateLocal((previous) => ({
-            ...previous,
-            difficulty: nextDifficulty
-        }));
-    };
 
     const liveVoice = buildVoiceSignal({
         pitch,

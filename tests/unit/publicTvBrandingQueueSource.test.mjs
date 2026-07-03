@@ -121,6 +121,26 @@ test('PublicTV score and hype meter share charged stage HUD styling', () => {
   );
   assert.match(
     tvSource,
+    /const SCORE_HUD_FLOURISH_MS = 2400;/,
+    'Score gain flourishes should stay mounted long enough for the TV audience to notice them.',
+  );
+  assert.match(
+    tvSource,
+    /const showPulse = flourishActive \|\| scoreChanging;[\s\S]*const showBurst = flourishActive && scoreDelta > 0;/,
+    'Score burst visuals should not disappear as soon as the count-up finishes.',
+  );
+  assert.match(
+    tvSource,
+    /tv-score-flourish-ring[\s\S]*points-burst-e[\s\S]*points-burst-f[\s\S]*tv-score-delta/,
+    'Score gains should include a larger halo and extra particle flourish around the delta badge.',
+  );
+  assert.match(
+    tvSource,
+    /score-charge-hit 2\.05s[\s\S]*score-delta-rise 2\.35s[\s\S]*points-burst 2\.2s/,
+    'Score HUD update animations should run longer than the previous quick pop.',
+  );
+  assert.match(
+    tvSource,
     /className=\{`tv-hype-meter[\s\S]*tv-hype-meter-inferno[\s\S]*tv-hype-meter-hot[\s\S]*tv-hype-meter-charged/,
     'The hype meter should expose charge tiers as combo builds.',
   );

@@ -5,6 +5,7 @@ const {
   castDoodleOkeVote,
   setDoodleSubmissionApproval,
   syncDoodleOkePublicProjection,
+  finalizeDoodleOkeRound,
 } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
@@ -28,6 +29,7 @@ const roomRef = db.doc(`${ROOT}/rooms/${ROOM_CODE}`);
 const projectionRef = db.doc(`${ROOT}/doodle_oke_public/${ROOM_CODE}_${PROMPT_ID}`);
 const submissionRef = db.doc(`${ROOT}/doodle_submissions/${ROOM_CODE}_${PROMPT_ID}_${PARTICIPANT_UID}`);
 const voteRef = db.doc(`${ROOT}/doodle_votes/vote_${ROOM_CODE}_${PROMPT_ID}_${VOTER_UID}`);
+const awardRef = db.doc(`${ROOT}/room_awards/doodle_${ROOM_CODE}_${PROMPT_ID}`);
 
 const roomUserRefFor = (uid) => db.doc(`${ROOT}/room_users/${ROOM_CODE}_${uid}`);
 
@@ -61,6 +63,7 @@ async function resetState({
     deleteIfPresent(voteRef),
     deleteIfPresent(submissionRef),
     deleteIfPresent(projectionRef),
+    deleteIfPresent(awardRef),
     deleteIfPresent(roomRef),
     deleteIfPresent(roomUserRefFor(PARTICIPANT_UID)),
     deleteIfPresent(roomUserRefFor(VOTER_UID)),
@@ -293,6 +296,90 @@ async function run() {
       }));
       assert.equal(duplicate.ok, true);
       assert.equal(duplicate.duplicate, true);
+    }],
+
+    ["public tv finalizes doodle winner and awards points once", async () => {
+      await resetState({
+        status: "drawing",
+        requireReview: false,
+        roomUsers: [PARTICIPANT_UID, VOTER_UID],
+      });
+
+      await submitDoodleOkeEntry.run(requestFor(PARTICIPANT_UID, {
+        roomCode: ROOM_CODE,
+        promptId: PROMPT_ID,
+        name: "Participant",
+        avatar: ":D",
+        image: SAMPLE_IMAGE,
+      }));
+
+      await roomRef.set({
+        doodleOke: {
+          prompt: "Draw the chorus",
+          promptId: PROMPT_ID,
+          status: "voting",
+          requireReview: false,
+          startedAt: Date.now(),
+          endsAt: Date.now() - 1000,
+          guessEndsAt: Date.now() + 60000,
+        },
+      }, { merge: true });
+
+      await castDoodleOkeVote.run(requestFor(VOTER_UID, {
+        roomCode: ROOM_CODE,
+        promptId: PROMPT_ID,
+        targetUid: PARTICIPANT_UID,
+      }));
+
+      await roomRef.set({
+        doodleOke: {
+          prompt: "Draw the chorus",
+          promptId: PROMPT_ID,
+          status: "reveal",
+          requireReview: false,
+          startedAt: Date.now(),
+          endsAt: Date.now() - 120000,
+          guessEndsAt: Date.now() - 1000,
+        },
+      }, { merge: true });
+
+      const result = await finalizeDoodleOkeRound.run(requestFor(null, {
+        roomCode: ROOM_CODE,
+        promptId: PROMPT_ID,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.equal(result.finalized, true);
+      assert.equal(result.duplicate, false);
+      assert.equal(result.winner.uid, PARTICIPANT_UID);
+      assert.equal(result.winner.points, 150);
+      assert.equal(result.awardedCount, 1);
+      assert.equal(result.awardedPoints, 150);
+
+      let [roomSnap, userSnap, awardSnap] = await Promise.all([
+        roomRef.get(),
+        roomUserRefFor(PARTICIPANT_UID).get(),
+        awardRef.get(),
+      ]);
+      assert.equal(roomSnap.get("doodleOke.winner.uid"), PARTICIPANT_UID);
+      assert.equal(roomSnap.get("doodleOke.winnerAwardedBy"), "server");
+      assert.equal(roomSnap.get("doodleOke.winnerAwardedCount"), 1);
+      assert.equal(roomSnap.get("doodleOke.winnerAwardedPoints"), 150);
+      assert.equal(userSnap.get("points"), 150);
+      assert.equal(awardSnap.exists, true);
+      assert.equal(awardSnap.get("source"), "doodle_oke");
+
+      const duplicate = await finalizeDoodleOkeRound.run(requestFor(null, {
+        roomCode: ROOM_CODE,
+        promptId: PROMPT_ID,
+      }));
+      assert.equal(duplicate.ok, true);
+      assert.equal(duplicate.duplicate, true);
+      assert.equal(duplicate.awardedCount, 1);
+      assert.equal(duplicate.awardedPoints, 150);
+
+      userSnap = await roomUserRefFor(PARTICIPANT_UID).get();
+      assert.equal(userSnap.get("points"), 150);
     }],
   ];
 

@@ -32,7 +32,7 @@ test('audienceDecision normalizes One-Minute Mic continue-or-rotate defaults', (
   assert.equal(decision.displayMode, AUDIENCE_DECISION_DISPLAY_MODES.glassOverlay);
   assert.equal(decision.durationSec, 12);
   assert.equal(decision.openingWindowSec, 60);
-  assert.equal(decision.minimumVotes, 3);
+  assert.equal(decision.minimumVotes, 1);
   assert.equal(decision.thresholdMode, 'choice_threshold');
   assert.equal(decision.thresholdChoiceId, 'keep_singing');
   assert.equal(decision.thresholdPct, 55);
@@ -58,6 +58,21 @@ test('audienceDecision resolves continue-or-rotate only when keep singing clears
   assert.equal(passing.resultChoice, 'keep_singing');
   assert.equal(passing.resolutionAction, 'continue_song');
   assert.equal(passing.decision.status, AUDIENCE_DECISION_STATUS.resolved);
+
+  const smallRoomPassing = resolveAudienceDecision({
+    type: AUDIENCE_DECISION_TYPES.continueOrRotate,
+    openedAtMs: 1000,
+    closesAtMs: 13_000,
+    votesByUid: {
+      guest_1: 'keep_singing',
+    },
+  }, {
+    nowMs: 13_000,
+  });
+
+  assert.equal(smallRoomPassing.resolved, true);
+  assert.equal(smallRoomPassing.resultChoice, 'keep_singing');
+  assert.equal(smallRoomPassing.resolutionAction, 'continue_song');
 
   const rotating = resolveAudienceDecision({
     type: AUDIENCE_DECISION_TYPES.continueOrRotate,
@@ -148,6 +163,13 @@ test('audienceDecision adapts generic decisions back into release-window present
     id: 'one_minute_vote_1',
     type: AUDIENCE_DECISION_TYPES.continueOrRotate,
     status: AUDIENCE_DECISION_STATUS.open,
+    songTitle: 'Valerie',
+    artistName: 'Amy Winehouse',
+    singerName: 'Jamie',
+    choices: [
+      { id: 'keep_singing', label: 'Keep Singing', detail: 'Jamie', subline: 'Amy Winehouse', resultAction: 'continue_song', tone: 'cyan' },
+      { id: 'next_singer', label: 'Next Singer', detail: 'Rotate the mic', subline: 'Keep the queue moving', resultAction: 'wrap_and_rotate', tone: 'pink' },
+    ],
     openedAtMs: 1000,
     closesAtMs: 13_000,
     votesByUid: {
@@ -161,8 +183,12 @@ test('audienceDecision adapts generic decisions back into release-window present
   assert.equal(releaseWindow.active, true);
   assert.equal(releaseWindow.subjectType, AUDIENCE_DECISION_TYPES.continueOrRotate);
   assert.equal(releaseWindow.governanceMode, 'crowd_vote');
+  assert.equal(releaseWindow.subjectTitle, 'Valerie');
+  assert.equal(releaseWindow.subjectSubtitle, 'Amy Winehouse');
   assert.equal(releaseWindow.choiceLabels.slot_scene, 'Keep Singing');
   assert.equal(releaseWindow.choiceLabels.keep_queue_moving, 'Next Singer');
+  assert.equal(releaseWindow.choiceSublines.slot_scene, 'Amy Winehouse');
+  assert.equal(releaseWindow.choiceSublines.keep_queue_moving, 'Keep the queue moving');
   assert.equal(releaseWindow.choiceAudienceDecisionIds.slot_scene, 'keep_singing');
   assert.equal(releaseWindow.choiceAudienceDecisionIds.keep_queue_moving, 'next_singer');
   assert.deepEqual(releaseWindow.votesByUid, {

@@ -157,6 +157,11 @@ import {
     inferSpotlightKind,
     normalizeAudienceSpotlightMode,
 } from '../../lib/audienceSpotlight';
+import {
+    AUDIENCE_DISPLAY_MODES,
+    getAudienceDisplayCommentatorReactions,
+    normalizeAudienceDisplay,
+} from '../../lib/audienceDisplay';
 import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
 import {
     AUDIENCE_FEATURE_ACCESS_LEVELS,
@@ -193,6 +198,27 @@ import {
 import { shouldShowStreamlinedIdleRequestCard } from './lib/singerHomeState.js';
 
 const AUDIENCE_EMAIL_LINK_STORAGE_KEY = 'beaurocks_audience_email_link';
+const BONUS_DROP_AUDIENCE_CLAIM_MS = 15000;
+const POINTS_STOREFRONT_ROOM_OFFER_LIMIT = 2;
+const POINTS_STOREFRONT_PERSONAL_OFFER_LIMIT = 3;
+const POINTS_STOREFRONT_EARN_LIMIT = 2;
+
+const sortPointStorefrontOffers = (offers = []) => [...offers].sort((left, right) => {
+    const leftAmount = Number(left?.amount || 0) || 0;
+    const rightAmount = Number(right?.amount || 0) || 0;
+    if (leftAmount !== rightAmount) return leftAmount - rightAmount;
+    return (Number(left?.points || 0) || 0) - (Number(right?.points || 0) || 0);
+});
+
+const getPointOfferPackageVisual = (offer = {}, index = 0, kind = 'personal') => {
+    const points = Number(offer?.points || 0) || 0;
+    const roomOffer = kind === 'room';
+    if (roomOffer && points >= 5000) return { label: 'Party crate', icon: 'fa-box-open', className: 'from-amber-200 via-orange-300 to-pink-300 text-slate-950' };
+    if (roomOffer) return { label: index === 0 ? 'Crowd bundle' : 'Room crate', icon: 'fa-people-group', className: 'from-emerald-200 via-cyan-200 to-sky-300 text-slate-950' };
+    if (points >= 7000) return { label: 'Vault', icon: 'fa-vault', className: 'from-fuchsia-200 via-pink-200 to-amber-200 text-slate-950' };
+    if (points >= 3000) return { label: 'Point stack', icon: 'fa-layer-group', className: 'from-violet-200 via-fuchsia-200 to-pink-200 text-slate-950' };
+    return { label: 'Coin bundle', icon: 'fa-coins', className: 'from-cyan-200 via-sky-200 to-emerald-200 text-slate-950' };
+};
 
 const resolveRoomUserUid = (roomUser = {}, fallbackId = '') => {
     const directUid = String(roomUser?.uid || '').trim();
@@ -1190,6 +1216,13 @@ const SingerApp = ({ roomCode, uid }) => {
     const isAudienceSpotlightedGuest = spotlightKind === SPOTLIGHT_KINDS.audience
         && !!spotlightAudienceUid
         && spotlightAudienceUid === String(activeUid || '').trim();
+    const audienceDisplay = useMemo(
+        () => normalizeAudienceDisplay(room?.audienceDisplay || {}),
+        [room?.audienceDisplay]
+    );
+    const isAudienceDisplayCommentator = audienceDisplay.mode === AUDIENCE_DISPLAY_MODES.commentatorRow
+        && audienceDisplay.selectedUids.includes(String(activeUid || '').trim());
+    const audienceDisplayReactionOptions = useMemo(() => getAudienceDisplayCommentatorReactions(), []);
     const runOfShowOperatorRole = useMemo(() => getRunOfShowOperatorRole({
         uid: activeUid || user?.uid || '',
         hostUid: room?.hostUid || '',
@@ -1250,6 +1283,9 @@ const SingerApp = ({ roomCode, uid }) => {
     const isAudienceCoHostDecision = audienceReleaseGovernanceMode === 'cohost_vote';
     const isAudienceSongFaceOffDecision = audienceReleaseSubjectType === 'queue_faceoff';
     const isAudienceSlotFillDecision = audienceReleaseSubjectType === 'slot_fill_choice';
+    const isAudienceOneMinuteMicDecision = audienceReleaseSubjectType === 'continue_or_rotate';
+    const isAudienceSkipPerformanceDecision = audienceReleaseSubjectType === 'skip_performance';
+    const isAudiencePerformanceProgressionDecision = isAudienceOneMinuteMicDecision || isAudienceSkipPerformanceDecision;
     const isSelfServeAudienceDecision = audienceReleaseOrigin.startsWith('self_serve_');
     const isSelfServeOpenStageDecision = audienceReleaseOrigin === 'self_serve_open_stage_auto';
     const isSelfServeSpotlightAuctionDecision = audienceReleaseOrigin === 'self_serve_spotlight_auction_auto';
@@ -1262,17 +1298,42 @@ const SingerApp = ({ roomCode, uid }) => {
             : null),
         [audienceReleaseTimeLeftSec, audienceReleaseWindow, isSelfServeAudienceDecision, releaseWindowTally.totalVotes]
     );
+    const performanceAudienceDecisionPresentation = useMemo(() => {
+        const totalVotes = releaseWindowTally.totalVotes || 0;
+        if (isAudienceOneMinuteMicDecision) {
+            return {
+                eyebrow: 'One-Minute Mic',
+                helper: 'Vote now. The room decides if this singer unlocks the rest of the song or rotates.',
+                badgeLabel: 'Crowd Decides',
+                tallyLabel: String(totalVotes) + ' vote' + (totalVotes === 1 ? '' : 's'),
+            };
+        }
+        if (isAudienceSkipPerformanceDecision) {
+            return {
+                eyebrow: 'Crowd Rescue Vote',
+                helper: 'Moving on requires a strong crowd signal.',
+                badgeLabel: 'Protected Vote',
+                tallyLabel: String(totalVotes) + ' vote' + (totalVotes === 1 ? '' : 's'),
+            };
+        }
+        return null;
+    }, [isAudienceOneMinuteMicDecision, isAudienceSkipPerformanceDecision, releaseWindowTally.totalVotes]);
+    const audienceReleasePanelProminent = isAudiencePerformanceProgressionDecision || isSelfServeAudienceDecision;
+    const audienceReleaseSubjectTitle = String(audienceReleaseWindow?.subjectTitle || audienceReleaseWindow?.itemTitle || '').trim();
+    const audienceReleaseSubjectSubtitle = String(audienceReleaseWindow?.subjectSubtitle || '').trim();
     const audienceReleaseChoiceLabels = useMemo(() => {
         const slotSceneLabel = String(audienceReleaseWindow?.choiceLabels?.slot_scene || '').trim();
         const keepQueueMovingLabel = String(audienceReleaseWindow?.choiceLabels?.keep_queue_moving || '').trim();
         return {
-            slotScene: slotSceneLabel || (isAudienceCoHostDecision ? 'Run Scene Next' : 'Slot Scene'),
-            keepQueueMoving: keepQueueMovingLabel || (isAudienceCoHostDecision ? 'Keep Karaoke Moving' : 'Keep Singing')
+            slotScene: slotSceneLabel || (isAudienceOneMinuteMicDecision ? 'Keep Singing' : isAudienceSkipPerformanceDecision ? 'Keep Going' : isAudienceCoHostDecision ? 'Run Scene Next' : 'Slot Scene'),
+            keepQueueMoving: keepQueueMovingLabel || (isAudienceOneMinuteMicDecision ? 'Next Singer' : isAudienceSkipPerformanceDecision ? 'Move To Next' : isAudienceCoHostDecision ? 'Keep Karaoke Moving' : 'Keep Singing')
         };
     }, [
         audienceReleaseWindow?.choiceLabels?.keep_queue_moving,
         audienceReleaseWindow?.choiceLabels?.slot_scene,
-        isAudienceCoHostDecision
+        isAudienceCoHostDecision,
+        isAudienceOneMinuteMicDecision,
+        isAudienceSkipPerformanceDecision
     ]);
     const audienceReleaseChoiceDetails = useMemo(() => ({
         slotScene: String(audienceReleaseWindow?.choiceDetails?.slot_scene || '').trim(),
@@ -1280,6 +1341,20 @@ const SingerApp = ({ roomCode, uid }) => {
     }), [
         audienceReleaseWindow?.choiceDetails?.keep_queue_moving,
         audienceReleaseWindow?.choiceDetails?.slot_scene
+    ]);
+    const audienceReleaseChoiceSublines = useMemo(() => ({
+        slotScene: String(audienceReleaseWindow?.choiceSublines?.slot_scene || '').trim(),
+        keepQueueMoving: String(audienceReleaseWindow?.choiceSublines?.keep_queue_moving || '').trim()
+    }), [
+        audienceReleaseWindow?.choiceSublines?.keep_queue_moving,
+        audienceReleaseWindow?.choiceSublines?.slot_scene
+    ]);
+    const audienceReleaseChoiceMetadata = useMemo(() => ({
+        slotScene: audienceReleaseWindow?.choiceMetadata?.slot_scene && typeof audienceReleaseWindow.choiceMetadata.slot_scene === 'object' ? audienceReleaseWindow.choiceMetadata.slot_scene : {},
+        keepQueueMoving: audienceReleaseWindow?.choiceMetadata?.keep_queue_moving && typeof audienceReleaseWindow.choiceMetadata.keep_queue_moving === 'object' ? audienceReleaseWindow.choiceMetadata.keep_queue_moving : {}
+    }), [
+        audienceReleaseWindow?.choiceMetadata?.keep_queue_moving,
+        audienceReleaseWindow?.choiceMetadata?.slot_scene
     ]);
     const audienceReleaseChoiceSongs = useMemo(() => ({
         slotScene: (songs || []).find((song) => song.id === String(audienceReleaseWindow?.choiceSongIds?.slot_scene || '').trim()) || null,
@@ -1290,6 +1365,15 @@ const SingerApp = ({ roomCode, uid }) => {
         songs
     ]);
     const audienceReleaseVoteCountLabel = `${releaseWindowTally.totalVotes || 0} vote${(releaseWindowTally.totalVotes || 0) === 1 ? '' : 's'}`;
+    const audienceReleaseChoiceCounts = useMemo(() => ({
+        slotScene: Math.max(0, Number(releaseWindowTally.slotSceneCount || 0) || 0),
+        keepQueueMoving: Math.max(0, Number(releaseWindowTally.keepQueueMovingCount || 0) || 0)
+    }), [releaseWindowTally.keepQueueMovingCount, releaseWindowTally.slotSceneCount]);
+    const audienceReleaseChoiceTotal = Math.max(1, Number(releaseWindowTally.totalVotes || 0) || 0);
+    const getAudienceReleaseChoicePct = useCallback(
+        (count = 0) => Math.round((Math.max(0, Number(count || 0) || 0) / audienceReleaseChoiceTotal) * 100),
+        [audienceReleaseChoiceTotal]
+    );
     const canUseCoHostQuickSignals = useMemo(
         () => (runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host') && !canSeeAudienceReleaseWindow,
         [canSeeAudienceReleaseWindow, runOfShowOperatorRole]
@@ -1635,6 +1719,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [showAccount, setShowAccount] = useState(false);
     const [showPoints, setShowPoints] = useState(false);
     const [supportEmbedOpen, setSupportEmbedOpen] = useState(false);
+    const [pointsCheckoutPendingKey, setPointsCheckoutPendingKey] = useState('');
     const [eventGrantCode, setEventGrantCode] = useState('');
     const [eventGrantBusy, setEventGrantBusy] = useState(false);
     const eventGrantAutoClaimRef = useRef('');
@@ -2955,22 +3040,34 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [scheduleRewardToast]);
 
     const syncPoints = useCallback(async (force = false) => {
-        if (!user || !activeUid) return;
+        if (!user || !activeUid) return false;
         const delta = pendingPointDelta.current;
-        if (!delta) return;
+        if (!delta) return false;
         const now = Date.now();
-        if (!force && Math.abs(delta) < 50 && now - lastPointsSync.current < 60000) return;
+        if (!force && Math.abs(delta) < 50 && now - lastPointsSync.current < 60000) return false;
         pendingPointDelta.current = 0;
         lastPointsSync.current = now;
         try {
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { points: increment(delta), lastActiveAt: serverTimestamp() });
+            setUser((prev) => {
+                if (!prev) return prev;
+                const nextPoints = Math.max(0, Number(prev.points || 0) + delta);
+                lastObservedPointsRef.current = nextPoints;
+                return { ...prev, points: nextPoints };
+            });
             setLocalPointOffset(prev => prev - delta);
+            return true;
         } catch {
             pendingPointDelta.current += delta;
+            return false;
         }
     }, [user, activeUid, roomCode]);
 
-    const getEffectivePoints = useCallback(() => (user?.points || 0) + localPointOffset, [localPointOffset, user?.points]);
+    const getEffectivePoints = useCallback(() => {
+        const confirmedPoints = Math.max(0, Number(user?.points || 0) || 0);
+        const pendingSpendOffset = Math.min(0, Number(localPointOffset || 0) || 0);
+        return Math.max(0, confirmedPoints + pendingSpendOffset);
+    }, [localPointOffset, user?.points]);
     const effectivePoints = Math.max(0, getEffectivePoints());
     const activeEventCredits = useMemo(() => {
         const source = room?.eventCredits && typeof room.eventCredits === 'object' ? room.eventCredits : {};
@@ -3331,7 +3428,7 @@ const SingerApp = ({ roomCode, uid }) => {
         if (!activeEventCredits.enabled) {
             return {
                 title: 'No event bonuses on this room',
-                body: 'This room is using the standard points view right now. No custom credits or promo campaigns are configured here yet.',
+                body: 'This room is using the standard points wallet. Games, reactions, host gifts, and room boosts can still move the score.',
                 tone: 'zinc',
                 showClaims: false,
             };
@@ -3340,8 +3437,8 @@ const SingerApp = ({ roomCode, uid }) => {
             return {
                 title: activeEventCredits.eventLabel || 'Tonight\'s event credits',
                 body: activeEventCredits.generalAdmissionPoints > 0
-                    ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. Ticket-linked perks can still attach automatically if your signed-in email matches an attendee record.`
-                    : 'Custom credits are enabled for this room, but no active promo campaigns are configured yet.',
+                    ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. The host can also enable refills, bonus drops, support rewards, or promo codes for tonight.`
+                    : 'Custom credits are enabled for this room. The host has not published starter points or promo campaigns yet.',
                 tone: 'amber',
                 showClaims: false,
             };
@@ -3349,8 +3446,8 @@ const SingerApp = ({ roomCode, uid }) => {
         return {
             title: activeEventCredits.eventLabel || 'Tonight\'s event credits',
             body: activeEventCredits.generalAdmissionPoints > 0
-                ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. Official event links, QR drops, and ticket-matched perks can add more automatically without slowing down the room.`
-                : 'This room has optional automatic event bonuses and linked perks available below.',
+                ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. Room promos, QR drops, and host-published codes can add more when they are active.`
+                : 'This room has optional bonus credits and linked perks available below.',
             tone: 'amber',
             showClaims: true,
         };
@@ -3384,15 +3481,21 @@ const SingerApp = ({ roomCode, uid }) => {
         const baseline = rates[0];
         return rates.every((rate) => Math.abs(rate - baseline) <= 1) ? baseline : 0;
     }, [roomWideSupportOffers]);
-    const supportAwardsMoneybags = roomWideSupportOffers.some((offer) => offer.awardBadge !== false)
-        || roomSupportOffer?.supportBadge === true;
+    const supportProviderLabel = activeEventCredits.supportProvider === 'givebutter'
+        ? 'Givebutter'
+        : roomSupportOffer?.supportProvider
+            ? roomSupportOffer.supportProvider
+            : 'the room checkout';
+    const supportTargetLabel = roomSupportOffer?.label
+        || activeEventCredits.eventLabel
+        || (isCustomAudienceBrand ? audienceBrandTitle : 'this room');
     const questLogItems = useMemo(() => {
         const items = [];
         if (activeEventCredits.websiteCheckInPoints > 0) {
             items.push({
                 id: 'website_checkin',
                 icon: 'fa-globe',
-                label: 'Visit the festival website',
+                label: 'Visit the room link',
                 detail: 'Grab the posted promo code there, then redeem it below.',
                 points: activeEventCredits.websiteCheckInPoints,
             });
@@ -3427,82 +3530,261 @@ const SingerApp = ({ roomCode, uid }) => {
         });
         return items;
     }, [activeEventCredits.socialPromoPoints, activeEventCredits.websiteCheckInPoints, eventPromoSummary.promoCampaigns]);
+    const topRoomBoostOffer = roomShopOffers.length
+        ? [...roomShopOffers].sort((left, right) => Number(right?.points || 0) - Number(left?.points || 0))[0]
+        : null;
+    const topPersonalPackOffer = personalShopOffers.length
+        ? [...personalShopOffers].sort((left, right) => Number(right?.points || 0) - Number(left?.points || 0))[0]
+        : null;
+    const getOfferRateLabel = (offer = {}) => {
+        const amount = Math.max(0, Number(offer?.amount || 0) || 0);
+        const points = Math.max(0, Number(offer?.points || 0) || 0);
+        if (!amount || !points) return '';
+        return `${Math.round(points / amount)} pts / $1`;
+    };
+    const visibleRoomShopOffers = useMemo(
+        () => sortPointStorefrontOffers(roomShopOffers).slice(0, POINTS_STOREFRONT_ROOM_OFFER_LIMIT),
+        [roomShopOffers]
+    );
+    const hiddenRoomShopOfferCount = Math.max(0, roomShopOffers.length - visibleRoomShopOffers.length);
+    const visiblePersonalShopOffers = useMemo(
+        () => sortPointStorefrontOffers(personalShopOffers).slice(0, POINTS_STOREFRONT_PERSONAL_OFFER_LIMIT),
+        [personalShopOffers]
+    );
+    const hiddenPersonalShopOfferCount = Math.max(0, personalShopOffers.length - visiblePersonalShopOffers.length);
+    const visibleQuestLogItems = useMemo(
+        () => questLogItems.slice(0, POINTS_STOREFRONT_EARN_LIMIT),
+        [questLogItems]
+    );
+    const hiddenQuestLogItemCount = Math.max(0, questLogItems.length - visibleQuestLogItems.length);
     const pointsDrawerContent = (
         <>
-            <div className="space-y-4">
-                <div className={`bg-black/30 border rounded-2xl p-4 ${eventCreditsSummary.tone === 'amber' ? 'border-amber-400/40' : eventCreditsSummary.tone === 'zinc' ? 'border-white/10' : 'border-cyan-400/30'}`}>
-                    <div className={`text-base uppercase tracking-widest mb-2 ${eventCreditsSummary.tone === 'amber' ? 'text-amber-200' : eventCreditsSummary.tone === 'zinc' ? 'text-zinc-300' : 'text-cyan-200'}`}>
-                        Tonight&apos;s Points
-                    </div>
-                    <div className="text-base text-zinc-100">
-                        {eventCreditsSummary.body}
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                        <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">You Have</div>
-                            <div className="mt-1 text-2xl font-black text-cyan-200">{formatPointsLabel(getEffectivePoints())}</div>
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Start Tonight</div>
-                            <div className="mt-1 text-2xl font-black text-white">{formatPointsLabel(activeEventCredits.generalAdmissionPoints)}</div>
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Recharge</div>
-                            <div className="mt-1 text-sm font-bold text-white">
-                                {activeEventCredits.timedLobbyEnabled
-                                    ? `${formatPointsLabel(activeEventCredits.timedLobbyPoints)} ${timedLobbyIntervalLabel.toLowerCase()}`
-                                    : 'No timed refill'}
+            <div className="space-y-4" data-feature-id="audience-points-storefront">
+                <div className="relative overflow-hidden rounded-[1.75rem] border border-cyan-300/28 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.28),transparent_42%),linear-gradient(145deg,rgba(8,13,30,0.98),rgba(28,14,42,0.96))] p-4 shadow-[0_24px_60px_rgba(0,0,0,0.38)]">
+                    <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-pink-400/18 blur-3xl" />
+                    <div className="relative flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-100/80">Tonight&apos;s wallet</div>
+                            <div className="mt-1 text-[clamp(2.4rem,12vw,4.2rem)] font-black leading-none text-white drop-shadow-[0_0_24px_rgba(34,211,238,0.32)]">
+                                {formatPointsLabel(getEffectivePoints())}
+                            </div>
+                            <div className="mt-2 text-sm font-semibold text-zinc-200">
+                                Use points for reactions, votes, power moments, and room games.
                             </div>
                         </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Bank</div>
-                            <div className="mt-1 text-sm font-bold text-white">{timedLobbyBankLabel}</div>
+                        <div className="shrink-0 rounded-2xl border border-white/12 bg-black/30 px-3 py-2 text-right">
+                            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Refill</div>
+                            <div className="mt-1 text-xs font-black text-cyan-100">
+                                {activeEventCredits.timedLobbyEnabled ? `${formatPointsLabel(activeEventCredits.timedLobbyPoints)} ${timedLobbyIntervalLabel.toLowerCase()}` : 'Manual'}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="relative mt-4 grid grid-cols-3 gap-2">
+                        <div className="rounded-2xl border border-white/10 bg-black/22 px-3 py-2">
+                            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Start</div>
+                            <div className="mt-1 text-sm font-black text-white">{formatPointsLabel(activeEventCredits.generalAdmissionPoints)}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/22 px-3 py-2">
+                            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Bank</div>
+                            <div className="mt-1 truncate text-sm font-black text-white">{timedLobbyBankLabel}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/22 px-3 py-2">
+                            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Mode</div>
+                            <div className="mt-1 text-sm font-black text-white">{activeEventCredits.creditEarningMode || 'standard'}</div>
                         </div>
                     </div>
                     {(activeEventCredits.vipBonusPoints > 0 || activeEventCredits.skipLineBonusPoints > 0 || eventPromoSummary.usesGivebutter) && (
-                        <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100">
+                        <div className="relative mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100">
                             {activeEventCredits.vipBonusPoints > 0 ? `VIP match: ${formatPointsLabel(activeEventCredits.vipBonusPoints)}. ` : ''}
                             {activeEventCredits.skipLineBonusPoints > 0 ? `Skip-line match: ${formatPointsLabel(activeEventCredits.skipLineBonusPoints)}. ` : ''}
-                            {eventPromoSummary.usesGivebutter ? `Givebutter attendee matching can still attach automatically if your ticket email matches your sign-in email.` : ''}
+                            {eventPromoSummary.usesGivebutter ? 'Ticket or supporter matching can attach automatically when your signed-in email matches.' : ''}
                         </div>
                     )}
                 </div>
 
-                <div className="rounded-2xl border border-pink-400/35 bg-black/30 p-4">
-                    <div className="text-base uppercase tracking-widest text-pink-200 mb-2">How To Earn More</div>
-                    <div className="text-sm text-zinc-300">
-                        Win crowd moments, catch bonus drops, or knock out a quest from the festival list below.
-                    </div>
-                    <div className="mt-4">
-                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400 mb-2">Quest Log</div>
-                        <div className="grid gap-2">
-                            {questLogItems.length > 0 ? questLogItems.map((item) => (
-                                <div key={item.id} className="rounded-2xl border border-amber-300/20 bg-amber-500/8 px-3 py-3">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <div className="flex items-center gap-2 text-sm font-bold text-white">
-                                                <i className={`fa-solid ${item.icon} text-amber-200`}></i>
-                                                <span>{item.label}</span>
-                                            </div>
-                                            <div className="mt-1 text-sm text-zinc-300">{item.detail}</div>
-                                        </div>
-                                        <span className="shrink-0 rounded-full border border-amber-300/30 bg-amber-500/14 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-amber-100">
-                                            +{Math.max(0, Number(item.points || 0) || 0)}
-                                        </span>
-                                    </div>
-                                </div>
-                            )) : (
-                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-300">
-                                    No festival quests are posted yet. Keep an eye on the room feed for drops and game moments.
-                                </div>
-                            )}
+                <div className="rounded-[1.35rem] border border-emerald-300/30 bg-[linear-gradient(145deg,rgba(8,47,73,0.72),rgba(6,78,59,0.52))] p-3" data-feature-id="audience-room-boost-storefront">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-100/80">Party boosts</div>
+                            <div className="mt-1 text-xl font-black leading-none text-white">Buy points for everyone</div>
+                            <div className="mt-1 text-xs text-emerald-50/86">
+                                Trigger a TV burst and refill the room.
+                            </div>
                         </div>
+                        {topRoomBoostOffer ? (
+                            <div className="shrink-0 rounded-2xl border border-emerald-200/28 bg-black/30 px-3 py-2 text-right">
+                                <div className="text-[9px] font-black uppercase tracking-[0.18em] text-emerald-100/70">Top</div>
+                                <div className="mt-1 text-sm font-black text-white">{formatPointsLabel(topRoomBoostOffer.points)}</div>
+                            </div>
+                        ) : null}
+                    </div>
+                    {visibleRoomShopOffers.length > 0 ? (
+                        <>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                                {visibleRoomShopOffers.map((crate, idx) => {
+                                    const label = crate.label || `Room Boost ${idx + 1}`;
+                                    const earnsBadge = crate.awardBadge !== false;
+                                    const checkoutKey = 'room:' + String(crate?.id || crate?.label || 'boost');
+                                    const pending = pointsCheckoutPendingKey === checkoutKey;
+                                    const rateLabel = getOfferRateLabel(crate);
+                                    const visual = getPointOfferPackageVisual(crate, idx, 'room');
+                                    return (
+                                        <button
+                                            key={crate.id || `${label}-${idx}`}
+                                            onClick={() => startTipCrateCheckout(crate)}
+                                            disabled={!!pointsCheckoutPendingKey}
+                                            className={`group relative min-h-[9.25rem] w-full overflow-hidden rounded-[1.1rem] border px-3 py-3 text-left shadow-[0_14px_34px_rgba(0,0,0,0.22)] transition ${pending ? 'border-emerald-100/70 bg-emerald-300/18' : 'border-emerald-200/28 bg-black/26 active:scale-[0.99]'}`}
+                                            data-feature-id="audience-room-boost-card"
+                                        >
+                                            <div className="absolute inset-y-0 right-0 w-20 bg-[radial-gradient(circle_at_center,rgba(52,211,153,0.2),transparent_68%)]" />
+                                            <div className="relative flex h-full flex-col justify-between gap-2">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${visual.className} shadow-[0_10px_24px_rgba(0,0,0,0.22)]`} title={visual.label}>
+                                                        <i className={`fa-solid ${visual.icon} text-lg`}></i>
+                                                    </div>
+                                                    <div className="rounded-full border border-white/12 bg-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-50">
+                                                        {pending ? 'Opening' : formatDollarLabel(crate.amount)}
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        <span className="line-clamp-1 text-sm font-black leading-tight text-white">{label}</span>
+                                                        {earnsBadge ? <span className="rounded-full border border-amber-200/30 bg-amber-300/14 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-amber-100">TV</span> : null}
+                                                    </div>
+                                                    <div className="mt-1 text-lg font-black leading-none text-emerald-50">{formatPointsLabel(crate.points)}</div>
+                                                    <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-100/75">Everyone gets it{rateLabel ? ` - ${rateLabel}` : ''}</div>
+                                                    <div className="mt-1 line-clamp-2 text-[11px] leading-snug text-emerald-100/78">
+                                                        {earnsBadge ? `${MONEYBAGS_BADGE_LABEL} spotlight appears with the room burst.` : 'Room-wide points land after checkout clears.'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {hiddenRoomShopOfferCount > 0 ? (
+                                <div className="mt-2 rounded-xl border border-emerald-200/18 bg-black/18 px-3 py-2 text-[11px] font-semibold text-emerald-100/78" data-feature-id="audience-room-boost-hidden-count">
+                                    {hiddenRoomShopOfferCount} more room boost{hiddenRoomShopOfferCount === 1 ? '' : 's'} configured. The host storefront shows the simplest choices first.
+                                </div>
+                            ) : null}
+                        </>
+                    ) : (
+                        <div className="mt-3 rounded-2xl border border-white/10 bg-black/22 px-3 py-3 text-sm text-emerald-50/80">
+                            Room boosts are not configured for this room yet.
+                        </div>
+                    )}
+                </div>
+
+                <div className="rounded-[1.35rem] border border-pink-300/26 bg-[linear-gradient(145deg,rgba(76,29,149,0.58),rgba(131,24,67,0.48))] p-3" data-feature-id="audience-personal-pack-storefront">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-pink-100/80">Your stash</div>
+                            <div className="mt-1 text-xl font-black leading-none text-white">Grab more points</div>
+                            <div className="mt-1 text-xs text-pink-50/82">
+                                Personal packs refill reactions, votes, and power plays.
+                            </div>
+                        </div>
+                        {topPersonalPackOffer ? (
+                            <div className="shrink-0 rounded-2xl border border-pink-200/24 bg-black/28 px-3 py-2 text-right">
+                                <div className="text-[9px] font-black uppercase tracking-[0.18em] text-pink-100/70">Best</div>
+                                <div className="mt-1 text-sm font-black text-white">{formatPointsLabel(topPersonalPackOffer.points)}</div>
+                            </div>
+                        ) : null}
+                    </div>
+                    {visiblePersonalShopOffers.length > 0 ? (
+                        <>
+                            <div className="mt-3 grid grid-cols-3 gap-2">
+                                {visiblePersonalShopOffers.map((pack, idx) => {
+                                    const isRoomOffer = pack.offerType === 'tip_crate';
+                                    const isDonationOffer = pack.offerType === 'support_offer';
+                                    const checkoutKey = 'personal:' + String(pack?.id || pack?.label || 'pack');
+                                    const pending = pointsCheckoutPendingKey === checkoutKey;
+                                    const rateLabel = getOfferRateLabel(pack);
+                                    const visual = getPointOfferPackageVisual(pack, idx, 'personal');
+                                    return (
+                                        <button
+                                            key={pack.id || `${pack.label}-${idx}`}
+                                            onClick={() => (isRoomOffer ? startTipCrateCheckout(pack) : startPersonalPackCheckout(pack))}
+                                            disabled={!!pointsCheckoutPendingKey}
+                                            className={`relative min-h-[8.4rem] overflow-hidden rounded-[1.05rem] border px-2.5 py-3 text-left transition ${pending ? 'border-pink-100/70 bg-pink-300/18' : 'border-pink-200/22 bg-black/25 active:scale-[0.99]'}`}
+                                            data-feature-id="audience-personal-pack-card"
+                                        >
+                                            <div className="absolute -right-8 -top-10 h-24 w-24 rounded-full bg-pink-300/16 blur-2xl" />
+                                            <div className="relative flex h-full flex-col justify-between gap-2">
+                                                <div>
+                                                    <div className={`mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br ${visual.className} shadow-[0_10px_22px_rgba(0,0,0,0.22)]`} title={visual.label}>
+                                                        <i className={`fa-solid ${visual.icon} text-base`}></i>
+                                                    </div>
+                                                    <div className="line-clamp-2 text-xs font-black leading-tight text-white">{pack.label}</div>
+                                                    <div className="mt-1 text-lg font-black leading-none text-pink-100">{formatPointsLabel(pack.points)}</div>
+                                                    <div className="mt-1 line-clamp-2 text-[10px] leading-snug text-pink-50/76">
+                                                        {isDonationOffer ? 'After support clears.' : isRoomOffer ? 'Host buyer boost.' : rateLabel || 'Instant pack.'}
+                                                    </div>
+                                                </div>
+                                                <div className="inline-flex rounded-full border border-white/12 bg-white/10 px-2.5 py-1 text-xs font-black text-white">
+                                                    {pending ? 'Opening' : formatDollarLabel(pack.amount)}
+                                                </div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {hiddenPersonalShopOfferCount > 0 ? (
+                                <div className="mt-2 rounded-xl border border-pink-200/18 bg-black/18 px-3 py-2 text-[11px] font-semibold text-pink-100/78" data-feature-id="audience-personal-pack-hidden-count">
+                                    {hiddenPersonalShopOfferCount} more pack{hiddenPersonalShopOfferCount === 1 ? '' : 's'} configured. Showing the simplest purchase ladder first.
+                                </div>
+                            ) : null}
+                        </>
+                    ) : (
+                        <div className="mt-3 rounded-2xl border border-white/10 bg-black/22 px-3 py-3 text-sm text-pink-50/80">
+                            Personal point packs are not available in this room.
+                        </div>
+                    )}
+                </div>
+
+                <div className="rounded-[1.2rem] border border-amber-300/24 bg-black/30 p-3" data-feature-id="audience-points-earn-more">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-100/80">Free ways to earn</div>
+                            <div className="mt-1 text-lg font-black text-white">Play, react, and catch drops</div>
+                            <div className="mt-1 text-sm text-zinc-300">
+                                Earn from game moments, host bonus drops, room promos, and any automatic refills the host enabled for tonight.
+                            </div>
+                        </div>
+                        <i className="fa-solid fa-sparkles mt-1 text-xl text-amber-200" aria-hidden="true"></i>
+                    </div>
+                    <div className="mt-4 grid gap-2">
+                        {visibleQuestLogItems.length > 0 ? visibleQuestLogItems.map((item) => (
+                            <div key={item.id} className="rounded-2xl border border-amber-300/20 bg-amber-500/8 px-3 py-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 text-sm font-bold text-white">
+                                            <i className={`fa-solid ${item.icon} text-amber-200`}></i>
+                                            <span>{item.label}</span>
+                                        </div>
+                                        <div className="mt-1 text-sm text-zinc-300">{item.detail}</div>
+                                    </div>
+                                    <span className="shrink-0 rounded-full border border-amber-300/30 bg-amber-500/14 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-amber-100">
+                                        +{Math.max(0, Number(item.points || 0) || 0)}
+                                    </span>
+                                </div>
+                            </div>
+                        )) : (
+                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-300">
+                                No bonus promos are posted yet. Watch the room for host drops, votes, and game moments.
+                            </div>
+                        )}
+                        {hiddenQuestLogItemCount > 0 ? (
+                            <div className="rounded-xl border border-amber-300/18 bg-amber-500/8 px-3 py-2 text-[11px] font-semibold text-amber-100/78">
+                                {hiddenQuestLogItemCount} more bonus path{hiddenQuestLogItemCount === 1 ? '' : 's'} may be active tonight.
+                            </div>
+                        ) : null}
                     </div>
                     {eventCreditsSummary.showClaims && (
                         <div className="mt-4 rounded-2xl border border-amber-300/20 bg-black/20 px-3 py-3">
                             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Redeem A Promo</div>
                             <div className="mt-1 text-sm text-zinc-300">
-                                Official event links and ticket-matched perks can unlock bonuses automatically. Only use a promo code here when the event explicitly shares one.
+                                Room links and host-published codes can unlock bonuses. Only use a promo code here when the host or event explicitly shares one.
                             </div>
                             <div className="mt-3 grid gap-2">
                                 <label className="block">
@@ -3526,28 +3808,17 @@ const SingerApp = ({ roomCode, uid }) => {
                     )}
                 </div>
 
-                <div className="rounded-2xl border border-emerald-400/35 bg-emerald-500/10 p-4">
-                    <div className="text-base uppercase tracking-widest text-emerald-200 mb-2">Support the Festival</div>
-                    <div className="text-base text-zinc-100">
-                        {roomWideSupportRate > 0
-                            ? `Every $1 donated tonight via Givebutter credits the entire room with about ${roomWideSupportRate} points.`
-                            : roomShopOffers.length > 0
-                                ? 'Givebutter donations can trigger room-wide point bursts. The exact room reward is shown on each support tier below.'
+                {roomSupportOffer ? (
+                    <div className="rounded-[1.35rem] border border-white/10 bg-black/28 p-4">
+                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Support link</div>
+                        <div className="mt-1 text-base font-black text-white">{supportCtaLabel}</div>
+                        <div className="mt-1 text-sm text-zinc-300">
+                            {roomWideSupportRate > 0
+                                ? `Every $1 through ${supportProviderLabel} gives the room about ${roomWideSupportRate} points.`
                                 : roomSupportOffer?.supportPoints > 0
-                                    ? `Completed Givebutter support can trigger +${roomSupportOffer.supportPoints} room points tonight.`
-                                    : 'Use Givebutter to support the festival without leaving the karaoke flow.'}
-                    </div>
-                    <div className="mt-2 text-sm text-emerald-100/90">
-                        {supportAwardsMoneybags
-                            ? `${MONEYBAGS_BADGE_LABEL} marks the guest who triggered the latest room-wide support burst.`
-                            : `${MONEYBAGS_BADGE_LABEL} appears when the room is configured to spotlight a supporter after a room-wide donation burst.`}
-                    </div>
-                    {allowsDonationAccess ? (
-                        <div className="mt-2 text-sm text-zinc-200">
-                            {supporterAccessLabel} perks can unlock here too.
+                                    ? `Completing support can trigger +${roomSupportOffer.supportPoints} room points tonight.`
+                                    : `${supportTargetLabel} is available without leaving the karaoke flow.`}
                         </div>
-                    ) : null}
-                    {roomSupportOffer ? (
                         <button
                             onClick={() => {
                                 if (roomSupportOffer?.supportEmbedUrl) {
@@ -3556,92 +3827,36 @@ const SingerApp = ({ roomCode, uid }) => {
                                 }
                                 startGivebutterSupportCheckout(roomSupportOffer);
                             }}
-                            className="mt-3 w-full rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-4 py-3 font-bold text-emerald-100"
+                            className="mt-3 w-full rounded-xl border border-emerald-300/36 bg-emerald-500/12 px-4 py-3 font-bold text-emerald-100"
                         >
-                            Donate with Givebutter
+                            Open Support
                         </button>
-                    ) : null}
-                    {personalShopOffers.length > 0 && (
-                        <div className="mt-4">
-                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400 mb-2">Supporter Boosts</div>
-                            <div className="grid gap-2">
-                                {personalShopOffers.map((pack, idx) => {
-                                    const isRoomOffer = pack.offerType === 'tip_crate';
-                                    const isDonationOffer = pack.offerType === 'support_offer';
-                                    return (
-                                        <button
-                                            key={pack.id || `${pack.label}-${idx}`}
-                                            onClick={() => (isRoomOffer ? startTipCrateCheckout(pack) : startPersonalPackCheckout(pack))}
-                                            className="w-full rounded-2xl border border-white/10 bg-zinc-900/70 px-4 py-3 text-left hover:border-zinc-500/60"
-                                        >
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div className="min-w-0">
-                                                    <div className="text-sm font-bold text-white">{pack.label}</div>
-                                                    <div className="mt-1 text-sm text-zinc-300">
-                                                        {isDonationOffer
-                                                            ? `You get ${formatPointsLabel(pack.points)} after the Givebutter donation clears.`
-                                                            : `Add ${formatPointsLabel(pack.points)} to your wallet now.`}
-                                                    </div>
-                                                </div>
-                                                <span className="shrink-0 text-base font-black text-pink-200">{formatDollarLabel(pack.amount)}</span>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                    {roomShopOffers.length > 0 && (
-                        <div className="mt-4 grid gap-2">
-                            {roomShopOffers.map((crate, idx) => {
-                                const label = crate.label || `Room Boost ${idx + 1}`;
-                                const earnsBadge = crate.awardBadge !== false;
-                                return (
+                        {supportEmbedOpen && roomSupportHasEmbed && (
+                            <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+                                <div className="flex items-center justify-between border-b border-white/10 bg-black/35 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-300">
+                                    <span>{supportProviderLabel} checkout</span>
                                     <button
-                                        key={crate.id || `${label}-${idx}`}
-                                        onClick={() => startTipCrateCheckout(crate)}
-                                        className="w-full rounded-2xl border border-cyan-300/35 bg-cyan-500/12 px-4 py-3 text-left hover:border-cyan-200/60"
+                                        onClick={() => setSupportEmbedOpen(false)}
+                                        className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-zinc-100 hover:border-white/20 hover:text-white"
                                     >
-                                        <div className="flex items-center justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <div className="text-sm font-bold text-white">{label}</div>
-                                                <div className="mt-1 text-sm text-zinc-200">
-                                                    Everyone gets {formatPointsLabel(crate.points)}
-                                                    {earnsBadge ? ` + ${MONEYBAGS_BADGE_LABEL}` : ''}
-                                                </div>
-                                            </div>
-                                            <span className="shrink-0 text-base font-black text-cyan-200">{formatDollarLabel(crate.amount)}</span>
-                                        </div>
+                                        Hide
                                     </button>
-                                );
-                            })}
-                        </div>
-                    )}
-                    {supportEmbedOpen && roomSupportHasEmbed && (
-                        <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
-                            <div className="flex items-center justify-between border-b border-white/10 bg-black/35 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-300">
-                                <span>Givebutter Donation Form</span>
-                                <button
-                                    onClick={() => setSupportEmbedOpen(false)}
-                                    className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-zinc-100 hover:border-white/20 hover:text-white"
-                                >
-                                    Hide
-                                </button>
-                            </div>
-                            {roomSupportWidgetId ? (
-                                <div className="min-h-[520px] bg-white p-3" data-feature-id="givebutter-widget-container">
-                                    {React.createElement('givebutter-widget', { id: roomSupportWidgetId })}
                                 </div>
-                            ) : (
-                                <iframe
-                                    src={roomSupportOffer.supportEmbedUrl}
-                                    title="Givebutter support"
-                                    className="h-[480px] w-full bg-white"
-                                />
-                            )}
-                        </div>
-                    )}
-                </div>
+                                {roomSupportWidgetId ? (
+                                    <div className="min-h-[520px] bg-white p-3" data-feature-id="givebutter-widget-container">
+                                        {React.createElement('givebutter-widget', { id: roomSupportWidgetId })}
+                                    </div>
+                                ) : (
+                                    <iframe
+                                        src={roomSupportOffer.supportEmbedUrl}
+                                        title={`${supportProviderLabel} support`}
+                                        className="h-[480px] w-full bg-white"
+                                    />
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ) : null}
 
                 {!festivalGuestJoinNoEmail && (
                     <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/8 px-4 py-3 text-sm text-cyan-100">
@@ -3657,11 +3872,10 @@ const SingerApp = ({ roomCode, uid }) => {
                         onClick={() => openVipUpgrade(allowsDonationAccess ? 'email' : 'auto')}
                         className="bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl font-bold text-base min-h-[44px]"
                     >
-                        {allowsDonationAccess ? 'Continue with Email instead' : 'Continue with Email'}
+                        {allowsDonationAccess ? 'Save progress with email' : 'Link Email'}
                     </button>
                 )}
-                <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowHowToPlay(true); }} className="bg-cyan-600/20 text-cyan-200 border border-cyan-400/40 px-6 py-2 rounded-xl font-bold text-base tracking-wide min-h-[44px]">How to Play</button>
-                <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }} className="bg-zinc-700 px-6 py-2 rounded-xl text-base tracking-wide min-h-[44px]">Close</button>
+                <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 min-h-[44px]">Close</button>
             </div>
         </>
     );
@@ -4780,12 +4994,51 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const popTriviaAwardSyncedDelta = popTriviaAwardSync.questionId === popTriviaRevealQuestionId
         ? Math.max(0, Number(popTriviaAwardSync.delta || 0))
         : 0;
+    const popTriviaAwardSummary = popTriviaRevealQuestionId
+        ? (room?.popTriviaAwards?.[popTriviaRevealQuestionId] || null)
+        : null;
+    const popTriviaAwardWinners = useMemo(
+        () => (Array.isArray(popTriviaAwardSummary?.winners) ? popTriviaAwardSummary.winners : []),
+        [popTriviaAwardSummary?.winners]
+    );
+    const popTriviaAwardWinnerNames = useMemo(
+        () => popTriviaAwardWinners
+            .slice(0, 4)
+            .map((winner) => String(winner?.name || '').trim())
+            .filter(Boolean),
+        [popTriviaAwardWinners]
+    );    const popTriviaAwardWinnerForMe = useMemo(() => {
+        if (!popTriviaAwardWinners.length) return null;
+        const candidateUids = new Set([activeUid, uid, user?.uid].map((value) => String(value || '').trim()).filter(Boolean));
+        return popTriviaAwardWinners.find((winner) => candidateUids.has(String(winner?.uid || '').trim())) || null;
+    }, [activeUid, popTriviaAwardWinners, uid, user?.uid]);
+    const popTriviaAwardServerFinalized = !!popTriviaAwardSummary?.awardedBy;
+    const popTriviaConfirmedAwardDelta = popTriviaAwardWinnerForMe
+        ? Math.max(0, Number(popTriviaAwardWinnerForMe.points || popTriviaAwardSummary?.points || popTriviaCorrectPoints || 0))
+        : popTriviaAwardSyncedDelta;
     const popTriviaAwardSyncPending = !!(
         showPopTriviaEndState
         && popTriviaRevealWasCorrect
         && popTriviaCorrectPoints > 0
-        && popTriviaAwardSyncedDelta <= 0
+        && !popTriviaAwardServerFinalized
+        && popTriviaConfirmedAwardDelta <= 0
     );
+    const popTriviaRevealOutcomeCopy = popTriviaRevealWasCorrect
+        ? (
+            popTriviaCorrectPoints > 0
+                ? (popTriviaConfirmedAwardDelta > 0
+                    ? `You got it right. +${popTriviaConfirmedAwardDelta} pts landed in your room balance.`
+                    : (popTriviaAwardServerFinalized
+                        ? 'You got it right. The round is finalized, but your room wallet has not shown the credit yet.'
+                        : 'You got it right. Reward is syncing into your room balance now.'))
+                : 'You got it right.'
+        )
+        : popTriviaRevealMyVote !== null
+            ? 'Your answer locked in, but this was not the winning choice.'
+            : 'Trivia complete. Back to the song.';
+    const popTriviaAwardPulseKey = popTriviaAwardWinnerForMe
+        ? `${popTriviaRevealQuestionId}_${popTriviaConfirmedAwardDelta}_server`
+        : (popTriviaAwardSync.questionId === popTriviaRevealQuestionId ? `${popTriviaAwardSync.questionId}_${popTriviaAwardSync.delta}` : '');
     const karaokePerformanceVotingOpen = (!!currentSinger || takeoverClapVotingActive) && (!room?.activeMode || room.activeMode === 'karaoke');
     const showPerformanceVotingPromptCta = karaokePerformanceVotingOpen && tab !== 'home';
     const showPopTriviaStandaloneSheet = !!popTriviaCardKey && showPopTriviaCard;
@@ -5127,8 +5380,23 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     useEffect(() => {
         const drop = room?.bonusDrop;
         if (!drop || !user) return;
-        if (lastBonusDropId.current === drop.id) return;
-        lastBonusDropId.current = drop.id;
+        const dropId = String(drop.id || '');
+        if (!dropId) return;
+        if (lastBonusDropId.current === dropId) return;
+        const createdAtMs = Math.max(
+            0,
+            Number(drop.createdAtMs || 0) || 0,
+            Number(drop.timestamp || 0) || 0,
+            Number(drop.id || 0) || 0
+        );
+        const expiresAtMs = Math.max(0, Number(drop.expiresAtMs || 0) || 0);
+        const expired = (expiresAtMs > 0 && expiresAtMs <= Date.now())
+            || (createdAtMs > 0 && (Date.now() - createdAtMs) > BONUS_DROP_AUDIENCE_CLAIM_MS);
+        if (expired) {
+            lastBonusDropId.current = dropId;
+            return;
+        }
+        lastBonusDropId.current = dropId;
         queuePointDelta(drop.points || 0, { silentToast: true });
         syncPoints(true);
         showRewardToast(`Bonus drop: +${drop.points || 0} PTS`, drop.points || 0);
@@ -6396,10 +6664,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     };
 
     const startTipCrateCheckout = async (crate) => {
+        const checkoutKey = 'room:' + String(crate?.id || crate?.label || 'boost');
+        if (pointsCheckoutPendingKey) return;
         if (crate?.offerType === 'support_offer') {
+            setPointsCheckoutPendingKey(checkoutKey);
             startGivebutterSupportCheckout(crate);
+            setTimeout(() => setPointsCheckoutPendingKey(''), 1200);
             return;
         }
+        setPointsCheckoutPendingKey(checkoutKey);
         try {
             const payload = await billingProvider.purchaseTipCrate({
                 crate,
@@ -6413,8 +6686,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             }
             const fallback = room?.tipUrl || 'https://venmo.com/u/Beau-Ross-2';
             window.open(fallback);
+            setPointsCheckoutPendingKey('');
         } catch (e) {
             console.error(e);
+            setPointsCheckoutPendingKey('');
             if (billingPlatform === BILLING_PLATFORMS.IOS) {
                 toast('iOS in-app purchases are unavailable in this build. Use web checkout.');
                 return;
@@ -6464,10 +6739,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     }, [roomSupportHasEmbed, roomSupportOffer, startGivebutterSupportCheckout]);
 
     const startPersonalPackCheckout = useCallback(async (pack) => {
+        const checkoutKey = 'personal:' + String(pack?.id || pack?.label || 'pack');
+        if (pointsCheckoutPendingKey) return;
         if (pack?.offerType === 'support_offer') {
+            setPointsCheckoutPendingKey(checkoutKey);
             startGivebutterSupportCheckout(pack);
+            setTimeout(() => setPointsCheckoutPendingKey(''), 1200);
             return;
         }
+        setPointsCheckoutPendingKey(checkoutKey);
         try {
             const payload = await billingProvider.purchasePointsPack({
                 pack,
@@ -6479,15 +6759,17 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 window.location.href = payload.url;
                 return;
             }
+            setPointsCheckoutPendingKey('');
         } catch (e) {
             console.error(e);
+            setPointsCheckoutPendingKey('');
             if (billingPlatform === BILLING_PLATFORMS.IOS) {
                 toast('iOS in-app purchases are unavailable in this build. Use web checkout.');
                 return;
             }
             toast('Checkout is unavailable right now.');
         }
-    }, [billingPlatform, billingProvider, roomCode, startGivebutterSupportCheckout, toast, uid, user?.name]);
+    }, [billingPlatform, billingProvider, pointsCheckoutPendingKey, roomCode, startGivebutterSupportCheckout, toast, uid, user?.name]);
 
     const _startSubscriptionCheckout = async (plan) => {
         try {
@@ -7284,7 +7566,44 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         }
     };
 
-    const react = async (type, cost=10) => { 
+    const sendAudienceDisplayReaction = async (type = '') => {
+        const safeType = String(type || '').trim().toLowerCase();
+        if (!safeType || !roomCode || !user || !isAudienceDisplayCommentator) return;
+        const now = Date.now();
+        const cooldownUntil = Number(reactionCooldownByType?.[safeType] || 0);
+        const displayCooldownMs = 900;
+        if (cooldownUntil > now) {
+            triggerCooldownFlash(safeType);
+            return;
+        }
+        setReactionCooldownByType((prev) => applyReactionCooldown(prev, safeType, now, displayCooldownMs));
+        markActive();
+        const id = Date.now();
+        setLocalReactions((prev) => [...prev, { id, type: safeType, left: Math.random() * 72 + 14 }]);
+        setTimeout(() => setLocalReactions((prev) => prev.filter((entry) => entry.id !== id)), 3200);
+        try {
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                roomCode,
+                type: safeType,
+                count: 1,
+                uid: activeUid,
+                userName: user.name,
+                avatar: user.avatar,
+                isVip: isVipAccount,
+                isFree: true,
+                audienceDisplaySessionId: audienceDisplay.sessionId || null,
+                audienceDisplayMode: audienceDisplay.mode,
+                audienceDisplayRole: 'commentator',
+                timestamp: serverTimestamp()
+            });
+        } catch (error) {
+            console.error(error);
+            toast('Could not send TV row reaction.');
+        }
+    };
+
+    const react = async (type, cost=10) => {
+
         const safeType = String(type || '').trim().toLowerCase();
         let nextCost = Math.max(0, Number(cost || 0) || 0);
         const applauseModeActive = ['applause', 'applause_countdown', 'applause_result'].includes(String(room?.activeMode || '').trim().toLowerCase());
@@ -8412,7 +8731,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             'scoring + points',
             'visual layout + spacing'
         ],
-        vibeEmojis: ['🙂', '😐', '🔥', '🤩', '🤯']
+        vibeEmojis: ['ðŸ™‚', 'ðŸ˜', 'ðŸ”¥', 'ðŸ¤©', 'ðŸ¤¯']
     };
 
     const resolveFeedbackValue = (value, other, fallback) => {
@@ -8479,7 +8798,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const renderFeedbackModal = () => (
         <div className="fixed inset-0 bg-black/70 z-[160] flex items-start sm:items-center justify-center p-4 sm:p-6 overflow-y-auto overscroll-contain font-saira">
             <div className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-[#231426] p-6 rounded-3xl w-full max-w-md border border-cyan-400/30 text-left shadow-[0_0_60px_rgba(0,196,217,0.35)] max-h-[calc(100dvh-2rem)] sm:max-h-[85vh] overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar">
-                <div className="flex items-center justify-between mb-4">
+                <div className="sticky top-0 z-20 -mx-6 -mt-6 mb-4 flex items-start justify-between gap-3 border-b border-white/10 bg-zinc-950/82 px-6 pb-4 pt-6 backdrop-blur-md">
                     <div>
                         <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Feedback</div>
                         <div className="text-2xl font-black text-white">Help us tune the night</div>
@@ -9189,7 +9508,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         };
 
         return (
-            <div className={`h-screen w-full relative overflow-hidden text-white font-saira storm-screen storm-phase-${stormPhase} ${motionSafeFx ? 'motion-safe-fx' : ''}`}>
+            <div className={`min-h-[100dvh] w-full relative overflow-y-auto overflow-x-hidden overscroll-contain touch-scroll-y text-white font-saira storm-screen storm-phase-${stormPhase} ${motionSafeFx ? 'motion-safe-fx' : ''}`}>
                 {renderStreamlinedTakeoverChrome('Storm Mode')}
                 <div className="absolute inset-0 storm-clouds mix-blend-multiply"></div>
                 <div className="absolute inset-0 vibe-lightning mix-blend-screen"></div>
@@ -9216,7 +9535,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     </div>
                 </div>
 
-                <div className="absolute inset-0 flex items-center justify-center z-20 px-6">
+                <div className="relative z-20 flex min-h-[100dvh] items-center justify-center px-6 py-[calc(env(safe-area-inset-top)+10rem)]">
                     <div className="w-full max-w-sm bg-black/60 border border-white/10 rounded-3xl p-6 text-center backdrop-blur">
                         <div className="text-xl font-bold mb-2">Storm Mode</div>
                         <p className="text-sm text-zinc-300 mb-4">Build one storm together. Each phone controls a different rain or thunder layer.</p>
@@ -9287,7 +9606,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             miss: 'border-rose-300/55 bg-rose-500/18 text-rose-100 shadow-[0_0_22px_rgba(244,63,94,0.22)]'
         };
         return (
-            <div className="h-screen bg-black/90 flex flex-col relative overflow-hidden text-white font-saira justify-center">
+            <div className="h-[100dvh] bg-black/90 flex flex-col relative overflow-hidden text-white font-saira justify-center">
                 {renderStreamlinedTakeoverChrome('Guitar Mode')}
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.16),transparent_52%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_60%)]"></div>
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[min(92vw,460px)] text-center z-30 pointer-events-none">
@@ -9383,7 +9702,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         {secondsSinceHit === null ? 'Watch the note highway and hit the marked string on beat.' : `Last clean hit ${secondsSinceHit}s ago`}
                     </div>
                 </div>
-                <button onClick={handleExitGuitarMode} className="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-[#EC4899] text-black px-4 py-2 rounded-full z-50 text-xs font-bold">EXIT MODE</button>
+                <button onClick={handleExitGuitarMode} className="absolute left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#EC4899] px-4 py-2 text-xs font-bold text-black" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 2.5rem)' }}>EXIT MODE</button>
             </div>
         );
     }
@@ -9405,11 +9724,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         };
 
         return (
-            <div className={`h-screen w-full ${motionSafeFx ? 'motion-safe-fx' : ''} ${motionSafeFx ? '' : 'vibe-strobe'} flex flex-col items-center justify-center text-white relative overflow-hidden`}>
+            <div className={`min-h-[100dvh] w-full ${motionSafeFx ? 'motion-safe-fx' : ''} ${motionSafeFx ? '' : 'vibe-strobe'} flex flex-col items-center justify-start text-white relative overflow-y-auto overflow-x-hidden overscroll-contain touch-scroll-y`}>
                 {renderStreamlinedTakeoverChrome('Beat Drop')}
                 <div className={`absolute inset-0 ${motionSafeFx ? 'bg-white/28' : 'bg-white/45'} mix-blend-screen`}></div>
                 <div className={`absolute inset-0 ${motionSafeFx ? 'bg-gradient-to-b from-pink-500/12 via-transparent to-cyan-400/8' : 'bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-400/20'}`}></div>
-                <div className="relative z-10 w-full max-w-sm px-6 text-center">
+                <div className="relative z-10 w-full max-w-sm px-6 py-[calc(env(safe-area-inset-top)+2rem)] pb-[calc(env(safe-area-inset-bottom)+2rem)] text-center">
                     <div className="text-xs uppercase tracking-[0.45em] text-white/80 mb-4 drop-shadow-lg">Beat Drop</div>
                     <div className="inline-block mb-3 px-3 py-1 rounded-full bg-black/65 border border-yellow-300/40 text-[10px] uppercase tracking-[0.2em] text-yellow-200">Sensitivity Warning</div>
                     {phase === 'countdown' && (
@@ -9424,7 +9743,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             <div className="text-base font-bold mb-5 drop-shadow-lg">Keep the crowd meter alive</div>
                             <button
                                 onClick={handleBeatTap}
-                                className="w-56 h-56 rounded-full bg-black text-white text-3xl font-black shadow-[0_0_40px_rgba(0,0,0,0.45)] active:scale-95 transition-transform border-4 border-cyan-300 drop-shadow-2xl"
+                                className="h-44 w-44 rounded-full border-4 border-cyan-300 bg-black text-2xl font-black text-white shadow-[0_0_40px_rgba(0,0,0,0.45)] drop-shadow-2xl transition-transform active:scale-95 sm:h-56 sm:w-56 sm:text-3xl"
                             >
                                 TAP
                             </button>
@@ -9470,7 +9789,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         const submissionsSorted = [...visibleSubmissions].sort((a, b) => (voteCounts[b.uid] || 0) - (voteCounts[a.uid] || 0));
 
         return (
-            <div data-feature-id="singer-doodle-oke" className="h-screen w-full bg-zinc-950 text-white font-saira flex flex-col items-center justify-center px-5 py-6 overflow-hidden">
+            <div
+                data-feature-id="singer-doodle-oke"
+                className="min-h-[100dvh] w-full bg-zinc-950 text-white font-saira flex flex-col items-center justify-start px-4 py-5 overflow-y-auto overflow-x-hidden overscroll-contain touch-scroll-y custom-scrollbar"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
+            >
                 {renderStreamlinedTakeoverChrome('Doodle-oke')}
                 <div className="w-full max-w-3xl text-center space-y-2">
                     <div className="text-[10px] uppercase tracking-[0.5em] text-zinc-500">Doodle-oke</div>
@@ -9480,7 +9803,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     </div>
                 </div>
 
-                <div className="mt-6 w-full max-w-4xl grid gap-4">
+                <div className="mt-4 w-full max-w-4xl grid gap-4 pb-6">
                     <div className="bg-zinc-900/70 border border-white/10 rounded-3xl p-4">
                         <div className="flex items-center justify-between text-xs uppercase tracking-[0.35em] text-zinc-500 mb-2">
                             <span>{phase === 'voting' ? 'Voting' : phase === 'reveal' ? 'Reveal' : 'Drawing'}</span>
@@ -9502,7 +9825,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     </div>
 
                     {phase === 'drawing' && (
-                        <div className="bg-black/70 border border-white/10 rounded-3xl p-4">
+                        <div className="bg-black/70 border border-white/10 rounded-3xl p-4 flex min-h-0 flex-col">
                             {eligibleToDraw ? (
                                 <>
                                     <div className="flex items-center justify-between mb-3">
@@ -9540,7 +9863,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             Clear
                                         </button>
                                     </div>
-                                    <div className="relative w-full aspect-square max-h-[60vh] bg-zinc-950 rounded-2xl overflow-hidden border border-white/10">
+                                    <div className="relative w-full aspect-square min-h-[12rem] max-h-[min(48dvh,28rem)] bg-zinc-950 rounded-2xl overflow-hidden border border-white/10">
                                         <canvas
                                             data-feature-id="singer-doodle-canvas"
                                             ref={doodleCanvasRef}
@@ -9555,7 +9878,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         data-feature-id="singer-doodle-submit"
                                         onClick={submitDoodleDrawing}
                                         disabled={hasSubmitted || doodleSubmitting}
-                                        className={`mt-3 w-full py-3 rounded-xl font-bold ${(hasSubmitted || doodleSubmitting) ? 'bg-zinc-800 text-zinc-500' : 'bg-gradient-to-r from-cyan-500 to-pink-500 text-black'}`}
+                                        className={`sticky bottom-3 z-20 mt-3 w-full rounded-xl py-3 font-bold shadow-[0_-10px_24px_rgba(0,0,0,0.35)] ${(hasSubmitted || doodleSubmitting) ? 'bg-zinc-800 text-zinc-500' : 'bg-gradient-to-r from-cyan-500 to-pink-500 text-black'}`}
                                     >
                                         {hasSubmitted ? 'Submitted' : doodleSubmitting ? 'Submitting...' : 'Submit Drawing'}
                                     </button>
@@ -9663,36 +9986,40 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         };
 
         return (
-            <div data-feature-id="singer-selfie-challenge" className="h-screen bg-black flex flex-col relative overflow-hidden text-white font-saira">
+            <div
+                data-feature-id="singer-selfie-challenge"
+                className="min-h-[100dvh] bg-black flex flex-col relative overflow-y-auto overflow-x-hidden overscroll-contain touch-scroll-y text-white font-saira"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
+            >
                 {renderStreamlinedTakeoverChrome('Selfie Challenge')}
-                <div className="absolute top-6 left-1/2 -translate-x-1/2 text-center z-20">
+                <div className="relative z-20 px-5 pt-6 pb-3 text-center">
                     <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">Selfie Challenge</div>
                     <div className="text-2xl font-bold text-white">{challenge?.prompt || 'Get ready'}</div>
                     {challenge?.status && <div className="text-xs text-cyan-400 mt-1">Status: {challenge.status}</div>}
                 </div>
 
                 {isParticipant ? (
-                    <div className="flex-1 flex flex-col items-center justify-center">
+                    <div className="relative flex min-h-[calc(100dvh-9rem)] flex-1 flex-col items-center justify-end overflow-hidden px-5 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
                         <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover"></video>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/40"></div>
-                        <div className="absolute bottom-12 left-0 w-full flex justify-center z-30">
+                        <div className="relative z-30 mt-auto flex w-full flex-col items-center gap-3 rounded-[1.5rem] border border-white/12 bg-black/55 px-4 py-4 backdrop-blur">
                             <button
                                 data-feature-id="singer-selfie-submit"
                                 onClick={submitSelfieChallenge}
                                 disabled={hasSubmitted || selfieChallengeSubmitting}
-                                className={`w-24 h-24 rounded-full border-4 shadow-xl transition-transform disabled:opacity-50 ${selfieChallengeSubmitting ? 'bg-cyan-200 border-cyan-50 cursor-not-allowed' : 'bg-white border-zinc-300 active:scale-95'}`}
+                                className={`h-20 w-20 rounded-full border-4 shadow-xl transition-transform disabled:opacity-50 sm:h-24 sm:w-24 ${selfieChallengeSubmitting ? 'bg-cyan-200 border-cyan-50 cursor-not-allowed' : 'bg-white border-zinc-300 active:scale-95'}`}
                             >
                                 {selfieChallengeSubmitting ? (
                                     <i className="fa-solid fa-spinner animate-spin text-2xl text-zinc-900"></i>
                                 ) : null}
                             </button>
-                        </div>
-                        <div className="absolute bottom-4 left-0 w-full text-center text-xs text-zinc-300 z-30">
+                        <div className="text-center text-xs text-zinc-300">
                             {hasSubmitted ? 'Submitted - waiting for votes' : selfieChallengeSubmitting ? 'Submitting your selfie...' : 'Tap to submit your selfie'}
+                        </div>
                         </div>
                     </div>
                 ) : (
-                    <div className="flex-1 p-6 mt-16">
+                    <div className="flex-1 p-5 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
                         {selfieVotePendingUid ? (
                             <div className="mb-4 rounded-full border border-cyan-300/35 bg-cyan-500/12 px-4 py-2 text-center text-[11px] font-black uppercase tracking-[0.2em] text-cyan-100">
                                 Sending vote...
@@ -9748,11 +10075,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     if (strobeVictoryOpen) {
         return (
-            <div className="fixed inset-0 z-[130] bg-black flex flex-col items-center justify-center p-6 text-white font-saira">
+            <div className="fixed inset-0 z-[130] bg-black flex flex-col items-center justify-start overflow-y-auto overscroll-contain touch-scroll-y p-5 text-white font-saira" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
                 <div className="text-[10px] uppercase tracking-[0.4em] text-cyan-300 mb-3">Beat Drop MVP</div>
                 <div className="text-4xl font-bebas mb-2">YOU KEPT THE BEAT</div>
                 <div className="text-sm text-zinc-400 mb-6">Snap a victory selfie for the big screen.</div>
-                <div className="relative w-full max-w-sm aspect-[3/4] rounded-3xl overflow-hidden border-4 border-cyan-400/60 shadow-2xl">
+                <div className="relative w-full max-w-sm aspect-[3/4] max-h-[50dvh] rounded-3xl overflow-hidden border-4 border-cyan-400/60 shadow-2xl">
                     <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover"></video>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20"></div>
                 </div>
@@ -9771,7 +10098,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 {hasPendingCrowdSelfie && (
                     <div className="mt-2 rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1 text-xs text-amber-100">Crowd selfie awaiting host approval.</div>
                 )}
-                <button onClick={takeStrobeVictorySelfie} className="mt-6 w-24 h-24 bg-white rounded-full border-4 border-zinc-300 shadow-xl active:scale-95 transition-transform"></button>
+                <button onClick={takeStrobeVictorySelfie} className="mt-5 h-20 w-20 rounded-full border-4 border-zinc-300 bg-white shadow-xl transition-transform active:scale-95 sm:h-24 sm:w-24"></button>
                 <button onClick={() => { setCrowdSelfieMomentOptIn(false); setStrobeVictoryInfo(null); setStrobeVictoryOpen(false); }} className="mt-4 text-xs text-zinc-400 underline">Skip for now</button>
             </div>
         );
@@ -9779,11 +10106,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     if (guitarVictoryOpen) {
         return (
-            <div className="fixed inset-0 z-[130] bg-black flex flex-col items-center justify-center p-6 text-white font-saira">
+            <div className="fixed inset-0 z-[130] bg-black flex flex-col items-center justify-start overflow-y-auto overscroll-contain touch-scroll-y p-5 text-white font-saira" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
                 <div className="text-[10px] uppercase tracking-[0.4em] text-pink-400 mb-3">Victory Selfie</div>
                 <div className="text-4xl font-bebas mb-2">GUITAR SOLO MVP</div>
                 <div className="text-sm text-zinc-400 mb-6">Show off your shred face for the big screen.</div>
-                <div className="relative w-full max-w-sm aspect-[3/4] rounded-3xl overflow-hidden border-4 border-pink-500/50 shadow-2xl">
+                <div className="relative w-full max-w-sm aspect-[3/4] max-h-[50dvh] rounded-3xl overflow-hidden border-4 border-pink-500/50 shadow-2xl">
                     <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover"></video>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20"></div>
                 </div>
@@ -9802,7 +10129,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 {hasPendingCrowdSelfie && (
                     <div className="mt-2 rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1 text-xs text-amber-100">Crowd selfie awaiting host approval.</div>
                 )}
-                <button onClick={takeGuitarVictorySelfie} className="mt-6 w-24 h-24 bg-white rounded-full border-4 border-zinc-300 shadow-xl active:scale-95 transition-transform"></button>
+                <button onClick={takeGuitarVictorySelfie} className="mt-5 h-20 w-20 rounded-full border-4 border-zinc-300 bg-white shadow-xl transition-transform active:scale-95 sm:h-24 sm:w-24"></button>
                 <button onClick={() => { setCrowdSelfieMomentOptIn(false); setGuitarVictoryInfo(null); setGuitarVictoryOpen(false); }} className="mt-4 text-xs text-zinc-400 underline">Skip for now</button>
             </div>
         );
@@ -9810,7 +10137,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     if (room?.readyCheck?.active) {
         return (
-            <div className="fixed inset-0 z-[120] bg-zinc-900 flex flex-col items-center justify-center p-6 text-white font-saira">
+            <div className="fixed inset-0 z-[120] bg-zinc-900 flex flex-col items-center justify-start overflow-y-auto overscroll-contain touch-scroll-y p-5 text-white font-saira" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
                 <div className="flex items-center gap-2 mb-3">
                     <div className="text-[10px] uppercase tracking-[0.4em] text-zinc-500">Ready Check</div>
                     {autoCrowdMomentActive && (
@@ -9819,7 +10146,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         </span>
                     )}
                 </div>
-                <div className="text-[12rem] font-black text-white leading-none mb-4">{readyTimer || 0}</div>
+                <div className="mb-4 text-[clamp(5rem,28vw,12rem)] font-black leading-none text-white">{readyTimer || 0}</div>
                 {user?.isReady ? (
                     <h1 className="text-4xl font-bebas text-green-400">YOU ARE READY!</h1>
                 ) : (
@@ -9828,7 +10155,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         {autoCrowdMomentActive && (
                             <div className="text-sm text-cyan-200 mb-6">{autoCrowdMomentDetail}</div>
                         )}
-                        <button onClick={readyUp} className="w-64 h-64 bg-green-500 rounded-full flex items-center justify-center border-8 border-green-300 shadow-2xl">
+                        <button onClick={readyUp} className="flex h-44 w-44 items-center justify-center rounded-full border-8 border-green-300 bg-green-500 shadow-2xl sm:h-64 sm:w-64">
                             <span className="text-4xl font-bold">YES!</span>
                         </button>
                         <div className="text-sm text-zinc-400 mt-6">Earn +{Math.max(0, Number(room?.readyCheck?.rewardPoints ?? 100))} pts</div>
@@ -9853,7 +10180,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     </div>
                 )}
                 <div className="absolute inset-0 border-[20px] border-pink-500 opacity-50 pointer-events-none animate-pulse"></div>
-                <div className="absolute bottom-10 left-0 w-full flex justify-center z-50">
+                <div
+                    className="absolute inset-x-0 flex justify-center px-4 z-50"
+                    style={{ bottom: 'calc(env(safe-area-inset-bottom) + 2.25rem)' }}
+                >
                     <button data-selfie-cam-capture onClick={takeSelfie} className="w-20 h-20 bg-white rounded-full border-4 border-zinc-300 shadow-xl active:scale-95 transition-transform"></button>
                 </div>
                 <div className="absolute top-10 w-full text-center">
@@ -10097,7 +10427,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
         if (isHostRoomMicVoiceGame && !hideAudienceRoomMicVoiceOverlay) {
             return (
-                <div className="absolute inset-0 z-[120] flex items-center justify-center bg-[#05070d] px-4 py-6 text-white">
+                <div className="absolute inset-0 z-[120] flex items-start justify-center overflow-y-auto overscroll-contain touch-scroll-y bg-[#05070d] px-4 py-[calc(env(safe-area-inset-top)+1.5rem)] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] text-white">
                     <div data-feature-id="audience-room-mic-voice-prompt" className="w-full max-w-md rounded-[28px] border border-cyan-200/20 bg-zinc-950/94 p-5 text-center shadow-[0_0_48px_rgba(34,211,238,0.18)]">
                         <div className="text-[10px] font-black uppercase tracking-[0.32em] text-cyan-200">Room Voice Game</div>
                         <div className="mt-2 text-3xl font-black text-white">{voiceGameLabel}</div>
@@ -10165,7 +10495,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     view="mobile"
                 />
                 {rngActive && isMysteryParticipant && (
-                    <div className="absolute inset-0 z-[140] bg-black/80 flex items-center justify-center p-6">
+                    <div className="absolute inset-0 z-[140] bg-black/80 flex items-start justify-center overflow-y-auto overscroll-contain touch-scroll-y p-5" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
                         <div className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-3xl p-6 text-center">
                             <div className="text-xs uppercase tracking-[0.4em] text-zinc-500">Mystery Bingo</div>
                             <div className="text-3xl font-bebas text-white mt-3">Spin for pick order</div>
@@ -10205,7 +10535,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     </div>
                 )}
                 {canLateJoin && (
-                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[130] bg-black/70 border border-white/15 px-4 py-3 rounded-full flex items-center gap-3">
+                    <div className="absolute left-1/2 z-[130] flex -translate-x-1/2 items-center gap-3 rounded-full border border-white/15 bg-black/70 px-4 py-3" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 2rem)' }}>
                         <div className="text-xs uppercase tracking-[0.35em] text-zinc-300">Join round</div>
                         <button
                             onClick={async () => {
@@ -10235,7 +10565,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     </div>
                 )}
                 {pendingBingoSuggest !== null && (
-                    <div className="absolute inset-0 bg-black/70 z-[120] flex items-center justify-center p-6">
+                    <div className="absolute inset-0 z-[120] flex items-start justify-center overflow-y-auto overscroll-contain touch-scroll-y bg-black/70 p-5" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
                         <div className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-2xl p-5">
                             <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Suggest square</div>
                             <div className="text-lg font-bold text-white mt-2">Add a short note (optional)</div>
@@ -10369,12 +10699,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     if (showProfile) return (
         <div
-            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center text-white font-saira"
+            className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overscroll-contain touch-scroll-y bg-black/80 px-3 pt-6 text-white backdrop-blur-md font-saira sm:items-center" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
             onClick={() => setShowProfile(false)}
         >
             <style>{PARTY_LIGHTS_STYLE}</style>
             <div
-                className="relative w-full sm:max-w-lg max-h-[92dvh] overflow-hidden rounded-t-[2rem] sm:rounded-3xl border border-fuchsia-300/30 bg-gradient-to-br from-[#1b1130] via-[#0d1423] to-[#0a0d12] shadow-[0_0_60px_rgba(236,72,153,0.28)]"
+                className="relative flex w-full flex-col overflow-hidden rounded-t-[2rem] border border-fuchsia-300/30 bg-gradient-to-br from-[#1b1130] via-[#0d1423] to-[#0a0d12] shadow-[0_0_60px_rgba(236,72,153,0.28)] sm:max-w-lg sm:rounded-3xl"
+                style={{ maxHeight: 'calc(100dvh - env(safe-area-inset-bottom) - 1.5rem)' }}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="absolute -top-24 -left-12 w-56 h-56 rounded-full bg-fuchsia-500/25 blur-3xl pointer-events-none"></div>
@@ -10397,27 +10728,27 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         </button>
                     </div>
                 </div>
-                <div className="overflow-y-auto custom-scrollbar px-5 py-4 space-y-4">
-                    <div className="relative rounded-3xl border border-white/10 bg-black/35 p-3">
-                        <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar px-5 py-4 space-y-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}>
+                    <div className="relative isolate rounded-3xl border border-white/10 bg-black/35 p-3">
+                        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
                             <div className="logo-rays join-rays profile-rays" style={{ '--ray-inner': '130px', left: '50%', top: '50%' }}></div>
                         </div>
-                        <div className="party-lights z-[1]">
+                        <div className="party-lights pointer-events-none z-0">
                             {Array.from({ length: 10 }).map((_, idx) => (
                                 <span key={`profile-a-${idx}`} className={`spotlight s${idx + 1}`} />
                             ))}
                         </div>
-                        <div className="party-lights alt z-[1]">
+                        <div className="party-lights alt pointer-events-none z-0">
                             {Array.from({ length: 10 }).map((_, idx) => (
                                 <span key={`profile-b-${idx}`} className={`spotlight s${idx + 1}`} />
                             ))}
                         </div>
-                        <div className="party-lights third z-[1]">
+                        <div className="party-lights third pointer-events-none z-0">
                             {Array.from({ length: 10 }).map((_, idx) => (
                                 <span key={`profile-c-${idx}`} className={`spotlight s${idx + 1}`} />
                             ))}
                         </div>
-                        <AvatarCoverflow items={AVATAR_CATALOG} value={activeAvatarPreviewEmoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} brandTheme={audienceBrandTheme} />
+                        <div className="relative z-10"><AvatarCoverflow items={AVATAR_CATALOG} value={activeAvatarPreviewEmoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} brandTheme={audienceBrandTheme} /></div>
                     </div>
                     <div
                         className="rounded-3xl p-5 text-center shadow-[0_12px_35px_rgba(0,0,0,0.45)]"
@@ -10508,7 +10839,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             {accessBrandLabel} & History
                         </button>
                     )}
-                    <div className="flex gap-2">
+                    <div className="sticky bottom-0 z-20 -mx-5 flex gap-2 border-t border-white/10 bg-[#0d1423]/95 px-5 py-3 backdrop-blur">
                         <button onClick={()=>setShowProfile(false)} className="flex-1 bg-zinc-700 py-3 rounded-xl font-bold">CANCEL</button>
                         <button onClick={updateProfile} className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black py-3 rounded-xl font-black">SAVE</button>
                     </div>
@@ -10905,7 +11236,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     
     if ((viewLyrics || hostLyricsActive) && currentSinger?.lyrics) {
         return (
-            <div className="h-screen relative overflow-hidden">
+            <div className="h-[100dvh] relative overflow-hidden">
                 <AppleLyricsRenderer 
                     lyrics={currentSinger.lyrics} 
                     timedLyrics={currentSinger.lyricsTimed}
@@ -10924,7 +11255,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     <button onClick={()=>setShowAllLyrics(true)} className={"px-3 py-1 rounded-full text-xs font-bold " + (showAllLyrics ? 'bg-[#00C4D9] text-black' : 'text-white')} >FULL</button>
                     <button onClick={()=>setShowAllLyrics(false)} className={"px-3 py-1 rounded-full text-xs font-bold " + (!showAllLyrics ? 'bg-cyan-500 text-black' : 'text-white')} >AUTO</button>
                 </div>
-                <div className="absolute bottom-10 right-10 z-[100] flex flex-col items-end gap-2">
+                <div className="absolute right-4 z-[100] flex flex-col items-end gap-2 sm:right-10" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 2.5rem)' }}>
                     <button
                         onClick={() => {
                             setViewLyrics(false);
@@ -11003,7 +11334,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             }
         };
         return (
-            <div className="fixed inset-0 bg-[#0b0e12] z-[110] p-6 flex flex-col items-center justify-center font-saira text-white">
+            <div className="fixed inset-0 z-[110] flex flex-col items-center justify-start overflow-y-auto overscroll-contain touch-scroll-y bg-[#0b0e12] p-5 font-saira text-white" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#1a1f2b,transparent_55%),radial-gradient(circle_at_bottom,#1b0f22,transparent_45%)] opacity-90"></div>
                 <div className="absolute -top-24 -left-16 w-64 h-64 rounded-full bg-cyan-500/20 blur-3xl"></div>
                 <div className="absolute -bottom-28 -right-20 w-72 h-72 rounded-full bg-pink-500/20 blur-3xl"></div>
@@ -11079,15 +11410,23 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         );
     }
     if (showPoints) return (
-        <div className="fixed inset-0 bg-black/70 z-[110] p-6 flex flex-col items-center justify-center font-saira text-white text-center">
-            <div className="w-full max-w-sm bg-gradient-to-br from-zinc-800 via-zinc-900 to-[#231426] border border-pink-400/30 rounded-3xl p-6 shadow-[0_0_60px_rgba(255,103,182,0.35)] text-left max-h-[85vh] overflow-y-auto custom-scrollbar">
-                <div className="flex items-center justify-between mb-4">
-                    <div>
-                        <div className="text-sm uppercase tracking-[0.35em] text-zinc-300">{allowsDonationAccess ? 'Support + Points' : 'Points'}</div>
-                        <h2 className="text-4xl font-black text-cyan-300">Fuel the show</h2>
+        <div className="fixed inset-0 z-[110] flex flex-col items-center justify-start overflow-y-auto overscroll-contain touch-scroll-y bg-black/70 p-5 text-center font-saira text-white" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
+            <div className="w-full max-w-sm bg-gradient-to-br from-zinc-800 via-zinc-900 to-[#231426] border border-pink-400/30 rounded-3xl p-6 shadow-[0_0_60px_rgba(255,103,182,0.35)] text-left max-h-[85dvh] overflow-y-auto custom-scrollbar">
+                <div className="sticky top-0 z-20 -mx-6 -mt-6 mb-4 flex items-start justify-between gap-3 border-b border-white/10 bg-zinc-950/82 px-6 pb-4 pt-6 backdrop-blur-md">
+                    <div className="min-w-0">
+                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-300">{allowsDonationAccess ? 'Support + Points' : 'Points'}</div>
+                        <h2 className="mt-1 text-3xl font-black leading-none text-cyan-300">Fuel the show</h2>
                     </div>
-                    <div className="bg-black/50 border border-cyan-500/30 rounded-full px-4 py-1.5 text-lg font-black text-cyan-300">
+                    <div className="flex shrink-0 items-center justify-end gap-2"><div className="max-w-[5.5rem] truncate rounded-full border border-cyan-500/30 bg-black/50 px-2.5 py-1.5 text-xs font-black text-cyan-300">
                         {Math.max(0, getEffectivePoints())} PTS
+                    </div>
+                        <button
+                            onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }}
+                            className="grid min-h-[44px] min-w-[44px] place-items-center rounded-full border border-white/10 bg-black/45 text-zinc-100 hover:border-white/25 hover:text-white"
+                            aria-label="Close points sheet"
+                        >
+                            <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </button>
                     </div>
                 </div>
                 {pointsDrawerContent}
@@ -11208,7 +11547,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         return (
-            <div className="fixed inset-0 z-50 bg-[#00C4D9]/20 flex flex-col items-center justify-center p-6 text-white font-saira">
+            <div className="fixed inset-0 z-50 flex flex-col items-center justify-start overflow-y-auto overscroll-contain touch-scroll-y bg-[#00C4D9]/20 p-5 text-white font-saira" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
                 {renderStreamlinedTakeoverChrome('Applause Meter')}
                 <h1 className="text-5xl font-bebas mb-8 text-cyan-300 animate-bounce">APPLAUSE METER!</h1>
                 <div className="mb-5 w-full max-w-sm rounded-2xl border border-cyan-100/40 bg-black/50 px-4 py-3 text-center shadow-[0_0_28px_rgba(0,196,217,0.22)]">
@@ -11236,10 +11575,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     data-feature-id="applause-clap-button"
                     onClick={()=>react('clap', 0)}
                     disabled={isReactionCoolingDown('clap')}
-                    className={`relative w-full h-64 rounded-full flex items-center justify-center border-8 border-[#00C4D9]/60 bg-[#00C4D9] shadow-2xl transition-transform ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-80' : 'active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-4 ring-red-300 animate-pulse' : ''}`}
+                    className={`relative flex h-44 w-44 items-center justify-center rounded-full border-8 border-[#00C4D9]/60 bg-[#00C4D9] shadow-2xl transition-transform sm:h-64 sm:w-64 ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-80' : 'active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-4 ring-red-300 animate-pulse' : ''}`}
                 >
                     {renderReactionCooldownFill('clap', 'bg-cyan-100/30', 'border-cyan-100/40 bg-black/55 text-cyan-50')}
-                    <span className="text-8xl">{String.fromCodePoint(0x1F44F)}</span>
+                    <span className="text-6xl sm:text-8xl">{String.fromCodePoint(0x1F44F)}</span>
                 </button>
                 <p className="mt-8 text-center font-bold">
                     Tap to push the applause meter
@@ -11250,7 +11589,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     if (takeoverOpen && room?.lightMode === 'ballad') {
         return (
-            <div className="h-screen w-full relative overflow-hidden text-white font-saira bg-[#090612]">
+            <div className="h-[100dvh] w-full relative overflow-hidden text-white font-saira bg-[#090612]">
                 {renderStreamlinedTakeoverChrome('Phone Lighter Mode')}
                 <div className="absolute inset-0 ballad-haze"></div>
                 <div className="absolute inset-x-0 bottom-0 h-[74%] ballad-glow"></div>
@@ -11324,7 +11663,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         }}
                     ></div>
                 ))}
-                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(92vw,420px)] pointer-events-auto">
+                <div className="absolute left-1/2 w-[min(92vw,420px)] -translate-x-1/2 pointer-events-auto" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1.25rem)' }}>
                     <div className="rounded-2xl border border-pink-300/40 bg-black/65 backdrop-blur px-3 py-3">
                         <div className="text-[10px] uppercase tracking-[0.24em] text-pink-100">Concert Lighters</div>
                         <div className="text-xs text-zinc-200 mt-1">Keep your phone raised, sway with the crowd, and send support to the stage.</div>
@@ -11360,12 +11699,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     if (takeoverOpen && room?.lightMode === 'banger') {
         return (
-            <div className="h-screen w-full relative overflow-hidden text-white font-saira bg-[#090612]">
+            <div className="h-[100dvh] w-full relative overflow-hidden text-white font-saira bg-[#090612]">
                 {renderStreamlinedTakeoverChrome('Banger Mode')}
                 <div className="absolute inset-0 vibe-banger"></div>
                 <div className="absolute inset-0 bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-500/25"></div>
                 <div className="absolute top-24 left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.45em] text-white/80 uppercase">Banger Mode - Feel The Bass</div>
-                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(92vw,420px)] pointer-events-auto">
+                <div className="absolute left-1/2 w-[min(92vw,420px)] -translate-x-1/2 pointer-events-auto" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1.25rem)' }}>
                     <div className="rounded-2xl border border-orange-300/40 bg-black/65 backdrop-blur px-3 py-3">
                         <div className="text-[10px] uppercase tracking-[0.24em] text-orange-100">Banger Mode</div>
                         <div className="text-xs text-zinc-200 mt-1">Build crowd heat fast with hype reactions and callouts.</div>
@@ -12054,7 +12393,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             data-singer-brand-primary={audienceBrandTheme.primaryColor}
             data-singer-brand-secondary={audienceBrandTheme.secondaryColor}
             data-singer-brand-accent={audienceBrandTheme.accentColor}
-            className={`relative ${tabletTouchViewport ? 'singer-tablet-touch min-h-[100dvh] h-auto overflow-y-auto overflow-x-hidden' : 'h-[100dvh] min-h-[100dvh] overflow-hidden'} bg-[#090612] text-white font-saira flex flex-col ${isNativeMobileLayout ? 'mobile-shell-native' : ''}`}
+            className={`relative min-h-[100dvh] h-auto overflow-y-auto overflow-x-hidden overscroll-contain touch-scroll-y custom-scrollbar ${tabletTouchViewport ? 'singer-tablet-touch' : ''} bg-[#090612] text-white font-saira flex flex-col ${isNativeMobileLayout ? 'mobile-shell-native' : ''}`}
             style={audienceBrandPalette.rootStyle}
         >
             {isNativeMobileLayout && (
@@ -12102,7 +12441,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                               onClick={() => setShowPoints(true)}
                               rewardDelta={pointsRewardPulse.delta}
                               rewardPulseKey={pointsRewardPulse.key}
-                              displayValue={coHostUnlimitedCredits ? '∞' : null}
+                              displayValue={coHostUnlimitedCredits ? 'âˆž' : null}
                               caption={coHostUnlimitedCredits ? 'FREE' : 'PTS'}
                               className="h-10 w-[118px] sm:w-[132px]"
                           />
@@ -12112,13 +12451,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
               </div>
 
             {canSeeAudienceReleaseWindow && (
-                <div className="absolute inset-x-3 top-[104px] z-[92] pointer-events-auto md:inset-x-5">
-                    <div className={`mx-auto max-w-[26rem] rounded-[1.35rem] border px-3.5 py-3.5 backdrop-blur ${audienceReleaseTone.cardClass}`}>
+                <div data-audience-release-window-panel className={`${audienceReleasePanelProminent ? 'fixed inset-x-2 top-[86px] z-[125] md:top-[96px]' : 'absolute inset-x-3 top-[104px] z-[92] md:inset-x-5'} pointer-events-auto`}>
+                    <div className={`mx-auto ${audienceReleasePanelProminent ? 'max-w-[32rem] rounded-[1.5rem] border-2 px-4 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.46)] ring-2 ring-emerald-300/16' : 'max-w-[26rem] rounded-[1.35rem] border px-3.5 py-3.5'} backdrop-blur ${audienceReleaseTone.cardClass}`}>
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <div className={`text-[9px] uppercase tracking-[0.22em] ${audienceReleaseTone.eyebrowClass}`}>
+                                <div className={`${audienceReleasePanelProminent ? 'text-[10px]' : 'text-[9px]'} uppercase tracking-[0.22em] ${audienceReleaseTone.eyebrowClass}`}>
                                     {selfServeAudienceDecisionPresentation
                                         ? selfServeAudienceDecisionPresentation.eyebrow
+                                        : performanceAudienceDecisionPresentation
+                                            ? performanceAudienceDecisionPresentation.eyebrow
                                         : isAudienceSongFaceOffDecision
                                         ? (isAudienceCoHostDecision ? 'Co-Host Song Face-Off' : 'Audience Song Face-Off')
                                         : isAudienceSlotFillDecision
@@ -12133,12 +12474,22 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         Promoted Co-Host
                                     </div>
                                 ) : null}
-                                <div className="mt-1.5 text-sm font-bold leading-tight text-white">
+                                {audienceReleasePanelProminent ? (
+                                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/14 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-emerald-50">
+                                        <i className="fa-solid fa-mobile-screen-button"></i>
+                                        Live vote - tap now
+                                    </div>
+                                ) : null}
+                                <div className={`mt-1.5 ${audienceReleasePanelProminent ? 'text-lg' : 'text-sm'} font-bold leading-tight text-white`}>
                                     {String(audienceReleaseWindow?.prompt || 'Should this scene slot in next?').trim()}
                                 </div>
                                 {selfServeAudienceDecisionPresentation ? (
                                     <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
                                         {selfServeAudienceDecisionPresentation.helper}
+                                    </div>
+                                ) : performanceAudienceDecisionPresentation ? (
+                                    <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
+                                        {performanceAudienceDecisionPresentation.helper}
                                     </div>
                                 ) : isSelfServeOpenStageDecision ? (
                                     <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
@@ -12163,7 +12514,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 ) : null}
                             </div>
                             <div className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
-                                {selfServeAudienceDecisionPresentation?.badgeLabel || 'Vote Open'}
+                                {selfServeAudienceDecisionPresentation?.badgeLabel || performanceAudienceDecisionPresentation?.badgeLabel || 'Vote Open'}
                             </div>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -12175,7 +12526,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             ) : null}
                             <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
                                 <i className="fa-solid fa-check-to-slot"></i>
-                                {selfServeAudienceDecisionPresentation?.tallyLabel || `${releaseWindowTally.totalVotes || 0} total`}
+                                {selfServeAudienceDecisionPresentation?.tallyLabel || performanceAudienceDecisionPresentation?.tallyLabel || `${releaseWindowTally.totalVotes || 0} total`}
                             </div>
                             {isSelfServeAudienceDecision ? (
                                 <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.pillClass}`}>
@@ -12184,55 +12535,73 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 </div>
                             ) : null}
                         </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className={`mt-3 grid grid-cols-2 ${audienceReleasePanelProminent ? 'gap-3' : 'gap-2'}`}>
                             <button
+                                data-audience-release-choice-card="slot_scene"
                                 type="button"
                                 onClick={() => castRunOfShowReleaseVote('slot_scene')}
-                                className={`rounded-[1.1rem] border px-2.5 py-2.5 text-left ${myReleaseWindowVote === 'slot_scene' ? audienceReleaseTone.selectedChoiceClass : 'border-white/10 bg-black/20 text-white'}`}
+                                className={`min-h-[126px] rounded-[1.1rem] border px-2.5 py-2.5 text-left shadow-[0_14px_34px_rgba(0,0,0,0.24)] ${myReleaseWindowVote === 'slot_scene' ? audienceReleaseTone.selectedChoiceClass : 'border-white/10 bg-black/20 text-white'}`}
                             >
                                 <div className="flex items-start gap-2.5">
-                                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5 shadow-lg">
+                                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-lg">
+                                        <span className="absolute left-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-lg bg-cyan-300 text-[11px] font-black text-slate-950 shadow-lg">A</span>
                                         {getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.slotScene) ? (
-                                            <img src={getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.slotScene)} alt={audienceReleaseChoiceLabels.slotScene} className="h-full w-full object-cover" />
+                                            <><img src={getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.slotScene)} alt={audienceReleaseChoiceLabels.slotScene} className="h-full w-full object-cover" />{audienceReleaseChoiceMetadata.slotScene?.durationLabel ? <span className="absolute bottom-1 right-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-black text-white">{audienceReleaseChoiceMetadata.slotScene.durationLabel}</span> : null}</>
                                         ) : (
                                             <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
-                                                <i className="fa-solid fa-music"></i>
+                                                <i className={`fa-solid ${isAudiencePerformanceProgressionDecision ? 'fa-microphone-lines' : 'fa-music'}`}></i>
                                             </div>
                                         )}
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className={`truncate text-[10px] uppercase tracking-[0.18em] ${audienceReleaseTone.choiceLabelClass}`}>{audienceReleaseChoiceLabels.slotScene}</div>
                                         <div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
-                                            {audienceReleaseChoiceDetails.slotScene || audienceReleaseChoiceSongs.slotScene?.singerName || 'Queued singer'}
+                                            {audienceReleaseChoiceDetails.slotScene || (isAudiencePerformanceProgressionDecision ? (audienceReleaseSubjectTitle || (isAudienceOneMinuteMicDecision ? 'Unlock the rest' : 'Protect the moment')) : '') || audienceReleaseChoiceSongs.slotScene?.singerName || 'Queued singer'}
                                         </div>
                                         <div className="truncate text-[11px] text-zinc-400">
-                                            {String(audienceReleaseChoiceSongs.slotScene?.artist || audienceReleaseChoiceSongs.slotScene?.artistName || '').trim() || 'Ready queue pick'}
+                                            {audienceReleaseChoiceSublines.slotScene || (isAudienceOneMinuteMicDecision ? 'Let this singer finish the track' : isAudienceSkipPerformanceDecision ? 'Keep the performer on mic' : '') || audienceReleaseSubjectSubtitle || String(audienceReleaseChoiceSongs.slotScene?.artist || audienceReleaseChoiceSongs.slotScene?.artistName || '').trim() || 'Ready queue pick'}
+                                        </div>
+                                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                                            <div className="h-full rounded-full bg-cyan-300 transition-all duration-500" style={{ width: `${getAudienceReleaseChoicePct(audienceReleaseChoiceCounts.slotScene)}%` }} />
+                                        </div>
+                                        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-300">
+                                            <span>{audienceReleaseChoiceCounts.slotScene} vote{audienceReleaseChoiceCounts.slotScene === 1 ? '' : 's'}</span>
+                                            <span>{myReleaseWindowVote === 'slot_scene' ? 'Selected' : `${getAudienceReleaseChoicePct(audienceReleaseChoiceCounts.slotScene)}%`}</span>
                                         </div>
                                     </div>
                                 </div>
                             </button>
                             <button
+                                data-audience-release-choice-card="keep_queue_moving"
                                 type="button"
                                 onClick={() => castRunOfShowReleaseVote('keep_queue_moving')}
-                                className={`rounded-[1.1rem] border px-2.5 py-2.5 text-left ${myReleaseWindowVote === 'keep_queue_moving' ? 'border-pink-300/45 bg-pink-500/14 text-pink-50' : 'border-white/10 bg-black/20 text-white'}`}
+                                className={`min-h-[126px] rounded-[1.1rem] border px-2.5 py-2.5 text-left shadow-[0_14px_34px_rgba(0,0,0,0.24)] ${myReleaseWindowVote === 'keep_queue_moving' ? 'border-pink-300/45 bg-pink-500/14 text-pink-50' : 'border-white/10 bg-black/20 text-white'}`}
                             >
                                 <div className="flex items-start gap-2.5">
-                                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5 shadow-lg">
+                                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-lg">
+                                        <span className="absolute left-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-lg bg-pink-300 text-[11px] font-black text-slate-950 shadow-lg">B</span>
                                         {getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.keepQueueMoving) ? (
-                                            <img src={getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.keepQueueMoving)} alt={audienceReleaseChoiceLabels.keepQueueMoving} className="h-full w-full object-cover" />
+                                            <><img src={getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.keepQueueMoving)} alt={audienceReleaseChoiceLabels.keepQueueMoving} className="h-full w-full object-cover" />{audienceReleaseChoiceMetadata.keepQueueMoving?.durationLabel ? <span className="absolute bottom-1 right-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-black text-white">{audienceReleaseChoiceMetadata.keepQueueMoving.durationLabel}</span> : null}</>
                                         ) : (
                                             <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
-                                                <i className="fa-solid fa-music"></i>
+                                                <i className={`fa-solid ${isAudiencePerformanceProgressionDecision ? 'fa-forward-step' : 'fa-music'}`}></i>
                                             </div>
                                         )}
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="truncate text-[10px] uppercase tracking-[0.18em] text-pink-200">{audienceReleaseChoiceLabels.keepQueueMoving}</div>
                                         <div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
-                                            {audienceReleaseChoiceDetails.keepQueueMoving || audienceReleaseChoiceSongs.keepQueueMoving?.singerName || 'Queued singer'}
+                                            {audienceReleaseChoiceDetails.keepQueueMoving || (isAudiencePerformanceProgressionDecision ? 'Rotate the mic' : '') || audienceReleaseChoiceSongs.keepQueueMoving?.singerName || 'Queued singer'}
                                         </div>
                                         <div className="truncate text-[11px] text-zinc-400">
-                                            {String(audienceReleaseChoiceSongs.keepQueueMoving?.artist || audienceReleaseChoiceSongs.keepQueueMoving?.artistName || '').trim() || 'Ready queue pick'}
+                                            {audienceReleaseChoiceSublines.keepQueueMoving || (isAudienceOneMinuteMicDecision ? 'Wrap this minute and keep the queue moving' : isAudienceSkipPerformanceDecision ? 'Requires a strong crowd signal' : '') || String(audienceReleaseChoiceSongs.keepQueueMoving?.artist || audienceReleaseChoiceSongs.keepQueueMoving?.artistName || '').trim() || 'Ready queue pick'}
+                                        </div>
+                                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                                            <div className="h-full rounded-full bg-pink-300 transition-all duration-500" style={{ width: `${getAudienceReleaseChoicePct(audienceReleaseChoiceCounts.keepQueueMoving)}%` }} />
+                                        </div>
+                                        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-300">
+                                            <span>{audienceReleaseChoiceCounts.keepQueueMoving} vote{audienceReleaseChoiceCounts.keepQueueMoving === 1 ? '' : 's'}</span>
+                                            <span>{myReleaseWindowVote === 'keep_queue_moving' ? 'Selected' : `${getAudienceReleaseChoicePct(audienceReleaseChoiceCounts.keepQueueMoving)}%`}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -12241,6 +12610,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         <div className="mt-2 text-[11px] text-zinc-400">
                             {selfServeAudienceDecisionPresentation
                                 ? 'One joined guest, one live vote. The winning choice locks automatically when the timer ends.'
+                                : performanceAudienceDecisionPresentation
+                                    ? 'One joined guest, one live vote. The winning choice resolves automatically when the timer ends.'
                                 : releaseWindowTally.totalVotes > 0
                                     ? `${audienceReleaseVoteCountLabel} locked so far. Host confirms the winner after voting closes.`
                                     : 'One vote per joined user. Host confirms the winner after voting closes.'}
@@ -12285,6 +12656,40 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         </div>
                         <div className="mt-2 text-[11px] text-zinc-400">
                             These reactions go straight to Public TV even if nobody is singing.
+                        </div>
+                    </div>
+                </div>
+            )}
+            {isAudienceDisplayCommentator && !isAudienceSpotlightedGuest && (
+                <div
+                    className="pointer-events-none fixed inset-x-3 z-[94] md:inset-x-5"
+                    style={{ bottom: `calc(${mobileFloatingBottomInset} + 5.5rem)` }}
+                    data-feature-id="audience-display-commentator-reaction-tray"
+                >
+                    <div className="pointer-events-auto mx-auto max-w-[26rem] rounded-[1.35rem] border border-cyan-300/24 bg-[linear-gradient(145deg,rgba(6,26,32,0.96),rgba(11,10,18,0.96))] px-3.5 py-3.5 shadow-[0_18px_48px_rgba(0,0,0,0.34)]">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[9px] uppercase tracking-[0.22em] text-cyan-200">Commentator Row</div>
+                                <div className="mt-1 text-sm font-black leading-tight text-white">You are live on the TV rail</div>
+                                <div className="mt-1 text-[11px] text-zinc-300">Your reactions pop from your audience tile without changing the singer score.</div>
+                            </div>
+                            <div className="shrink-0 rounded-full border border-cyan-300/25 bg-cyan-500/14 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                On TV
+                            </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-4 gap-2">
+                            {audienceDisplayReactionOptions.map((reaction) => (
+                                <button
+                                    key={reaction.type}
+                                    type="button"
+                                    onClick={() => sendAudienceDisplayReaction(reaction.type)}
+                                    disabled={isReactionCoolingDown(reaction.type)}
+                                    className={`rounded-[1.05rem] border px-2 py-2 text-center transition-all ${reaction.accentClass} ${isReactionCoolingDown(reaction.type) ? 'opacity-60 cursor-not-allowed' : 'active:scale-95'}`}
+                                >
+                                    <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-black/24 text-base leading-none"><i className={`fa-solid ${reaction.iconClass || ''}`}></i></div>
+                                    <div className="mt-1 text-[10px] font-black uppercase tracking-[0.14em]">{reaction.shortLabel || reaction.label}</div>
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -12472,7 +12877,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             }}
                         ></div>
                     ))}
-                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(92vw,420px)] pointer-events-auto">
+                    <div className="absolute left-1/2 w-[min(92vw,420px)] -translate-x-1/2 pointer-events-auto" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1.25rem)' }}>
                         <div className="rounded-2xl border border-pink-300/40 bg-black/65 backdrop-blur px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.24em] text-pink-100">Concert Lighters</div>
                             <div className="text-xs text-zinc-200 mt-1">Keep your phone raised, sway with the crowd, and send support to the stage.</div>
@@ -12511,7 +12916,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     <div className="absolute inset-0 vibe-banger"></div>
                     <div className="absolute inset-0 bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-500/25"></div>
                     <div className="absolute top-24 left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.45em] text-white/80 uppercase">Banger Mode - Feel The Bass</div>
-                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(92vw,420px)] pointer-events-auto">
+                    <div className="absolute left-1/2 w-[min(92vw,420px)] -translate-x-1/2 pointer-events-auto" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1.25rem)' }}>
                         <div className="rounded-2xl border border-orange-300/40 bg-black/65 backdrop-blur px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.24em] text-orange-100">Banger Mode</div>
                             <div className="text-xs text-zinc-200 mt-1">Build crowd heat fast with hype reactions and callouts.</div>
@@ -12551,7 +12956,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             {/* Omnipresent Stage Area */}
             {showOmnipresentStageArea && (
                 <div
-                    className={`bg-black/40 border-b-4 z-10 relative ${isNativeMobileLayout ? 'mobile-native-stage-shell' : ''}`}
+                    className={`bg-black/40 border-b-4 z-10 relative max-h-[min(72dvh,42rem)] overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar ${isNativeMobileLayout ? 'mobile-native-stage-shell' : ''}`}
                     style={{
                         ...audienceBrandPalette.stageShellStyle,
                         paddingLeft: 'max(16px, env(safe-area-inset-left))',
@@ -13024,27 +13429,19 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     {popTriviaRevealCorrectOption || 'Answer reveal unavailable'}
                                                 </div>
                                                 <div className="mt-2 text-sm text-zinc-200 leading-relaxed">
-                                                    {popTriviaRevealWasCorrect
-                                                        ? (
-                                                            popTriviaCorrectPoints > 0
-                                                                ? (popTriviaAwardSyncedDelta > 0
-                                                                    ? `You got it right. +${popTriviaAwardSyncedDelta} pts landed in your room balance.`
-                                                                    : 'You got it right. Reward is syncing into your room balance now.')
-                                                                : 'You got it right.'
-                                                        )
-                                                        : popTriviaRevealMyVote !== null
-                                                            ? 'Your answer locked in, but this was not the winning choice.'
-                                                            : 'Trivia complete. Back to the song.'}
+                                                    {popTriviaRevealOutcomeCopy}
                                                 </div>
                                                 {popTriviaRevealWasCorrect && popTriviaCorrectPoints > 0 ? (
-                                                    <div className={`mt-3 rounded-2xl border px-3 py-3 ${popTriviaAwardSyncedDelta > 0 ? 'border-emerald-300/45 bg-emerald-500/10' : 'border-cyan-300/30 bg-cyan-500/10'}`}>
-                                                        <div className="flex items-center justify-between gap-3">
+                                                    <div data-feature-id="pop-trivia-audience-win-flourish" className={`relative mt-3 overflow-hidden rounded-2xl border px-3 py-3 shadow-[0_0_24px_rgba(16,185,129,0.18)] ${popTriviaConfirmedAwardDelta > 0 ? 'border-emerald-300/55 bg-[linear-gradient(135deg,rgba(16,185,129,0.18),rgba(250,204,21,0.10))]' : 'border-cyan-300/35 bg-cyan-500/10'}`}>
+                                                        <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-yellow-300/20 blur-2xl animate-pulse" />
+                                                        <div className="pointer-events-none absolute -bottom-8 left-8 h-20 w-20 rounded-full bg-emerald-300/16 blur-2xl animate-pulse" />
+                                                        <div className="relative flex items-center justify-between gap-3">
                                                             <div>
-                                                                <div className={`text-[11px] uppercase tracking-[0.18em] ${popTriviaAwardSyncedDelta > 0 ? 'text-emerald-100' : 'text-cyan-100'}`}>
-                                                                    {popTriviaAwardSyncedDelta > 0 ? 'Points added' : 'Points incoming'}
+                                                                <div className={`text-[11px] uppercase tracking-[0.18em] ${popTriviaConfirmedAwardDelta > 0 ? 'text-emerald-100' : 'text-cyan-100'}`}>
+                                                                    {popTriviaConfirmedAwardDelta > 0 ? 'Trivia win' : 'Points incoming'}
                                                                 </div>
                                                                 <div className="mt-1 text-xs text-zinc-300">
-                                                                    {popTriviaAwardSyncedDelta > 0
+                                                                    {popTriviaConfirmedAwardDelta > 0
                                                                         ? 'Your room balance just updated from this trivia win.'
                                                                         : `Waiting for the room wallet sync to post +${popTriviaCorrectPoints} pts.`}
                                                                 </div>
@@ -13052,16 +13449,16 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                             <AnimatedPoints
                                                                 value={effectivePoints}
                                                                 onClick={() => setShowPoints(true)}
-                                                                rewardDelta={popTriviaAwardSyncedDelta}
-                                                                rewardPulseKey={popTriviaAwardSync.questionId === popTriviaRevealQuestionId ? `${popTriviaAwardSync.questionId}_${popTriviaAwardSync.delta}` : ''}
-                                                                displayValue={coHostUnlimitedCredits ? '∞' : null}
+                                                                rewardDelta={popTriviaConfirmedAwardDelta}
+                                                                rewardPulseKey={popTriviaAwardPulseKey}
+                                                                displayValue={coHostUnlimitedCredits ? 'âˆž' : null}
                                                                 caption={coHostUnlimitedCredits ? 'FREE' : 'PTS'}
                                                                 className="h-10 w-[132px] shrink-0"
                                                             />
                                                         </div>
                                                         <div className="mt-2 flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-zinc-300">
                                                             <span>{popTriviaAwardSyncPending ? 'Syncing reward' : 'Wallet updated'}</span>
-                                                            <span>{popTriviaAwardSyncedDelta > 0 ? `+${popTriviaAwardSyncedDelta} pts` : `+${popTriviaCorrectPoints} pts`}</span>
+                                                            <span>{popTriviaConfirmedAwardDelta > 0 ? `+${popTriviaConfirmedAwardDelta} pts` : `+${popTriviaCorrectPoints} pts`}</span>
                                                         </div>
                                                     </div>
                                                 ) : null}
@@ -13069,6 +13466,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     <span>{popTriviaRevealCorrectCount > 0 ? `${popTriviaRevealCorrectCount} correct` : 'No correct answers yet'}</span>
                                                     <span>{popTriviaCorrectPoints > 0 ? `+${popTriviaCorrectPoints} pts` : 'Karaoke resumes'}</span>
                                                 </div>
+                                                {popTriviaAwardWinnerNames.length > 0 ? (
+                                                    <div data-feature-id="pop-trivia-audience-winners" className="mt-2 text-xs text-emerald-100/90 leading-snug">
+                                                        Winners: {popTriviaAwardWinnerNames.join(', ')}{popTriviaAwardWinners.length > popTriviaAwardWinnerNames.length ? ` +${popTriviaAwardWinners.length - popTriviaAwardWinnerNames.length} more` : ''}
+                                                    </div>
+                                                ) : null}
                                             </div>
                                         )}
                                     </div>
@@ -13213,7 +13615,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 </div>
             )}
 
-            <div className={`flex-1 p-4 overflow-y-auto custom-scrollbar relative z-0 ${isNativeMobileLayout ? 'mobile-native-content' : ''}`}>
+            <div className={`min-h-[55dvh] flex-1 p-4 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar relative z-0 ${isNativeMobileLayout ? 'mobile-native-content' : ''}`}>
 
                 {tab === 'home' && (
                     <div className="space-y-5">
@@ -13366,10 +13768,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                 Hearts, hype, clap, and cheers spend room points only during a live song.
                                             </div>
                                         </div>
-                                        <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
-                                            <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Points</div>
-                                            <div className="font-bebas text-2xl tracking-[0.18em] text-fuchsia-100">{Math.max(0, getEffectivePoints())}</div>
-                                        </div>
                                     </div>
                                     <div className="mt-4 grid grid-cols-2 gap-2">
                                         {[
@@ -13391,7 +13789,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     </div>
                                     <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-200">
                                         Reactions wake up once someone is on stage.
-                                        {howToPlayFeaturedGameLabels.length ? ` Tonight's game deck: ${howToPlayFeaturedGameLabels.join(' ⬢ ')}.` : ' Bonus games will explain themselves here when the host launches them.'}
+                                        {howToPlayFeaturedGameLabels.length ? ` Tonight's game deck: ${howToPlayFeaturedGameLabels.join(' â¬¢ ')}.` : ' Bonus games will explain themselves here when the host launches them.'}
                                     </div>
                                     <button
                                         type="button"
@@ -13418,7 +13816,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                          ? 'Bid or add your song for the next spotlight'
                                                          : 'Search and add the next song'}
                                              </div>
-                                             <div className="mt-1 text-sm text-zinc-300">{queueSongsView.length} in queue ⬢ {allUsers.length || 0} here</div>
+                                             <div className="mt-1 text-sm text-zinc-300">{queueSongsView.length} in queue â¬¢ {allUsers.length || 0} here</div>
                                          </div>
                                      </div>
                                      {selfServeTransitionMoment?.detail || selfServePresentation?.detail ? (
@@ -13452,7 +13850,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                          </button>
                                      </div>
                                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-zinc-400">
-                                         {queueSongsView.length} in queue ⬢ {allUsers.length || 0} here
+                                         {queueSongsView.length} in queue â¬¢ {allUsers.length || 0} here
                                      </div>
                                  </div>
                              </>
@@ -13752,7 +14150,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     {entry.albumArtUrl ? (
                                                         <img src={entry.albumArtUrl} alt={entry.songTitle} className="w-12 h-12 rounded-lg object-cover" />
                                                     ) : (
-                                                        <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center text-xl">🏆</div>
+                                                        <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center text-xl">ðŸ†</div>
                                                     )}
                                                     <div className="min-w-0 flex-1">
                                                         <div className="text-base font-bold text-white truncate">{entry.songTitle || 'Unknown Song'}</div>
@@ -13793,7 +14191,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         <div className="min-w-0">
                                             <div className="text-base font-bold text-white truncate">{user?.name || 'Guest'}</div>
                                             <div className="text-sm text-zinc-300">
-                                                Level {myFame.level} ⬢ {myFame.levelName}
+                                                Level {myFame.level} â¬¢ {myFame.levelName}
                                             </div>
                                             <button onClick={() => setShowFameLevels(true)} className="mt-2 inline-flex items-center gap-2 text-[11px] font-bold text-cyan-200 bg-cyan-500/10 border border-cyan-400/30 px-2 py-1 rounded-full">
                                                 {EMOJI.star} View Fame Levels
@@ -14031,7 +14429,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     className="fixed inset-0 z-[82] bg-black/60 backdrop-blur-sm"
                                 ></button>
                                 <div
-                                    className="fixed inset-0 z-[83] h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#090d18]/98 backdrop-blur-xl flex flex-col"
+                                    className="fixed inset-0 z-[83] min-h-[100dvh] overflow-y-auto overflow-x-hidden overscroll-contain touch-scroll-y bg-[#090d18]/98 backdrop-blur-xl flex flex-col"
                                     style={{
                                         paddingTop: `calc(${mobileSafeTopInset} + 12px)`,
                                         paddingLeft: mobileSideInsetLeft,
@@ -14386,7 +14784,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                             )}
                                                             className={`w-full rounded-2xl border border-white/10 bg-zinc-900/55 px-4 py-3 text-left ${requestSubmitPending ? 'cursor-not-allowed opacity-70' : ''}`}
                                                         >
-                                                            <div className="flex items-center justify-between gap-3">
+                                                            <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-yellow-300/20 blur-2xl animate-pulse" />
+                                                        <div className="pointer-events-none absolute -bottom-8 left-8 h-20 w-20 rounded-full bg-emerald-300/16 blur-2xl animate-pulse" />
+                                                        <div className="relative flex items-center justify-between gap-3">
                                                                 <div className="min-w-0">
                                                                     <div className="text-sm font-black text-white truncate">{option.label || badge.label}</div>
                                                                     <div className="mt-1 text-xs text-zinc-400 truncate">
@@ -14417,7 +14817,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     className="fixed inset-0 z-[84] bg-black/65 backdrop-blur-sm"
                                 ></button>
                                 <div
-                                    className="fixed inset-0 z-[85] h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#090d18]/98 backdrop-blur-xl flex flex-col"
+                                    className="fixed inset-0 z-[85] min-h-[100dvh] overflow-y-auto overflow-x-hidden overscroll-contain touch-scroll-y bg-[#090d18]/98 backdrop-blur-xl flex flex-col"
                                     style={{
                                         paddingTop: `calc(${mobileSafeTopInset} + 12px)`,
                                         paddingLeft: mobileSideInsetLeft,
@@ -15451,27 +15851,17 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     {popTriviaRevealCorrectOption || 'Answer reveal unavailable'}
                                 </div>
                                 <div className="mt-2 text-sm text-zinc-200 leading-relaxed">
-                                    {popTriviaRevealWasCorrect
-                                        ? (
-                                            popTriviaCorrectPoints > 0
-                                                ? (popTriviaAwardSyncedDelta > 0
-                                                    ? `You got it right. +${popTriviaAwardSyncedDelta} pts landed in your room balance.`
-                                                    : 'You got it right. Reward is syncing into your room balance now.')
-                                                : 'You got it right.'
-                                        )
-                                        : popTriviaRevealMyVote !== null
-                                            ? 'Your answer locked in, but this was not the winning choice.'
-                                            : 'Trivia complete. Back to the song.'}
+                                    {popTriviaRevealOutcomeCopy}
                                 </div>
                                 {popTriviaRevealWasCorrect && popTriviaCorrectPoints > 0 ? (
-                                    <div className={`mt-3 rounded-2xl border px-3 py-3 ${popTriviaAwardSyncedDelta > 0 ? 'border-emerald-300/45 bg-emerald-500/10' : 'border-cyan-300/30 bg-cyan-500/10'}`}>
+                                    <div data-feature-id="pop-trivia-audience-win-flourish" className={`relative mt-3 overflow-hidden rounded-2xl border px-3 py-3 shadow-[0_0_24px_rgba(16,185,129,0.18)] ${popTriviaConfirmedAwardDelta > 0 ? 'border-emerald-300/55 bg-[linear-gradient(135deg,rgba(16,185,129,0.18),rgba(250,204,21,0.10))]' : 'border-cyan-300/35 bg-cyan-500/10'}`}>
                                         <div className="flex items-center justify-between gap-3">
                                             <div>
-                                                <div className={`text-[11px] uppercase tracking-[0.18em] ${popTriviaAwardSyncedDelta > 0 ? 'text-emerald-100' : 'text-cyan-100'}`}>
-                                                    {popTriviaAwardSyncedDelta > 0 ? 'Points added' : 'Points incoming'}
+                                                <div className={`text-[11px] uppercase tracking-[0.18em] ${popTriviaConfirmedAwardDelta > 0 ? 'text-emerald-100' : 'text-cyan-100'}`}>
+                                                    {popTriviaConfirmedAwardDelta > 0 ? 'Trivia win' : 'Points incoming'}
                                                 </div>
                                                 <div className="mt-1 text-xs text-zinc-300">
-                                                    {popTriviaAwardSyncedDelta > 0
+                                                    {popTriviaConfirmedAwardDelta > 0
                                                         ? 'Your room balance just updated from this trivia win.'
                                                         : `Waiting for the room wallet sync to post +${popTriviaCorrectPoints} pts.`}
                                                 </div>
@@ -15479,9 +15869,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             <AnimatedPoints
                                                 value={effectivePoints}
                                                 onClick={() => setShowPoints(true)}
-                                                rewardDelta={popTriviaAwardSyncedDelta}
-                                                rewardPulseKey={popTriviaAwardSync.questionId === popTriviaRevealQuestionId ? `${popTriviaAwardSync.questionId}_${popTriviaAwardSync.delta}` : ''}
-                                                displayValue={coHostUnlimitedCredits ? '∞' : null}
+                                                rewardDelta={popTriviaConfirmedAwardDelta}
+                                                rewardPulseKey={popTriviaAwardPulseKey}
+                                                displayValue={coHostUnlimitedCredits ? 'âˆž' : null}
                                                 caption={coHostUnlimitedCredits ? 'FREE' : 'PTS'}
                                                 className="h-10 w-[132px] shrink-0"
                                             />
@@ -15492,6 +15882,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     <span>{popTriviaRevealCorrectCount > 0 ? `${popTriviaRevealCorrectCount} correct` : 'No correct answers yet'}</span>
                                     <span>{popTriviaCorrectPoints > 0 ? `+${popTriviaCorrectPoints} pts` : 'Karaoke resumes'}</span>
                                 </div>
+                                                {popTriviaAwardWinnerNames.length > 0 ? (
+                                                    <div data-feature-id="pop-trivia-audience-winners" className="mt-2 text-xs text-emerald-100/90 leading-snug">
+                                                        Winners: {popTriviaAwardWinnerNames.join(', ')}{popTriviaAwardWinners.length > popTriviaAwardWinnerNames.length ? ` +${popTriviaAwardWinners.length - popTriviaAwardWinnerNames.length} more` : ''}
+                                                    </div>
+                                                ) : null}
                             </div>
                         )}
                     </div>
@@ -15596,13 +15991,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
             {/* Photo Overlay */}
             {room?.photoOverlay && (!dismissedPhotoTs || (room.photoOverlay.timestamp || 0) > dismissedPhotoTs) && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 animate-in zoom-in">
-                    <div className="relative bg-white p-4 pb-20 shadow-2xl rounded-xl max-w-[90vw]">
+                <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overscroll-contain touch-scroll-y bg-black/80 animate-in zoom-in" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
+                    <div className="relative max-w-[90vw] rounded-xl bg-white p-4 pb-24 shadow-2xl">
                         <button onClick={() => setDismissedPhotoTs(room?.photoOverlay?.timestamp || Date.now())} className="absolute top-4 left-4 w-10 h-10 rounded-full bg-black/70 text-white text-xl font-bold flex items-center justify-center border border-white/20">X</button>
-                        <img src={composedPhoto || room.photoOverlay.url} className="max-h-[60vh] border-2 border-zinc-200 rounded-lg" />
+                        <img src={composedPhoto || room.photoOverlay.url} className="max-h-[52dvh] rounded-lg border-2 border-zinc-200" />
                         <img src={room?.logoUrl || ASSETS.logo} className="absolute top-4 right-4 w-20 opacity-90" alt="BROSS" />
                         <div className="absolute bottom-10 left-0 w-full text-center text-2xl text-black font-bold font-mono">Photo by {room.photoOverlay.userName}</div>
-                        <div className="absolute bottom-3 left-0 w-full flex items-center justify-center gap-3">
+                        <div className="absolute inset-x-0 flex items-center justify-center gap-3" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 0.75rem)' }}>
                             <button onClick={saveComposedPhoto} disabled={!composedPhoto} className="bg-[#00C4D9] text-black px-4 py-2 rounded-lg font-bold disabled:opacity-50">Save</button>
                             <button onClick={shareComposedPhoto} disabled={!composedPhoto} className="bg-cyan-500 text-black px-4 py-2 rounded-lg font-bold disabled:opacity-50">Share</button>
                             {isComposing && <div className="text-xs text-zinc-500">Preparing...</div>}
@@ -15615,4 +16010,3 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 };
 
 export default SingerApp;
-

@@ -639,6 +639,40 @@ const buildSelfServeQueueFaceOffSongLabel = (song = {}) =>
 const buildSelfServeQueueFaceOffSongDetail = (song = {}) =>
     String(song?.singerName || song?.artist || '').trim() || 'Queued pick';
 
+const getSelfServeQueueFaceOffSongArtist = (song = {}) =>
+    String(song?.artist || song?.artistName || '').trim();
+
+const getSelfServeQueueFaceOffSongArtworkUrl = (song = {}) =>
+    String(song?.albumArtUrl || song?.artworkUrl100 || song?.artworkUrl || song?.imageUrl || song?.coverUrl || song?.artUrl || '').trim();
+
+const getSelfServeQueueFaceOffDurationSec = (song = {}) => {
+    const candidates = [
+        song?.performanceStartedDurationSec,
+        song?.backingPlan?.durationSec,
+        song?.selectedBacking?.durationSec,
+        song?.approvedBacking?.durationSec,
+        song?.approvedBrowseBacking?.durationSec,
+        song?.mediaDurationSec,
+        song?.backingDurationSec,
+        song?.trackDurationSec,
+        song?.durationSec,
+        song?.duration,
+    ];
+    for (const candidate of candidates) {
+        const durationSec = Math.max(0, Math.round(Number(candidate || 0) || 0));
+        if (durationSec > 0) return durationSec;
+    }
+    return 0;
+};
+
+const formatSelfServeQueueFaceOffDuration = (song = {}) => {
+    const durationSec = getSelfServeQueueFaceOffDurationSec(song);
+    if (!durationSec) return '';
+    const mins = Math.floor(durationSec / 60);
+    const secs = String(durationSec % 60).padStart(2, '0');
+    return `${mins}:${secs}`;
+};
+
 export const buildSelfServeQueueFaceOffWindow = ({
     firstSong = null,
     secondSong = null,
@@ -670,6 +704,18 @@ export const buildSelfServeQueueFaceOffWindow = ({
         choiceDetails: {
             slot_scene: buildSelfServeQueueFaceOffSongDetail(firstSong),
             keep_queue_moving: buildSelfServeQueueFaceOffSongDetail(secondSong),
+        },
+        choiceSublines: {
+            slot_scene: [getSelfServeQueueFaceOffSongArtist(firstSong), formatSelfServeQueueFaceOffDuration(firstSong)].filter(Boolean).join(' - '),
+            keep_queue_moving: [getSelfServeQueueFaceOffSongArtist(secondSong), formatSelfServeQueueFaceOffDuration(secondSong)].filter(Boolean).join(' - '),
+        },
+        choiceArtworkUrls: {
+            slot_scene: getSelfServeQueueFaceOffSongArtworkUrl(firstSong),
+            keep_queue_moving: getSelfServeQueueFaceOffSongArtworkUrl(secondSong),
+        },
+        choiceMetadata: {
+            slot_scene: { durationLabel: formatSelfServeQueueFaceOffDuration(firstSong), artist: getSelfServeQueueFaceOffSongArtist(firstSong), singerName: buildSelfServeQueueFaceOffSongDetail(firstSong) },
+            keep_queue_moving: { durationLabel: formatSelfServeQueueFaceOffDuration(secondSong), artist: getSelfServeQueueFaceOffSongArtist(secondSong), singerName: buildSelfServeQueueFaceOffSongDetail(secondSong) },
         },
         choiceSongIds: {
             slot_scene: firstSongId,

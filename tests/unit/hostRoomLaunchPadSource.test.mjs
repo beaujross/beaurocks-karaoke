@@ -103,7 +103,8 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
   assert.match(browserSource, /xl:sticky xl:top-4/);
   assert.ok(browserSource.includes("openExistingRoomWorkspace(roomItem.code, 'ops.room_setup')"));
   assert.match(browserSource, /More room actions/);
-  assert.match(browserSource, /Pick a task/);
+  assert.match(browserSource, /activeRoomSetupTab\.helper/);
+  assert.doesNotMatch(browserSource, /Pick a task/);
   assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\('create'\)\}/);
   assert.match(browserSource, /ROOM_SETUP_TABS = Object\.freeze\(\[/);
   assert.match(browserSource, /id: 'manage'/);

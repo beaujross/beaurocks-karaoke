@@ -9,6 +9,7 @@ const missionSetupShellPath = 'src/apps/Host/components/setup/MissionSetupShell.
 const selfServeLauncherPath = 'src/apps/Host/components/SelfServeModeLauncher.jsx';
 const topChromePath = 'src/apps/Host/components/HostTopChrome.jsx';
 const launchPadBrowserPath = 'src/apps/Host/components/HostRoomLaunchPadBrowser.jsx';
+const hostNightPresetsPath = 'src/apps/Host/hostNightPresets.js';
 const nightSetupFlowPath = 'src/apps/Host/hooks/useHostNightSetupFlow.js';
 const hostAppPath = 'src/apps/Host/HostApp.jsx';
 const functionsPath = 'functions/index.js';
@@ -202,6 +203,8 @@ test('host panel presents readiness and one launch action before deeper setup', 
 test('room formats are optional while room creation centers on defaults', () => {
   const selfServeLauncherSource = readFileSync(selfServeLauncherPath, 'utf8');
   const launchPadBrowserSource = readFileSync(launchPadBrowserPath, 'utf8');
+  const hostNightPresetsSource = readFileSync(hostNightPresetsPath, 'utf8');
+  const provisionFunctionsSource = readFileSync(functionsPath, 'utf8');
 
   assert.match(
     hostAppSource,
@@ -230,8 +233,33 @@ test('room formats are optional while room creation centers on defaults', () => 
   );
   assert.match(
     launchPadBrowserSource,
+    /data-launch-preset-card=\{preset\.id\}/,
+    'Room creation should present starting packages as selectable product cards instead of a dropdown.',
+  );
+  assert.doesNotMatch(
+    launchPadBrowserSource,
     /<select[\s\S]*value=\{resolvedLaunchPresetId\}/,
-    'Room creation should use a compact starting-point selector instead of a wall of preset cards.',
+    'Preset selection should no longer be hidden in a native dropdown.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /LAUNCH_OPERATING_MODEL_OPTIONS[\s\S]*Host-Led Night[\s\S]*Hybrid Room[\s\S]*Audience-Led Night[\s\S]*data-launch-operating-model/,
+    'Room creation should make the operating model a launch-time decision.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /buildLaunchOperatingModelSettings[\s\S]*oneMinuteMicEnabled[\s\S]*performanceProgressionMode: oneMinuteMicEnabled \? 'one_minute_mic' : 'full_song'/,
+    'Audience-led launch should persist the one-minute mic mode through preset config.',
+  );
+  assert.match(
+    hostNightPresetsSource,
+    /oneMinuteMicEnabled: value\?\.oneMinuteMicEnabled !== undefined[\s\S]*oneMinuteMicVoteWindowSec/,
+    'Host preset normalization should preserve launch operating model one-minute settings.',
+  );
+  assert.match(
+    provisionFunctionsSource,
+    /oneMinuteMicEnabled: settings\.oneMinuteMicEnabled === true[\s\S]*performanceProgressionMode: String\(settings\.performanceProgressionMode/,
+    'Provisioning should carry one-minute settings from the selected launch preset onto the room.',
   );
   assert.match(
     launchPadBrowserSource,
@@ -703,4 +731,18 @@ test('room setup exposes host-led assisted-host and crowd-driven launch decision
   assert.match(hostAppSource, /onClick=\{\(\) => \{ void applyRoomControlModelQuick\(option\.id\); \}\}/);
   assert.match(hostAppSource, /safeModel === 'crowd_driven'[\s\S]*nextAutoDj = safeModel !== 'host_led'/);
   assert.match(hostAppSource, /Host-led full songs restored/);
+});
+
+test('host monetization settings explain the capped audience storefront purchase ladder', () => {
+  const source = readFileSync(hostAppPath, 'utf8');
+  assert.match(
+    source,
+    /data-feature-id="host-audience-storefront-rules"[\s\S]*2 room-wide boosts and 3 personal packs/,
+    'Host monetization settings should tell hosts how many offers the audience storefront merchandises',
+  );
+  assert.match(
+    source,
+    /Rewards everyone = party boost with a TV burst\. Rewards buyer only = personal buyer boost/,
+    'Host boost offer copy should explain how reward scope maps to audience purchase UX',
+  );
 });

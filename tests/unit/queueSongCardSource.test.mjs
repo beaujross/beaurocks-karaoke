@@ -4,6 +4,12 @@ import { test } from 'vitest';
 
 const queueSongCardSource = readFileSync('src/apps/Host/components/QueueSongCard.jsx', 'utf8');
 
+test('QueueSongCard exposes semantic queue position labels instead of raw row numbers only', () => {
+  assert.match(queueSongCardSource, /queuePositionLabel = ''/);
+  assert.match(queueSongCardSource, /displayPositionLabel/);
+  assert.match(queueSongCardSource, /positionLabelCompact/);
+});
+
 test('QueueSongCard keeps audience backing review actions compact and operational', () => {
   assert.match(
     queueSongCardSource,

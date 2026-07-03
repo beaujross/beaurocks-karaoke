@@ -13,8 +13,9 @@ test('host audience spotlight distinguishes crowd-work spotlight from Tight 15 s
   assert.match(hostSource, /AUDIENCE_SPOTLIGHT_MODE_OPTIONS\.map/);
   assert.match(hostSource, /Next Prompt/);
   assert.match(hostSource, /kind: SPOTLIGHT_KINDS\.tight15/);
-  assert.match(hostSource, /T15 SHOWCASE/);
+  assert.match(hostSource, /Tight 15 Showcase/);
   assert.match(hostSource, /The spotlighted guest gets a phone-side reaction tray even when the stage is empty\./);
+  assert.match(hostSource, /mainstage: options\?\.mainstage === true/);
 });
 
 test('singer app exposes a spotlight-only reaction tray outside the normal on-stage reaction flow', () => {
@@ -28,6 +29,7 @@ test('public tv renders audience spotlight prompts separately from Tight 15 show
   assert.match(tvSource, /Audience Spotlight/);
   assert.match(tvSource, /Tight 15 Showcase/);
   assert.match(tvSource, /audienceSpotlightPrompt\.body/);
+  assert.match(tvSource, /Number\(r\.points \|\| 0\) > 0 && !r\.spotlightSessionId/);
   assert.match(tvSource, /Showcase Pick/);
   assert.match(tvSource, /Saved Tight 15/);
 });

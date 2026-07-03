@@ -7,14 +7,16 @@ const source = readFileSync('src/apps/Host/components/HostTopChrome.jsx', 'utf8'
 const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
 
 test('host top chrome keeps the vibe meter but drops the redundant ops strip', () => {
-  assert.match(source, /data-feature-id="top-chrome-vibe-meter"/);
-  assert.match(source, /<NavStatusLight[\s\S]*label="Apple"/);
-  assert.match(source, /<NavStatusLight[\s\S]*label="AI"/);
-  assert.match(source, /data-feature-id="top-chrome-youtube-budget"/);
-  assert.match(source, /label=\{youtubeBudgetStatus\.label \|\| 'YT Search'\}/);
-  assert.match(source, /<NavStatusLight[\s\S]*label=\{String\(permissionLevel \|\| 'unknown'\)\.toUpperCase\(\)\}/);
-  assert.match(source, /inline-flex min-w-0 items-center gap-1\.5 rounded-lg border px-2 py-1 text-\[10px\] uppercase tracking-\[0\.14em\]/);
-  assert.match(source, /<span className="text-zinc-100 hidden lg:inline">Vibe<\/span>/);
+  assert.match(source, /data-feature-id="top-chrome-system-status"/);
+  assert.match(source, /const topStatusItems = \[/);
+  assert.match(source, /Apple Music[\s\S]*AI Tools[\s\S]*YouTube Search[\s\S]*Host Session[\s\S]*Vibe/);
+  assert.match(source, /System Status/);
+  assert.match(source, /topStatusIssueCount/);
+  assert.match(source, /topStatusAllGreen/);
+  assert.match(source, /Open Media Setup to connect Apple Music/);
+  assert.match(source, /actionLabel: 'Audience'/);
+  assert.doesNotMatch(source, /<NavStatusLight[\s\S]*label="Apple"/);
+  assert.doesNotMatch(source, /data-feature-id="top-chrome-youtube-budget"/);
   assert.match(source, /const crowdPulseLabel = crowdPulseMeta\?\.alignmentLabel/);
   assert.match(source, /const crowdPulseDirective = crowdPulseMeta\?\.hostDirective/);
   assert.match(source, /<div className="hidden xl:flex items-center gap-2">[\s\S]*\[\s*\{ key: 'stage', label: 'Queue' \},[\s\S]*\{ key: 'lobby', label: 'Audience' \}\s*\]\.map/);
@@ -99,6 +101,7 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
 });
 
 test('host flow dropdown exposes One-Minute Mic live pacing controls', () => {
+  assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*text-\[12px\] font-black leading-none text-zinc-100[\s\S]*Auto \{automationActiveCount\}/);
   assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*Flow & Automation[\s\S]*data-host-one-minute-mic-controls/);
   assert.doesNotMatch(source, /data-feature-id="deck-queue-menu-toggle"[\s\S]*data-host-one-minute-mic-controls/);
   assert.match(source, /Song length[\s\S]*One-Minute Mic[\s\S]*Full Songs/);
@@ -106,10 +109,18 @@ test('host flow dropdown exposes One-Minute Mic live pacing controls', () => {
   assert.match(source, /ONE_MINUTE_MIC_VOTE_WINDOW_PRESETS = Object\.freeze\(\[8, 12, 15, 20\]\)/);
   assert.match(source, /quickRoomControls\.onSetOneMinuteMic\?\.\(true\)/);
   assert.match(source, /quickRoomControls\.onSetOneMinuteMicTiming\?\.\(\{ openingWindowSec: event\.target\.value \}\)/);
+  assert.match(source, /data-host-one-minute-mic-live-status/);
+  assert.match(source, /Live crowd status/);
+  assert.match(source, /oneMinuteMicStatusToneClass/);
+  assert.match(source, /oneMinuteMicLiveStatus\.subject/);
   assert.match(hostAppSource, /const setOneMinuteMicQuick = async \(enabled = false\) => \{/);
   assert.match(hostAppSource, /performanceProgressionMode: nextEnabled \? 'one_minute_mic' : 'full_song'/);
   assert.match(hostAppSource, /String\(room\?\.audienceDecision\?\.type \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'continue_or_rotate'[\s\S]*roomPatch\.audienceDecision = null/);
-  assert.match(hostAppSource, /oneMinuteMicEnabled: room\?\.oneMinuteMicEnabled === true \|\| String\(room\?\.performanceProgressionMode \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'one_minute_mic'/);
+  assert.match(hostAppSource, /oneMinuteMicEnabledQuick = room\?\.oneMinuteMicEnabled === true \|\| String\(room\?\.performanceProgressionMode \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'one_minute_mic'/);
+  assert.match(hostAppSource, /const oneMinuteMicLiveStatus = \(\(\) => \{/);
+  assert.match(hostAppSource, /Crowd rescue vote is live/);
+  assert.match(hostAppSource, /One-Minute Mic vote is live/);
+  assert.match(hostAppSource, /oneMinuteMicLiveStatus,/);
   assert.match(hostAppSource, /onSetOneMinuteMic: setOneMinuteMicQuick/);
   assert.match(hostAppSource, /onSetOneMinuteMicTiming: setOneMinuteMicTimingQuick/);
 });

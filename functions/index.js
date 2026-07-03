@@ -45,6 +45,7 @@ const {
   shouldAttemptPopTriviaGeneration,
 } = require("./lib/popTrivia");
 const {
+  buildAudienceLedQueueFaceOffPlan,
   buildOneMinuteMicAdvancePlan,
   buildOneMinuteMicFinalizePlan,
   buildOneMinuteMicRoomPatch,
@@ -2373,6 +2374,8 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "archivedBy",
   "archivedStatus",
   "audienceBackingMode",
+  "audienceDisplay",
+  "audienceDecision",
   "audienceBrandTheme",
   "audienceFeatureAccess",
   "audienceJoinPolicy",
@@ -2711,6 +2714,8 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "announcement",
   "applauseSubject",
   "appleMusicPlayback",
+  "audienceDisplay",
+  "audienceDecision",
   "playbackControlCommand",
   "bingoFocus",
   "bingoMysteryRng",
@@ -3155,6 +3160,10 @@ const normalizeProvisionNightPresetPayload = (input = {}) => {
       autoBonusEnabled: settings.autoBonusEnabled !== false,
       autoBonusPoints: clampNumber(settings.autoBonusPoints, 0, 1000, 25),
       autoDjDelaySec: clampNumber(settings.autoDjDelaySec, 2, 45, 10),
+      oneMinuteMicEnabled: settings.oneMinuteMicEnabled === true,
+      performanceProgressionMode: String(settings.performanceProgressionMode || "full_song").trim().toLowerCase() === "one_minute_mic" ? "one_minute_mic" : "full_song",
+      oneMinuteMicOpeningWindowSec: clampNumber(settings.oneMinuteMicOpeningWindowSec, 15, 180, 60),
+      oneMinuteMicVoteWindowSec: clampNumber(settings.oneMinuteMicVoteWindowSec, 5, 45, 12),
       showVisualizerTv: settings.showVisualizerTv === true,
       showLyricsTv: settings.showLyricsTv === true,
       showScoring: settings.showScoring === true,
@@ -3221,6 +3230,10 @@ const buildProvisionPresetOverridesFromConfig = (presetConfig = null) => {
     autoBonusEnabled: settings.autoBonusEnabled !== false,
     autoBonusPoints: clampNumber(settings.autoBonusPoints, 0, 1000, 25),
     autoDjDelaySec: clampNumber(settings.autoDjDelaySec, 2, 45, 10),
+    oneMinuteMicEnabled: settings.oneMinuteMicEnabled === true,
+    performanceProgressionMode: String(settings.performanceProgressionMode || "full_song").trim().toLowerCase() === "one_minute_mic" ? "one_minute_mic" : "full_song",
+    oneMinuteMicOpeningWindowSec: clampNumber(settings.oneMinuteMicOpeningWindowSec, 15, 180, 60),
+    oneMinuteMicVoteWindowSec: clampNumber(settings.oneMinuteMicVoteWindowSec, 5, 45, 12),
     showVisualizerTv: settings.showVisualizerTv === true,
     showLyricsTv: settings.showLyricsTv === true,
     showScoring: settings.showScoring === true,
@@ -7980,6 +7993,74 @@ const normalizePointAwards = (awards = []) => {
   return normalized;
 };
 
+const POP_TRIVIA_VOTE_TYPE = "vote_popup_trivia";
+const POP_TRIVIA_CORRECT_POINTS_FALLBACK = 40;
+const GUITAR_SYNC_WINNER_POINTS = 200;
+const STROBE_MODE_REWARDS = Object.freeze([150, 90, 50]);
+const LOBBY_PLAYGROUND_REACTION_PREFIX = "lobby_play_";
+const LOBBY_PLAYGROUND_REACTION_TYPES = Object.freeze([
+  "lobby_play_wave",
+  "lobby_play_laser",
+  "lobby_play_echo",
+  "lobby_play_confetti",
+]);
+const LOBBY_PLAYGROUND_AWARD_LOOKBACK_MS = 60 * 1000;
+const LOBBY_PLAYGROUND_PARTICIPANT_WINDOW_MS = 28 * 1000;
+const LOBBY_PLAYGROUND_STREAK_TIMEOUT_MS = 7600;
+const LOBBY_PLAYGROUND_TIERS = Object.freeze([
+  Object.freeze({ tier: 1, name: "Warm Up", threshold: 4, pointsBudget: 14, maxPointsPerUser: 6 }),
+  Object.freeze({ tier: 2, name: "Lift Off", threshold: 9, pointsBudget: 24, maxPointsPerUser: 10 }),
+  Object.freeze({ tier: 3, name: "Skyline Pulse", threshold: 16, pointsBudget: 36, maxPointsPerUser: 16 }),
+  Object.freeze({ tier: 4, name: "Neon Nova", threshold: 26, pointsBudget: 60, maxPointsPerUser: 24 }),
+]);
+const LOBBY_PLAYGROUND_ALTITUDE_MILESTONES = Object.freeze([
+  Object.freeze({ id: "inflated", minFt: 24, pointsBudget: 16, maxPointsPerUser: 6 }),
+  Object.freeze({ id: "roofbreak", minFt: 58, pointsBudget: 24, maxPointsPerUser: 9 }),
+  Object.freeze({ id: "cloudline", minFt: 104, pointsBudget: 36, maxPointsPerUser: 12 }),
+  Object.freeze({ id: "orbit", minFt: 168, pointsBudget: 52, maxPointsPerUser: 16 }),
+]);
+
+const normalizeModeSessionId = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 80);
+
+const valuesMatchSessionId = (value, sessionId = "") => {
+  const target = normalizeModeSessionId(sessionId);
+  if (!target) return false;
+  return normalizeModeSessionId(value) === target;
+};
+
+const buildRoomUserModeEntries = async ({ rootRef, roomCode, sessionId, sessionField, scoreField }) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safeSessionId = normalizeModeSessionId(sessionId);
+  if (!safeRoomCode || !safeSessionId) return [];
+
+  const snap = await rootRef.collection("room_users")
+    .where("roomCode", "==", safeRoomCode)
+    .get();
+  return snap.docs
+    .map((docSnap) => {
+      const data = docSnap.data() || {};
+      const uid = normalizeUidToken(data.uid || docSnap.id.replace(`${safeRoomCode}_`, ""));
+      const score = Math.max(0, Math.floor(Number(data?.[scoreField] || 0)));
+      if (!uid || !valuesMatchSessionId(data?.[sessionField], safeSessionId) || score <= 0) return null;
+      return {
+        uid,
+        name: String(data.name || data.displayName || "Guest").trim().slice(0, 80) || "Guest",
+        avatar: String(data.avatar || "").trim().slice(0, 32),
+        score,
+        timestampMs: getTimestampMs(data.lastVibeAt || data.lastActiveAt || data.updatedAt || data.joinedAt),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const scoreDelta = Number(b.score || 0) - Number(a.score || 0);
+      if (scoreDelta !== 0) return scoreDelta;
+      return Number(b.timestampMs || 0) - Number(a.timestampMs || 0);
+    });
+};
 const DEMO_ROOM_CODE_PATTERN = /^DEMO[A-Z0-9_-]{0,20}$/;
 const DEMO_ALLOWED_ACTIONS = new Set([
   "bootstrap",
@@ -9433,9 +9514,15 @@ const writeFallbackPopTrivia = async ({
   reason = "",
 } = {}) => {
   const safeRoomCode = normalizeRoomCode(roomCode || songData?.roomCode || "");
-  const seedRows = normalizePopTriviaSeedRows(buildFallbackPopTriviaSeedRows(songData), {
+  const seedRows = selectPopTriviaSeedRows({
+    song: songData,
+    aiRows: [],
+    fallbackRows: buildFallbackPopTriviaSeedRows(songData),
     limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
   });
+  const fallbackPopTriviaSource = seedRows.some((row) => String(row?.source || "").trim() === "curated_fact")
+    ? "curated_fallback"
+    : "fallback";
   const questions = normalizePopTriviaQuestions(seedRows, {
     limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
     idPrefix: `${safeRoomCode || "ROOM"}_${songRef?.id || "song"}`,
@@ -9446,9 +9533,9 @@ const writeFallbackPopTrivia = async ({
   await writeResolvedPopTrivia({
     songRef,
     cacheKey,
-    source: "fallback",
+    source: fallbackPopTriviaSource,
     questions,
-    model: "fallback",
+    model: fallbackPopTriviaSource,
   });
   if (safeRoomCode && cacheKey) {
     await writePopTriviaCacheEntry({
@@ -9456,13 +9543,13 @@ const writeFallbackPopTrivia = async ({
       cacheKey,
       seedRows,
       songData,
-      source: "fallback",
+      source: fallbackPopTriviaSource,
     });
   }
   return {
     ok: true,
     status: "ready",
-    source: "fallback",
+    source: fallbackPopTriviaSource,
     questionCount: questions.length,
     reason: String(reason || "").trim() || "fallback",
   };
@@ -9647,12 +9734,19 @@ const processPopTriviaForSong = async ({
       });
     }
 
+    const selectedSourceSet = new Set(seedRows.map((row) => String(row?.source || "").trim() || "ai"));
+    const resolvedPopTriviaSource = selectedSourceSet.has("ai")
+      ? "ai"
+      : (selectedSourceSet.has("curated_fact") ? "curated_fallback" : "fallback");
+    const resolvedPopTriviaModel = resolvedPopTriviaSource === "ai"
+      ? (geminiPayload?.model || GEMINI_DEFAULT_MODEL)
+      : resolvedPopTriviaSource;
     await writeResolvedPopTrivia({
       songRef,
       cacheKey,
-      source: "ai",
+      source: resolvedPopTriviaSource,
       questions: triviaQuestions,
-      model: geminiPayload?.model || GEMINI_DEFAULT_MODEL,
+      model: resolvedPopTriviaModel,
     });
     if (cacheKey) {
       await writePopTriviaCacheEntry({
@@ -9660,15 +9754,15 @@ const processPopTriviaForSong = async ({
         cacheKey,
         seedRows,
         songData: latestSong,
-        source: "ai",
+        source: resolvedPopTriviaSource,
       });
     }
     return {
       ok: true,
       status: "ready",
-      source: "ai",
+      source: resolvedPopTriviaSource,
       questionCount: triviaQuestions.length,
-      model: geminiPayload?.model || GEMINI_DEFAULT_MODEL,
+      model: resolvedPopTriviaModel,
     };
   } catch (error) {
     return writeFallbackPopTrivia({
@@ -10181,19 +10275,20 @@ Metadata confidence: ${metadataConfidence}.
 Source mode: ${sourceMode}.
 Rules:
 - Each question must be answerable in under 10 seconds.
-- Every question must focus on the requested song, the listed artist, or a safe fan-facing factoid about either one.
+- Every question must focus on the requested song, the listed artist, or a safe fan-facing factoid about either one. The correct answer must be verifiable from known metadata, title/artist text, or a widely established music fact.
+- The set must feel like real music trivia, not internal app metadata confirmation. At most 1 question may ask for the listed artist, listed title, or artist-title pairing.
 - At least 3 questions must mention the song title, artist, or an unmistakable title phrase.
 - Use one of these categories per question: song_fact, artist_fact, fan_fact, hook_recognition, arrangement, safe_fact.
-- Mix basic fan trivia, interesting factoids, hook recognition, title recognition, artist clues, and arrangement cues.
+- Prefer factoid questions: listed artist, title phrase, album/release/genre only when metadata is provided, widely established song facts, hook/title recognition, and concrete arrangement cues observable from the track.
 - Do not ask generic filler such as "which song section sets up the story", "what usually helps most in karaoke", or "which production trick is common".
 - Keep each answer option concise (under 45 characters).
-- Wrong answers should be plausible and funny, not random nonsense.
+- Wrong answers should be plausible music alternatives and funny, not random nonsense, placeholders, or generic labels.
 - Do not mention or ask about the current singer, performer, host, crowd, room, microphone, karaoke technique, or stage strategy.
-- Avoid obscure deep-cut facts and avoid speculation.
+- Avoid subjective taste, opinion, vibe, strategy, or "best" questions. Avoid obscure deep-cut facts and avoid speculation.
 - If metadata confidence is sparse or source mode is youtube/custom, do not invent release years, chart stats, album facts, music-video facts, or artist biography facts.
 - In sparse mode, do not ask "who released", "what year", "which album", award, chart, label, music-video, or biography questions.
 - In sparse mode, use title recognition, artist recognition, hook recognition, arrangement cues, or safe fan-observation questions that do not require catalog facts.
-- If you cannot write a safe factual question, write a title, artist, hook, or arrangement question instead.
+- If you cannot write a safe factual question, write a title, artist, hook, or arrangement question instead, but do not repeat the same identity clue across multiple questions.
 Format strictly as JSON array of objects:
 [{"q":"...","correct":"...","w1":"...","w2":"...","w3":"...","category":"hook_recognition"}]
 Do not include markdown.`;
@@ -12757,11 +12852,40 @@ const processOneMinuteMicAutomationRoom = async ({ roomRef, roomCode = "", nowVa
       .collection("karaoke_songs")
       .where("roomCode", "==", safeRoomCode)
       .where("status", "in", ["assigned", "pending", "requested"])
-      .limit(8);
+      .limit(20);
     const advanceSongsSnap = await tx.get(advanceSongsQuery);
+    const queueAutomationSongs = advanceSongsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }));
+    const audienceLedFaceOffPlan = buildAudienceLedQueueFaceOffPlan({
+      room: roomData,
+      songs: queueAutomationSongs,
+      nowMs: nowValue,
+    });
+    if (audienceLedFaceOffPlan?.roomPatch && Object.keys(audienceLedFaceOffPlan.roomPatch).length) {
+      (audienceLedFaceOffPlan.songPatches || []).forEach((entry) => {
+        if (!entry?.songId || !entry?.patch) return;
+        tx.update(rootRef.collection("karaoke_songs").doc(entry.songId), {
+          ...entry.patch,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+      tx.update(roomRef, {
+        ...audienceLedFaceOffPlan.roomPatch,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return {
+        updated: true,
+        opened: !!audienceLedFaceOffPlan.opened,
+        resolved: !!audienceLedFaceOffPlan.resolved,
+        audienceLedFaceOff: true,
+        winnerSongId: audienceLedFaceOffPlan.winnerSongId || "",
+      };
+    }
+    if (audienceLedFaceOffPlan?.holdAdvance) {
+      return { updated: false, reason: audienceLedFaceOffPlan.reason || "audience_faceoff_hold" };
+    }
     const advancePlan = buildOneMinuteMicAdvancePlan({
       room: roomData,
-      songs: advanceSongsSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) })),
+      songs: queueAutomationSongs,
       nowMs: nowValue,
     });
     if (advancePlan?.roomPatch && advancePlan?.songPatch) {
@@ -12797,6 +12921,27 @@ const processOneMinuteMicAutomationRoom = async ({ roomRef, roomCode = "", nowVa
   });
 };
 
+exports.syncOneMinuteMicRoom = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "sync_one_minute_mic_room", { perMinute: 20, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "sync_one_minute_mic_room");
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const result = await processOneMinuteMicAutomationRoom({
+    roomRef,
+    roomCode,
+    nowValue: nowMs(),
+  });
+  return {
+    ok: true,
+    roomCode,
+    ...result,
+  };
+});
+
 exports.runOneMinuteMicAutomation = onSchedule(
   {
     schedule: "every 1 minutes",
@@ -12807,12 +12952,14 @@ exports.runOneMinuteMicAutomation = onSchedule(
   async () => {
     const rootRef = getRootRef();
     const roomsById = new Map();
-    const [flagSnap, modeSnap] = await Promise.all([
+    const [flagSnap, modeSnap, selfServeSnap] = await Promise.all([
       rootRef.collection("rooms").where("oneMinuteMicEnabled", "==", true).limit(40).get(),
       rootRef.collection("rooms").where("performanceProgressionMode", "==", "one_minute_mic").limit(40).get(),
+      rootRef.collection("rooms").where("selfServeMode.enabled", "==", true).limit(40).get(),
     ]);
     flagSnap.docs.forEach((docSnap) => roomsById.set(docSnap.id, docSnap.ref));
     modeSnap.docs.forEach((docSnap) => roomsById.set(docSnap.id, docSnap.ref));
+    selfServeSnap.docs.forEach((docSnap) => roomsById.set(docSnap.id, docSnap.ref));
 
     const nowValue = nowMs();
     const counters = {
@@ -12821,6 +12968,7 @@ exports.runOneMinuteMicAutomation = onSchedule(
       opened: 0,
       resolved: 0,
       commands: 0,
+      audienceLedFaceOffs: 0,
       finalized: 0,
       advanced: 0,
       failed: 0,
@@ -12833,6 +12981,7 @@ exports.runOneMinuteMicAutomation = onSchedule(
         if (result.opened) counters.opened += 1;
         if (result.resolved) counters.resolved += 1;
         if (result.command) counters.commands += 1;
+        if (result.audienceLedFaceOff) counters.audienceLedFaceOffs += 1;
         if (result.finalized) counters.finalized += 1;
         if (result.advanced) counters.advanced += 1;
       } catch (error) {
@@ -22266,6 +22415,785 @@ exports.castDoodleOkeVote = onCall({ cors: true }, async (request) => {
   return result;
 });
 
+const findPerformingPopTriviaQuestion = async ({ rootRef, roomCode, questionId }) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safeQuestionId = String(questionId || "").trim();
+  if (!safeRoomCode || !safeQuestionId) return null;
+
+  const performingSnap = await rootRef.collection("karaoke_songs")
+    .where("roomCode", "==", safeRoomCode)
+    .where("status", "==", "performing")
+    .get();
+  for (const docSnap of performingSnap.docs) {
+    const song = { id: docSnap.id, ...(docSnap.data() || {}) };
+    const question = (Array.isArray(song.popTrivia) ? song.popTrivia : [])
+      .find((entry) => String(entry?.id || "").trim() === safeQuestionId);
+    if (question) return { song, question };
+  }
+  return null;
+};
+
+const dedupeUidPopTriviaVotes = (entries = []) => {
+  const latestByUid = new Map();
+  (Array.isArray(entries) ? entries : []).forEach((entry, index) => {
+    if (!entry || entry.type !== POP_TRIVIA_VOTE_TYPE || !entry.questionId) return;
+    const uid = normalizeUidToken(entry.uid || "");
+    if (!uid) return;
+    const ts = getTimestampMs(entry.timestamp) || Number(entry.timestampMs || 0) || index;
+    const prev = latestByUid.get(uid);
+    if (!prev || ts >= prev._ts) latestByUid.set(uid, { ...entry, uid, _ts: ts });
+  });
+  return Array.from(latestByUid.values()).map((entry) => {
+    const clean = { ...entry };
+    delete clean._ts;
+    return clean;
+  });
+};
+
+const normalizeLobbyPlaygroundInteractionType = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (!token.startsWith(LOBBY_PLAYGROUND_REACTION_PREFIX)) return "";
+  return LOBBY_PLAYGROUND_REACTION_TYPES.includes(token) ? token : "";
+};
+
+const getLobbyPlaygroundTierDefinition = (tierNumber = 0) => (
+  LOBBY_PLAYGROUND_TIERS.find((entry) => Number(entry.tier || 0) === Number(tierNumber || 0)) || null
+);
+
+const getLobbyPlaygroundTierForStreak = (streakCount = 0) => {
+  let selected = null;
+  LOBBY_PLAYGROUND_TIERS.forEach((tier) => {
+    if (Number(streakCount || 0) >= Number(tier.threshold || 0)) selected = tier;
+  });
+  return selected;
+};
+
+const parseLobbyPlaygroundAwardKey = (awardKey = "") => {
+  const safeAwardKey = normalizeAwardKeyToken(awardKey);
+  const tierMatch = safeAwardKey.match(/^lobby_playground_(\d+)_tier_(\d+)$/);
+  if (tierMatch) {
+    return {
+      awardType: "tier",
+      streakId: Number(tierMatch[1] || 0),
+      tier: Number(tierMatch[2] || 0),
+      awardKey: safeAwardKey,
+    };
+  }
+  const altitudeMatch = safeAwardKey.match(/^lobby_altitude_(\d+)_([a-zA-Z0-9_-]+)$/);
+  if (altitudeMatch) {
+    return {
+      awardType: "altitude",
+      streakId: Number(altitudeMatch[1] || 0),
+      milestoneId: String(altitudeMatch[2] || "").trim().toLowerCase(),
+      awardKey: safeAwardKey,
+    };
+  }
+  return null;
+};
+
+const fetchRecentLobbyPlaygroundReactions = async ({ rootRef, roomCode, now = Date.now() }) => {
+  const sinceMs = Math.max(0, Number(now || Date.now()) - LOBBY_PLAYGROUND_AWARD_LOOKBACK_MS);
+  let docs = [];
+  try {
+    const snap = await rootRef.collection("reactions")
+      .where("roomCode", "==", roomCode)
+      .orderBy("timestamp", "desc")
+      .limit(400)
+      .get();
+    docs = snap.docs;
+  } catch (err) {
+    console.warn("finalizeLobbyPlaygroundAward ordered reaction query failed; falling back", err?.message || err);
+    const snap = await rootRef.collection("reactions")
+      .where("roomCode", "==", roomCode)
+      .limit(600)
+      .get();
+    docs = snap.docs;
+  }
+
+  return docs
+    .map((docSnap, index) => {
+      const data = docSnap.data() || {};
+      const timestampMs = getTimestampMs(data.timestamp) || Number(data.timestampMs || data.createdAtMs || 0) || 0;
+      return {
+        id: docSnap.id,
+        index,
+        roomCode: normalizeRoomCode(data.roomCode || ""),
+        type: normalizeLobbyPlaygroundInteractionType(data.type || ""),
+        uid: normalizeUidToken(data.uid || ""),
+        userName: normalizeOptionalName(data.userName || data.user || data.name || "Guest", "Guest"),
+        avatar: String(data.avatar || "").trim().slice(0, 80),
+        count: clampNumber(data.count || 1, 1, 4, 1),
+        timestampMs,
+      };
+    })
+    .filter((entry) => entry.roomCode === roomCode && entry.type && entry.uid)
+    .filter((entry) => !entry.timestampMs || entry.timestampMs >= sinceMs)
+    .sort((a, b) => {
+      const timeDelta = Number(a.timestampMs || 0) - Number(b.timestampMs || 0);
+      if (timeDelta !== 0) return timeDelta;
+      return Number(a.index || 0) - Number(b.index || 0);
+    });
+};
+
+const buildLobbyPlaygroundServerState = (events = [], now = Date.now()) => {
+  const safeNow = Number(now || Date.now());
+  let streakCount = 0;
+  let streakStartedAtMs = 0;
+  let lastAtMs = 0;
+  const participants = new Map();
+
+  (Array.isArray(events) ? events : []).forEach((event) => {
+    const eventAtMs = Number(event.timestampMs || safeNow);
+    if (lastAtMs > 0 && (eventAtMs - lastAtMs) > LOBBY_PLAYGROUND_STREAK_TIMEOUT_MS) {
+      streakCount = 0;
+      streakStartedAtMs = 0;
+      participants.clear();
+    }
+    if (!streakStartedAtMs) streakStartedAtMs = eventAtMs;
+    const normalizedType = normalizeLobbyPlaygroundInteractionType(event.type || "");
+    const step = normalizedType === "lobby_play_confetti" ? 2 : 1;
+    streakCount += step;
+    lastAtMs = eventAtMs;
+
+    const current = participants.get(event.uid) || {
+      uid: event.uid,
+      userName: event.userName || "Guest",
+      avatar: event.avatar || "",
+      score: 0,
+      events: 0,
+      lastAtMs: 0,
+    };
+    current.userName = event.userName || current.userName || "Guest";
+    current.avatar = event.avatar || current.avatar || "";
+    current.score += step + (Number(event.count || 1) * 0.25);
+    current.events += 1;
+    current.lastAtMs = eventAtMs;
+    participants.set(event.uid, current);
+  });
+
+  const activeParticipants = [...participants.values()]
+    .filter((entry) => (safeNow - Number(entry.lastAtMs || 0)) <= LOBBY_PLAYGROUND_PARTICIPANT_WINDOW_MS)
+    .sort((a, b) => {
+      const scoreDelta = Number(b.score || 0) - Number(a.score || 0);
+      if (scoreDelta !== 0) return scoreDelta;
+      return Number(b.lastAtMs || 0) - Number(a.lastAtMs || 0);
+    });
+  const airborneMs = streakStartedAtMs ? Math.max(0, safeNow - streakStartedAtMs) : 0;
+  const airSteps = Math.floor(airborneMs / 7000);
+  const teamworkMultiplier = clampNumber(
+    Math.round((1 + Math.min(2, airSteps * 0.5) + Math.min(1.5, Math.max(0, activeParticipants.length - 1) * 0.25)) * 10) / 10,
+    1,
+    5,
+    1
+  );
+  const estimatedPeakAltitudeFt = Math.round(Math.min(
+    220,
+    (streakCount * 4.2) + ((airborneMs / 1000) * 2.4) + (activeParticipants.length * 7.5) + ((teamworkMultiplier - 1) * 15)
+  ));
+
+  return {
+    streakCount,
+    activeParticipants,
+    teamworkMultiplier,
+    airborneMs,
+    estimatedPeakAltitudeFt,
+    currentTier: getLobbyPlaygroundTierForStreak(streakCount),
+  };
+};
+
+const buildLobbyPlaygroundServerAwards = ({ rewardDefinition = null, state = null } = {}) => {
+  if (!rewardDefinition || !state) return [];
+  const activeParticipants = (Array.isArray(state.activeParticipants) ? state.activeParticipants : []).slice(0, 6);
+  if (!activeParticipants.length) return [];
+  const rewardMultiplier = clampNumber(state.teamworkMultiplier || 1, 1, 5, 1);
+  const pointsBudget = clampNumber(
+    Math.round(Number(rewardDefinition.pointsBudget || 0) * rewardMultiplier),
+    0,
+    Math.max(120, Math.round(Number(rewardDefinition.pointsBudget || 0) * 5)),
+    0
+  );
+  const maxPointsPerUser = clampNumber(
+    Math.round(Number(rewardDefinition.maxPointsPerUser || 0) * rewardMultiplier),
+    0,
+    Math.max(Number(rewardDefinition.maxPointsPerUser || 0), Math.round(Number(rewardDefinition.maxPointsPerUser || 0) * 3)),
+    0
+  );
+  const awards = [];
+  let remainingBudget = pointsBudget;
+  activeParticipants.forEach((participant, idx) => {
+    const slotsLeft = Math.max(1, activeParticipants.length - idx);
+    const points = Math.min(
+      Math.max(1, Math.floor(remainingBudget / slotsLeft)),
+      maxPointsPerUser || Number.MAX_SAFE_INTEGER
+    );
+    if (participant.uid && points > 0) {
+      awards.push({ uid: participant.uid, points });
+      remainingBudget = Math.max(0, remainingBudget - points);
+    }
+  });
+  return awards;
+};
+
+const finalizeLobbyPlaygroundAwardServer = async ({ roomCode = "", awardKey = "" } = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const parsedAward = parseLobbyPlaygroundAwardKey(awardKey);
+  if (!safeRoomCode || !parsedAward?.awardKey) {
+    throw new HttpsError("invalid-argument", "roomCode and a valid lobby awardKey are required.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
+  const roomData = roomSnap.data() || {};
+  if (roomData.lobbyPlaygroundVisualOnly === true) {
+    return { ok: true, finalized: false, reason: "visual_only", awardedCount: 0, awardedPoints: 0 };
+  }
+  if (roomData.lobbyPlaygroundPaused === true) {
+    return { ok: true, finalized: false, reason: "paused", awardedCount: 0, awardedPoints: 0 };
+  }
+  if (roomData.lobbyVolleyEnabled !== true && String(roomData.lightMode || "").trim().toLowerCase() !== "volley") {
+    throw new HttpsError("failed-precondition", "Volley Orb is not active for this room.");
+  }
+
+  const now = Date.now();
+  const events = await fetchRecentLobbyPlaygroundReactions({ rootRef, roomCode: safeRoomCode, now });
+  const state = buildLobbyPlaygroundServerState(events, now);
+  let rewardDefinition = null;
+  if (parsedAward.awardType === "tier") {
+    rewardDefinition = getLobbyPlaygroundTierDefinition(parsedAward.tier);
+    if (!rewardDefinition) throw new HttpsError("invalid-argument", "Unknown lobby tier award.");
+    if (!state.currentTier || Number(state.currentTier.tier || 0) < Number(rewardDefinition.tier || 0)) {
+      return {
+        ok: true,
+        finalized: false,
+        reason: "tier_not_reached",
+        requestedTier: rewardDefinition.tier,
+        serverStreakCount: state.streakCount,
+        awardedCount: 0,
+        awardedPoints: 0,
+      };
+    }
+  } else if (parsedAward.awardType === "altitude") {
+    rewardDefinition = LOBBY_PLAYGROUND_ALTITUDE_MILESTONES.find((entry) => entry.id === parsedAward.milestoneId) || null;
+    if (!rewardDefinition) throw new HttpsError("invalid-argument", "Unknown lobby altitude award.");
+    if (state.estimatedPeakAltitudeFt < Number(rewardDefinition.minFt || 0)) {
+      return {
+        ok: true,
+        finalized: false,
+        reason: "altitude_not_reached",
+        requestedMilestone: rewardDefinition.id,
+        serverEstimatedPeakAltitudeFt: state.estimatedPeakAltitudeFt,
+        awardedCount: 0,
+        awardedPoints: 0,
+      };
+    }
+  }
+
+  const awards = buildLobbyPlaygroundServerAwards({ rewardDefinition, state });
+  if (!awards.length) {
+    return { ok: true, finalized: false, reason: "no_eligible_participants", awardedCount: 0, awardedPoints: 0 };
+  }
+
+  const ledgerAwardKey = `lobby_${safeRoomCode}_${parsedAward.awardKey}`;
+  const onceResult = await applyRoomAwardsOnce({
+    roomCode: safeRoomCode,
+    awardKey: ledgerAwardKey,
+    source: parsedAward.awardType === "altitude" ? "lobby_playground_altitude" : "lobby_playground",
+    awards,
+  });
+
+  await roomRef.set({
+    lobbyPlaygroundAwards: {
+      [parsedAward.awardKey]: {
+        awardKey: parsedAward.awardKey,
+        ledgerAwardKey,
+        awardType: parsedAward.awardType,
+        awardedAt: now,
+        awardedBy: "server",
+        duplicate: !!onceResult.duplicate,
+        awardedCount: Math.max(0, Number(onceResult.awardedCount || 0)),
+        awardedPoints: Math.max(0, Number(onceResult.awardedPoints || 0)),
+        serverStreakCount: state.streakCount,
+        serverEstimatedPeakAltitudeFt: state.estimatedPeakAltitudeFt,
+      },
+    },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    ok: true,
+    finalized: true,
+    duplicate: !!onceResult.duplicate,
+    roomCode: safeRoomCode,
+    awardKey: parsedAward.awardKey,
+    awardType: parsedAward.awardType,
+    awardedCount: Math.max(0, Number(onceResult.awardedCount || 0)),
+    awardedPoints: Math.max(0, Number(onceResult.awardedPoints || 0)),
+    skipped: Array.isArray(onceResult.skippedUids) ? onceResult.skippedUids : [],
+    serverStreakCount: state.streakCount,
+    serverEstimatedPeakAltitudeFt: state.estimatedPeakAltitudeFt,
+  };
+};
+
+exports.finalizeLobbyPlaygroundAward = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "finalize_lobby_playground_award", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "finalize_lobby_playground_award");
+  return finalizeLobbyPlaygroundAwardServer({
+    roomCode: request.data?.roomCode || "",
+    awardKey: request.data?.awardKey || "",
+  });
+});
+
+const finalizePopTriviaQuestionServer = async ({ roomCode = "", questionId = "" } = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safeQuestionId = String(questionId || "").trim().slice(0, 160);
+  if (!safeRoomCode || !safeQuestionId) {
+    throw new HttpsError("invalid-argument", "roomCode and questionId are required.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+  const [roomSnap, questionContext, votesSnap] = await Promise.all([
+    roomRef.get(),
+    findPerformingPopTriviaQuestion({ rootRef, roomCode: safeRoomCode, questionId: safeQuestionId }),
+    rootRef.collection("reactions")
+      .where("roomCode", "==", safeRoomCode)
+      .where("questionId", "==", safeQuestionId)
+      .get(),
+  ]);
+
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+  const roomData = roomSnap.data() || {};
+  if (roomData.popTriviaEnabled !== true) {
+    throw new HttpsError("failed-precondition", "Pop trivia is not enabled for this room.");
+  }
+  if (!questionContext?.question) {
+    throw new HttpsError("failed-precondition", "That Pop Trivia question is not active for the performing song.");
+  }
+
+  const correctIndex = Number.isInteger(questionContext.question.correct)
+    ? Number(questionContext.question.correct)
+    : -1;
+  if (correctIndex < 0) {
+    throw new HttpsError("failed-precondition", "That Pop Trivia question has no correct answer.");
+  }
+  const correctOption = String(questionContext.question?.options?.[correctIndex] || "").trim();
+
+  const points = clampNumber(
+    roomData?.gameDefaults?.popTriviaCorrectPoints ?? POP_TRIVIA_CORRECT_POINTS_FALLBACK,
+    0,
+    5000,
+    POP_TRIVIA_CORRECT_POINTS_FALLBACK
+  );
+  if (!points) {
+    return { ok: true, finalized: false, reason: "points_disabled", awardedCount: 0, awardedPoints: 0 };
+  }
+
+  const correctVotes = dedupeUidPopTriviaVotes(votesSnap.docs.map((docSnap) => docSnap.data() || {}))
+    .filter((vote) => Number(vote.val) === correctIndex);
+  const winnerSummaries = correctVotes
+    .map((vote) => ({
+      uid: normalizeUidToken(vote.uid || ""),
+      name: String(vote.userName || vote.user || "Guest").trim().slice(0, 80) || "Guest",
+      avatar: String(vote.avatar || "").trim().slice(0, 16),
+      points,
+      answerIndex: correctIndex,
+    }))
+    .filter((entry) => !!entry.uid)
+    .sort((a, b) => a.name.localeCompare(b.name) || a.uid.localeCompare(b.uid));
+  const awards = winnerSummaries.map((winner) => ({ uid: winner.uid, points }));
+  if (!awards.length) {
+    await roomRef.set({
+      popTriviaAwards: {
+        [safeQuestionId]: {
+          questionId: safeQuestionId,
+          songId: String(questionContext.song?.id || "").slice(0, 120),
+          correctIndex,
+          correctOption,
+          points,
+          winners: [],
+          awardedAt: nowMs(),
+          awardedBy: "server",
+          awardedCount: 0,
+          awardedPoints: 0,
+        },
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { ok: true, finalized: true, duplicate: false, awardedCount: 0, awardedPoints: 0, winners: [], correctIndex, correctOption };
+  }
+  const onceResult = await applyRoomAwardsOnce({
+    roomCode: safeRoomCode,
+    awardKey: `pop_trivia_${safeRoomCode}_${normalizeAwardKeyToken(safeQuestionId)}`,
+    source: "pop_trivia",
+    awards,
+  });
+
+  const previousAward = roomData?.popTriviaAwards?.[safeQuestionId] || {};
+  const awardedCount = onceResult.duplicate
+    ? Math.max(0, Number(previousAward.awardedCount || 0))
+    : Math.max(0, Number(onceResult.awardedCount || 0));
+  const awardedPoints = onceResult.duplicate
+    ? Math.max(0, Number(previousAward.awardedPoints || 0))
+    : Math.max(0, Number(onceResult.awardedPoints || 0));
+  const skippedUids = new Set(Array.isArray(onceResult.skippedUids) ? onceResult.skippedUids : []);
+  const creditedWinners = onceResult.duplicate && Array.isArray(previousAward.winners)
+    ? previousAward.winners
+    : winnerSummaries.filter((winner) => !skippedUids.has(winner.uid));
+  const awardSummary = {
+    questionId: safeQuestionId,
+    songId: String(questionContext.song?.id || "").slice(0, 120),
+    correctIndex,
+    correctOption,
+    points,
+    winners: creditedWinners.slice(0, 24),
+    winnerNames: creditedWinners.slice(0, 6).map((winner) => winner.name).filter(Boolean),
+    awardedAt: nowMs(),
+    awardedBy: "server",
+    duplicate: !!onceResult.duplicate,
+    awardedCount,
+    awardedPoints,
+  };
+
+  await roomRef.set({
+    popTriviaAwards: {
+      [safeQuestionId]: awardSummary,
+    },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return {
+    ok: true,
+    finalized: true,
+    duplicate: !!onceResult.duplicate,
+    roomCode: safeRoomCode,
+    questionId: safeQuestionId,
+    awardedCount,
+    awardedPoints,
+    winners: awardSummary.winners,
+    correctIndex,
+    correctOption,
+    skipped: Array.isArray(onceResult.skippedUids) ? onceResult.skippedUids : [],
+  };
+};
+
+exports.finalizePopTriviaQuestion = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "finalize_pop_trivia_question", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "finalize_pop_trivia_question");
+  return finalizePopTriviaQuestionServer({
+    roomCode: request.data?.roomCode || "",
+    questionId: request.data?.questionId || "",
+  });
+});
+
+const finalizeGuitarSyncRoundServer = async ({ roomCode = "", sessionId = "" } = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safeSessionId = normalizeModeSessionId(sessionId);
+  if (!safeRoomCode || !safeSessionId) {
+    throw new HttpsError("invalid-argument", "roomCode and sessionId are required.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+  const [roomSnap, candidates] = await Promise.all([
+    roomRef.get(),
+    buildRoomUserModeEntries({
+      rootRef,
+      roomCode: safeRoomCode,
+      sessionId: safeSessionId,
+      sessionField: "guitarSessionId",
+      scoreField: "guitarHits",
+    }),
+  ]);
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
+  const roomData = roomSnap.data() || {};
+  if (roomData.lightMode === "guitar") {
+    throw new HttpsError("failed-precondition", "Guitar Sync is still active.");
+  }
+  if (roomData?.guitarWinner?.sessionId && valuesMatchSessionId(roomData.guitarWinner.sessionId, safeSessionId)) {
+    return { ok: true, finalized: true, duplicate: true, winner: roomData.guitarWinner };
+  }
+  const winner = candidates[0];
+  if (!winner) {
+    return { ok: true, finalized: false, reason: "no_scored_players", awardedCount: 0, awardedPoints: 0 };
+  }
+
+  const payload = {
+    uid: winner.uid,
+    name: winner.name,
+    avatar: winner.avatar,
+    hits: winner.score,
+    sessionId: safeSessionId,
+    timestamp: nowMs(),
+    rewardPoints: GUITAR_SYNC_WINNER_POINTS,
+  };
+  const onceResult = await applyRoomAwardsOnce({
+    roomCode: safeRoomCode,
+    awardKey: `guitar_${safeRoomCode}_${safeSessionId}`,
+    source: "guitar_mode",
+    awards: [{ uid: winner.uid, points: GUITAR_SYNC_WINNER_POINTS }],
+  });
+
+  await roomRef.set({
+    guitarWinner: payload,
+    guitarVictory: {
+      id: `${safeSessionId}_${winner.uid}`,
+      uid: winner.uid,
+      name: winner.name,
+      avatar: winner.avatar,
+      hits: winner.score,
+      sessionId: safeSessionId,
+      status: "pending",
+      rewardPoints: GUITAR_SYNC_WINNER_POINTS,
+      requestedAt: nowMs(),
+      awardedBy: "server",
+      awardDuplicate: !!onceResult.duplicate,
+      awardedCount: Math.max(0, Number(onceResult.awardedCount || 0)),
+      awardedPoints: Math.max(0, Number(onceResult.awardedPoints || 0)),
+    },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  await rootRef.collection("activities").add({
+    roomCode: safeRoomCode,
+    user: winner.name,
+    text: `shredded the hardest (${winner.score} hits)`,
+    icon: "GTR",
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  }).catch(() => null);
+
+  return {
+    ok: true,
+    finalized: true,
+    duplicate: !!onceResult.duplicate,
+    winner: payload,
+    awardedCount: Math.max(0, Number(onceResult.awardedCount || 0)),
+    awardedPoints: Math.max(0, Number(onceResult.awardedPoints || 0)),
+  };
+};
+
+exports.finalizeGuitarSyncRound = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "finalize_guitar_sync_round", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "finalize_guitar_sync_round");
+  return finalizeGuitarSyncRoundServer({
+    roomCode: request.data?.roomCode || "",
+    sessionId: request.data?.sessionId || "",
+  });
+});
+
+const finalizeStrobeModeRoundServer = async ({ roomCode = "", sessionId = "" } = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safeSessionId = normalizeModeSessionId(sessionId);
+  if (!safeRoomCode || !safeSessionId) {
+    throw new HttpsError("invalid-argument", "roomCode and sessionId are required.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+  const [roomSnap, candidates] = await Promise.all([
+    roomRef.get(),
+    buildRoomUserModeEntries({
+      rootRef,
+      roomCode: safeRoomCode,
+      sessionId: safeSessionId,
+      sessionField: "strobeSessionId",
+      scoreField: "strobeTaps",
+    }),
+  ]);
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
+  const roomData = roomSnap.data() || {};
+  if (roomData.lightMode === "strobe") {
+    throw new HttpsError("failed-precondition", "Strobe mode is still active.");
+  }
+  if (roomData?.strobeResults?.sessionId && valuesMatchSessionId(roomData.strobeResults.sessionId, safeSessionId)) {
+    return { ok: true, finalized: true, duplicate: true, winners: roomData.strobeResults.winners || [] };
+  }
+
+  const winners = candidates.slice(0, STROBE_MODE_REWARDS.length).map((entry) => ({
+    uid: entry.uid,
+    name: entry.name,
+    avatar: entry.avatar,
+    taps: entry.score,
+  }));
+  if (!winners.length) {
+    return { ok: true, finalized: false, reason: "no_scored_players", awardedCount: 0, awardedPoints: 0 };
+  }
+  const awards = winners
+    .map((entry, index) => ({ uid: entry.uid, points: STROBE_MODE_REWARDS[index] || 0 }))
+    .filter((entry) => entry.uid && entry.points > 0);
+  const onceResult = await applyRoomAwardsOnce({
+    roomCode: safeRoomCode,
+    awardKey: `strobe_${safeRoomCode}_${safeSessionId}`,
+    source: "strobe_mode",
+    awards,
+  });
+  const winner = winners[0];
+
+  await roomRef.set({
+    strobeWinner: { ...winner, sessionId: safeSessionId },
+    strobeResults: {
+      sessionId: safeSessionId,
+      winners,
+      rewards: STROBE_MODE_REWARDS,
+      awardedAt: nowMs(),
+      awardedBy: "server",
+      awardDuplicate: !!onceResult.duplicate,
+      awardedCount: Math.max(0, Number(onceResult.awardedCount || 0)),
+      awardedPoints: Math.max(0, Number(onceResult.awardedPoints || 0)),
+    },
+    strobeVictory: { ...winner, sessionId: safeSessionId, status: "pending", id: `${safeSessionId}`, awardedBy: "server" },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    ok: true,
+    finalized: true,
+    duplicate: !!onceResult.duplicate,
+    winners,
+    awardedCount: Math.max(0, Number(onceResult.awardedCount || 0)),
+    awardedPoints: Math.max(0, Number(onceResult.awardedPoints || 0)),
+  };
+};
+
+exports.finalizeStrobeModeRound = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "finalize_strobe_mode_round", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "finalize_strobe_mode_round");
+  return finalizeStrobeModeRoundServer({
+    roomCode: request.data?.roomCode || "",
+    sessionId: request.data?.sessionId || "",
+  });
+});
+const DOODLE_OKE_WINNER_POINTS = 150;
+
+const finalizeDoodleOkeRoundServer = async ({ roomCode = "", promptId = "" } = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safePromptId = normalizeDoodlePromptId(promptId);
+  if (!safeRoomCode || !safePromptId) {
+    throw new HttpsError("invalid-argument", "roomCode and promptId are required.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+  const submissionsQuery = rootRef.collection("doodle_submissions")
+    .where("roomCode", "==", safeRoomCode)
+    .where("promptId", "==", safePromptId);
+  const votesQuery = rootRef.collection("doodle_votes")
+    .where("roomCode", "==", safeRoomCode)
+    .where("promptId", "==", safePromptId);
+
+  const [roomSnap, submissionsSnap, votesSnap] = await Promise.all([
+    roomRef.get(),
+    submissionsQuery.get(),
+    votesQuery.get(),
+  ]);
+
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+
+  const roomData = roomSnap.data() || {};
+  const doodle = roomData.doodleOke || {};
+  const activePromptId = normalizeDoodlePromptId(doodle.promptId || "");
+  if (activePromptId !== safePromptId) {
+    throw new HttpsError("failed-precondition", "That Doodle-oke round is no longer active.");
+  }
+  if (getEffectiveDoodleStatus(doodle, nowMs()) !== "reveal") {
+    throw new HttpsError("failed-precondition", "Doodle-oke voting is not ready to finalize.");
+  }
+
+  const visibleSubmissions = submissionsSnap.docs
+    .map((docSnap) => buildPublicDoodleSubmissionRecord(docSnap))
+    .filter((submission) => submission.uid && submission.image)
+    .filter((submission) => !doodle.requireReview || submission.approved)
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  if (!visibleSubmissions.length) {
+    return {
+      ok: true,
+      finalized: false,
+      duplicate: false,
+      roomCode: safeRoomCode,
+      promptId: safePromptId,
+      reason: "no_eligible_submissions",
+      awardedCount: 0,
+      awardedPoints: 0,
+    };
+  }
+
+  const eligibleUids = new Set(visibleSubmissions.map((entry) => entry.uid));
+  const voteCounts = {};
+  votesSnap.docs.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const voterUid = normalizeUidToken(data.uid || data.voterUid || "");
+    const targetUid = normalizeUidToken(data.targetUid || "");
+    if (!voterUid || !targetUid || !eligibleUids.has(targetUid)) return;
+    voteCounts[targetUid] = (voteCounts[targetUid] || 0) + 1;
+  });
+
+  const winner = [...visibleSubmissions].sort((a, b) => {
+    const voteDelta = Number(voteCounts[b.uid] || 0) - Number(voteCounts[a.uid] || 0);
+    if (voteDelta !== 0) return voteDelta;
+    return Number(b.timestamp || 0) - Number(a.timestamp || 0);
+  })[0];
+
+  const points = DOODLE_OKE_WINNER_POINTS;
+  const winnerPayload = {
+    uid: winner.uid,
+    name: winner.name || "Guest",
+    avatar: winner.avatar || "",
+    votes: Number(voteCounts[winner.uid] || 0),
+    points,
+  };
+
+  const onceResult = await applyRoomAwardsOnce({
+    roomCode: safeRoomCode,
+    awardKey: `doodle_${safeRoomCode}_${safePromptId}`,
+    source: "doodle_oke",
+    awards: [{ uid: winner.uid, points }],
+  });
+
+  const persistedAwardedCount = onceResult.duplicate
+    ? Math.max(0, Number(doodle.winnerAwardedCount || 0))
+    : Math.max(0, Number(onceResult.awardedCount || 0));
+  const persistedAwardedPoints = onceResult.duplicate
+    ? Math.max(0, Number(doodle.winnerAwardedPoints || 0))
+    : Math.max(0, Number(onceResult.awardedPoints || 0));
+
+  await roomRef.set({
+    doodleOke: {
+      ...doodle,
+      winner: winnerPayload,
+      winnerAwardedAt: nowMs(),
+      winnerAwardedBy: "server",
+      winnerAwardDuplicate: !!onceResult.duplicate,
+      winnerAwardedCount: persistedAwardedCount,
+      winnerAwardedPoints: persistedAwardedPoints,
+    },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    ok: true,
+    finalized: true,
+    duplicate: !!onceResult.duplicate,
+    roomCode: safeRoomCode,
+    promptId: safePromptId,
+    winner: winnerPayload,
+    awardedCount: persistedAwardedCount,
+    awardedPoints: persistedAwardedPoints,
+    skipped: Array.isArray(onceResult.skippedUids) ? onceResult.skippedUids : [],
+  };
+};
+
+exports.finalizeDoodleOkeRound = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "finalize_doodle_oke_round", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "finalize_doodle_oke_round");
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const promptId = normalizeDoodlePromptId(request.data?.promptId || "");
+  return finalizeDoodleOkeRoundServer({ roomCode, promptId });
+});
 exports.submitSelfieChallenge = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "submit_selfie_challenge", { perMinute: 16, perHour: 120 });
   enforceAppCheckIfEnabled(request, "submit_selfie_challenge");

@@ -56,42 +56,6 @@ const ROOM_CONTROL_MODEL_OPTIONS = Object.freeze([
         summary: 'One-Minute Mic plus Auto-DJ for self-service parties.',
     },
 ]);
-const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', title = '', compact = false }) => {
-    const Comp = 'div';
-    return (
-        <Comp
-            title={title}
-            className={`inline-flex items-center ${compact ? 'gap-1 rounded-lg px-1.5 py-1' : 'gap-1.5 rounded-lg px-2 py-1'} border text-[10px] uppercase tracking-[0.14em] ${toneClass}`}
-        >
-            <span className={`inline-flex h-2 w-2 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]' : 'bg-rose-300 shadow-[0_0_8px_rgba(252,165,165,0.55)]'}`}></span>
-            {!!iconClass && <i className={`${iconClass} text-[10px] text-zinc-200`}></i>}
-            {!compact ? <span className="text-zinc-100 hidden lg:inline">{label}</span> : null}
-        </Comp>
-    );
-};
-
-const NavStatusMetric = ({
-    label,
-    iconClass,
-    value = '',
-    detail = '',
-    active = true,
-    toneClass = '',
-    title = '',
-}) => (
-    <div
-        data-feature-id="top-chrome-youtube-budget"
-        title={title}
-        className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${toneClass}`}
-    >
-        <span className={`inline-flex h-2 w-2 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]' : 'bg-rose-300 shadow-[0_0_8px_rgba(252,165,165,0.55)]'}`}></span>
-        {iconClass && <i className={`${iconClass} text-[10px] text-zinc-200`}></i>}
-        <span className="hidden lg:inline text-zinc-100">{label}</span>
-        <span className="font-black text-white">{value}</span>
-        {detail ? <span className="hidden xl:inline text-zinc-100/80">{detail}</span> : null}
-    </div>
-);
-
 const getRunOfShowDurationSec = (item = {}) => Math.max(
     0,
     Math.round(Number(
@@ -277,6 +241,7 @@ const HostTopChrome = ({
     const [showAutomationQuickMenu, setShowAutomationQuickMenu] = React.useState(false);
     const [showQueueQuickMenu, setShowQueueQuickMenu] = React.useState(false);
     const [showRewardsQuickMenu, setShowRewardsQuickMenu] = React.useState(false);
+    const [showStatusQuickMenu, setShowStatusQuickMenu] = React.useState(false);
     const [quickRewardTargetUid, setQuickRewardTargetUid] = React.useState('');
     const [quickRewardCustomPoints, setQuickRewardCustomPoints] = React.useState('100');
     const quickEventCredits = createEventCreditsDraft(room?.eventCredits || {});
@@ -303,6 +268,7 @@ const HostTopChrome = ({
     const automationQuickMenuRef = React.useRef(null);
     const queueQuickMenuRef = React.useRef(null);
     const rewardsQuickMenuRef = React.useRef(null);
+    const statusQuickMenuRef = React.useRef(null);
     const stormActive = room?.lightMode === 'storm';
     const strobeActive = room?.lightMode === 'strobe';
     const guitarActive = room?.lightMode === 'guitar';
@@ -311,7 +277,6 @@ const HostTopChrome = ({
     const activeCrowdObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
     const volleyActive = !!activeCrowdObjectiveMode;
     const selfieCamActive = room?.activeMode === 'selfie_cam';
-    const normalizedPermission = String(permissionLevel || 'unknown').toLowerCase();
     const tvDisplayMode = room?.showLyricsTv && room?.showVisualizerTv
         ? 'lyrics_viz'
         : room?.showLyricsTv
@@ -325,13 +290,6 @@ const HostTopChrome = ({
         if (key === 'cinema') return 'cinema';
         return 'room';
     })();
-    const permissionTone = normalizedPermission === 'owner'
-        ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
-        : normalizedPermission === 'admin'
-            ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100'
-            : normalizedPermission === 'member'
-                ? 'border-amber-400/35 bg-amber-500/10 text-amber-100'
-                : 'border-zinc-600 bg-zinc-900/70 text-zinc-300';
     const missionStatus = missionRecommendation?.status || 'ready';
     const tvDisplayLabel = tvDisplayMode === 'lyrics_viz'
         ? 'Lyrics + Viz'
@@ -340,6 +298,17 @@ const HostTopChrome = ({
             : tvDisplayMode === 'visualizer'
                 ? 'Visualizer'
                 : 'Video';
+    const audienceDisplayMode = String(quickRoomControls?.audienceDisplay?.mode || 'off').trim().toLowerCase() || 'off';
+    const audienceDisplaySelectedCount = Math.max(0, Number(quickRoomControls?.audienceDisplaySelectedCount || 0) || 0);
+    const audienceDisplayLabel = audienceDisplayMode === 'commentator_row'
+        ? `Commentator Row${audienceDisplaySelectedCount ? ` (${audienceDisplaySelectedCount})` : ''}`
+        : audienceDisplayMode === 'lobby_wall'
+            ? 'Lobby Wall'
+            : audienceDisplayMode === 'featured_guest'
+                ? 'Featured Guest'
+                : audienceDisplayMode === 'judges_panel'
+                    ? 'Judges Panel'
+                    : 'Off';
     const visualizerSource = room?.visualizerSource || 'auto';
     const visualizerMode = room?.visualizerMode || 'ribbon';
     const visualizerPreset = room?.visualizerPreset || 'neon';
@@ -410,13 +379,17 @@ const HostTopChrome = ({
     const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
     const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[320]';
     const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
-    const quickMenuSectionTitleClass = 'text-xs uppercase tracking-[0.22em] text-zinc-100';
-    const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
+    const quickMenuSectionTitleClass = 'text-[11px] font-black uppercase tracking-[0.22em] text-zinc-100';
+    const quickMenuSectionHintClass = 'mt-1 text-xs leading-5 text-zinc-400';
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 min-h-[44px] px-3 text-sm bg-zinc-950/95 border border-cyan-300/35 focus:border-cyan-200`;
     const quickMenuFieldClass = 'block text-sm text-zinc-200';
-    const quickMenuLabelClass = 'block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-300';
+    const quickMenuLabelClass = 'block text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300';
     const quickMenuHelperClass = 'mt-1.5 block text-xs leading-5 text-zinc-500';
+    const quickMenuEyebrowClass = 'text-[11px] font-black uppercase tracking-[0.18em]';
+    const quickMenuTitleClass = 'mt-1 text-[13px] font-semibold leading-tight text-white';
+    const quickMenuBodyClass = 'mt-1 text-xs leading-5 text-zinc-300';
+    const quickMenuBadgeClass = 'rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em]';
     const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${minimalRuntimeChrome ? 'h-8 px-2.5 py-1 text-[11px]' : runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : denseChrome ? 'h-10 px-3 py-1.5 text-[12px]' : 'h-9 px-3 py-1.5 text-[12px]'} ${compactTopQuickStrip ? 'w-full min-w-0' : 'shrink-0 whitespace-nowrap'} normal-case tracking-[0.04em]`;
     const quickStripItemClass = compactTopQuickStrip ? 'relative min-w-0 flex-[1_1_calc(50%-0.25rem)]' : 'relative shrink-0';
     const automationActiveCount = [
@@ -478,6 +451,7 @@ const HostTopChrome = ({
         || showAutomationQuickMenu
         || showQueueQuickMenu
         || showRewardsQuickMenu
+        || showStatusQuickMenu
         || showLaunchMenu
         || showNavMenu;
     const showMissionStatusBanner = missionControlEnabled
@@ -486,7 +460,6 @@ const HostTopChrome = ({
     const crowdPulseMeta = crowdPulse && typeof crowdPulse === 'object' ? crowdPulse : null;
     const crowdPulseLabel = crowdPulseMeta?.alignmentLabel || crowdPulseMeta?.label || 'Waiting On Phones';
     const crowdPulseSummary = crowdPulseMeta?.alignmentSummary || crowdPulseMeta?.summary || 'No audience signal yet.';
-    const crowdPulseDirective = crowdPulseMeta?.hostDirective || crowdPulseMeta?.recommendationTitle || 'Keep the room moving.';
     const crowdPulsePct = crowdPulseMeta?.metrics?.alignmentPct || 0;
     const normalizedRunOfShowDirector = React.useMemo(
         () => normalizeRunOfShowDirector(runOfShowDirector || {}),
@@ -553,7 +526,7 @@ const HostTopChrome = ({
                 title: String(item?.title || '').trim() || getRunOfShowItemLabel(item?.type),
                 detail: type.replace(/_/g, ' '),
                 summary: type === 'performance'
-                    ? [item?.assignedPerformerName || '', item?.songTitle || '', item?.artistName || ''].filter(Boolean).join(' · ')
+                    ? [item?.assignedPerformerName || '', item?.songTitle || '', item?.artistName || ''].filter(Boolean).join(' - ')
                     : String(item?.presentationPlan?.headline || item?.modeLaunchPlan?.modeKey || '').trim(),
                 status,
                 badgeLabel,
@@ -755,6 +728,7 @@ const HostTopChrome = ({
         setShowAutomationQuickMenu(false);
         setShowQueueQuickMenu(false);
         setShowRewardsQuickMenu(false);
+        setShowStatusQuickMenu(false);
     }, [setAudioPanelOpen]);
     const closeAllTopMenus = React.useCallback(() => {
         closeAllDeckMenus();
@@ -1035,7 +1009,12 @@ const HostTopChrome = ({
                 await updateRoom({
                     lightMode: 'off',
                     stormPhase: 'off',
-                    activeMode: selfieCamActive ? 'karaoke' : room?.activeMode
+                    activeMode: ['selfie_cam', 'selfie_challenge'].includes(String(room?.activeMode || '')) ? 'karaoke' : room?.activeMode,
+                    bonusDrop: null,
+                    selfieMoment: null,
+                    selfieMomentExpiresAt: null,
+                    selfieChallenge: null,
+                    photoOverlay: null
                 });
             }
         }
@@ -1049,6 +1028,11 @@ const HostTopChrome = ({
             await updateRoom({ showLyricsTv: true, showVisualizerTv: true, lyricsMode: room?.lyricsMode || 'auto' });
         } else {
             await updateRoom({ showLyricsTv: false, showVisualizerTv: false });
+        }
+    };
+    const applyAudienceDisplayMode = async (mode) => {
+        if (typeof quickRoomControls?.onSetAudienceDisplayMode === 'function') {
+            await quickRoomControls.onSetAudienceDisplayMode(mode);
         }
     };
     const toggleCrowdObjectiveMode = async (modeLightMode) => {
@@ -1133,6 +1117,14 @@ const HostTopChrome = ({
             ? 'assisted_host'
             : 'host_led';
     const activeRoomControlModelOption = ROOM_CONTROL_MODEL_OPTIONS.find((option) => option.id === activeRoomControlModel) || ROOM_CONTROL_MODEL_OPTIONS[0];
+    const oneMinuteMicLiveStatus = quickRoomControls?.oneMinuteMicLiveStatus || null;
+    const oneMinuteMicStatusToneClass = oneMinuteMicLiveStatus?.tone === 'live'
+        ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'
+        : oneMinuteMicLiveStatus?.tone === 'armed'
+            ? 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100'
+            : oneMinuteMicLiveStatus?.tone === 'resolved'
+                ? 'border-fuchsia-300/30 bg-fuchsia-500/10 text-fuchsia-100'
+                : 'border-white/10 bg-white/5 text-zinc-200';
     const applyOperatingStylePreset = async (presetId) => {
         if (typeof onApplyOperatingStylePreset === 'function') {
             await onApplyOperatingStylePreset(presetId, { surface: 'top_chrome' });
@@ -1150,8 +1142,66 @@ const HostTopChrome = ({
             return;
         }
         setShowSettings?.(true);
-        setSettingsTab?.(sectionId === 'ops.automation' ? 'automations' : 'general');
+        const directSettingsTabs = new Set(['media', 'general', 'gamepad', 'automations', 'audience_setup']);
+        setSettingsTab?.(directSettingsTabs.has(sectionId) ? sectionId : (sectionId === 'ops.automation' ? 'automations' : 'general'));
     }, [closeAllTopMenus, openAdminWorkspace, setSettingsTab, setShowSettings]);
+    const topStatusItems = [
+        {
+            key: 'apple',
+            label: 'Apple Music',
+            iconClass: 'fa-brands fa-apple',
+            active: appleMusicConnected,
+            detail: appleMusicConnected ? 'Connected for playback and catalog lookup.' : 'Open Media Setup to connect Apple Music.',
+            actionLabel: appleMusicConnected ? 'Media Setup' : 'Connect',
+            action: () => openOpsSection('media'),
+        },
+        {
+            key: 'ai',
+            label: 'AI Tools',
+            iconClass: 'fa-solid fa-robot',
+            active: aiToolsConnected,
+            detail: aiToolsConnected ? 'AI tools are available.' : 'Review host access and workspace setup.',
+            actionLabel: aiToolsConnected ? 'Review' : 'Fix Access',
+            action: () => openOpsSection('ops.room_setup'),
+        },
+        ...(youtubeBudgetStatus ? [{
+            key: 'youtube',
+            label: youtubeBudgetStatus.label || 'YouTube Search',
+            iconClass: 'fa-brands fa-youtube',
+            active: youtubeBudgetStatus.active !== false,
+            detail: youtubeBudgetStatus.detail || youtubeBudgetStatus.title || 'Search budget status.',
+            value: Number(youtubeBudgetStatus.value || 0).toLocaleString(),
+            actionLabel: 'Open Search',
+            action: () => { closeAllTopMenus(); setTab?.('stage'); },
+        }] : []),
+        {
+            key: 'session',
+            label: 'Host Session',
+            iconClass: 'fa-solid fa-user-shield',
+            active: authSessionReady,
+            detail: authSessionReady ? `${String(permissionLevel || 'unknown').toUpperCase()} session active.` : 'Reload or sign in before hosting.',
+            actionLabel: authSessionReady ? 'Room Setup' : 'Open Setup',
+            action: () => openOpsSection('ops.room_setup'),
+        },
+        ...(crowdPulseMeta ? [{
+            key: 'vibe',
+            label: 'Vibe',
+            iconClass: 'fa-solid fa-bolt',
+            active: crowdPulsePct > 0,
+            detail: `${crowdPulseLabel}: ${crowdPulseSummary}`,
+            value: `${crowdPulsePct}%`,
+            actionLabel: 'Audience',
+            action: () => { closeAllTopMenus(); setTab?.('lobby'); },
+        }] : []),
+    ];
+    const topStatusIssueCount = topStatusItems.filter((item) => item.active === false).length;
+    const topStatusAllGreen = topStatusIssueCount === 0;
+    const topStatusToneClass = topStatusAllGreen
+        ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
+        : topStatusIssueCount >= 2
+            ? 'border-rose-400/35 bg-rose-500/10 text-rose-100'
+            : 'border-amber-400/35 bg-amber-500/10 text-amber-100';
+    const topStatusLabel = topStatusAllGreen ? 'Systems Ready' : `${topStatusIssueCount} Attention`;
     return (
     <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : minimalRuntimeChrome ? 'px-3 py-1.5' : adminWorkspaceChrome ? 'px-3 py-1.5' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col ${minimalRuntimeChrome ? 'gap-1' : adminWorkspaceChrome ? 'gap-1.5' : 'gap-2'} shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800`}>
         <div className={`flex flex-col ${minimalRuntimeChrome ? 'gap-1.5' : 'gap-2.5'} lg:flex-row lg:items-center lg:justify-between w-full`}>
@@ -1324,57 +1374,55 @@ const HostTopChrome = ({
                     </div>
                 </div>
                 {!minimalRuntimeChrome ? (
-                    <div className="flex items-center gap-1.5">
-                        <NavStatusLight
-                            label="Apple"
-                            iconClass="fa-brands fa-apple"
-                            active={appleMusicConnected}
-                            toneClass={appleMusicConnected ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/35 bg-rose-500/10 text-rose-100'}
-                            title={appleMusicConnected ? 'Apple Music connected.' : 'Apple Music not linked.'}
-                        />
-                        <NavStatusLight
-                            label="AI"
-                            iconClass="fa-solid fa-robot"
-                            active={aiToolsConnected}
-                            toneClass={aiToolsConnected ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
-                            title={aiToolsConnected ? 'AI tools enabled.' : 'AI tools locked.'}
-                        />
-                        {youtubeBudgetStatus ? (
-                            <NavStatusMetric
-                                label={youtubeBudgetStatus.label || 'YT Search'}
-                                iconClass="fa-brands fa-youtube"
-                                value={Number(youtubeBudgetStatus.value || 0).toLocaleString()}
-                                detail={youtubeBudgetStatus.detail || ''}
-                                active={youtubeBudgetStatus.active !== false}
-                                toneClass={youtubeBudgetStatus.toneClass || 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100'}
-                                title={youtubeBudgetStatus.title || 'Estimated YouTube search-list calls left today.'}
-                            />
-                        ) : null}
-                        <NavStatusLight
-                            label={String(permissionLevel || 'unknown').toUpperCase()}
-                            iconClass="fa-solid fa-user-shield"
-                            active={authSessionReady}
-                            toneClass={permissionTone}
-                            title={authSessionReady ? 'Session active.' : 'Session not ready.'}
-                        />
-                        {crowdPulseMeta ? (
-                            <div
-                                data-feature-id="top-chrome-vibe-meter"
-                                title={`${crowdPulseSummary} ${crowdPulseDirective}`.trim()}
-                                className={`inline-flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${crowdPulseMeta.alignmentChipClass || crowdPulseMeta.chipClass || crowdPulseMeta.alignmentPanelClass || crowdPulseMeta.panelClass || 'border-white/10 bg-black/20 text-zinc-100'}`}
-                            >
-                                <span className={`inline-flex h-2 w-2 rounded-full ${crowdPulsePct > 0 ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]' : 'bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.4)]'}`}></span>
-                                <i className="fa-solid fa-bolt text-[10px] text-zinc-200"></i>
-                                <span className="text-zinc-100 hidden lg:inline">Vibe</span>
-                                <span className="font-black text-white">{crowdPulsePct}%</span>
-                                <span className="max-w-[8rem] truncate text-zinc-100/90">
-                                    {crowdPulseLabel}
-                                </span>
+                    <div className="relative" ref={statusQuickMenuRef}>
+                        <button
+                            type="button"
+                            data-feature-id="top-chrome-system-status"
+                            aria-expanded={showStatusQuickMenu}
+                            onClick={() => {
+                                const next = !showStatusQuickMenu;
+                                closeAllTopMenus();
+                                setShowStatusQuickMenu(next);
+                            }}
+                            className={`inline-flex min-h-[34px] items-center gap-2 rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition ${topStatusToneClass}`}
+                            title="Open host system status"
+                        >
+                            <span className={`inline-flex h-2.5 w-2.5 rounded-full ${topStatusAllGreen ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.95)]' : topStatusIssueCount >= 2 ? 'bg-rose-300 shadow-[0_0_10px_rgba(252,165,165,0.8)]' : 'bg-amber-300 shadow-[0_0_10px_rgba(252,211,77,0.8)]'}`}></span>
+                            <i className="fa-solid fa-signal text-[10px]"></i>
+                            <span className="hidden lg:inline">{topStatusLabel}</span>
+                            <span className="lg:hidden">Status</span>
+                            <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${showStatusQuickMenu ? 'rotate-180' : ''}`}></i>
+                        </button>
+                        {showStatusQuickMenu ? (
+                            <div className={`${quickMenuPanelClass} right-0 w-[min(420px,95vw)] p-3.5`}>
+                                <div className={quickMenuSectionTitleClass}>System Status</div>
+                                <div className={quickMenuSectionHintClass}>One place for host readiness, service access, and live audience signal.</div>
+                                <div className="mt-3 space-y-2">
+                                    {topStatusItems.map((item) => (
+                                        <div key={item.key} className={`${quickMenuCardClass} flex items-start gap-3`}>
+                                            <span className={`mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${item.active ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.85)]' : 'bg-rose-300 shadow-[0_0_10px_rgba(252,165,165,0.65)]'}`}></span>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <i className={`${item.iconClass} text-[11px] text-zinc-300`}></i>
+                                                    <span className="text-sm font-black text-white">{item.label}</span>
+                                                    {item.value ? <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200">{item.value}</span> : null}
+                                                </div>
+                                                <div className="mt-1 text-xs leading-5 text-zinc-400">{item.detail}</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={item.action}
+                                                className={`${styles.btnStd} ${item.active ? styles.btnNeutral : styles.btnHighlight} shrink-0 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em]`}
+                                            >
+                                                {item.actionLabel}
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         ) : null}
                     </div>
-                ) : null}
-                <button
+                ) : null}                <button
                     type="button"
                     data-host-tab="admin"
                     onClick={() => {
@@ -1622,8 +1670,12 @@ const HostTopChrome = ({
                             title="Flow and automation controls"
                             style={{ touchAction: 'manipulation' }}
                         >
-                            <i className="fa-solid fa-route mr-1"></i>
-                            Flow: {activeRoomControlModelOption.label} <span className="ml-1 text-zinc-400">Auto {automationActiveCount}</span>
+                            <span className="inline-flex min-w-0 items-center gap-1.5">
+                                <i className="fa-solid fa-route text-[11px]"></i>
+                                <span className="text-[12px] font-black leading-none text-zinc-100">Flow</span>
+                                <span className="max-w-[7rem] truncate text-[12px] font-semibold leading-none text-cyan-100/90">{activeRoomControlModelOption.label}</span>
+                            </span>
+                            <span className="ml-2 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">Auto {automationActiveCount}</span>
                             <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showAutomationQuickMenu ? 'rotate-180' : ''}`}></i>
                         </button>
                         {showAutomationQuickMenu && (
@@ -1637,11 +1689,11 @@ const HostTopChrome = ({
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`} data-host-room-control-model>
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-xs uppercase tracking-[0.18em] text-fuchsia-200">Room control model</div>
-                                            <div className="mt-1 text-sm font-semibold text-white">{activeRoomControlModelOption.label}</div>
-                                            <div className="mt-1 text-xs leading-5 text-zinc-300">Decide whether tonight is host-driven, host-assisted, or crowd-driven before tuning the detailed controls.</div>
+                                            <div className={`${quickMenuEyebrowClass} text-fuchsia-200`}>Room control model</div>
+                                            <div className={quickMenuTitleClass}>{activeRoomControlModelOption.label}</div>
+                                            <div className={quickMenuBodyClass}>Decide whether tonight is host-driven, host-assisted, or crowd-driven before tuning the detailed controls.</div>
                                         </div>
-                                        <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100">
+                                        <span className={`${quickMenuBadgeClass} border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100`}>
                                             Production mode
                                         </span>
                                     </div>
@@ -1668,13 +1720,13 @@ const HostTopChrome = ({
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`}>
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-xs uppercase tracking-[0.18em] text-emerald-200">Host assist style</div>
+                                            <div className={`${quickMenuEyebrowClass} text-emerald-200`}>Host assist style</div>
                                             <div role="status" aria-live="polite" aria-atomic="true">
-                                                <div className="mt-1 text-sm font-semibold text-white">{operatingStyleSummary.label}</div>
-                                                <div className="mt-1 text-xs leading-5 text-zinc-300">{operatingStyleSummary.description}</div>
+                                                <div className={quickMenuTitleClass}>{operatingStyleSummary.label}</div>
+                                                <div className={quickMenuBodyClass}>{operatingStyleSummary.description}</div>
                                             </div>
                                         </div>
-                                        <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-100">
+                                        <span className={`${quickMenuBadgeClass} border-emerald-300/20 bg-emerald-500/10 text-emerald-100`}>
                                             {operatingStyleSummary.shortLabel}
                                         </span>
                                     </div>
@@ -1714,13 +1766,13 @@ const HostTopChrome = ({
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`} data-host-one-minute-mic-controls>
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">Song length</div>
-                                            <div className="mt-1 text-sm font-semibold text-white">{quickRoomControls.oneMinuteMicEnabled ? 'One-Minute Mic' : 'Full songs'}</div>
-                                            <div className="mt-1 text-xs leading-5 text-zinc-300">
+                                            <div className={`${quickMenuEyebrowClass} text-cyan-200`}>Song length</div>
+                                            <div className={quickMenuTitleClass}>{quickRoomControls.oneMinuteMicEnabled ? 'One-Minute Mic' : 'Full songs'}</div>
+                                            <div className={quickMenuBodyClass}>
                                                 Let the crowd decide whether a singer earns the rest of the track after the opening minute.
                                             </div>
                                         </div>
-                                        <span className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.16em] ${quickRoomControls.oneMinuteMicEnabled ? 'border-cyan-300/40 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-white/5 text-zinc-300'}`}>
+                                        <span className={`${quickMenuBadgeClass} ${quickRoomControls.oneMinuteMicEnabled ? 'border-cyan-300/40 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-white/5 text-zinc-300'}`}>
                                             {quickRoomControls.oneMinuteMicEnabled ? 'Crowd decides' : 'Host paced'}
                                         </span>
                                     </div>
@@ -1744,6 +1796,36 @@ const HostTopChrome = ({
                                             <span className="text-xs uppercase tracking-widest">Vote</span>
                                         </button>
                                     </div>
+                                    {oneMinuteMicLiveStatus ? (
+                                        <div data-host-one-minute-mic-live-status className={`rounded-xl border px-3 py-2.5 ${oneMinuteMicStatusToneClass}`}>
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className={`${quickMenuEyebrowClass} opacity-80`}>Live crowd status</div>
+                                                    <div className={quickMenuTitleClass}>{oneMinuteMicLiveStatus.label}</div>
+                                                    <div className={quickMenuBodyClass}>{oneMinuteMicLiveStatus.detail}</div>
+                                                </div>
+                                                <span className={`${quickMenuBadgeClass} shrink-0 border-white/10 bg-black/25 text-white/90`}>
+                                                    {oneMinuteMicLiveStatus.badge}
+                                                </span>
+                                            </div>
+                                            {oneMinuteMicLiveStatus.subject || oneMinuteMicLiveStatus.subtext ? (
+                                                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-300">
+                                                    {oneMinuteMicLiveStatus.subject ? (
+                                                        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-2 py-1">
+                                                            <i className="fa-solid fa-music text-cyan-200"></i>
+                                                            <span className="truncate">{oneMinuteMicLiveStatus.subject}</span>
+                                                        </span>
+                                                    ) : null}
+                                                    {oneMinuteMicLiveStatus.subtext ? (
+                                                        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-2 py-1">
+                                                            <i className="fa-solid fa-user text-fuchsia-200"></i>
+                                                            <span className="truncate">{oneMinuteMicLiveStatus.subtext}</span>
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    ) : null}
                                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                         <label className={quickMenuFieldClass}>
                                             <span className={quickMenuLabelClass}>Open vote after</span>
@@ -2339,6 +2421,44 @@ const HostTopChrome = ({
                             </div>
                             <div className="mt-2.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
                                 Tip: Lyrics and visualizer can run together.
+                            </div>
+                            <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">Audience Layer</div>
+                            <div className={`${quickMenuCardClass} mt-2`} data-feature-id="deck-tv-audience-layer">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-white">{audienceDisplayLabel}</div>
+                                        <div className="mt-1 text-[11px] text-zinc-400">Fast TV shortcuts. Use Audience &gt; On TV to cast specific guests.</div>
+                                    </div>
+                                    <span className={`${quickMenuBadgeClass} ${audienceDisplayMode === 'off' ? 'border-white/10 bg-white/5 text-zinc-300' : 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100'}`}>
+                                        {audienceDisplayMode === 'off' ? 'Off' : 'On'}
+                                    </span>
+                                </div>
+                                <div className="mt-3 grid grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        data-feature-id="deck-tv-audience-off"
+                                        onClick={() => applyAudienceDisplayMode('off')}
+                                        className={`${styles.btnStd} ${audienceDisplayMode === 'off' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-xs normal-case tracking-[0.03em]`}
+                                    >
+                                        Off
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-feature-id="deck-tv-audience-commentator-row"
+                                        onClick={() => applyAudienceDisplayMode('commentator_row')}
+                                        className={`${styles.btnStd} ${audienceDisplayMode === 'commentator_row' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-xs normal-case tracking-[0.03em]`}
+                                    >
+                                        Row
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-feature-id="deck-tv-audience-lobby-wall"
+                                        onClick={() => applyAudienceDisplayMode('lobby_wall')}
+                                        className={`${styles.btnStd} ${audienceDisplayMode === 'lobby_wall' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-xs normal-case tracking-[0.03em]`}
+                                    >
+                                        Wall
+                                    </button>
+                                </div>
                             </div>
                             <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">TV Presentation</div>
                             <div className={`${quickMenuCardClass} mt-2`}>

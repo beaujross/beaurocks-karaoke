@@ -53,7 +53,10 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - `npm run ci` - full local CI suite (lint, unit, rules, callables, build)
 - `npm run qa:release:core-night` - canonical production-facing host/audience/TV release gate
 - `npm run test:rules` - Firestore + Storage emulator security checks (requires Java)
+- `npm run validate:functions` - function lint plus callable emulator checks
+- `npm run validate:backend` - function validation plus Firestore/Storage rules checks
 - `npm run deploy:hosting` - build + deploy web app to Firebase Hosting
+- `npm run deploy:backend` - deploy Cloud Functions, then Firestore rules
 - `npm run ops:audit:async-pipelines` - inspect stale lyrics/Pop Trivia pipeline states in Firestore (requires Firebase admin credentials)
 - `npm run seo:sitemap` - refresh tracked SEO artifacts in `public/` when you intentionally want to update them
 - Optional: set `VITE_BASE_PATH` only if deploying under a subpath (example: `/karaoke/`)
@@ -78,8 +81,10 @@ One-time local setup:
    - `npm i -g firebase-tools`
    - `firebase login`
 2. Confirm project mapping in `.firebaserc` (`beaurocks-karaoke-v2`).
-3. Deploy manually:
-   - `npm run deploy:hosting`
+3. Match deploy scope to the change:
+   - Hosting-only: `npm run deploy:hosting`
+   - Functions-only: `npm run validate:functions`, then `npm run deploy:functions`
+   - Functions or rules: `npm run validate:backend`, then `npm run deploy:backend`
 
 Automated deploys (GitHub Actions):
 

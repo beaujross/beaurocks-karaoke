@@ -285,8 +285,8 @@ describe('selfServeKaraoke', () => {
 
     test('builds a branded self-serve queue face-off window payload', () => {
         expect(buildSelfServeQueueFaceOffWindow({
-            firstSong: { id: 'song_a', songTitle: 'Mr. Brightside', singerName: 'Jamie' },
-            secondSong: { id: 'song_b', songTitle: 'Since U Been Gone', singerName: 'Alex' },
+            firstSong: { id: 'song_a', songTitle: 'Mr. Brightside', artist: 'The Killers', singerName: 'Jamie', albumArtUrl: 'https://example.test/a.jpg', duration: 222 },
+            secondSong: { id: 'song_b', songTitle: 'Since U Been Gone', artist: 'Kelly Clarkson', singerName: 'Alex', albumArtUrl: 'https://example.test/b.jpg', duration: 188 },
             openedAtMs: 999,
             durationSec: 18,
         })).toMatchObject({
@@ -306,6 +306,18 @@ describe('selfServeKaraoke', () => {
             choiceDetails: {
                 slot_scene: 'Jamie',
                 keep_queue_moving: 'Alex',
+            },
+            choiceSublines: {
+                slot_scene: 'The Killers - 3:42',
+                keep_queue_moving: 'Kelly Clarkson - 3:08',
+            },
+            choiceArtworkUrls: {
+                slot_scene: 'https://example.test/a.jpg',
+                keep_queue_moving: 'https://example.test/b.jpg',
+            },
+            choiceMetadata: {
+                slot_scene: { durationLabel: '3:42', artist: 'The Killers', singerName: 'Jamie' },
+                keep_queue_moving: { durationLabel: '3:08', artist: 'Kelly Clarkson', singerName: 'Alex' },
             },
         });
     });

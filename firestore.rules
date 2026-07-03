@@ -355,10 +355,14 @@ service cloud.firestore {
         'questionId',
         'songId',
         'sessionId',
+        'action',
         'spotlightSessionId',
         'spotlightKind',
         'spotlightMode',
         'spotlightUserId',
+        'audienceDisplaySessionId',
+        'audienceDisplayMode',
+        'audienceDisplayRole',
         'team',
         'isFree',
         'isVote'
@@ -1392,10 +1396,40 @@ service cloud.firestore {
             )
           )
           && (
+            !request.resource.data.keys().hasAny(['audienceDisplaySessionId'])
+            || request.resource.data.audienceDisplaySessionId == null
+            || (
+              request.resource.data.audienceDisplaySessionId is string
+              && request.resource.data.audienceDisplaySessionId.size() > 0
+              && request.resource.data.audienceDisplaySessionId.size() <= 180
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['audienceDisplayMode'])
+            || (
+              request.resource.data.audienceDisplayMode is string
+              && request.resource.data.audienceDisplayMode in ['commentator_row']
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['audienceDisplayRole'])
+            || (
+              request.resource.data.audienceDisplayRole is string
+              && request.resource.data.audienceDisplayRole in ['commentator']
+            )
+          )
+          && (
             !request.resource.data.keys().hasAny(['team'])
             || (
               request.resource.data.team is string
               && request.resource.data.team in ['left', 'right']
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['action'])
+            || (
+              request.resource.data.action is string
+              && request.resource.data.action in ['save', 'spike', 'shield', 'slowmo', 'redirect']
             )
           )
           && (

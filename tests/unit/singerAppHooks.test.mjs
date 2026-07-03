@@ -115,13 +115,13 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
 
   assert.match(
     source,
-    /Official event links, QR drops, and ticket-matched perks can add more automatically without slowing down the room\./,
-    "SingerApp should describe event bonuses as automatic instead of manual claims",
+    /Room promos, QR drops, and host-published codes can add more when they are active\./,
+    "SingerApp should describe event bonuses as host-configured room mechanics instead of manual claims",
   );
   assert.match(
     source,
-    /Official event links and ticket-matched perks can unlock bonuses automatically\. Only use a promo code here when the event explicitly shares one\./,
-    "SingerApp should steer guests away from claim-step language in the event credits drawer",
+    /Room links and host-published codes can unlock bonuses\. Only use a promo code here when the host or event explicitly shares one\./,
+    "SingerApp should steer guests toward host-published promo language in the event credits drawer",
   );
   assert.match(
     source,
@@ -140,23 +140,23 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
   );
   assert.match(
     source,
-    /Tonight&apos;s Points/,
-    "SingerApp points modal should lead with a plain summary of tonight's points config",
+    /Tonight&apos;s wallet/,
+    "SingerApp points modal should lead with a clear wallet summary",
   );
   assert.match(
     source,
-    /How To Earn More/,
-    "SingerApp points modal should group point-earning paths into one clear section",
+    /Buy points for everyone/,
+    "SingerApp points modal should merchandise room-wide boosts as the social purchase",
   );
   assert.match(
     source,
-    /Quest Log/,
-    "SingerApp points modal should expose festival quests as a dedicated log",
+    /Free ways to earn/,
+    "SingerApp points modal should expose room bonus opportunities as a dedicated section",
   );
   assert.match(
     source,
-    /Donate with Givebutter/,
-    "SingerApp points modal should keep one primary donation CTA instead of burying support across multiple cards",
+    /{supportCtaLabel}/,
+    "SingerApp points modal should keep one primary host-configured support CTA instead of burying support across multiple cards",
   );
   assert.match(
     source,
@@ -170,13 +170,13 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
   );
   assert.match(
     source,
-    /Every \$1 donated tonight via Givebutter credits the entire room with about/,
-    "SingerApp donation section should explain the room-wide points effect of Givebutter support",
+    /Every \$1 through \$\{supportProviderLabel\} gives the room about/,
+    "SingerApp donation section should explain the room-wide points effect of the configured support provider",
   );
   assert.match(
     source,
-    /MONEYBAGS_BADGE_LABEL.*latest room-wide support burst|MONEYBAGS_BADGE_LABEL.*spotlight a supporter after a room-wide donation burst/,
-    "SingerApp donation section should explain the Moneybags supporter spotlight",
+    /MONEYBAGS_BADGE_LABEL[\s\S]*spotlight appears with the room burst/,
+    "SingerApp room boost section should explain the Moneybags supporter spotlight",
   );
 });
 
@@ -843,8 +843,8 @@ test("SingerApp applies host-configured reaction cooldowns and co-host credit po
   );
   assert.match(
     source,
-    /displayValue=\{coHostUnlimitedCredits \? '∞' : null\}/,
-    "SingerApp should visually show unlimited co-host credits in the audience points pill",
+    /caption=\{coHostUnlimitedCredits \? 'FREE' : 'PTS'\}/,
+    "SingerApp should label the audience points pill as free for unlimited co-host credits",
   );
 });
 
@@ -1080,5 +1080,253 @@ test("SingerApp declares lounge chat opener before takeover render branches use 
     source,
     /const openLoungeChat = \(\) => \{[\s\S]*?setSocialTab\('lounge'\);[\s\S]*?\};\s*const openStreamlinedPrimaryStageTab/,
     "SingerApp should not keep the late openLoungeChat declaration after render branches"
+  );
+});
+
+test("SingerApp only treats server-confirmed room points as spendable", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const pendingSpendOffset = Math\.min\(0, Number\(localPointOffset \|\| 0\) \|\| 0\);/,
+    "Audience wallet should not count pending positive point grants as spendable before Firestore accepts them",
+  );
+  assert.match(
+    source,
+    /return Math\.max\(0, confirmedPoints \+ pendingSpendOffset\);/,
+    "Audience spend checks and point displays should use confirmed room points minus pending spends",
+  );
+  assert.match(
+    source,
+    /const nextPoints = Math\.max\(0, Number\(prev\.points \|\| 0\) \+ delta\);[\s\S]*return \{ \.\.\.prev, points: nextPoints \};/,
+    "Successful point sync should immediately reconcile local user state with the server-accepted room balance",
+  );
+});
+
+test("SingerApp does not replay stale host make-it-rain awards", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const BONUS_DROP_AUDIENCE_CLAIM_MS = 15000;/,
+    "Audience make-it-rain claims should have a short freshness window",
+  );
+  assert.match(
+    source,
+    /expiresAtMs > 0 && expiresAtMs <= Date\.now\(\)/,
+    "Audience should respect explicit host bonus-drop expiry timestamps",
+  );
+  assert.match(
+    source,
+    /\(Date\.now\(\) - createdAtMs\) > BONUS_DROP_AUDIENCE_CLAIM_MS/,
+    "Audience should ignore old bonus-drop payloads left in the room document",
+  );
+});
+
+test("SingerApp keeps high-zoom audience game actions reachable", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /data-feature-id="singer-doodle-oke"[\s\S]*className="min-h-\[100dvh\][^"]*overflow-y-auto[^"]*touch-scroll-y/,
+    "Doodle-oke should scroll instead of trapping high-zoom phones in a fixed viewport",
+  );
+  assert.match(
+    source,
+    /data-feature-id="singer-doodle-submit"[\s\S]*className={`sticky bottom-3 z-20/,
+    "Doodle-oke submit should stay reachable below a large drawing canvas",
+  );
+  assert.match(
+    source,
+    /data-feature-id="singer-selfie-challenge"[\s\S]*className="min-h-\[100dvh\][^"]*overflow-y-auto[^"]*touch-scroll-y/,
+    "Selfie Challenge should allow scrolling under high text zoom",
+  );
+  assert.match(
+    source,
+    /relative z-30 mt-auto flex w-full flex-col items-center[\s\S]*data-feature-id="singer-selfie-submit"/,
+    "Selfie Challenge submit should live in a reachable bottom control tray",
+  );
+  assert.match(
+    source,
+    /bottom: 'calc\(env\(safe-area-inset-bottom\) \+ 2\.25rem\)'[\s\S]*data-selfie-cam-capture/,
+    "Selfie Cam capture should respect the device safe area instead of using a raw fixed bottom offset",
+  );
+});
+
+test("SingerApp lets high-zoom audiences scroll past the expanded stage", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /data-singer-view="main"[\s\S]*className={`relative min-h-\[100dvh\][\s\S]*overflow-y-auto[\s\S]*touch-scroll-y/,
+    "Main Audience shell should scroll when browser zoom makes the stage taller than the viewport",
+  );
+  assert.match(
+    source,
+    /max-h-\[min\(72dvh,42rem\)\] overflow-y-auto overscroll-contain touch-scroll-y/,
+    "Expanded stage area should have its own scroll cap so it cannot consume the whole phone viewport",
+  );
+  assert.match(
+    source,
+    /min-h-\[55dvh\] flex-1 p-4 overflow-y-auto overscroll-contain touch-scroll-y/,
+    "Main Audience content should keep a reachable scroll area below the stage",
+  );
+});
+test("SingerApp keeps secondary high-zoom action surfaces reachable", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /storm-screen storm-phase-[\s\S]*min-h-\[100dvh\][\s\S]*overflow-y-auto[\s\S]*touch-scroll-y/,
+    "Storm Mode should scroll when zoom makes its join/action card taller than the phone viewport",
+  );
+  assert.match(
+    source,
+    /handleExitGuitarMode[\s\S]*bottom: 'calc\(env\(safe-area-inset-bottom\) \+ 2\.5rem\)'/,
+    "Guitar Mode exit should respect the device safe area",
+  );
+  assert.match(
+    source,
+    /min-h-\[100dvh\][^`]*vibe-strobe[\s\S]*overflow-y-auto[\s\S]*h-44 w-44[\s\S]*sm:h-56 sm:w-56/,
+    "Beat Drop should scroll and scale its tap button down on constrained phones",
+  );
+  assert.match(
+    source,
+    /strobeVictoryOpen[\s\S]*overflow-y-auto[\s\S]*max-h-\[50dvh\][\s\S]*takeStrobeVictorySelfie[\s\S]*h-20 w-20/,
+    "Beat Drop victory selfie should keep camera and capture controls reachable",
+  );
+  assert.match(
+    source,
+    /guitarVictoryOpen[\s\S]*overflow-y-auto[\s\S]*max-h-\[50dvh\][\s\S]*takeGuitarVictorySelfie[\s\S]*h-20 w-20/,
+    "Guitar victory selfie should keep camera and capture controls reachable",
+  );
+  assert.match(
+    source,
+    /readyCheck\?\.active[\s\S]*overflow-y-auto[\s\S]*text-\[clamp\(5rem,28vw,12rem\)\][\s\S]*h-44 w-44/,
+    "Ready Check should scale oversized countdown and button under high zoom",
+  );
+  assert.match(
+    source,
+    /audience-room-mic-voice-prompt[\s\S]*overflow-y-auto|overflow-y-auto[\s\S]*audience-room-mic-voice-prompt/,
+    "Room-mic voice game prompts should render in a scrollable overlay",
+  );
+  assert.match(
+    source,
+    /z-\[83\] min-h-\[100dvh\] overflow-y-auto[\s\S]*z-\[85\] min-h-\[100dvh\] overflow-y-auto/,
+    "Song search and manual request full-screen sheets should remain scrollable at high zoom",
+  );
+  assert.match(
+    source,
+    /photoOverlay[\s\S]*overflow-y-auto[\s\S]*max-h-\[52dvh\][\s\S]*bottom: 'calc\(env\(safe-area-inset-bottom\) \+ 0\.75rem\)'/,
+    "Photo overlay save/share actions should stay inside the safe-area viewport",
+  );
+});
+test("SingerApp idle Live Reactions guide does not duplicate the wallet total", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+  const cardStart = source.indexOf('data-feature-id="singer-streamlined-idle-reaction-guide"');
+  const cardEnd = source.indexOf('Reactions wake up once someone is on stage.', cardStart);
+  assert.ok(cardStart > 0, "SingerApp should render the streamlined idle Live Reactions guide");
+  assert.ok(cardEnd > cardStart, "SingerApp should include the idle Live Reactions body copy");
+  const cardSource = source.slice(cardStart, cardEnd);
+
+  assert.doesNotMatch(
+    cardSource,
+    /getEffectivePoints\(\)|>Points<|text-fuchsia-100/,
+    "Idle Live Reactions should not show a second point total that can drift from the wallet display",
+  );
+});
+
+test("SingerApp profile editor keeps avatar choices above effects and bottom actions reachable", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+  const profileStart = source.indexOf('if (showProfile) return (');
+  const profileEnd = source.indexOf('if (showVipOnboarding) return', profileStart);
+  assert.ok(profileStart > 0, "SingerApp should render the profile editor modal");
+  assert.ok(profileEnd > profileStart, "SingerApp should keep profile editor before VIP onboarding");
+  const profileSource = source.slice(profileStart, profileEnd);
+
+  assert.match(
+    profileSource,
+    /overflow-y-auto overscroll-contain touch-scroll-y[\s\S]*paddingBottom: 'calc\(env\(safe-area-inset-bottom\) \+ 1rem\)'/,
+    "Profile editor backdrop should scroll and account for the device safe area",
+  );
+  assert.match(
+    profileSource,
+    /style=\{\{ maxHeight: 'calc\(100dvh - env\(safe-area-inset-bottom\) - 1\.5rem\)' \}\}/,
+    "Profile editor panel should fit inside the safe-area viewport",
+  );
+  assert.match(
+    profileSource,
+    /party-lights pointer-events-none z-0[\s\S]*party-lights alt pointer-events-none z-0[\s\S]*party-lights third pointer-events-none z-0/,
+    "Profile editor light effects should not sit above or intercept avatar taps",
+  );
+  assert.match(
+    profileSource,
+    /<div className="relative z-10"><AvatarCoverflow/,
+    "Avatar carousel should render above decorative profile effects",
+  );
+  assert.match(
+    profileSource,
+    /sticky bottom-0 z-20[\s\S]*CANCEL[\s\S]*SAVE/,
+    "Profile editor Save and Cancel actions should remain reachable at the bottom of the scroll area",
+  );
+});
+
+test("SingerApp audience-led vote cards emphasize song thumbnails and duration metadata", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+  const releaseStart = source.indexOf("const audienceReleaseChoiceMetadata = useMemo");
+  const releaseEnd = source.indexOf("{isAudienceSpotlightedGuest &&", releaseStart);
+  assert.ok(releaseStart > 0, "SingerApp should derive release-window choice metadata");
+  assert.ok(releaseEnd > releaseStart, "SingerApp should render audience vote controls after metadata derivation");
+  const releaseSource = source.slice(releaseStart, releaseEnd);
+
+  assert.match(
+    releaseSource,
+    /choiceMetadata\?\.slot_scene[\s\S]*choiceMetadata\?\.keep_queue_moving/,
+    "Audience vote cards should read per-choice metadata from the release window",
+  );
+  assert.match(
+    releaseSource,
+    /relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl/,
+    "Audience vote cards should use larger thumbnail-forward song art",
+  );
+  assert.match(
+    releaseSource,
+    /audienceReleaseChoiceMetadata\.slotScene\?\.durationLabel[\s\S]*audienceReleaseChoiceMetadata\.keepQueueMoving\?\.durationLabel/,
+    "Audience vote cards should show duration badges when song metadata provides them",
+  );
+  assert.match(
+    releaseSource,
+    /audienceReleaseChoiceCounts[\s\S]*getAudienceReleaseChoicePct/,
+    "Audience vote cards should expose live server vote counts and percentage bars",
+  );
+  assert.match(
+    releaseSource,
+    /data-audience-release-choice-card="slot_scene"[\s\S]*data-audience-release-choice-card="keep_queue_moving"/,
+    "Audience vote cards should be explicitly marked as two visible decision choices",
+  );
+});
+
+test("SingerApp resolves pop-up trivia rewards from server summaries", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const popTriviaAwardSummary = popTriviaRevealQuestionId[\s\S]*room\?\.popTriviaAwards\?\.\[popTriviaRevealQuestionId\]/,
+    "SingerApp should read authoritative Pop Trivia award summaries from the room",
+  );
+  assert.match(
+    source,
+    /const popTriviaConfirmedAwardDelta = popTriviaAwardWinnerForMe[\s\S]*popTriviaAwardSyncedDelta/,
+    "SingerApp should prefer the server-confirmed Pop Trivia award before falling back to wallet delta sync",
+  );
+  assert.match(
+    source,
+    /data-feature-id="pop-trivia-audience-winners"/,
+    "SingerApp should show credited Pop Trivia winners in the recap",
+  );
+  assert.match(
+    source,
+    /data-feature-id="pop-trivia-audience-win-flourish"/,
+    "SingerApp should make Pop Trivia wins visually prominent",
   );
 });

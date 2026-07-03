@@ -79,7 +79,7 @@ const DECISION_TYPE_POLICIES = Object.freeze({
         category: 'performance_progression',
         prompt: 'Keep it going?',
         durationSec: 12,
-        minimumVotes: 3,
+        minimumVotes: 1,
         thresholdMode: 'choice_threshold',
         thresholdChoiceId: 'keep_singing',
         thresholdPct: 55,
@@ -360,6 +360,8 @@ export const buildReleaseWindowFromAudienceDecision = (decision = {}, options = 
         origin: cleanText(decision?.origin) || 'audience_decision',
         prompt: normalized.prompt,
         promptDetail: normalized.promptDetail,
+        subjectTitle: cleanText(decision?.subjectTitle || decision?.songTitle || decision?.itemTitle),
+        subjectSubtitle: cleanText(decision?.subjectSubtitle || decision?.artistName || decision?.artist || decision?.singerName),
         durationSec: normalized.durationSec,
         openedAtMs: normalized.openedAtMs,
         closesAtMs: normalized.closesAtMs,
@@ -370,6 +372,10 @@ export const buildReleaseWindowFromAudienceDecision = (decision = {}, options = 
         choiceDetails: {
             slot_scene: firstChoice.detail,
             keep_queue_moving: secondChoice.detail,
+        },
+        choiceSublines: {
+            slot_scene: firstChoice.subline,
+            keep_queue_moving: secondChoice.subline,
         },
         choiceArtworkUrls: {
             slot_scene: firstChoice.artworkUrl,

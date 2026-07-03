@@ -104,6 +104,14 @@ import {
     inferSpotlightKind,
     normalizeAudienceSpotlightMode,
 } from '../../lib/audienceSpotlight';
+import {
+    AUDIENCE_DISPLAY_MODE_OPTIONS,
+    AUDIENCE_DISPLAY_MODES,
+    AUDIENCE_DISPLAY_ROLE_SOURCES,
+    buildAudienceDisplayPatch,
+    getAudienceDisplayModeMeta,
+    normalizeAudienceDisplay,
+} from '../../lib/audienceDisplay';
 import { computeOpenSlotAssignments, isOpenRunOfShowPerformanceSlot } from './lib/openSlotSuggestions';
 import { prepareRunOfShowQueueAssignment } from './lib/runOfShowQueueAssignment';
 import { buildCurrentRoomRunOfShowDraft } from './lib/currentRoomRunOfShowDraft';
@@ -1180,6 +1188,11 @@ const startQueueSongOnStage = async ({
         });
         await updateRoom({
             activeMode: 'karaoke',
+            bonusDrop: null,
+            selfieMoment: null,
+            selfieMomentExpiresAt: null,
+            selfieChallenge: null,
+            photoOverlay: null,
             'announcement.active': false,
             mediaUrl: '',
             singAlongMode: false,
@@ -1206,6 +1219,11 @@ const startQueueSongOnStage = async ({
         await stopAppleMusic?.();
         await updateRoom({
             activeMode: 'karaoke',
+            bonusDrop: null,
+            selfieMoment: null,
+            selfieMomentExpiresAt: null,
+            selfieChallenge: null,
+            photoOverlay: null,
             'announcement.active': false,
             mediaUrl: songMediaUrl,
             singAlongMode: false,
@@ -2504,7 +2522,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
         toast('Winner selected');
     };
     const closeChallenge = async () => {
-        await updateRoom({ activeMode: 'karaoke', selfieChallenge: null });
+        await updateRoom({ activeMode: 'karaoke', bonusDrop: null, selfieMoment: null, selfieMomentExpiresAt: null, selfieChallenge: null, photoOverlay: null });
         toast('Selfie Challenge closed');
     };
     const generatePrompt = async () => {
@@ -3363,7 +3381,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
 
     const closeGameMode = async () => {
         try {
-            await updateRoom({ activeMode: 'karaoke' });
+            await updateRoom({ activeMode: 'karaoke', bonusDrop: null, selfieMoment: null, selfieMomentExpiresAt: null, selfieChallenge: null, photoOverlay: null });
             toast('Returned to karaoke mode');
         } catch (err) {
             hostLogger.error('Host controlpad close mode failed', err);
@@ -3586,13 +3604,16 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                     return;
                 }
                 const pick = pool[Math.floor(Math.random() * pool.length)];
+                const overlayStartedAtMs = nowMs();
                 await updateRoom({
                     photoOverlay: {
                         url: pick.url,
                         userName: pick.userName || pick.name || 'Guest',
                         mode: 'selfie_challenge',
                         copy: 'Host spotlight pick',
-                        timestamp: nowMs()
+                        timestamp: overlayStartedAtMs,
+                        createdAtMs: overlayStartedAtMs,
+                        expiresAtMs: overlayStartedAtMs + 9000
                     }
                 });
                 toast('Photo bomb sent to TV.');
@@ -3660,8 +3681,9 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             }
 
             if (activeMode === 'karaoke_bracket') {
+                const dropStartedAtMs = nowMs();
                 await updateRoom({
-                    bonusDrop: { id: nowMs(), points: 75, by: 'Bracket Hype' },
+                    bonusDrop: { id: dropStartedAtMs, points: 75, by: 'Bracket Hype', createdAtMs: dropStartedAtMs, expiresAtMs: dropStartedAtMs + 6000 },
                     karaokeBracket: {
                         ...(room?.karaokeBracket || {}),
                         crowdVotingEnabled: true
@@ -3753,13 +3775,15 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             }
 
             if (['applause', 'applause_countdown', 'applause_result'].includes(activeMode)) {
-                await updateRoom({ bonusDrop: { id: nowMs(), points: 50, by: 'Crowd Surge' } });
+                const dropStartedAtMs = nowMs();
+                await updateRoom({ bonusDrop: { id: dropStartedAtMs, points: 50, by: 'Crowd Surge', createdAtMs: dropStartedAtMs, expiresAtMs: dropStartedAtMs + 6000 } });
                 toast('Crowd Surge drop sent.');
                 await logHostInteraction('triggered a crowd surge drop.');
                 return;
             }
 
-            await updateRoom({ bonusDrop: { id: nowMs(), points: 35, by: 'Host Boost' } });
+            const dropStartedAtMs = nowMs();
+            await updateRoom({ bonusDrop: { id: dropStartedAtMs, points: 35, by: 'Host Boost', createdAtMs: dropStartedAtMs, expiresAtMs: dropStartedAtMs + 6000 } });
             toast('Host boost sent.');
             await logHostInteraction('triggered a host boost.');
         } catch (err) {
@@ -12445,7 +12469,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [triggerHostMomentCue]);
     const dropBonus = async (points) => {
         if (!roomCode) return;
-        await updateRoom({ bonusDrop: { id: nowMs(), points, by: hostName || 'Host' } });
+        const dropStartedAtMs = nowMs();
+        await updateRoom({ bonusDrop: { id: dropStartedAtMs, points, by: hostName || 'Host', createdAtMs: dropStartedAtMs, expiresAtMs: dropStartedAtMs + 6000 } });
         logActivity(roomCode, hostName || 'Host', `dropped +${points} pts to the room`, EMOJI.sparkle);
         toast(`Bonus drop: +${points} PTS`);
     };
@@ -15211,6 +15236,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 autoClear: options?.autoClear !== false,
                 replayCount: Number(options?.replayCount || 0),
                 promptUpdatedAtMs: prompt ? createdAtMs : 0,
+                mainstage: options?.mainstage === true ? {
+                    active: true,
+                    sessionId: `${spotlightKind}_${uid}_mainstage_${createdAtMs}`,
+                    startedAtMs: createdAtMs,
+                    durationMs: spotlightDurationMs,
+                    expiresAtMs: createdAtMs + spotlightDurationMs
+                } : null,
                 tight15: spotlightTight15,
                 challengeSong: challengeSong || null
             }
@@ -15977,6 +16009,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const selectedLobbyUserNeedsFirstSongAssist = String(selectedLobbyUser?.requestIntent || '').trim() === 'host_pick_tight15';
     const selectedLobbyUserQueueBusy = !!(selectedLobbyUserUid && tight15QueueBusyUid === selectedLobbyUserUid);
     const selectedLobbyUserProfileBusy = !!(selectedLobbyUserUid && tight15ProfileBusyUid === selectedLobbyUserUid);
+    const audienceDisplay = useMemo(
+        () => normalizeAudienceDisplay(room?.audienceDisplay || {}),
+        [room?.audienceDisplay]
+    );
+    const audienceDisplayMeta = getAudienceDisplayModeMeta(audienceDisplay.mode);
+    const audienceDisplayActive = audienceDisplay.mode !== AUDIENCE_DISPLAY_MODES.off;
+    const audienceDisplaySelectedUsers = useMemo(
+        () => audienceDisplay.selectedUids
+            .map((displayUid) => findRoomUserByUid(users, displayUid))
+            .filter(Boolean),
+        [audienceDisplay.selectedUids, users]
+    );
+    const selectedLobbyUserOnAudienceDisplay = !!(
+        selectedLobbyUserUid && audienceDisplay.selectedUids.includes(selectedLobbyUserUid)
+    );
     const lobbyActionUsers = useMemo(() => {
         const query = String(lobbyActionSearch || '').trim().toLowerCase();
         const list = query
@@ -15997,7 +16044,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [users, selectedLobbyUserToken, lockedLobbyUserToken]);
     const sampleArt = SAMPLE_ART;
     const top100Seed = TOP100_SEED;
-    const toggleAudienceSpotlightForUser = async (roomUser = {}, mode = AUDIENCE_SPOTLIGHT_MODES.cheer) => {
+    const toggleAudienceSpotlightForUser = async (roomUser = {}, mode = AUDIENCE_SPOTLIGHT_MODES.cheer, options = {}) => {
         const uid = resolveRoomUserUid(roomUser);
         if (!uid) {
             toast('Pick a lobby guest first.');
@@ -16007,7 +16054,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await sendUserMessage(
             uid,
             spotlightIsActive ? null : getAudienceSpotlightMessage(mode),
-            { kind: SPOTLIGHT_KINDS.audience, mode, durationSec: spotlightDurationSec }
+            { kind: SPOTLIGHT_KINDS.audience, mode, durationSec: spotlightDurationSec, mainstage: options?.mainstage === true }
         );
     };
 
@@ -16028,6 +16075,117 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Could not update co-host access.');
         }
     }, [hostLogger, runOfShowRoles, updateRunOfShowRolesState]);
+    const setAudienceTvDisplay = useCallback(async ({
+        mode,
+        selectedUids,
+        roleSource,
+        showReactions,
+        maxVisible,
+    } = {}, successMessage = 'Audience TV layer updated.') => {
+        try {
+            const patch = buildAudienceDisplayPatch({
+                current: room?.audienceDisplay || {},
+                mode,
+                selectedUids,
+                roleSource,
+                showReactions,
+                maxVisible,
+                nowMs: Date.now(),
+            });
+            await updateRoom(patch);
+            toast(successMessage);
+        } catch (error) {
+            hostLogger.error('Audience TV display update failed', error);
+            toast('Could not update the audience TV layer.');
+        }
+    }, [hostLogger, room?.audienceDisplay, toast, updateRoom]);
+
+    const addAudienceDisplayUid = useCallback(async (roomUser = selectedLobbyUser) => {
+        const safeUid = resolveRoomUserUid(roomUser);
+        if (!safeUid) {
+            toast('Pick a lobby guest first.');
+            return;
+        }
+        const nextUids = [safeUid, ...audienceDisplay.selectedUids.filter((entry) => entry !== safeUid)]
+            .slice(0, audienceDisplay.maxVisible);
+        await setAudienceTvDisplay({
+            mode: AUDIENCE_DISPLAY_MODES.commentatorRow,
+            selectedUids: nextUids,
+            roleSource: AUDIENCE_DISPLAY_ROLE_SOURCES.manual,
+        }, `${roomUser?.name || 'Guest'} added to the TV row.`);
+    }, [audienceDisplay.maxVisible, audienceDisplay.selectedUids, selectedLobbyUser, setAudienceTvDisplay, toast]);
+
+    const removeAudienceDisplayUid = useCallback(async (uidToRemove = '') => {
+        const safeUid = String(uidToRemove || '').trim();
+        if (!safeUid) return;
+        await setAudienceTvDisplay({
+            mode: audienceDisplay.selectedUids.length > 1 ? audienceDisplay.mode : AUDIENCE_DISPLAY_MODES.off,
+            selectedUids: audienceDisplay.selectedUids.filter((entry) => entry !== safeUid),
+            roleSource: AUDIENCE_DISPLAY_ROLE_SOURCES.manual,
+        }, 'Audience TV row updated.');
+    }, [audienceDisplay.mode, audienceDisplay.selectedUids, setAudienceTvDisplay]);
+
+    const fillAudienceDisplayFromCoHosts = useCallback(async () => {
+        const nextUids = (Array.isArray(runOfShowRoles?.coHosts) ? runOfShowRoles.coHosts : [])
+            .filter((entry) => findRoomUserByUid(users, entry))
+            .slice(0, audienceDisplay.maxVisible);
+        await setAudienceTvDisplay({
+            mode: AUDIENCE_DISPLAY_MODES.commentatorRow,
+            selectedUids: nextUids,
+            roleSource: AUDIENCE_DISPLAY_ROLE_SOURCES.coHosts,
+        }, nextUids.length ? 'Co-hosts are on the TV row.' : 'No active co-hosts are in the lobby yet.');
+    }, [audienceDisplay.maxVisible, runOfShowRoles?.coHosts, setAudienceTvDisplay, users]);
+
+    const fillAudienceDisplayFromMostActive = useCallback(async () => {
+        const nextUids = [...users]
+            .map((entry) => ({
+                entry,
+                uid: resolveRoomUserUid(entry),
+                score: Number(entry?.totalEmojis || 0) + Number(entry?.points || 0) / 100 + (entry?.lastActiveAt ? 1 : 0),
+            }))
+            .filter((entry) => entry.uid)
+            .sort((left, right) => right.score - left.score)
+            .map((entry) => entry.uid)
+            .slice(0, audienceDisplay.maxVisible);
+        await setAudienceTvDisplay({
+            mode: AUDIENCE_DISPLAY_MODES.commentatorRow,
+            selectedUids: nextUids,
+            roleSource: AUDIENCE_DISPLAY_ROLE_SOURCES.mostActive,
+        }, nextUids.length ? 'Most active guests are on the TV row.' : 'No active guests are available yet.');
+    }, [audienceDisplay.maxVisible, setAudienceTvDisplay, users]);
+
+    const setAudienceDisplayModeQuick = useCallback(async (mode = AUDIENCE_DISPLAY_MODES.off) => {
+        const safeMode = String(mode || '').trim().toLowerCase();
+        if (safeMode === AUDIENCE_DISPLAY_MODES.off) {
+            await setAudienceTvDisplay({ mode: AUDIENCE_DISPLAY_MODES.off, selectedUids: [] }, 'Audience TV layer is off.');
+            return;
+        }
+        if (safeMode === AUDIENCE_DISPLAY_MODES.lobbyWall) {
+            await setAudienceTvDisplay({ mode: AUDIENCE_DISPLAY_MODES.lobbyWall }, 'Lobby Wall is on Public TV.');
+            return;
+        }
+        if (safeMode === AUDIENCE_DISPLAY_MODES.commentatorRow) {
+            const coHostUids = (Array.isArray(runOfShowRoles?.coHosts) ? runOfShowRoles.coHosts : [])
+                .filter((entry) => findRoomUserByUid(users, entry));
+            const activeUids = [...users]
+                .map((entry) => ({
+                    uid: resolveRoomUserUid(entry),
+                    score: Number(entry?.totalEmojis || 0) + Number(entry?.points || 0) / 100 + (entry?.lastActiveAt ? 1 : 0),
+                }))
+                .filter((entry) => entry.uid)
+                .sort((left, right) => right.score - left.score)
+                .map((entry) => entry.uid);
+            const nextUids = (audienceDisplay.selectedUids.length ? audienceDisplay.selectedUids : [...coHostUids, ...activeUids])
+                .filter((entry, index, list) => entry && list.indexOf(entry) === index)
+                .slice(0, audienceDisplay.maxVisible);
+            await setAudienceTvDisplay({
+                mode: AUDIENCE_DISPLAY_MODES.commentatorRow,
+                selectedUids: nextUids,
+                roleSource: audienceDisplay.selectedUids.length ? audienceDisplay.roleSource : (coHostUids.length ? AUDIENCE_DISPLAY_ROLE_SOURCES.coHosts : AUDIENCE_DISPLAY_ROLE_SOURCES.mostActive),
+            }, nextUids.length ? 'Commentator Row is on Public TV.' : 'Commentator Row needs active guests first.');
+        }
+    }, [audienceDisplay.maxVisible, audienceDisplay.roleSource, audienceDisplay.selectedUids, runOfShowRoles?.coHosts, setAudienceTvDisplay, users]);
+
     const setActiveAudienceSpotlightMode = useCallback(async (mode = AUDIENCE_SPOTLIGHT_MODE_OPTIONS[0]?.id) => {
         if (!activeAudienceSpotlightUid) return;
         const nextMode = normalizeAudienceSpotlightMode(mode);
@@ -20098,6 +20256,79 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
+    const oneMinuteMicEnabledQuick = room?.oneMinuteMicEnabled === true || String(room?.performanceProgressionMode || '').trim().toLowerCase() === 'one_minute_mic';
+    const oneMinuteMicOpeningWindowSecQuick = Math.max(15, Math.min(180, Number(room?.oneMinuteMicOpeningWindowSec || 60) || 60));
+    const oneMinuteMicVoteWindowSecQuick = Math.max(5, Math.min(45, Number(room?.oneMinuteMicVoteWindowSec || 12) || 12));
+    const audienceDecisionQuick = room?.audienceDecision && typeof room.audienceDecision === 'object' ? room.audienceDecision : null;
+    const audienceDecisionTypeQuick = String(audienceDecisionQuick?.type || '').trim().toLowerCase();
+    const audienceDecisionStatusQuick = String(audienceDecisionQuick?.status || '').trim().toLowerCase();
+    const audienceDecisionVotesQuick = audienceDecisionQuick?.votesByUid && typeof audienceDecisionQuick.votesByUid === 'object' && !Array.isArray(audienceDecisionQuick.votesByUid)
+        ? Object.keys(audienceDecisionQuick.votesByUid).filter(Boolean).length
+        : 0;
+    const oneMinuteMicPerformanceStartedAtMs = currentSong ? Math.max(
+        String(room?.currentPerformanceSession?.songId || '').trim() === String(currentSong?.id || '').trim() ? Number(room?.currentPerformanceSession?.startedAtMs || 0) || 0 : 0,
+        String(room?.currentPerformanceMeta?.songId || '').trim() === String(currentSong?.id || '').trim() ? Number(room?.currentPerformanceMeta?.startedAtMs || 0) || 0 : 0,
+        getTimestampMs(currentSong?.performingStartedAt),
+        getTimestampMs(currentSong?.timestamp)
+    ) : 0;
+    const oneMinuteMicVoteOpensAtMs = oneMinuteMicPerformanceStartedAtMs + (oneMinuteMicOpeningWindowSecQuick * 1000);
+    const oneMinuteMicSongLabel = String(currentSong?.songTitle || audienceDecisionQuick?.songTitle || audienceDecisionQuick?.subjectTitle || '').trim();
+    const oneMinuteMicSingerLabel = String(currentSong?.singerName || audienceDecisionQuick?.singerName || '').trim();
+    const oneMinuteMicLiveStatus = (() => {
+        if (!oneMinuteMicEnabledQuick) {
+            return {
+                state: 'off',
+                label: 'Full songs are host paced',
+                detail: 'Audience continue-or-rotate prompts are off for this room.',
+                badge: 'Host paced',
+                tone: 'idle',
+            };
+        }
+        if (['continue_or_rotate', 'skip_performance'].includes(audienceDecisionTypeQuick) && audienceDecisionStatusQuick === 'open') {
+            const isSkipVote = audienceDecisionTypeQuick === 'skip_performance';
+            return {
+                state: 'live',
+                label: isSkipVote ? 'Crowd rescue vote is live' : 'One-Minute Mic vote is live',
+                detail: `${audienceDecisionVotesQuick} vote${audienceDecisionVotesQuick === 1 ? '' : 's'} in. Phones and TV should be showing the decision now.`,
+                badge: 'Live vote',
+                tone: 'live',
+                subject: oneMinuteMicSongLabel || String(audienceDecisionQuick?.prompt || '').trim(),
+                subtext: oneMinuteMicSingerLabel || String(audienceDecisionQuick?.promptDetail || '').trim(),
+            };
+        }
+        if (['continue_or_rotate', 'skip_performance'].includes(audienceDecisionTypeQuick) && audienceDecisionStatusQuick === 'resolved') {
+            const resultChoice = String(audienceDecisionQuick?.resultChoice || '').trim().toLowerCase();
+            return {
+                state: 'resolved',
+                label: resultChoice === 'next_singer' ? 'Crowd chose to rotate' : 'Crowd chose to keep singing',
+                detail: resultChoice === 'next_singer' ? 'Automation is handing the mic to the next singer.' : 'The current singer keeps the rest of the song.',
+                badge: 'Resolved',
+                tone: 'resolved',
+                subject: oneMinuteMicSongLabel,
+                subtext: oneMinuteMicSingerLabel,
+            };
+        }
+        if (currentSong) {
+            const opensInLabel = oneMinuteMicVoteOpensAtMs > nowMs() ? formatOpsCountdown(oneMinuteMicVoteOpensAtMs) : 'now';
+            return {
+                state: 'armed',
+                label: `Vote opens ${opensInLabel}`,
+                detail: `After ${oneMinuteMicOpeningWindowSecQuick}s, the crowd gets ${oneMinuteMicVoteWindowSecQuick}s to keep the singer or rotate.`,
+                badge: 'Armed',
+                tone: 'armed',
+                subject: oneMinuteMicSongLabel,
+                subtext: oneMinuteMicSingerLabel,
+            };
+        }
+        return {
+            state: 'waiting',
+            label: 'Waiting for a singer',
+            detail: 'One-Minute Mic is enabled. The next live song will arm the crowd vote.',
+            badge: 'Ready',
+            tone: 'idle',
+        };
+    })();
+
     const quickRoomControls = {
         autoPlayMedia: !!autoPlayMedia,
         bouncerMode: !!room?.bouncerMode,
@@ -20116,9 +20347,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         searchSources: normalizeHostSearchSources(searchSources, DEFAULT_SEARCH_SOURCES),
         guestTrackPolicyOptions: QUICK_GUEST_TRACK_POLICY_OPTIONS,
         readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10) || 10),
-        oneMinuteMicEnabled: room?.oneMinuteMicEnabled === true || String(room?.performanceProgressionMode || '').trim().toLowerCase() === 'one_minute_mic',
-        oneMinuteMicOpeningWindowSec: Math.max(15, Math.min(180, Number(room?.oneMinuteMicOpeningWindowSec || 60) || 60)),
-        oneMinuteMicVoteWindowSec: Math.max(5, Math.min(45, Number(room?.oneMinuteMicVoteWindowSec || 12) || 12)),
+        oneMinuteMicEnabled: oneMinuteMicEnabledQuick,
+        oneMinuteMicOpeningWindowSec: oneMinuteMicOpeningWindowSecQuick,
+        oneMinuteMicVoteWindowSec: oneMinuteMicVoteWindowSecQuick,
+        oneMinuteMicLiveStatus,
         queueLimitOptions: NIGHT_SETUP_QUEUE_LIMIT_OPTIONS,
         queueRotationOptions: NIGHT_SETUP_QUEUE_ROTATION_OPTIONS,
         requestModeOptions: REQUEST_MODE_OPTIONS,
@@ -20134,6 +20366,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onApplyRoomControlModel: applyRoomControlModelQuick,
         onSetOneMinuteMic: setOneMinuteMicQuick,
         onSetOneMinuteMicTiming: setOneMinuteMicTimingQuick,
+        audienceDisplay,
+        audienceDisplaySelectedCount: audienceDisplay.selectedUids.length,
+        onSetAudienceDisplayMode: setAudienceDisplayModeQuick,
         onTriggerReadyCheck: startReadyCheck,
     };
     const experimentalHostPanelActive = quickRoomControls.runtimeShellMode === HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment;
@@ -20879,16 +21114,139 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 {tab === 'lobby' && (
                     <div className="flex flex-col h-full gap-4">
                         <div className="flex flex-wrap bg-zinc-900 p-1 rounded-xl w-full sm:w-fit gap-1">
-                            {['users', 'actions', 'history', 'vip', 'tips', 'activity'].map(t => (
+                            {['users', 'tv', 'actions', 'history', 'vip', 'tips', 'activity'].map(t => (
                                 <button
                                     key={t}
                                     onClick={() => setLobbyTab(t)}
                                     className={`px-4 py-2 rounded-lg text-sm font-bold uppercase transition-all ${lobbyTab === t ? 'bg-[#00C4D9] text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
                                 >
-                                    {t === 'tips' ? 'settings' : t}
+                                    {t === 'tips' ? 'settings' : t === 'tv' ? 'on tv' : t}
                                 </button>
                             ))}
                         </div>
+                        {lobbyTab === 'tv' && (
+                            <div data-feature-id="host-audience-tv-panel" className="flex flex-col gap-4">
+                                <div className={`${STYLES.panel} border-cyan-300/20 bg-cyan-500/10 p-4`}>
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-black uppercase tracking-[0.2em] text-cyan-100">Audience On TV</div>
+                                            <div className="mt-1 text-sm text-zinc-300">Cast the lobby into the show without creating a new game mode.</div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${audienceDisplayActive ? 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-white/5 text-zinc-300'}`}>
+                                                {audienceDisplayMeta.label}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAudienceTvDisplay({ mode: AUDIENCE_DISPLAY_MODES.off, selectedUids: [] }, 'Audience TV layer cleared.')}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-xs`}
+                                            >
+                                                Clear TV Audience
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-5">
+                                        {AUDIENCE_DISPLAY_MODE_OPTIONS.map((option) => {
+                                            const selected = audienceDisplay.mode === option.id;
+                                            const disabled = option.id === AUDIENCE_DISPLAY_MODES.judgesPanel;
+                                            return (
+                                                <button
+                                                    key={option.id}
+                                                    type="button"
+                                                    disabled={disabled}
+                                                    onClick={() => setAudienceTvDisplay({
+                                                        mode: option.id,
+                                                        selectedUids: option.id === AUDIENCE_DISPLAY_MODES.off ? [] : audienceDisplay.selectedUids,
+                                                        roleSource: audienceDisplay.roleSource,
+                                                    }, option.id === AUDIENCE_DISPLAY_MODES.off ? 'Audience TV layer is off.' : `${option.label} is ready for Public TV.`)}
+                                                    className={`${STYLES.btnStd} ${selected ? STYLES.btnHighlight : STYLES.btnNeutral} min-h-[92px] items-start justify-start whitespace-normal px-3 py-3 text-left text-xs normal-case tracking-[0.03em] ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                    title={disabled ? 'Judges Panel will use this same display layer in a later slice.' : option.description}
+                                                >
+                                                    <span className="flex min-w-0 flex-col items-start">
+                                                        <span className="text-sm font-black text-white">{option.label}</span>
+                                                        <span className="mt-1 text-[11px] leading-4 text-zinc-400">{disabled ? 'Coming after commentator row hardening.' : option.description}</span>
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+                                    <div className={`${STYLES.panel} border-white/10 p-4`}>
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-sm font-black uppercase tracking-[0.2em] text-zinc-200">Commentator Row</div>
+                                                <div className="mt-1 text-sm text-zinc-400">A compact bottom rail for co-hosts, judges, or featured fans to react from.</div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button type="button" onClick={() => addAudienceDisplayUid(selectedLobbyUser)} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1.5 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                                                    Add Selected
+                                                </button>
+                                                <button type="button" onClick={fillAudienceDisplayFromCoHosts} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-xs`}>
+                                                    Use Co-hosts
+                                                </button>
+                                                <button type="button" onClick={fillAudienceDisplayFromMostActive} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-xs`}>
+                                                    Most Active
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                                            {audienceDisplaySelectedUsers.length ? audienceDisplaySelectedUsers.map((entry) => {
+                                                const displayUid = resolveRoomUserUid(entry);
+                                                return (
+                                                    <div key={displayUid || entry.id} className="rounded-2xl border border-cyan-300/25 bg-black/35 p-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/45 text-2xl">{entry.avatar || EMOJI.star}</div>
+                                                            <div className="min-w-0">
+                                                                <div className="truncate text-sm font-black text-white">{entry.name || 'Guest'}</div>
+                                                                <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100">On TV row</div>
+                                                            </div>
+                                                        </div>
+                                                        <button type="button" onClick={() => removeAudienceDisplayUid(displayUid)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} mt-3 w-full justify-center px-3 py-1.5 text-xs`}>
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                );
+                                            }) : (
+                                                <div className="rounded-2xl border border-dashed border-white/15 bg-black/25 p-4 text-sm text-zinc-400 sm:col-span-2 xl:col-span-4">
+                                                    Add up to {audienceDisplay.maxVisible} guests. The first version reuses lobby users and existing reaction visuals.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className={`${STYLES.panel} border-white/10 p-4`}>
+                                        <div className="text-sm font-black uppercase tracking-[0.2em] text-zinc-200">Behavior</div>
+                                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                            <label className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-300">
+                                                Max visible
+                                                <select
+                                                    value={audienceDisplay.maxVisible}
+                                                    onChange={(event) => setAudienceTvDisplay({ maxVisible: Number(event.target.value) }, 'Audience row size updated.')}
+                                                    className={`${STYLES.input} mt-1 text-sm`}
+                                                >
+                                                    {[2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>{value}</option>)}
+                                                </select>
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAudienceTvDisplay({ showReactions: !audienceDisplay.showReactions }, audienceDisplay.showReactions ? 'Audience row reactions hidden.' : 'Audience row reactions visible.')}
+                                                className={`${STYLES.btnStd} ${audienceDisplay.showReactions ? STYLES.btnHighlight : STYLES.btnNeutral} mt-5 justify-center px-3 py-2 text-xs`}
+                                            >
+                                                Reactions {audienceDisplay.showReactions ? 'On' : 'Off'}
+                                            </button>
+                                        </div>
+                                        <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-xs leading-5 text-zinc-400">
+                                            Persistent setup lives here. Use the TV dropdown for fast Off, Commentator Row, and Lobby Wall shortcuts during the show.
+                                        </div>
+                                        <div className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+                                            Source: {audienceDisplay.roleSource.replace('_', ' ')} | Selected: {audienceDisplay.selectedUids.length}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {lobbyTab === 'actions' && (
                             <div data-feature-id="host-lobby-actions-panel" className="flex flex-col gap-4">
                                 <div className={`${STYLES.panel} border-white/10 p-4`}>
@@ -20956,8 +21314,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 {[30, 45, 60, 90].map((value) => <option key={value} value={value}>{value}s auto-clear</option>)}
                                             </select>
                                         </label>
-                                        <div className="mt-3 grid grid-cols-3 gap-2">
+                                        <div className="mt-3 grid grid-cols-2 gap-2">
                                             <button onClick={() => toggleAudienceSpotlightForUser(selectedLobbyUser, AUDIENCE_SPOTLIGHT_MODES.cheer)} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-2 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>Cheer</button>
+                                            <button onClick={() => toggleAudienceSpotlightForUser(selectedLobbyUser, AUDIENCE_SPOTLIGHT_MODES.cheer, { mainstage: true })} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-2 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>Stage Cheer</button>
                                             <button onClick={() => toggleAudienceSpotlightForUser(selectedLobbyUser, AUDIENCE_SPOTLIGHT_MODES.qa)} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-2 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>Q&A</button>
                                             <button onClick={() => toggleAudienceSpotlightForUser(selectedLobbyUser, AUDIENCE_SPOTLIGHT_MODES.roast)} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-2 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>Roast</button>
                                         </div>
@@ -21039,7 +21398,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div>
                                             <div className="text-sm uppercase tracking-widest text-zinc-500">Lobby Lineup</div>
-                                            <div className="text-sm text-zinc-400 mt-1">Hover to preview a person, click to lock selection, then run actions fast.</div>
+                                            <div className="text-sm text-zinc-400 mt-1">Tap a person to lock selection, or use the visible card actions directly.</div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             {lockedLobbyUserToken ? (
@@ -21114,7 +21473,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         })}
                                     </div>
                                     <div className="mt-2 text-[11px] text-zinc-400">
-                                        Tip: select a guest card, then use <span className="text-white">Lobby Actions</span> for spotlight, Tight 15, points, and support controls.
+                                        Tip: visible card actions work on touch screens. Use <span className="text-white">Lobby Actions</span> for points, support drops, and longer spotlight control.
                                     </div>
                                     {pendingFirstSongAssistCount > 0 && (
                                         <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
@@ -21145,6 +21504,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     className={`${STYLES.btnStd} ${selectedLobbyUserIsSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
                                                     {selectedLobbyUserIsSpotlight ? 'Unspotlight' : 'Spotlight'}
+                                                </button>
+                                                <button
+                                                    onClick={() => toggleAudienceSpotlightForUser(selectedLobbyUser, AUDIENCE_SPOTLIGHT_MODES.cheer, { mainstage: true })}
+                                                    disabled={!selectedLobbyUserUid}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    Spotlight On Stage
+                                                </button>
+                                                <button
+                                                    onClick={() => addAudienceDisplayUid(selectedLobbyUser)}
+                                                    disabled={!selectedLobbyUserUid || selectedLobbyUserOnAudienceDisplay}
+                                                    className={`${STYLES.btnStd} ${selectedLobbyUserOnAudienceDisplay ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs ${(!selectedLobbyUserUid || selectedLobbyUserOnAudienceDisplay) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {selectedLobbyUserOnAudienceDisplay ? 'On TV Row' : 'Add To TV Row'}
                                                 </button>
                                                 <button
                                                     onClick={() => toggleLobbyUserCoHost(selectedLobbyUser)}
@@ -21222,6 +21595,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <i className="fa-solid fa-repeat mr-1"></i>
                                                     Replay
                                                 </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={pushAudienceSpotlightToMainstage}
+                                                    className={`${STYLES.btnStd} ${activeAudienceSpotlight?.mainstage?.active ? STYLES.btnHighlight : STYLES.btnSecondary} px-3 py-1.5 text-xs`}
+                                                >
+                                                    <i className="fa-solid fa-up-right-and-down-left-from-center mr-1"></i>
+                                                    {activeAudienceSpotlight?.mainstage?.active ? 'On Mainstage' : 'Push To Stage'}
+                                                </button>
+                                                {activeAudienceSpotlight?.mainstage?.active ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={clearAudienceSpotlightMainstage}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-xs`}
+                                                    >
+                                                        Clear Stage
+                                                    </button>
+                                                ) : null}
                                                 <button
                                                     type="button"
                                                     onClick={() => updateRoom({ spotlightUser: null })}
@@ -21313,56 +21703,71 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 {lastActiveMs && <div className="text-sm text-zinc-500">Last active {new Date(lastActiveMs).toLocaleTimeString()}</div>}
                                                 {u.lastSeen && <div className="text-sm text-zinc-600">Last seen {new Date(u.lastSeen.seconds ? u.lastSeen.seconds * 1000 : u.lastSeen).toLocaleTimeString()}</div>}
                                                 {u.phone && <div className="text-sm text-zinc-600">Phone {u.phone}</div>}
-                                                <div className={`absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-2 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                                                    <button
-                                                        onClick={() => toggleAudienceSpotlightForUser(u, AUDIENCE_SPOTLIGHT_MODES.cheer)}
-                                                        disabled={!userUid}
-                                                        className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {isSpotlight ? 'UNSPOTLIGHT' : 'SPOTLIGHT'}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => queueRandomTight15ForUser(u, {
-                                                            sourceLabel: needsFirstSongAssist ? 'host_pick_tight15' : 'tight15_random',
-                                                            successMessage: needsFirstSongAssist
-                                                                ? `Queued a first-song pick for ${u?.name || 'Singer'}.`
-                                                                : `Queued random Tight 15 song for ${u?.name || 'Singer'}.`
-                                                        })}
-                                                        disabled={queueBusy}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${queueBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {queueBusy ? 'QUEUE...' : (needsFirstSongAssist ? 'HOST PICK' : 'RANDOM TIGHT15')}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => toggleLobbyUserCoHost(u)}
-                                                        disabled={!userUid}
-                                                        className={`${STYLES.btnStd} ${isCoHost ? STYLES.btnHighlight : STYLES.btnNeutral} px-3 py-1 text-xs ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {isCoHost ? 'REMOVE CO-HOST' : 'MAKE CO-HOST'}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => launchSpotlightTight15Challenge(u)}
-                                                        disabled={queueBusy}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${queueBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        T15 SHOWCASE
-                                                    </button>
-                                                    <button
-                                                        onClick={() => openTight15ProfileCard(u)}
-                                                        disabled={profileBusy}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${profileBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {profileBusy ? 'LOADING...' : 'TIGHT15 CARD'}
-                                                    </button>
+                                                <div className="mt-auto rounded-xl border border-white/10 bg-black/28 p-2">
+                                                    <div className="grid grid-cols-2 gap-1.5">
+                                                        <button
+                                                            onClick={() => toggleAudienceSpotlightForUser(u, AUDIENCE_SPOTLIGHT_MODES.cheer)}
+                                                            disabled={!userUid}
+                                                            className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-2 py-1.5 text-[10px] ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {isSpotlight ? 'Unspotlight' : 'Spotlight'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => toggleAudienceSpotlightForUser(u, AUDIENCE_SPOTLIGHT_MODES.cheer, { mainstage: true })}
+                                                            disabled={!userUid}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1.5 text-[10px] ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            Stage
+                                                        </button>
+                                                        <button
+                                                            onClick={() => addAudienceDisplayUid(u)}
+                                                            disabled={!userUid || audienceDisplay.selectedUids.includes(userUid)}
+                                                            className={`${STYLES.btnStd} ${audienceDisplay.selectedUids.includes(userUid) ? STYLES.btnNeutral : STYLES.btnSecondary} px-2 py-1.5 text-[10px] ${(!userUid || audienceDisplay.selectedUids.includes(userUid)) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {audienceDisplay.selectedUids.includes(userUid) ? 'TV Row On' : 'TV Row'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => queueRandomTight15ForUser(u, {
+                                                                sourceLabel: needsFirstSongAssist ? 'host_pick_tight15' : 'tight15_random',
+                                                                successMessage: needsFirstSongAssist
+                                                                    ? `Queued a first-song pick for ${u?.name || 'Singer'}.`
+                                                                    : `Queued random Tight 15 song for ${u?.name || 'Singer'}.`
+                                                            })}
+                                                            disabled={queueBusy}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1.5 text-[10px] ${queueBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {queueBusy ? 'Queue...' : (needsFirstSongAssist ? 'Host Pick' : 'Tight15')}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => toggleLobbyUserCoHost(u)}
+                                                            disabled={!userUid}
+                                                            className={`${STYLES.btnStd} ${isCoHost ? STYLES.btnHighlight : STYLES.btnNeutral} px-2 py-1.5 text-[10px] ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {isCoHost ? 'Co-Host On' : 'Co-Host'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => launchSpotlightTight15Challenge(u)}
+                                                            disabled={queueBusy}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1.5 text-[10px] ${queueBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            Showcase
+                                                        </button>
+                                                        <button
+                                                            onClick={() => openTight15ProfileCard(u)}
+                                                            disabled={profileBusy}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1.5 text-[10px] ${profileBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {profileBusy ? 'Loading...' : 'Card'}
+                                                        </button>
+                                                    </div>
                                                     <button
                                                         onClick={() => kickUser(userUid)}
                                                         disabled={!userUid}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnDanger} mt-1.5 w-full justify-center px-2 py-1.5 text-[10px] ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                     >
                                                         Kick
                                                     </button>
-                                                </div>
-                                                {isSpotlight && <div className="absolute top-2 right-2 text-yellow-400 text-sm animate-pulse">LIVE</div>}
+                                                </div>                                                {isSpotlight && <div className="absolute top-2 right-2 text-yellow-400 text-sm animate-pulse">LIVE</div>}
                                                 {isVip && (
                                                     <div className="absolute bottom-2 right-2 text-sm text-yellow-200 font-bold bg-yellow-900/40 px-2 py-0.5 rounded-full flex items-center gap-1">
                                                         <i className="fa-solid fa-crown text-xs"></i> VIP
@@ -24544,17 +24949,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {settingsTab === 'monetization' && (
                         <div className="space-y-4">
                             <div className={STYLES.header}>Audience Store And Support</div>
-                            <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/8 p-4">
-                                <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/72">Standard personal packs</div>
-                                <div className="mt-1 text-sm text-cyan-100/72">
-                                    These BeauRocks packs always appear in the audience app. Room-specific buyer boosts below are added on top of them.
+                            <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/8 p-4" data-feature-id="host-audience-storefront-rules">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="max-w-2xl">
+                                        <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/72">Audience storefront</div>
+                                        <div className="mt-1 text-lg font-black text-white">Keep the purchase ladder short and visual.</div>
+                                        <div className="mt-1 text-sm text-cyan-100/72">
+                                            The audience points sheet shows up to 2 room-wide boosts and 3 personal packs, sorted by price. Use simple good/better/best pricing so guests can pick quickly without scrolling.
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
+                                        <div className="text-[9px] uppercase tracking-[0.18em] text-zinc-400">Audience cap</div>
+                                        <div className="mt-1 text-sm font-black text-cyan-100">2 room / 3 personal</div>
+                                    </div>
                                 </div>
                                 <div className="mt-3 grid gap-3 md:grid-cols-3">
-                                    {POINTS_PACKS.map((pack) => (
+                                    {POINTS_PACKS.map((pack, idx) => (
                                         <div key={pack.id} className="rounded-xl border border-white/10 bg-black/25 px-4 py-3">
-                                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">Personal pack</div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-200 via-sky-200 to-emerald-200 text-slate-950">
+                                                    <i className={`fa-solid ${idx === 2 ? 'fa-vault' : idx === 1 ? 'fa-layer-group' : 'fa-coins'} text-sm`}></i>
+                                                </div>
+                                                <div className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[10px] font-black text-white">${pack.amount}</div>
+                                            </div>
+                                            <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-zinc-400">Default personal pack</div>
                                             <div className="mt-1 text-lg font-black text-white">{pack.label}</div>
-                                            <div className="mt-1 text-sm text-zinc-300">${pack.amount} for +{pack.points} pts</div>
+                                            <div className="mt-1 text-sm text-zinc-300">+{pack.points} pts</div>
                                         </div>
                                     ))}
                                 </div>
@@ -24566,7 +24986,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 />
                             </React.Suspense>
                             <div className={STYLES.header}>Boost Offers</div>
-                            <div className="host-form-helper">These offers appear in the audience Buy More Points sheet. Use reward scope to decide whether the buyer alone gets the points or the whole room gets the burst.</div>
+                            <div className="host-form-helper">These offers power the audience points storefront. Rewards everyone = party boost with a TV burst. Rewards buyer only = personal buyer boost. Keep the first few offers polished because the audience sheet intentionally caps visible SKUs.</div>
                             <div className="space-y-2 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
                                 {tipCrates.map((crate, idx) => (
                                     <div key={crate.id || `crate-${idx}`} className="bg-zinc-950/60 border border-white/5 rounded-lg p-3 space-y-2">
@@ -25246,8 +25666,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             onClick={() => updateRoom({
                                                 lightMode: 'off',
                                                 stormPhase: 'off',
-                                                activeMode: room?.activeMode === 'selfie_cam' ? 'karaoke' : room?.activeMode,
+                                                activeMode: ['selfie_cam', 'selfie_challenge'].includes(String(room?.activeMode || '')) ? 'karaoke' : room?.activeMode,
                                                 activeScreen: 'stage',
+                                                bonusDrop: null,
+                                                selfieMoment: null,
+                                                selfieMomentExpiresAt: null,
+                                                selfieChallenge: null,
+                                                photoOverlay: null,
                                                 chatShowOnTv: false,
                                                 chatTvMode: 'auto',
                                                 marqueeEnabled: false

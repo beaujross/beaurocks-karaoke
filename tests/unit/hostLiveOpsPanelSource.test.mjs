@@ -60,10 +60,10 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostAppSource, /mediaLibraryOpenRequest: sceneLibraryOpenRequest/);
   assert.match(hostQueueTabSource, /mediaLibraryOpenRequest = null/);
   assert.match(hostQueueTabSource, /setMediaLibraryTab\(\['scenes', 'sfx', 'bg'\]\.includes\(requestedTab\) \? requestedTab : 'scenes'\)/);
-  assert.match(hostQueueTabSource, /data-feature-id="host-panel-layout-controls"/);
-  assert.match(hostQueueTabSource, /data-feature-id="host-panel-expand-all"/);
-  assert.match(hostQueueTabSource, /data-feature-id="host-panel-collapse-all"/);
-  assert.match(hostQueueTabSource, /data-feature-id="host-panel-reset-layout"/);
+  assert.doesNotMatch(hostQueueTabSource, /data-feature-id="host-panel-layout-controls"/);
+  assert.doesNotMatch(hostQueueTabSource, /data-feature-id="host-panel-expand-all"/);
+  assert.doesNotMatch(hostQueueTabSource, /data-feature-id="host-panel-collapse-all"/);
+  assert.doesNotMatch(hostQueueTabSource, /data-feature-id="host-panel-reset-layout"/);
   assert.match(hostQueueTabSource, /data-feature-id="queue-workspace-top-chrome"/);
   assert.doesNotMatch(hostQueueTabSource, /<QueueSummaryBar/);
   assert.doesNotMatch(hostQueueTabSource, /order-2 min-h-0/);

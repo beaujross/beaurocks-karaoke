@@ -3,6 +3,13 @@ const AUDIENCE_DECISION_TYPES = Object.freeze({
   skipPerformance: "skip_performance",
 });
 
+const SELF_SERVE_FORMATS = Object.freeze({
+  openStage: "open_stage",
+  spotlightAuction: "spotlight_auction",
+});
+
+const RELEASE_WINDOW_CHOICES = Object.freeze(["slot_scene", "keep_queue_moving"]);
+
 const AUDIENCE_DECISION_STATUS = Object.freeze({
   open: "open",
   resolved: "resolved",
@@ -10,7 +17,7 @@ const AUDIENCE_DECISION_STATUS = Object.freeze({
 
 const AUDIENCE_DECISION_POLICIES = Object.freeze({
   [AUDIENCE_DECISION_TYPES.continueOrRotate]: {
-    minimumVotes: 3,
+    minimumVotes: 1,
     thresholdMode: "choice_threshold",
     thresholdChoiceId: "keep_singing",
     thresholdPct: 55,
@@ -319,6 +326,8 @@ const getApplauseAutoFinalizeDelayMs = (room = {}) => {
   return (timing.warmupSec + timing.countdownSec + timing.measureSec + timing.resultSec + timing.graceSec) * 1000;
 };
 
+const ONE_MINUTE_MIC_ROTATE_FADE_MS = 3500;
+
 const buildAutomationCommand = ({ decision = {}, room = {}, roomCode = "", nowMs = Date.now() } = {}) => {
   const subjectSongId = cleanText(decision?.subjectSongId || decision?.songId || "", 180);
   const subjectSessionId = cleanText(decision?.subjectSessionId || decision?.sessionId || "", 180);
@@ -373,8 +382,34 @@ const buildServerApplauseStartPatch = ({ room = {}, decision = {}, roomCode = ""
     announcement: null,
     tvPreviewOverlay: null,
     roundWinnersMoment: null,
+    oneMinuteMicWrapCue: null,
     howToPlay: { active: false, id: Math.round(toNumber(nowMs, Date.now())) },
     "readyCheck.active": false,
+  };
+};
+
+const buildOneMinuteMicRotateFadePatch = ({ room = {}, decision = {}, roomCode = "", nowMs = Date.now() } = {}) => {
+  const command = buildAutomationCommand({ decision, room, roomCode, nowMs });
+  const fadeStartedAtMs = Math.max(0, Math.round(toNumber(nowMs, Date.now())));
+  const fadeEndsAtMs = fadeStartedAtMs + ONE_MINUTE_MIC_ROTATE_FADE_MS;
+  return {
+    activeMode: "karaoke",
+    activeScreen: "stage",
+    audienceAutomationCommand: {
+      ...command,
+      status: "fade_pending",
+      fadeStartedAtMs,
+      fadeEndsAtMs,
+      finalizeAfterMs: fadeEndsAtMs + getApplauseAutoFinalizeDelayMs(room),
+    },
+    oneMinuteMicWrapCue: {
+      active: true,
+      type: "rotate_fade",
+      songId: cleanText(command?.songId || decision?.subjectSongId || decision?.songId || "", 180),
+      sessionId: cleanText(command?.sessionId || decision?.subjectSessionId || "", 180),
+      startedAtMs: fadeStartedAtMs,
+      endsAtMs: fadeEndsAtMs,
+    },
   };
 };
 
@@ -388,6 +423,30 @@ const buildOneMinuteMicRoomPatch = ({ room = {}, roomCode = "", nowMs = Date.now
   const existingDecision = room?.audienceDecision && typeof room.audienceDecision === "object"
     ? normalizeAudienceDecision(room.audienceDecision)
     : null;
+  const existingCommand = room?.audienceAutomationCommand && typeof room.audienceAutomationCommand === "object"
+    ? room.audienceAutomationCommand
+    : null;
+  if (
+    cleanText(existingCommand?.source || "", 80) === "one_minute_mic"
+    && cleanText(existingCommand?.action || "", 80) === "finish_performance"
+    && cleanText(existingCommand?.status || "", 80) === "fade_pending"
+  ) {
+    const commandSongId = cleanText(existingCommand?.songId || "", 180);
+    const fadeEndsAtMs = Math.max(0, Math.round(toNumber(existingCommand?.fadeEndsAtMs, 0)));
+    if (commandSongId && commandSongId === performance.songId && fadeEndsAtMs > 0 && nowValue >= fadeEndsAtMs) {
+      return buildServerApplauseStartPatch({
+        room,
+        decision: existingDecision || {
+          subjectSongId: commandSongId,
+          subjectSessionId: cleanText(existingCommand?.sessionId || "", 180),
+          resolvedAtMs: nowValue,
+        },
+        roomCode,
+        nowMs: nowValue,
+      });
+    }
+    return null;
+  }
   if ([AUDIENCE_DECISION_TYPES.continueOrRotate, AUDIENCE_DECISION_TYPES.skipPerformance].includes(existingDecision?.type)) {
     const sameSong = existingDecision.subjectSongId === performance.songId;
     if (!sameSong) return null;
@@ -401,7 +460,7 @@ const buildOneMinuteMicRoomPatch = ({ room = {}, roomCode = "", nowMs = Date.now
         audienceDecision: resolution.decision,
       };
       if (["wrap_and_rotate", "graceful_early_wrap"].includes(resolution.resolutionAction)) {
-        Object.assign(patch, buildServerApplauseStartPatch({
+        Object.assign(patch, buildOneMinuteMicRotateFadePatch({
           room,
           decision: resolution.decision,
           roomCode,
@@ -435,6 +494,271 @@ const buildOneMinuteMicRoomPatch = ({ room = {}, roomCode = "", nowMs = Date.now
   };
 };
 
+const normalizeSelfServeFormat = (value = "") => {
+  const token = cleanText(value, 80).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (["support_surge", "fundraiser_surge", "donor_surge"].includes(token)) return SELF_SERVE_FORMATS.spotlightAuction;
+  if (token === SELF_SERVE_FORMATS.spotlightAuction) return SELF_SERVE_FORMATS.spotlightAuction;
+  return token === SELF_SERVE_FORMATS.openStage ? SELF_SERVE_FORMATS.openStage : "";
+};
+
+const getReleaseWindow = (room = {}) => (
+  room?.runOfShowDirector?.releaseWindow && typeof room.runOfShowDirector.releaseWindow === "object"
+    ? room.runOfShowDirector.releaseWindow
+    : null
+);
+
+const isReleaseWindowOpen = (releaseWindow = null, nowMs = Date.now()) => {
+  if (!releaseWindow || releaseWindow?.active !== true) return false;
+  if (toNumber(releaseWindow?.resolvedAtMs, 0) > 0) return false;
+  const closesAtMs = Math.max(0, Math.round(toNumber(releaseWindow?.closesAtMs, 0)));
+  return closesAtMs <= 0 || Math.max(0, Math.round(toNumber(nowMs, Date.now()))) < closesAtMs;
+};
+
+const hasOpenAudienceDecision = (room = {}, nowMs = Date.now()) => {
+  const decision = room?.audienceDecision && typeof room.audienceDecision === "object"
+    ? normalizeAudienceDecision(room.audienceDecision)
+    : null;
+  if (!decision) return false;
+  if (decision.status !== AUDIENCE_DECISION_STATUS.open) return false;
+  return !decision.closesAtMs || Math.max(0, Math.round(toNumber(nowMs, Date.now()))) < decision.closesAtMs;
+};
+
+const isSelfServeOpenStageRoom = (room = {}) => {
+  const selfServeMode = room?.selfServeMode && typeof room.selfServeMode === "object" ? room.selfServeMode : null;
+  if (selfServeMode?.enabled !== true) return false;
+  return normalizeSelfServeFormat(selfServeMode?.format || "") === SELF_SERVE_FORMATS.openStage;
+};
+
+const formatDurationLabel = (seconds = 0) => {
+  const safeSeconds = Math.max(0, Math.round(toNumber(seconds, 0)));
+  if (!safeSeconds) return "";
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = String(safeSeconds % 60).padStart(2, "0");
+  return `${mins}:${secs}`;
+};
+
+const getSongArtworkUrl = (song = {}) => cleanText(
+  song?.albumArtUrl
+  || song?.artworkUrl100
+  || song?.artworkUrl
+  || song?.imageUrl
+  || song?.coverUrl
+  || song?.artUrl
+  || "",
+  500
+);
+
+const getQueueSongLabel = (song = {}) => cleanText(song?.songTitle || song?.title || "Song", 140);
+const getQueueSongSinger = (song = {}) => cleanText(song?.singerName || song?.name || "Singer", 80);
+const getQueueSongArtist = (song = {}) => cleanText(song?.artist || song?.artistName || "", 140);
+
+const getReleaseWindowTally = (releaseWindow = {}) => {
+  const counts = { slot_scene: 0, keep_queue_moving: 0 };
+  const votesByUid = releaseWindow?.votesByUid && typeof releaseWindow.votesByUid === "object" && !Array.isArray(releaseWindow.votesByUid)
+    ? releaseWindow.votesByUid
+    : {};
+  Object.values(votesByUid).forEach((choice) => {
+    const safeChoice = cleanText(choice, 80).toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(counts, safeChoice)) counts[safeChoice] += 1;
+  });
+  const totalVotes = counts.slot_scene + counts.keep_queue_moving;
+  const tied = totalVotes > 0 && counts.slot_scene === counts.keep_queue_moving;
+  const leadingChoice = !totalVotes || tied
+    ? ""
+    : counts.slot_scene > counts.keep_queue_moving ? "slot_scene" : "keep_queue_moving";
+  return { ...counts, totalVotes, tied, leadingChoice };
+};
+
+const selectAudienceLedQueueFaceOffCandidates = (songs = [], room = {}, limit = 2) => {
+  const currentPerformance = getActivePerformance(room);
+  const currentSongId = cleanText(currentPerformance?.songId || "", 180);
+  const eligibleStatuses = new Set(["assigned", "pending", "requested"]);
+  const statusRank = { assigned: 0, pending: 1, requested: 2 };
+  return (Array.isArray(songs) ? songs : [])
+    .filter((song) => {
+      const songId = cleanText(song?.id || song?.songDocId || "", 180);
+      if (!songId || songId === currentSongId) return false;
+      if (!eligibleStatuses.has(cleanText(song?.status || "", 40).toLowerCase())) return false;
+      return !!getBackingMediaUrl(song);
+    })
+    .sort((left, right) => {
+      const leftStatus = cleanText(left?.status || "requested", 40).toLowerCase();
+      const rightStatus = cleanText(right?.status || "requested", 40).toLowerCase();
+      const leftPriority = toTimestampMs(left?.priorityScore) || toTimestampMs(left?.timestamp) || 0;
+      const rightPriority = toTimestampMs(right?.priorityScore) || toTimestampMs(right?.timestamp) || 0;
+      return (statusRank[leftStatus] ?? 2) - (statusRank[rightStatus] ?? 2) || leftPriority - rightPriority;
+    })
+    .slice(0, limit);
+};
+
+const buildAudienceLedQueueFaceOffWindow = ({ firstSong = null, secondSong = null, openedAtMs = Date.now(), durationSec = 18, hasCurrentPerformance = false } = {}) => {
+  const firstSongId = cleanText(firstSong?.id || firstSong?.songDocId || "", 180);
+  const secondSongId = cleanText(secondSong?.id || secondSong?.songDocId || "", 180);
+  if (!firstSongId || !secondSongId || firstSongId === secondSongId) return null;
+  const safeOpenedAtMs = Math.max(1, Math.round(toNumber(openedAtMs, Date.now())));
+  const safeDurationSec = clampNumber(Math.round(toNumber(durationSec, 18)), 10, 30, 18);
+  const firstDurationLabel = formatDurationLabel(getSongDurationSec(firstSong));
+  const secondDurationLabel = formatDurationLabel(getSongDurationSec(secondSong));
+  const firstArtist = getQueueSongArtist(firstSong);
+  const secondArtist = getQueueSongArtist(secondSong);
+  return {
+    active: true,
+    itemId: `self_serve_queue_faceoff:${firstSongId}:${secondSongId}:${safeOpenedAtMs}`,
+    itemTitle: "BeauRocks Open Stage Crowd Pick",
+    subjectType: "queue_faceoff",
+    governanceMode: "crowd_vote",
+    releasePolicy: "auto_flight_winner",
+    origin: "self_serve_open_stage_auto",
+    selfServeFormat: SELF_SERVE_FORMATS.openStage,
+    prompt: "Crowd pick the next spotlight.",
+    promptDetail: hasCurrentPerformance
+      ? "Vote while the current song is live."
+      : "Vote between ready songs before the next singer starts.",
+    durationSec: safeDurationSec,
+    openedAtMs: safeOpenedAtMs,
+    closesAtMs: safeOpenedAtMs + (safeDurationSec * 1000),
+    choiceLabels: {
+      slot_scene: getQueueSongLabel(firstSong),
+      keep_queue_moving: getQueueSongLabel(secondSong),
+    },
+    choiceDetails: {
+      slot_scene: getQueueSongSinger(firstSong),
+      keep_queue_moving: getQueueSongSinger(secondSong),
+    },
+    choiceSublines: {
+      slot_scene: [firstArtist, firstDurationLabel].filter(Boolean).join(" - "),
+      keep_queue_moving: [secondArtist, secondDurationLabel].filter(Boolean).join(" - "),
+    },
+    choiceArtworkUrls: {
+      slot_scene: getSongArtworkUrl(firstSong),
+      keep_queue_moving: getSongArtworkUrl(secondSong),
+    },
+    choiceMetadata: {
+      slot_scene: { durationLabel: firstDurationLabel, artist: firstArtist, singerName: getQueueSongSinger(firstSong) },
+      keep_queue_moving: { durationLabel: secondDurationLabel, artist: secondArtist, singerName: getQueueSongSinger(secondSong) },
+    },
+    choiceSongIds: {
+      slot_scene: firstSongId,
+      keep_queue_moving: secondSongId,
+    },
+    votesByUid: {},
+    resultChoice: "",
+    resolvedAtMs: 0,
+  };
+};
+
+const getAudienceLedFaceOffContextKey = (room = {}, candidates = []) => {
+  const performance = getActivePerformance(room);
+  if (performance?.songId) return `current:${performance.songId}:${performance.sessionId || performance.startedAtMs}`;
+  const lastPerformanceTs = toTimestampMs(room?.lastPerformance?.timestamp || room?.lastPerformance?.performedAtMs || room?.lastPerformance?.endedAtMs);
+  if (lastPerformanceTs) return `between:${lastPerformanceTs}`;
+  return `idle:${cleanText(candidates?.[0]?.id || candidates?.[0]?.songDocId || "", 80)}:${cleanText(candidates?.[1]?.id || candidates?.[1]?.songDocId || "", 80)}`;
+};
+
+const buildRunOfShowDirectorPatch = (room = {}, releaseWindow = {}) => ({
+  ...(room?.runOfShowDirector && typeof room.runOfShowDirector === "object" ? room.runOfShowDirector : {}),
+  releaseWindow,
+});
+
+const buildAudienceLedWinnerSongPatches = ({ songs = [], winnerSongId = "", nowMs = Date.now() } = {}) => {
+  const targetSongId = cleanText(winnerSongId, 180);
+  if (!targetSongId) return [];
+  const orderedQueue = selectAudienceLedQueueFaceOffCandidates(songs, {}, Number.POSITIVE_INFINITY)
+    .filter((song) => cleanText(song?.id || song?.songDocId || "", 180) !== targetSongId);
+  const targetSong = (Array.isArray(songs) ? songs : []).find((song) => cleanText(song?.id || song?.songDocId || "", 180) === targetSongId) || null;
+  if (!targetSong) return [];
+  const base = Math.max(1, Math.round(toNumber(nowMs, Date.now())));
+  return [targetSong, ...orderedQueue]
+    .map((song, idx) => {
+      const songId = cleanText(song?.id || song?.songDocId || "", 180);
+      if (!songId) return null;
+      return {
+        songId,
+        patch: {
+          priorityScore: base + idx,
+          ...(songId === targetSongId ? {
+            status: "requested",
+            holdReason: null,
+            heldAt: null,
+            restoredAtMs: base,
+          } : {}),
+        },
+      };
+    })
+    .filter(Boolean);
+};
+
+const buildAudienceLedQueueFaceOffPlan = ({ room = {}, songs = [], nowMs = Date.now() } = {}) => {
+  const nowValue = Math.max(0, Math.round(toNumber(nowMs, Date.now())));
+  if (!isSelfServeOpenStageRoom(room)) return null;
+  const releaseWindow = getReleaseWindow(room);
+  const releaseOrigin = cleanText(releaseWindow?.origin || "", 120).toLowerCase();
+  const releaseType = cleanText(releaseWindow?.subjectType || "", 80).toLowerCase();
+  const isSelfServeQueueFaceOff = releaseType === "queue_faceoff" && releaseOrigin === "self_serve_open_stage_auto";
+  if (releaseWindow?.active === true && !isSelfServeQueueFaceOff) {
+    return { holdAdvance: true, reason: "another_decision_open" };
+  }
+
+  if (isSelfServeQueueFaceOff && releaseWindow?.active === true && toNumber(releaseWindow?.resolvedAtMs, 0) <= 0) {
+    if (isReleaseWindowOpen(releaseWindow, nowValue)) return { holdAdvance: true, reason: "audience_faceoff_open" };
+    const tally = getReleaseWindowTally(releaseWindow);
+    const resultChoice = tally.leadingChoice || "";
+    const winnerSongId = resultChoice ? cleanText(releaseWindow?.choiceSongIds?.[resultChoice] || "", 180) : "";
+    const resolvedWindow = {
+      ...releaseWindow,
+      active: false,
+      resultChoice,
+      resolvedAtMs: nowValue,
+      votesSummary: tally,
+    };
+    return {
+      holdAdvance: false,
+      roomPatch: {
+        runOfShowDirector: buildRunOfShowDirectorPatch(room, resolvedWindow),
+        selfServeMode: {
+          ...(room?.selfServeMode || {}),
+          phase: winnerSongId ? "winner_locked" : "live",
+          lastCrowdWinnerSongId: winnerSongId,
+          lastCrowdVoteResolvedAtMs: nowValue,
+        },
+      },
+      songPatches: winnerSongId ? buildAudienceLedWinnerSongPatches({ songs, winnerSongId, nowMs: nowValue }) : [],
+      resolved: true,
+      winnerSongId,
+    };
+  }
+
+  if (isReleaseWindowOpen(releaseWindow, nowValue) || hasOpenAudienceDecision(room, nowValue)) {
+    return { holdAdvance: true, reason: "another_decision_open" };
+  }
+
+  const currentPerformance = getActivePerformance(room);
+  if (currentPerformance?.songId) return null;
+  const candidates = selectAudienceLedQueueFaceOffCandidates(songs, room);
+  if (candidates.length < 2) return null;
+  const contextKey = getAudienceLedFaceOffContextKey(room, candidates);
+  if (cleanText(room?.selfServeMode?.lastAutoFaceOffForCurrentId || "", 240) === contextKey) return null;
+  const releaseWindowPatch = buildAudienceLedQueueFaceOffWindow({
+    firstSong: candidates[0],
+    secondSong: candidates[1],
+    openedAtMs: nowValue,
+    durationSec: room?.selfServeMode?.queueFaceOffDurationSec || 18,
+    hasCurrentPerformance: false,
+  });
+  if (!releaseWindowPatch) return null;
+  return {
+    holdAdvance: true,
+    roomPatch: {
+      runOfShowDirector: buildRunOfShowDirectorPatch(room, releaseWindowPatch),
+      selfServeMode: {
+        ...(room?.selfServeMode || {}),
+        phase: "crowd_vote",
+        lastAutoFaceOffForCurrentId: contextKey,
+      },
+    },
+    opened: true,
+  };
+};
 const toTimestampMs = (value = 0) => {
   if (!value) return 0;
   if (typeof value === "number") return Math.max(0, Math.round(value));
@@ -730,6 +1054,7 @@ module.exports = {
   buildAutomationCommand,
   buildContinueOrRotateDecision,
   buildSkipPerformanceDecision,
+  buildAudienceLedQueueFaceOffPlan,
   buildOneMinuteMicAdvancePlan,
   buildOneMinuteMicFinalizePlan,
   buildOneMinuteMicRoomPatch,

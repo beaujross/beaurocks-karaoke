@@ -5,6 +5,7 @@ import { test } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const {
+  buildAudienceLedQueueFaceOffPlan,
   buildOneMinuteMicAdvancePlan,
   buildOneMinuteMicFinalizePlan,
   buildOneMinuteMicRoomPatch,
@@ -80,7 +81,34 @@ test('One-Minute Mic automation resolves to continue without creating a finish c
   assert.equal('audienceAutomationCommand' in patch, false);
 });
 
-test('One-Minute Mic automation resolves to rotate by starting server applause', () => {
+test('One-Minute Mic automation accepts one keep-singing vote in a small room', () => {
+  const openDecision = buildOneMinuteMicRoomPatch({
+    room: baseRoom,
+    roomCode: 'ROOM1',
+    nowMs: 62000,
+  }).audienceDecision;
+
+  const patch = buildOneMinuteMicRoomPatch({
+    room: {
+      ...baseRoom,
+      audienceDecision: {
+        ...openDecision,
+        votesByUid: {
+          solo_guest: 'keep_singing',
+        },
+      },
+    },
+    roomCode: 'ROOM1',
+    nowMs: 75000,
+  });
+
+  assert.equal(patch.audienceDecision.status, 'resolved');
+  assert.equal(patch.audienceDecision.resultChoice, 'keep_singing');
+  assert.equal(patch.audienceDecision.resolutionAction, 'continue_song');
+  assert.equal('audienceAutomationCommand' in patch, false);
+});
+
+test('One-Minute Mic automation resolves to rotate by holding karaoke through a fade window', () => {
   const openDecision = buildOneMinuteMicRoomPatch({
     room: baseRoom,
     roomCode: 'ROOM1',
@@ -106,12 +134,54 @@ test('One-Minute Mic automation resolves to rotate by starting server applause',
   assert.equal(patch.audienceDecision.status, 'resolved');
   assert.equal(patch.audienceDecision.resultChoice, 'next_singer');
   assert.equal(patch.audienceDecision.resolutionAction, 'wrap_and_rotate');
+  assert.equal(patch.activeMode, 'karaoke');
+  assert.equal(patch.audienceAutomationCommand.action, 'finish_performance');
+  assert.equal(patch.audienceAutomationCommand.status, 'fade_pending');
+  assert.equal(patch.audienceAutomationCommand.songId, 'song_a');
+  assert.ok(patch.audienceAutomationCommand.fadeEndsAtMs > patch.audienceAutomationCommand.fadeStartedAtMs);
+  assert.equal(patch.oneMinuteMicWrapCue.type, 'rotate_fade');
+  assert.equal('applauseSubject' in patch, false);
+});
+
+test('One-Minute Mic automation starts server applause after the rotate fade window', () => {
+  const openDecision = buildOneMinuteMicRoomPatch({
+    room: baseRoom,
+    roomCode: 'ROOM1',
+    nowMs: 62000,
+  }).audienceDecision;
+  const fadePatch = buildOneMinuteMicRoomPatch({
+    room: {
+      ...baseRoom,
+      audienceDecision: {
+        ...openDecision,
+        votesByUid: {
+          u1: 'next_singer',
+          u2: 'keep_singing',
+          u3: 'next_singer',
+        },
+      },
+    },
+    roomCode: 'ROOM1',
+    nowMs: 75000,
+  });
+
+  const patch = buildOneMinuteMicRoomPatch({
+    room: {
+      ...baseRoom,
+      audienceDecision: fadePatch.audienceDecision,
+      audienceAutomationCommand: fadePatch.audienceAutomationCommand,
+    },
+    roomCode: 'ROOM1',
+    nowMs: fadePatch.audienceAutomationCommand.fadeEndsAtMs + 100,
+  });
+
   assert.equal(patch.activeMode, 'applause_countdown');
   assert.equal(patch.applauseSubject.autoFinalize, true);
   assert.equal(patch.applauseSubject.autoFinalizeSongId, 'song_a');
   assert.equal(patch.audienceAutomationCommand.action, 'finish_performance');
   assert.equal(patch.audienceAutomationCommand.status, 'server_started');
   assert.equal(patch.audienceAutomationCommand.songId, 'song_a');
+  assert.equal(patch.oneMinuteMicWrapCue, null);
   assert.ok(patch.audienceAutomationCommand.finalizeAfterMs > patch.audienceAutomationCommand.createdAtMs);
 });
 
@@ -218,7 +288,7 @@ test('One-Minute Mic automation waits through the server Auto-DJ hold before adv
 
   assert.equal(plan, null);
 });
-test('One-Minute Mic automation resolves guarded crowd intervention into graceful rotation', () => {
+test('One-Minute Mic automation resolves guarded crowd intervention into a graceful fade rotation', () => {
   const intervention = buildSkipPerformanceDecision({
     songId: 'song_a',
     songTitle: 'Go Time',
@@ -254,8 +324,10 @@ test('One-Minute Mic automation resolves guarded crowd intervention into gracefu
   assert.equal(patch.audienceDecision.status, 'resolved');
   assert.equal(patch.audienceDecision.resultChoice, 'next_singer');
   assert.equal(patch.audienceDecision.resolutionAction, 'graceful_early_wrap');
-  assert.equal(patch.activeMode, 'applause_countdown');
+  assert.equal(patch.activeMode, 'karaoke');
   assert.equal(patch.audienceAutomationCommand.action, 'finish_performance');
+  assert.equal(patch.audienceAutomationCommand.status, 'fade_pending');
+  assert.equal(patch.oneMinuteMicWrapCue.type, 'rotate_fade');
 });
 
 test('One-Minute Mic automation keeps singer when intervention misses protected threshold', () => {
@@ -295,4 +367,114 @@ test('One-Minute Mic automation keeps singer when intervention misses protected 
   assert.equal(patch.audienceDecision.resultChoice, 'keep_singing');
   assert.equal(patch.audienceDecision.resolutionAction, 'continue_song');
   assert.equal('audienceAutomationCommand' in patch, false);
+});
+test('audience-led Open Stage automation opens a between-performance song face-off with song metadata', () => {
+  const patch = buildAudienceLedQueueFaceOffPlan({
+    room: {
+      activeMode: 'karaoke',
+      selfServeMode: { enabled: true, format: 'open_stage' },
+      lastPerformance: { timestamp: 100000 },
+    },
+    songs: [
+      { id: 'song_a', status: 'requested', songTitle: 'Valerie', artist: 'Amy Winehouse', singerName: 'Alex', mediaUrl: 'https://youtu.be/aaa111', albumArtUrl: 'https://example.test/a.jpg', duration: 210, priorityScore: 10 },
+      { id: 'song_b', status: 'requested', songTitle: 'Dreams', artist: 'Fleetwood Mac', singerName: 'Blair', mediaUrl: 'https://youtu.be/bbb222', albumArtUrl: 'https://example.test/b.jpg', duration: 258, priorityScore: 20 },
+    ],
+    nowMs: 120000,
+  });
+
+  assert.equal(patch.opened, true);
+  assert.equal(patch.holdAdvance, true);
+  assert.equal(patch.roomPatch.runOfShowDirector.releaseWindow.subjectType, 'queue_faceoff');
+  assert.equal(patch.roomPatch.runOfShowDirector.releaseWindow.governanceMode, 'crowd_vote');
+  assert.equal(patch.roomPatch.runOfShowDirector.releaseWindow.releasePolicy, 'auto_flight_winner');
+  assert.equal(patch.roomPatch.runOfShowDirector.releaseWindow.origin, 'self_serve_open_stage_auto');
+  assert.equal(patch.roomPatch.runOfShowDirector.releaseWindow.choiceLabels.slot_scene, 'Valerie');
+  assert.equal(patch.roomPatch.runOfShowDirector.releaseWindow.choiceDetails.keep_queue_moving, 'Blair');
+  assert.equal(patch.roomPatch.runOfShowDirector.releaseWindow.choiceSublines.slot_scene, 'Amy Winehouse - 3:30');
+  assert.equal(patch.roomPatch.runOfShowDirector.releaseWindow.choiceArtworkUrls.keep_queue_moving, 'https://example.test/b.jpg');
+  assert.equal(patch.roomPatch.selfServeMode.phase, 'crowd_vote');
+  assert.equal(patch.roomPatch.selfServeMode.lastAutoFaceOffForCurrentId, 'between:100000');
+});
+
+test('audience-led Open Stage automation holds Auto-DJ while a crowd face-off is open', () => {
+  const plan = buildAudienceLedQueueFaceOffPlan({
+    room: {
+      selfServeMode: { enabled: true, format: 'open_stage' },
+      runOfShowDirector: {
+        releaseWindow: {
+          active: true,
+          subjectType: 'queue_faceoff',
+          origin: 'self_serve_open_stage_auto',
+          openedAtMs: 120000,
+          closesAtMs: 138000,
+          choiceSongIds: { slot_scene: 'song_a', keep_queue_moving: 'song_b' },
+          votesByUid: {},
+        },
+      },
+    },
+    songs: [],
+    nowMs: 130000,
+  });
+
+  assert.equal(plan.holdAdvance, true);
+  assert.equal(plan.reason, 'audience_faceoff_open');
+  assert.equal(plan.roomPatch, undefined);
+});
+
+test('audience-led Open Stage automation resolves the vote and promotes the winning song next', () => {
+  const plan = buildAudienceLedQueueFaceOffPlan({
+    room: {
+      selfServeMode: { enabled: true, format: 'open_stage', lastAutoFaceOffForCurrentId: 'between:100000' },
+      runOfShowDirector: {
+        releaseWindow: {
+          active: true,
+          subjectType: 'queue_faceoff',
+          origin: 'self_serve_open_stage_auto',
+          openedAtMs: 120000,
+          closesAtMs: 138000,
+          choiceSongIds: { slot_scene: 'song_a', keep_queue_moving: 'song_b' },
+          votesByUid: { u1: 'keep_queue_moving', u2: 'keep_queue_moving', u3: 'slot_scene' },
+        },
+      },
+    },
+    songs: [
+      { id: 'song_a', status: 'requested', songTitle: 'Valerie', mediaUrl: 'https://youtu.be/aaa111', priorityScore: 10 },
+      { id: 'song_b', status: 'requested', songTitle: 'Dreams', mediaUrl: 'https://youtu.be/bbb222', priorityScore: 20 },
+      { id: 'song_c', status: 'requested', songTitle: 'Creep', mediaUrl: 'https://youtu.be/ccc333', priorityScore: 30 },
+    ],
+    nowMs: 140000,
+  });
+
+  assert.equal(plan.resolved, true);
+  assert.equal(plan.winnerSongId, 'song_b');
+  assert.equal(plan.roomPatch.runOfShowDirector.releaseWindow.active, false);
+  assert.equal(plan.roomPatch.runOfShowDirector.releaseWindow.resultChoice, 'keep_queue_moving');
+  assert.equal(plan.roomPatch.runOfShowDirector.releaseWindow.votesSummary.totalVotes, 3);
+  assert.equal(plan.roomPatch.selfServeMode.phase, 'winner_locked');
+  assert.deepEqual(plan.songPatches.map((entry) => entry.songId), ['song_b', 'song_a', 'song_c']);
+  assert.deepEqual(plan.songPatches.map((entry) => entry.patch.priorityScore), [140000, 140001, 140002]);
+  assert.equal(plan.songPatches[0].patch.status, 'requested');
+});
+
+test('audience-led queue automation does not open in host-led rooms or over host decisions', () => {
+  const hostLed = buildAudienceLedQueueFaceOffPlan({
+    room: { selfServeMode: { enabled: false, format: 'open_stage' }, lastPerformance: { timestamp: 1 } },
+    songs: [
+      { id: 'song_a', status: 'requested', mediaUrl: 'https://youtu.be/a', priorityScore: 1 },
+      { id: 'song_b', status: 'requested', mediaUrl: 'https://youtu.be/b', priorityScore: 2 },
+    ],
+    nowMs: 10,
+  });
+  assert.equal(hostLed, null);
+
+  const hostDecision = buildAudienceLedQueueFaceOffPlan({
+    room: {
+      selfServeMode: { enabled: true, format: 'open_stage' },
+      runOfShowDirector: { releaseWindow: { active: true, subjectType: 'queue_faceoff', origin: 'host_manual', closesAtMs: 5 } },
+    },
+    songs: [],
+    nowMs: 10,
+  });
+  assert.equal(hostDecision.holdAdvance, true);
+  assert.equal(hostDecision.reason, 'another_decision_open');
 });

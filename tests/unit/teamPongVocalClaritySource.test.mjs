@@ -7,6 +7,7 @@ const gameContainerSource = readFileSync('src/components/GameContainer.jsx', 'ut
 const gameRegistrySource = readFileSync('src/lib/gameRegistry.js', 'utf8');
 const launcherSource = readFileSync('src/components/UnifiedGameLauncher.jsx', 'utf8');
 const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
+const firestoreRulesSource = readFileSync('firestore.rules', 'utf8');
 
 test('Team Pong exposes distinct Save, Slow-Mo, Shield, Redirect, and Spike actions instead of one generic tap', () => {
   assert.match(teamPongSource, /TEAM_PONG_ACTIONS = Object\.freeze/);
@@ -114,4 +115,9 @@ test('Host only marks room mic telemetry live after a real mic stream is ready',
 });
 test('Host publishes host mic telemetry at game-control latency', () => {
   assert.match(hostAppSource, /Number\(hostVolleyVoiceLastWriteRef\.current \|\| 0\)\) < 220/, 'Host mic telemetry should update quickly enough for public TV game control');
+});
+test('Team Pong paddle actions are permitted by the reactions Firestore rules contract', () => {
+  assert.match(firestoreRulesSource, /function reactionAllowedKeys\(\)[\s\S]*'action'/);
+  assert.match(firestoreRulesSource, /request\.resource\.data\.action is string[\s\S]*\['save', 'spike', 'shield', 'slowmo', 'redirect'\]/);
+  assert.match(teamPongSource, /action,\s*\n\s*count: Number\(actionMeta\.count \|\| 1\)/);
 });

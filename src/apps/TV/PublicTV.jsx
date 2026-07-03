@@ -3,7 +3,7 @@
  * narrowly scoped manual memoization. A safe refactor needs to be broken into smaller passes.
  */
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent, callFunction } from '../../lib/firebase';
+import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, trackEvent, callFunction } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
 import { ASSETS, STORM_SFX } from '../../lib/assets';
 import QRCode from 'qrcode';
@@ -163,9 +163,18 @@ import {
     inferSpotlightKind,
     normalizeAudienceSpotlightMode,
 } from '../../lib/audienceSpotlight';
+import {
+    AUDIENCE_DISPLAY_MODES,
+    getAudienceDisplayCommentatorReactionMeta,
+    getAudienceDisplayModeMeta,
+    normalizeAudienceDisplay,
+} from '../../lib/audienceDisplay';
 
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
+const BONUS_DROP_TV_VISIBILITY_MS = 9000;
+const PHOTO_OVERLAY_TV_VISIBILITY_MS = 9000;
+const SELFIE_MOMENT_TV_VISIBILITY_MS = 12000;
 
 const buildSelfieChallengeProjectionId = (roomCodeValue = '', promptIdValue = '') => {
     const safeRoomCode = String(roomCodeValue || '').trim().toUpperCase();
@@ -323,7 +332,6 @@ const RunOfShowReleaseWindowOverlay = ({
         displayMode: isGlassOverlay ? 'glass_overlay' : 'takeover',
         nowMs: nowValue
     });
-    const decisionChoicesById = Object.fromEntries((audienceDecision.choices || []).map((choice) => [choice.id, choice]));
     const governanceMode = String(releaseWindow?.governanceMode || '').trim().toLowerCase();
     const subjectType = String(releaseWindow?.subjectType || '').trim().toLowerCase();
     const tally = getRunOfShowReleaseWindowTally(releaseWindow || {}, roles || {});
@@ -333,6 +341,9 @@ const RunOfShowReleaseWindowOverlay = ({
     const isCoHostVote = governanceMode === 'cohost_vote';
     const isSongFaceOff = subjectType === 'queue_faceoff';
     const isSlotFill = subjectType === 'slot_fill_choice';
+    const isOneMinuteMicDecision = subjectType === 'continue_or_rotate';
+    const isSkipPerformanceDecision = subjectType === 'skip_performance';
+    const isPerformanceProgressionDecision = isOneMinuteMicDecision || isSkipPerformanceDecision;
     const releaseOrigin = String(releaseWindow?.origin || '').trim().toLowerCase();
     const isSelfServeOpenStageVote = releaseOrigin === 'self_serve_open_stage_auto';
     const isSelfServeSpotlightAuctionVote = releaseOrigin === 'self_serve_spotlight_auction_auto';
@@ -349,48 +360,88 @@ const RunOfShowReleaseWindowOverlay = ({
         // Keep the default host label if URL parsing fails.
     }
 
+    const subjectTitle = String(releaseWindow?.subjectTitle || '').trim();
+    const subjectSubtitle = String(releaseWindow?.subjectSubtitle || '').trim();
+    const firstChoiceLabel = String(releaseWindow?.choiceLabels?.slot_scene || '').trim();
+    const secondChoiceLabel = String(releaseWindow?.choiceLabels?.keep_queue_moving || '').trim();
+    const firstChoiceDetail = String(releaseWindow?.choiceDetails?.slot_scene || '').trim();
+    const secondChoiceDetail = String(releaseWindow?.choiceDetails?.keep_queue_moving || '').trim();
+    const firstChoiceSubline = String(releaseWindow?.choiceSublines?.slot_scene || '').trim();
+    const secondChoiceSubline = String(releaseWindow?.choiceSublines?.keep_queue_moving || '').trim();
     const choices = [
         {
             key: 'slot_scene',
-            label: decisionChoicesById.slot_scene?.label || (isSongFaceOff ? 'Song A' : 'Option A'),
-            detail: decisionChoicesById.slot_scene?.detail
+            label: firstChoiceLabel || (isOneMinuteMicDecision ? 'Keep Singing' : isSkipPerformanceDecision ? 'Keep Going' : isSongFaceOff ? 'Song A' : 'Option A'),
+            detail: firstChoiceDetail
+                || (isPerformanceProgressionDecision ? (subjectTitle || 'Unlock the rest') : '')
                 || String(slotSceneSong?.singerName || slotSceneSong?.name || '').trim()
                 || 'Ready now',
-            subline: String(slotSceneSong?.artist || slotSceneSong?.artistName || '').trim() || 'Vote option',
-            artworkUrl: getReleaseWindowSongArtworkUrl(slotSceneSong),
+            subline: firstChoiceSubline
+                || (isOneMinuteMicDecision ? 'Let this singer finish the track' : isSkipPerformanceDecision ? 'Protect the performer unless the room strongly disagrees' : '')
+                || subjectSubtitle
+                || String(slotSceneSong?.artist || slotSceneSong?.artistName || '').trim()
+                || 'Vote option',
+            artworkUrl: String(releaseWindow?.choiceArtworkUrls?.slot_scene || '').trim() || getReleaseWindowSongArtworkUrl(slotSceneSong),
+            durationLabel: String(releaseWindow?.choiceMetadata?.slot_scene?.durationLabel || '').trim(),
+            iconClass: isPerformanceProgressionDecision ? 'fa-microphone-lines' : 'fa-music',
             accentClass: 'from-cyan-400/28 via-sky-400/16 to-transparent border-cyan-300/28',
             labelClass: 'text-cyan-100'
         },
         {
             key: 'keep_queue_moving',
-            label: decisionChoicesById.keep_queue_moving?.label || (isSongFaceOff ? 'Song B' : 'Option B'),
-            detail: decisionChoicesById.keep_queue_moving?.detail
+            label: secondChoiceLabel || (isOneMinuteMicDecision ? 'Next Singer' : isSkipPerformanceDecision ? 'Move To Next' : isSongFaceOff ? 'Song B' : 'Option B'),
+            detail: secondChoiceDetail
+                || (isPerformanceProgressionDecision ? 'Rotate the mic' : '')
                 || String(keepQueueMovingSong?.singerName || keepQueueMovingSong?.name || '').trim()
                 || 'Ready now',
-            subline: String(keepQueueMovingSong?.artist || keepQueueMovingSong?.artistName || '').trim() || 'Vote option',
-            artworkUrl: getReleaseWindowSongArtworkUrl(keepQueueMovingSong),
+            subline: secondChoiceSubline
+                || (isOneMinuteMicDecision ? 'Wrap this minute and keep the queue moving' : isSkipPerformanceDecision ? 'Requires a strong crowd signal' : '')
+                || String(keepQueueMovingSong?.artist || keepQueueMovingSong?.artistName || '').trim()
+                || 'Vote option',
+            artworkUrl: String(releaseWindow?.choiceArtworkUrls?.keep_queue_moving || '').trim() || getReleaseWindowSongArtworkUrl(keepQueueMovingSong),
+            durationLabel: String(releaseWindow?.choiceMetadata?.keep_queue_moving?.durationLabel || '').trim(),
+            iconClass: isPerformanceProgressionDecision ? 'fa-forward-step' : 'fa-music',
             accentClass: 'from-pink-400/28 via-fuchsia-400/16 to-transparent border-pink-300/28',
             labelClass: 'text-pink-100'
         }
     ];
     const primaryChoice = choices[0];
     const secondaryChoice = choices[1];
+    const choiceCounts = {
+        slot_scene: Math.max(0, Number(tally.slotSceneCount || 0) || 0),
+        keep_queue_moving: Math.max(0, Number(tally.keepQueueMovingCount || 0) || 0),
+    };
+    const totalChoiceVotes = Math.max(1, Number(tally.totalVotes || 0) || 0);
+    const releaseWindowDurationMs = Math.max(1, Number(releaseWindow?.closesAtMs || 0) - Number(releaseWindow?.openedAtMs || 0));
+    const timeProgressPct = releaseWindow?.openedAtMs && releaseWindow?.closesAtMs
+        ? Math.max(0, Math.min(100, ((Number(releaseWindow.closesAtMs) - nowValue) / releaseWindowDurationMs) * 100))
+        : 0;
 
-    const renderChoiceCard = (choice) => (
-        <div key={choice.key} className={`relative overflow-hidden border bg-[linear-gradient(160deg,rgba(9,12,21,0.96),rgba(17,24,39,0.88))] shadow-[0_24px_64px_rgba(0,0,0,0.42)] ${isGlassOverlay ? 'rounded-[1.5rem]' : 'rounded-[2rem]'} ${choice.accentClass}`}>
+    const renderChoiceCard = (choice) => {
+        const choiceLetter = choice.key === 'slot_scene' ? 'A' : 'B';
+        const choiceCount = choiceCounts[choice.key] || 0;
+        const choicePct = Math.round((choiceCount / totalChoiceVotes) * 100);
+        return (
+        <div key={choice.key} data-tv-vote-choice-card={choice.key} className={`relative overflow-hidden border bg-[linear-gradient(160deg,rgba(9,12,21,0.96),rgba(17,24,39,0.88))] shadow-[0_24px_64px_rgba(0,0,0,0.42)] ${isGlassOverlay ? 'rounded-[1.5rem]' : 'rounded-[2rem]'} ${choice.accentClass}`}>
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_42%)] opacity-60" />
             <div className="absolute inset-x-8 top-6 h-16 rounded-full bg-white/8 blur-2xl" />
+            <div className="absolute inset-x-0 bottom-0 h-2 bg-white/8">
+                <div className={`h-full ${choice.key === 'slot_scene' ? 'bg-cyan-300' : 'bg-pink-300'} shadow-[0_0_24px_rgba(255,255,255,0.45)] transition-all duration-500`} style={{ width: `${choicePct}%` }} />
+            </div>
             <div className={`relative flex h-full flex-col ${isGlassOverlay ? 'p-5' : 'p-8'}`}>
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <div className={`text-sm font-black uppercase tracking-[0.3em] ${choice.labelClass}`}>{choice.label}</div>
+                        <div className="flex items-center gap-3">
+                            <div className={`flex ${isGlassOverlay ? 'h-10 w-10 text-xl' : 'h-14 w-14 text-3xl'} shrink-0 items-center justify-center rounded-2xl border border-white/14 bg-white/10 font-bebas text-white shadow-[0_0_28px_rgba(255,255,255,0.14)]`}>{choiceLetter}</div>
+                            <div className={`text-sm font-black uppercase tracking-[0.3em] ${choice.labelClass}`}>{choice.label}</div>
+                        </div>
                         <div className={`${isGlassOverlay ? 'mt-2 text-[clamp(1.9rem,3.3vw,3.7rem)]' : 'mt-4 text-[clamp(2.3rem,4.4vw,5rem)]'} font-bebas leading-[0.94] tracking-[0.02em] text-white`}>
                             {choice.detail}
                         </div>
                         <div className="mt-3 text-[clamp(1rem,1.55vw,1.35rem)] text-zinc-300">{choice.subline}</div>
                     </div>
                     <div className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-black uppercase tracking-[0.22em] text-white/82">
-                        {choice.key === 'slot_scene' ? 'Choice A' : 'Choice B'}
+                        {choiceCount} vote{choiceCount === 1 ? '' : 's'} - {choicePct}%
                     </div>
                 </div>
                 <div className="mt-auto flex items-end justify-between gap-6">
@@ -399,30 +450,38 @@ const RunOfShowReleaseWindowOverlay = ({
                             ? 'Phones pick the next featured song.'
                             : isSlotFill
                                 ? 'Phones help decide who fills the slot.'
-                                : 'Phones steer the next room moment.'}
+                                : isOneMinuteMicDecision
+                                    ? 'Phones decide whether this singer unlocks the rest of the song.'
+                                    : isSkipPerformanceDecision
+                                        ? 'Phones can only rotate the mic with a strong crowd signal.'
+                                        : 'Phones steer the next room moment.'}
                     </div>
-                    <div className={`${isGlassOverlay ? 'h-28 w-28 rounded-[1.15rem]' : 'h-40 w-40 rounded-[1.6rem]'} shrink-0 overflow-hidden border border-white/10 bg-white/6 shadow-[0_18px_44px_rgba(0,0,0,0.28)]`}>
+                    <div className={`${isGlassOverlay ? 'h-28 w-28 rounded-[1.15rem]' : 'h-40 w-40 rounded-[1.6rem]'} relative shrink-0 overflow-hidden border border-white/10 bg-white/6 shadow-[0_18px_44px_rgba(0,0,0,0.28)]`}>
                         {choice.artworkUrl ? (
-                            <img src={choice.artworkUrl} alt={choice.label} className="h-full w-full object-cover" />
+                            <><img src={choice.artworkUrl} alt={choice.label} className="h-full w-full object-cover" />{choice.durationLabel ? <span className="absolute bottom-2 right-2 rounded-lg bg-black/75 px-2 py-1 text-sm font-black text-white shadow-lg">{choice.durationLabel}</span> : null}</>
                         ) : (
                             <div className="flex h-full w-full items-center justify-center text-6xl text-white/28">
-                                <i className="fa-solid fa-music"></i>
+                                <i className={`fa-solid ${choice.iconClass || 'fa-music'}`}></i>
                             </div>
                         )}
                     </div>
                 </div>
             </div>
         </div>
-    );
+        );
+    };
 
     return (
         <div
             data-tv-release-window-display-mode={isGlassOverlay ? 'glass_overlay' : 'takeover'}
             data-tv-audience-decision-type={audienceDecision.type}
             className={isGlassOverlay
-                ? 'public-tv pointer-events-none fixed inset-0 z-[194] overflow-hidden bg-black/42 text-white backdrop-blur-[2px]'
+                ? 'public-tv pointer-events-none fixed inset-0 z-[194] overflow-hidden bg-black/58 text-white backdrop-blur-[3px]'
                 : 'public-tv fixed inset-0 z-[194] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.26),transparent_36%),radial-gradient(circle_at_bottom,rgba(244,114,182,0.2),transparent_34%),linear-gradient(160deg,#020617,#081120_38%,#111827)] text-white'}
         >
+            <div className="absolute inset-x-0 top-0 z-20 h-2 bg-white/10">
+                <div className="h-full bg-[linear-gradient(90deg,#22d3ee,#a7f3d0,#f9a8d4)] shadow-[0_0_30px_rgba(34,211,238,0.5)] transition-all duration-500" style={{ width: `${timeProgressPct}%` }} />
+            </div>
             {!isGlassOverlay && (
                 <>
                     <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:72px_72px] opacity-20" />
@@ -441,21 +500,29 @@ const RunOfShowReleaseWindowOverlay = ({
                                 ? (isCoHostVote ? 'Co-Host Song Face-Off' : 'Audience Song Face-Off')
                                 : isSlotFill
                                     ? (isCoHostVote ? 'Co-Host Slot Fill' : 'Audience Slot Fill')
-                                    : (isCoHostVote ? 'Co-Host Decision' : 'Room Vote')}
+                                    : isOneMinuteMicDecision
+                                        ? 'One-Minute Mic'
+                                        : isSkipPerformanceDecision
+                                            ? 'Crowd Rescue Vote'
+                                            : (isCoHostVote ? 'Co-Host Decision' : 'Room Vote')}
                         </div>
                         <div className={`${isGlassOverlay ? 'mt-2 text-[clamp(2rem,3.6vw,4.3rem)]' : 'mt-4 text-[clamp(2.9rem,5.5vw,6.4rem)]'} font-bebas leading-[0.94] tracking-[0.02em] text-white drop-shadow-[0_12px_40px_rgba(0,0,0,0.42)]`}>
                             {String(releaseWindow?.prompt || 'What should happen next?').trim()}
                         </div>
                         <div className={`${isGlassOverlay ? 'mt-2 text-[clamp(0.9rem,1.45vw,1.15rem)]' : 'mt-4 text-[clamp(1rem,1.8vw,1.45rem)]'} text-zinc-200/86`}>
                             {selfServeDecisionPresentation
-                                ? `${selfServeDecisionPresentation.helper} Vote now at ${voteHost} with room code ${String(roomCode || '').trim().toUpperCase() || 'ROOM'}.`
+                                ? selfServeDecisionPresentation.helper + ' Vote now at ' + voteHost + ' with room code ' + (String(roomCode || '').trim().toUpperCase() || 'ROOM') + '.'
+                                : isOneMinuteMicDecision
+                                ? 'Vote on your phone at ' + voteHost + '. The crowd decides if the singer keeps going or rotates.'
+                                : isSkipPerformanceDecision
+                                ? 'Vote on your phone at ' + voteHost + '. Moving on requires a strong room signal.'
                                 : isCoHostVote
                                 ? 'Promoted co-hosts vote now. The host confirms the winning choice after the timer ends.'
-                                : `Vote on your phone at ${voteHost} using room code ${String(roomCode || '').trim().toUpperCase() || 'ROOM'}.`}
+                                : 'Vote on your phone at ' + voteHost + ' using room code ' + (String(roomCode || '').trim().toUpperCase() || 'ROOM') + '.'}
                         </div>
-                        <div className="mt-5 inline-flex items-center gap-3 rounded-full border border-white/12 bg-white/6 px-5 py-2 text-sm font-black uppercase tracking-[0.26em] text-white/90 shadow-[0_20px_40px_rgba(0,0,0,0.24)]">
+                        <div className="mt-5 inline-flex items-center gap-3 rounded-full border border-emerald-200/30 bg-emerald-400/14 px-5 py-2 text-sm font-black uppercase tracking-[0.26em] text-emerald-50 shadow-[0_20px_40px_rgba(0,0,0,0.24)]">
                             <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
-                            {selfServeDecisionPresentation ? selfServeDecisionPresentation.liveLabel : 'Crowd energy is live'}
+                            {selfServeDecisionPresentation ? selfServeDecisionPresentation.liveLabel : 'Live Vote - Phones Now'}
                         </div>
                     </div>
                     <div className={`flex shrink-0 flex-col items-end gap-3 ${isGlassOverlay ? 'rounded-[1.6rem] border border-white/12 bg-black/42 px-4 py-4 shadow-[0_24px_70px_rgba(0,0,0,0.36)]' : ''}`}>
@@ -473,7 +540,7 @@ const RunOfShowReleaseWindowOverlay = ({
                 </div>
                 <div className={`${isGlassOverlay ? 'mt-4' : 'mt-8'} flex items-center justify-center`}>
                     <div className="rounded-full border border-white/10 bg-white/[0.05] px-6 py-2 text-base font-black uppercase tracking-[0.34em] text-zinc-200 shadow-[0_20px_40px_rgba(0,0,0,0.24)]">
-                        {selfServeDecisionPresentation ? selfServeDecisionPresentation.decisionLabel : 'Pick the next moment'}
+                        {selfServeDecisionPresentation ? selfServeDecisionPresentation.decisionLabel : isOneMinuteMicDecision ? 'Continue or rotate' : isSkipPerformanceDecision ? 'Keep going or move on' : 'Pick the next moment'}
                     </div>
                 </div>
                 <div className={`${isGlassOverlay ? 'mt-4 max-h-[42vh] flex-none grid-cols-[minmax(0,1fr)_100px_minmax(0,1fr)] gap-5' : 'mt-8 flex-1 grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)] gap-8'} grid`}>
@@ -812,7 +879,6 @@ const parseAwardFailureCode = (error = null) => {
 };
 
 
-const LOBBY_PLAYGROUND_REWARD_SOURCE = 'lobby_playground';
 const LOBBY_AWARD_VISUAL_WINDOW_MS = 4200;
 const LOBBY_COMBO_WINDOW_MS = 4600;
 const LOBBY_ASSIST_WINDOW_MS = 4200;
@@ -1802,13 +1868,20 @@ const SelfServeAttractOverlay = ({
     );
 };
 
+const SCORE_HUD_FLOURISH_MS = 2400;
+const SCORE_HUD_TICK_MS = 45;
+
 const AnimatedPoints = ({ value, combo = 0, showComboCharge = true }) => {
     const [display, setDisplay] = useState(value);
     const [scoreDelta, setScoreDelta] = useState(0);
     const [burstKey, setBurstKey] = useState(0);
+    const [flourishActive, setFlourishActive] = useState(false);
     const displayRef = useRef(value);
     const targetRef = useRef(value);
-    const showPulse = value !== display;
+    const flourishTimerRef = useRef(null);
+    const scoreChanging = value !== display;
+    const showPulse = flourishActive || scoreChanging;
+    const showBurst = flourishActive && scoreDelta > 0;
     const comboPct = showComboCharge ? Math.max(0, Math.min(100, Number(combo) || 0)) : 0;
     const comboTier = showComboCharge
         ? (comboPct >= 90 ? 'inferno' : comboPct >= 65 ? 'hot' : comboPct >= 35 ? 'charged' : 'base')
@@ -1822,6 +1895,12 @@ const AnimatedPoints = ({ value, combo = 0, showComboCharge = true }) => {
         if (gain > 0) {
             setScoreDelta(gain);
             setBurstKey(prev => prev + 1);
+            setFlourishActive(true);
+            if (flourishTimerRef.current) clearTimeout(flourishTimerRef.current);
+            flourishTimerRef.current = setTimeout(() => {
+                setFlourishActive(false);
+                flourishTimerRef.current = null;
+            }, SCORE_HUD_FLOURISH_MS);
         }
         const interval = setInterval(() => {
             setDisplay(prev => {
@@ -1831,18 +1910,22 @@ const AnimatedPoints = ({ value, combo = 0, showComboCharge = true }) => {
                     displayRef.current = value;
                     return value;
                 }
-                const step = Math.max(1, Math.ceil(Math.abs(diff) / 6)) * Math.sign(diff);
+                const step = Math.max(1, Math.ceil(Math.abs(diff) / 10)) * Math.sign(diff);
                 const next = Math.abs(diff) <= Math.abs(step) ? value : prev + step;
                 displayRef.current = next;
                 return next;
             });
-        }, 30);
+        }, SCORE_HUD_TICK_MS);
         return () => clearInterval(interval);
     }, [value]);
+
+    useEffect(() => () => {
+        if (flourishTimerRef.current) clearTimeout(flourishTimerRef.current);
+    }, []);
     
     return (
         <div
-            className={`tv-score-charge tv-score-charge-${comboTier} relative flex items-center gap-2 overflow-hidden rounded-xl border px-3 py-2.5 shadow-2xl backdrop-blur-md transition-transform duration-300 md:gap-3 md:px-4 md:py-3 2xl:px-5 2xl:py-4 ${showPulse ? 'tv-score-charge-pulse' : ''}`}
+            className={`tv-score-charge tv-score-charge-${comboTier} relative flex items-center gap-2 overflow-hidden rounded-xl border px-3 py-2.5 shadow-2xl backdrop-blur-md transition-transform duration-500 md:gap-3 md:px-4 md:py-3 2xl:px-5 2xl:py-4 ${showPulse ? 'tv-score-charge-pulse' : ''}`}
             style={{ '--score-charge': `${comboPct}%` }}
         >
             <div className="tv-score-charge-glow" />
@@ -1853,15 +1936,16 @@ const AnimatedPoints = ({ value, combo = 0, showComboCharge = true }) => {
                     <i className="tv-score-charge-leds" />
                 </div>
             )}
-            {showPulse && (
+            {showBurst && (
                 <div key={burstKey} className="absolute inset-0 pointer-events-none">
+                    <span className="tv-score-flourish-ring"></span>
                     <span className="points-burst points-burst-a"></span>
                     <span className="points-burst points-burst-b"></span>
                     <span className="points-burst points-burst-c"></span>
                     <span className="points-burst points-burst-d"></span>
-                    {scoreDelta > 0 && (
-                        <span className="tv-score-delta">+{scoreDelta}</span>
-                    )}
+                    <span className="points-burst points-burst-e"></span>
+                    <span className="points-burst points-burst-f"></span>
+                    <span className="tv-score-delta">+{scoreDelta}</span>
                 </div>
             )}
             <div className="relative z-10 flex flex-col leading-none">
@@ -2910,9 +2994,11 @@ const PublicTV = ({ roomCode }) => {
     const purchaseCelebrationQueueRef = useRef([]);
     const lastGuitarModeRef = useRef(null);
     const activeGuitarSessionRef = useRef(null);
+    const guitarFinalizeSessionRef = useRef(null);
     const guitarSyncSessionRef = useRef(null);
     const lastStrobeSessionRef = useRef(null);
     const doodleWinnerAwardRef = useRef(null);
+    const oneMinuteMicSyncKeyRef = useRef('');
     const chatRotateRef = useRef(null);
     const sidebarRotateRef = useRef(null);
     const messageTimeoutsRef = useRef([]);
@@ -3141,20 +3227,18 @@ const PublicTV = ({ roomCode }) => {
         return () => clearInterval(timer);
     }, [room?.lightMode, room?.guitarSessionId]);
 
-    const awardRoomPointsOnce = useCallback(async ({ awardKey, awards = [], source = 'tv_mode' }) => {
-        if (!roomCode || !awardKey || !Array.isArray(awards) || !awards.length) {
+    const finalizeLobbyPlaygroundAwardOnce = useCallback(async ({ awardKey }) => {
+        if (!roomCode || !awardKey) {
             return { ok: false, skipped: true };
         }
         try {
-            await callFunction('awardRoomPoints', {
+            const result = await callFunction('finalizeLobbyPlaygroundAward', {
                 roomCode,
-                awardKey,
-                source,
-                awards
+                awardKey
             });
-            return { ok: true };
+            return { ok: true, ...(result || {}) };
         } catch (err) {
-            tvLogger.debug('awardRoomPoints callable failed', awardKey, err?.message || err);
+            tvLogger.debug('finalizeLobbyPlaygroundAward callable failed', awardKey, err?.message || err);
             return { ok: false, error: err, code: parseAwardFailureCode(err) };
         }
     }, [roomCode]);
@@ -3243,40 +3327,24 @@ const PublicTV = ({ roomCode }) => {
 
     useEffect(() => {
         if (room?.activeMode !== 'doodle_oke' || !room?.doodleOke?.promptId) return;
-        const promptId = room.doodleOke.promptId;
-        if (doodleWinnerAwardRef.current === promptId) return;
-        if (room?.doodleOke?.winnerAwardedAt) {
+        const promptId = String(room.doodleOke.promptId || '').trim();
+        if (!promptId || doodleWinnerAwardRef.current === promptId) return;
+        if (room?.doodleOke?.winnerAwardedAt && room?.doodleOke?.winnerAwardedBy === 'server') {
             doodleWinnerAwardRef.current = promptId;
             return;
         }
         const phase = room?.doodleOke?.status;
         if (phase !== 'reveal') return;
         if (!doodleVisibleSubmissions.length) return;
-        const voteCounts = doodleVotes.reduce((acc, v) => {
-            acc[v.targetUid] = (acc[v.targetUid] || 0) + 1;
-            return acc;
-        }, {});
-        const sorted = [...doodleVisibleSubmissions].sort((a, b) => (voteCounts[b.uid] || 0) - (voteCounts[a.uid] || 0));
-        const winner = sorted[0];
-        if (!winner?.uid) return;
-        const points = 150;
-        const winnerPayload = {
-            uid: winner.uid,
-            name: winner.name || 'Guest',
-            avatar: winner.avatar || '',
-            votes: voteCounts[winner.uid] || 0,
-            points
-        };
-        const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
-        updateDoc(roomRef, { doodleOke: { ...room.doodleOke, winner: winnerPayload, winnerAwardedAt: nowMs() } })
-            .catch((e) => tvLogger.error('Doodle winner update failed', e));
-        awardRoomPointsOnce({
-            awardKey: `doodle_${roomCode}_${promptId}`,
-            source: 'doodle_oke',
-            awards: [{ uid: winner.uid, points }]
-        });
         doodleWinnerAwardRef.current = promptId;
-    }, [room?.activeMode, room?.doodleOke, doodleVisibleSubmissions, doodleVotes, roomCode, awardRoomPointsOnce]);
+        callFunction('finalizeDoodleOkeRound', {
+            roomCode,
+            promptId
+        }).catch((error) => {
+            tvLogger.error('Doodle winner finalization failed', error);
+            doodleWinnerAwardRef.current = '';
+        });
+    }, [room?.activeMode, room?.doodleOke?.promptId, room?.doodleOke?.status, room?.doodleOke?.winnerAwardedAt, room?.doodleOke?.winnerAwardedBy, doodleVisibleSubmissions.length, roomCode]);
 
     const getStormAmbientUrl = useCallback(() => {
         if (stormPhase === 'approach') return STORM_SFX.lightRain;
@@ -4089,10 +4157,8 @@ const PublicTV = ({ roomCode }) => {
                                     if (lobbyAwardAuthLockedRef.current) {
                                         nextVolleyState.authFailureLocked = true;
                                     } else {
-                                        void awardRoomPointsOnce({
-                                            awardKey: awardPayload.awardKey,
-                                            awards: awardPayload.awards,
-                                            source: LOBBY_PLAYGROUND_REWARD_SOURCE
+                                        void finalizeLobbyPlaygroundAwardOnce({
+                                            awardKey: awardPayload.awardKey
                                         }).then((result) => {
                                             if (result?.ok) return;
                                             const code = String(result?.code || '');
@@ -4321,7 +4387,7 @@ const PublicTV = ({ roomCode }) => {
             messageTimeoutsRef.current.forEach(t => clearTimeout(t));
             messageTimeoutsRef.current = [];
         };
-    }, [roomCode, isMarketingDemoFixture, pushLobbyLiveEvent, awardRoomPointsOnce, upsertReactionScoreContribution]);
+    }, [roomCode, isMarketingDemoFixture, pushLobbyLiveEvent, finalizeLobbyPlaygroundAwardOnce, upsertReactionScoreContribution]);
 
     useEffect(() => {
         if (isMarketingDemoFixture) {
@@ -4508,34 +4574,16 @@ const PublicTV = ({ roomCode }) => {
 
             setGuitarWinner(payload);
             setTimeout(() => setGuitarWinner(null), 12000);
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { 
-                guitarWinner: payload,
-                guitarVictory: { 
-                    id: `${sessionId}_${winner.uid}`,
-                    uid: winner.uid,
-                    name: winner.name,
-                    avatar: winner.avatar,
-                    hits: winner.guitarHits,
-                    sessionId,
-                    status: 'pending',
-                    rewardPoints: 200,
-                    requestedAt: nowMs()
-                }
-            }).catch(() => {});
-            awardRoomPointsOnce({
-                awardKey: `guitar_${roomCode}_${sessionId}`,
-                source: 'guitar_mode',
-                awards: [{ uid: winner.uid, points: payload.rewardPoints || 200 }]
-            });
-            addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
+            guitarFinalizeSessionRef.current = String(sessionId || '');
+            callFunction('finalizeGuitarSyncRound', {
                 roomCode,
-                user: winner.name,
-                text: `shredded the hardest (${winner.guitarHits} hits)`,
-                icon: EMOJI.guitar,
-                timestamp: serverTimestamp()
-            }).catch(() => {});
+                sessionId
+            }).catch((error) => {
+                tvLogger.error('Guitar Sync finalization failed', error);
+                guitarFinalizeSessionRef.current = '';
+            });
         }
-    }, [room, roomCode, vibeUsers, room?.guitarWinner?.sessionId, awardRoomPointsOnce]);
+    }, [room, roomCode, vibeUsers, room?.guitarWinner?.sessionId]);
 
     useEffect(() => {
         if (room?.guitarVictory?.status === 'pending') return;
@@ -4543,38 +4591,16 @@ const PublicTV = ({ roomCode }) => {
         if (room?.lightMode === 'guitar') return;
         const sessionId = room?.guitarSessionId;
         if (!sessionId) return;
-        const candidates = vibeUsers.filter(u => u.guitarSessionId === sessionId);
-        const winner = candidates.sort((a,b) => (b.guitarHits || 0) - (a.guitarHits || 0))[0];
-        if (!winner || !winner.guitarHits) return;
-        const payload = {
-            uid: winner.uid,
-            name: winner.name,
-            avatar: winner.avatar,
-            hits: winner.guitarHits,
-            sessionId,
-            timestamp: nowMs(),
-            rewardPoints: 200
-        };
-        updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
-            guitarWinner: payload,
-            guitarVictory: {
-                id: `${sessionId}_${winner.uid}`,
-                uid: winner.uid,
-                name: winner.name,
-                avatar: winner.avatar,
-                hits: winner.guitarHits,
-                sessionId,
-                status: 'pending',
-                rewardPoints: 200,
-                requestedAt: nowMs()
-            }
-        }).catch(() => {});
-        awardRoomPointsOnce({
-            awardKey: `guitar_${roomCode}_${sessionId}`,
-            source: 'guitar_mode',
-            awards: [{ uid: winner.uid, points: payload.rewardPoints || 200 }]
+        if (guitarFinalizeSessionRef.current === String(sessionId || '')) return;
+        guitarFinalizeSessionRef.current = String(sessionId || '');
+        callFunction('finalizeGuitarSyncRound', {
+            roomCode,
+            sessionId
+        }).catch((error) => {
+            tvLogger.error('Guitar Sync finalization failed', error);
+            guitarFinalizeSessionRef.current = '';
         });
-    }, [room?.lightMode, room?.guitarSessionId, room?.guitarVictory?.status, room?.guitarWinner?.sessionId, roomCode, vibeUsers, awardRoomPointsOnce]);
+    }, [room?.lightMode, room?.guitarSessionId, room?.guitarVictory?.status, room?.guitarWinner?.sessionId, roomCode]);
 
     useEffect(() => {
         if (room?.lightMode === 'strobe') return;
@@ -4585,37 +4611,14 @@ const PublicTV = ({ roomCode }) => {
         if (lastStrobeSessionRef.current === sessionId) return;
         lastStrobeSessionRef.current = sessionId;
 
-        const candidates = roomUsers
-            .filter(u => u.strobeSessionId === sessionId)
-            .map(u => ({
-                uid: u.uid,
-                name: u.name,
-                avatar: u.avatar,
-                taps: u.strobeTaps || 0
-            }))
-            .filter(u => u.taps > 0)
-            .sort((a, b) => (b.taps || 0) - (a.taps || 0));
-
-        if (!candidates.length) return;
-        const winners = candidates.slice(0, 3);
-        const winner = winners[0];
-        const rewards = [150, 90, 50];
-        const strobeAwards = winners.map((entry, idx) => ({
-            uid: entry.uid,
-            points: rewards[idx] || 0
-        })).filter((entry) => entry.uid && entry.points > 0);
-
-        updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
-            strobeWinner: { ...winner, sessionId },
-            strobeResults: { sessionId, winners, rewards, awardedAt: nowMs() },
-            strobeVictory: { ...winner, sessionId, status: 'pending', id: `${sessionId}` }
-        }).catch(() => {});
-        awardRoomPointsOnce({
-            awardKey: `strobe_${roomCode}_${sessionId}`,
-            source: 'strobe_mode',
-            awards: strobeAwards
+        callFunction('finalizeStrobeModeRound', {
+            roomCode,
+            sessionId
+        }).catch((error) => {
+            tvLogger.error('Strobe mode finalization failed', error);
+            lastStrobeSessionRef.current = null;
         });
-    }, [room?.lightMode, room?.strobeSessionId, room?.strobeEndsAt, room?.strobeResults?.sessionId, roomCode, roomUsers, awardRoomPointsOnce]);
+    }, [room?.lightMode, room?.strobeSessionId, room?.strobeEndsAt, room?.strobeResults?.sessionId, roomCode]);
 
     useEffect(() => {
         const prompts = [
@@ -4696,9 +4699,28 @@ const PublicTV = ({ roomCode }) => {
 
     // Allow host-triggered photo overlays from the room document
     useEffect(() => {
-        if (!room?.photoOverlay?.url) return;
-        setPhotoOverlay(room.photoOverlay);
-        const t = setTimeout(() => setPhotoOverlay(null), 8000);
+        const overlay = room?.photoOverlay;
+        if (!overlay?.url) {
+            setPhotoOverlay(null);
+            return undefined;
+        }
+        const createdAtMs = Math.max(
+            0,
+            Number(overlay.createdAtMs || 0) || 0,
+            Number(overlay.timestamp || 0) || 0
+        );
+        const expiresAtMs = Math.max(0, Number(overlay.expiresAtMs || 0) || 0);
+        const expired = (expiresAtMs > 0 && expiresAtMs <= nowMs())
+            || (createdAtMs > 0 && (nowMs() - createdAtMs) > PHOTO_OVERLAY_TV_VISIBILITY_MS);
+        if (expired) {
+            setPhotoOverlay(null);
+            return undefined;
+        }
+        setPhotoOverlay({ ...overlay, createdAtMs, expiresAtMs });
+        const remainingMs = expiresAtMs > 0
+            ? Math.max(750, Math.min(PHOTO_OVERLAY_TV_VISIBILITY_MS, expiresAtMs - nowMs()))
+            : PHOTO_OVERLAY_TV_VISIBILITY_MS;
+        const t = setTimeout(() => setPhotoOverlay(null), remainingMs);
         return () => clearTimeout(t);
     }, [room?.photoOverlay?.url, room?.photoOverlay?.timestamp, room?.photoOverlay]);
     useEffect(() => {
@@ -4730,11 +4752,32 @@ const PublicTV = ({ roomCode }) => {
     }, [roomCode]);
     useEffect(() => {
         const drop = room?.bonusDrop;
-        if (!drop?.id) return;
-        if (lastBonusDropRef.current === drop.id) return;
-        lastBonusDropRef.current = drop.id;
-        setBonusDropBurst({ ...drop });
-        const t = setTimeout(() => setBonusDropBurst(null), 6000);
+        if (!drop?.id) {
+            setBonusDropBurst(null);
+            return undefined;
+        }
+        const dropId = String(drop.id || '');
+        const createdAtMs = Math.max(
+            0,
+            Number(drop.createdAtMs || 0) || 0,
+            Number(drop.timestamp || 0) || 0,
+            Number(drop.id || 0) || 0
+        );
+        const expiresAtMs = Math.max(0, Number(drop.expiresAtMs || 0) || 0);
+        const expired = (expiresAtMs > 0 && expiresAtMs <= nowMs())
+            || (createdAtMs > 0 && (nowMs() - createdAtMs) > BONUS_DROP_TV_VISIBILITY_MS);
+        if (expired) {
+            lastBonusDropRef.current = dropId;
+            setBonusDropBurst(null);
+            return undefined;
+        }
+        if (lastBonusDropRef.current === dropId) return undefined;
+        lastBonusDropRef.current = dropId;
+        setBonusDropBurst({ ...drop, createdAtMs, expiresAtMs });
+        const remainingMs = expiresAtMs > 0
+            ? Math.max(750, Math.min(BONUS_DROP_TV_VISIBILITY_MS, expiresAtMs - nowMs()))
+            : 6000;
+        const t = setTimeout(() => setBonusDropBurst(null), remainingMs);
         return () => clearTimeout(t);
     }, [room?.bonusDrop?.id, room?.bonusDrop]);
     useEffect(() => {
@@ -4939,10 +4982,8 @@ const PublicTV = ({ roomCode }) => {
                         timestampMs: tickNow
                     });
                     if (!pointsLocked && !payload.visualOnly && payload.awards.length) {
-                        void awardRoomPointsOnce({
-                            awardKey: payload.awardKey,
-                            awards: payload.awards,
-                            source: `${LOBBY_PLAYGROUND_REWARD_SOURCE}_altitude`
+                        void finalizeLobbyPlaygroundAwardOnce({
+                            awardKey: payload.awardKey
                         });
                     }
                 });
@@ -4973,7 +5014,7 @@ const PublicTV = ({ roomCode }) => {
         songs,
         viewportSize?.height,
         viewportSize?.width,
-        awardRoomPointsOnce
+        finalizeLobbyPlaygroundAwardOnce
     ]);
     
     const getTimestampMs = (value) => {
@@ -5537,12 +5578,28 @@ const PublicTV = ({ roomCode }) => {
             });
     }, [showPopTriviaEndState, popTriviaCorrectPoints, popTriviaRevealCorrectIndex, popTriviaRevealVotes]);
     const popTriviaRevealAnswerCount = popTriviaRevealVotes.length;
+    const popTriviaAwardSummary = popTriviaRevealQuestion?.id
+        ? (room?.popTriviaAwards?.[popTriviaRevealQuestion.id] || null)
+        : null;
+    const popTriviaServerWinners = Array.isArray(popTriviaAwardSummary?.winners)
+        ? popTriviaAwardSummary.winners.map((winner, idx) => ({
+            id: String(winner?.uid || `winner_${idx}`).trim(),
+            uid: String(winner?.uid || '').trim(),
+            name: String(winner?.name || 'Guest').trim() || 'Guest',
+            avatar: String(winner?.avatar || EMOJI.sparkle || '').trim() || EMOJI.sparkle,
+            points: Math.max(0, Number(winner?.points || popTriviaAwardSummary?.points || popTriviaCorrectPoints || 0)),
+        }))
+        : [];
+    const popTriviaDisplayCorrectResponders = popTriviaServerWinners.length > 0
+        ? popTriviaServerWinners.slice(0, 12)
+        : popTriviaRevealCorrectResponders;
     const popTriviaRevealWinnerCount = popTriviaCorrectPoints > 0
-        ? popTriviaRevealAwardableResponders.length
+        ? (Math.max(0, Number(popTriviaAwardSummary?.awardedCount || 0)) || popTriviaServerWinners.length || popTriviaRevealAwardableResponders.length)
         : popTriviaRevealCorrectResponders.length;
     const popTriviaRevealTotalPointsAwarded = popTriviaCorrectPoints > 0
-        ? popTriviaRevealAwardableResponders.length * popTriviaCorrectPoints
+        ? (Math.max(0, Number(popTriviaAwardSummary?.awardedPoints || 0)) || popTriviaRevealAwardableResponders.length * popTriviaCorrectPoints)
         : 0;
+    const popTriviaDisplayCorrectOption = String(popTriviaAwardSummary?.correctOption || popTriviaRevealCorrectOption || '').trim();
     const popTriviaRevealResolutionHeadline = popTriviaRevealWinnerCount > 0
         ? `${popTriviaRevealWinnerCount} ${popTriviaRevealWinnerCount === 1 ? 'player' : 'players'} won this round`
         : 'No winners this round';
@@ -5553,6 +5610,7 @@ const PublicTV = ({ roomCode }) => {
                 : 'Correct answers earned the crowd shoutout.'
         )
         : 'Nobody landed the correct answer before the round closed.';
+    const popTriviaRevealHasWinners = popTriviaRevealWinnerCount > 0;
     const marqueeItems = (room?.marqueeItems || []).filter(i => i.enabled !== false);
 
     useEffect(() => {
@@ -5661,20 +5719,14 @@ const PublicTV = ({ roomCode }) => {
         if (!popTriviaRevealAwardableResponders.length) return;
         if (popTriviaAwardedQuestionIdsRef.current.has(revealQuestionId)) return;
         popTriviaAwardedQuestionIdsRef.current.add(revealQuestionId);
-        const awards = popTriviaRevealAwardableResponders.map((entry) => ({
-            uid: entry.uid,
-            points: popTriviaCorrectPoints
-        }));
-        void awardRoomPointsOnce({
-            awardKey: `pop_trivia_${roomCode}_${revealQuestionId}`,
-            source: 'pop_trivia',
-            awards
-        }).then((result) => {
-            if (result?.ok) return;
+        void callFunction('finalizePopTriviaQuestion', {
+            roomCode,
+            questionId: revealQuestionId
+        }).catch((error) => {
+            tvLogger.error('Pop Trivia finalization failed', error);
             popTriviaAwardedQuestionIdsRef.current.delete(revealQuestionId);
         });
     }, [
-        awardRoomPointsOnce,
         isMarketingDemoFixture,
         popTriviaCorrectPoints,
         popTriviaRevealAwardableResponders,
@@ -5773,6 +5825,41 @@ const PublicTV = ({ roomCode }) => {
         spotlightPayload: spotlightPayload || null,
         roomUser: spotlightUser || null
     });
+    const audienceDisplay = useMemo(
+        () => normalizeAudienceDisplay(room?.audienceDisplay || {}),
+        [room?.audienceDisplay]
+    );
+    const audienceDisplayMeta = getAudienceDisplayModeMeta(audienceDisplay.mode);
+    const audienceDisplaySelectedUsers = useMemo(
+        () => audienceDisplay.selectedUids
+            .map((displayUid) => roomUsers.find((entry) => resolveRoomUserUid(entry) === displayUid))
+            .filter(Boolean),
+        [audienceDisplay.selectedUids, roomUsers]
+    );
+    const commentatorRowVisible = audienceDisplay.mode === AUDIENCE_DISPLAY_MODES.commentatorRow
+        && audienceDisplaySelectedUsers.length > 0;
+    const lobbyWallVisible = audienceDisplay.mode === AUDIENCE_DISPLAY_MODES.lobbyWall
+        && roomUsers.length > 0;
+    const audienceDisplayReactionByUid = useMemo(() => {
+        const map = new Map();
+        if (!audienceDisplay.showReactions || !audienceDisplay.selectedUids.length) return map;
+        const allowed = new Set(audienceDisplay.selectedUids);
+        reactions.forEach((reaction) => {
+            const reactionUid = String(reaction?.uid || reaction?.userId || '').trim();
+            if (!allowed.has(reactionUid)) return;
+            const previous = map.get(reactionUid) || null;
+            if (!previous || Number(reaction?.createdAtMs || 0) >= Number(previous?.createdAtMs || 0)) {
+                map.set(reactionUid, reaction);
+            }
+        });
+        return map;
+    }, [audienceDisplay.selectedUids, audienceDisplay.showReactions, reactions]);
+    const lobbyWallUsers = useMemo(
+        () => [...roomUsers]
+            .sort((left, right) => Number(right?.totalEmojis || 0) - Number(left?.totalEmojis || 0))
+            .slice(0, 12),
+        [roomUsers]
+    );
     const lobbyForcedObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
     const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
     const lobbyObjectiveIsTeamPong = lobbyObjectiveMode?.id === 'team_pong';
@@ -6133,7 +6220,8 @@ const PublicTV = ({ roomCode }) => {
         (lobbyVolleyNearShiftPct * 1.05) + (lobbyVolleyAltitudeProgress * 36) + (lobbyVoiceLiftRatio * 24),
         0,
         100
-    );    const lobbyVoiceInstructionCopy = !lobbyObjectiveIsTeamPong
+    );
+    const lobbyVoiceInstructionCopy = !lobbyObjectiveIsTeamPong
         ? {
             headline: lobbyVoiceFresh
                 ? String(lobbyVoiceState?.promptHeadline || lobbyVoiceTarget.headline)
@@ -6766,6 +6854,20 @@ const PublicTV = ({ roomCode }) => {
         ? (Number(roundWinnersMoment.expiresAtMs || 0) > 0 && Number(roundWinnersMoment.expiresAtMs || 0) <= nowMs())
         : true;
     const activeGameCartridgeMode = !!(room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode));
+    const selfieMomentStartedAtMs = Math.max(0, Number(room?.selfieMoment?.timestamp || 0) || 0);
+    const selfieMomentExpiresAtMs = Math.max(
+        0,
+        Number(room?.selfieMomentExpiresAt || 0) || 0,
+        selfieMomentStartedAtMs > 0 ? selfieMomentStartedAtMs + SELFIE_MOMENT_TV_VISIBILITY_MS : 0
+    );
+    const selfieMomentExpired = !!(room?.selfieMoment && selfieMomentExpiresAtMs > 0 && selfieMomentExpiresAtMs <= takeoverNowMs);
+    const selfieCamTvVisible = room?.activeMode === 'selfie_cam' && !selfieMomentExpired;
+    const selfieWinnerExpiresAtMs = Math.max(0, Number(room?.selfieChallenge?.winnerExpiresAt || 0) || 0);
+    const selfieChallengeEndedExpired = room?.activeMode === 'selfie_challenge'
+        && room?.selfieChallenge?.status === 'ended'
+        && selfieWinnerExpiresAtMs > 0
+        && selfieWinnerExpiresAtMs <= takeoverNowMs;
+    const selfieChallengeTvVisible = room?.activeMode === 'selfie_challenge' && !selfieChallengeEndedExpired;
     const selfServeMode = room?.selfServeMode && room.selfServeMode.enabled ? room.selfServeMode : null;
     const selfServeRulesCard = selfServeMode ? buildSelfServeRulesCard(selfServeMode.format || '') : null;
     const activeAnnouncement = !applauseOverlayVisible && room?.announcement?.active && !activeGameCartridgeMode
@@ -6786,8 +6888,137 @@ const PublicTV = ({ roomCode }) => {
         && ['crowd_signal', 'crowd_vote', 'cohost_vote'].includes(String(activeReleaseWindow?.governanceMode || '').trim().toLowerCase())
         && isRunOfShowReleaseWindowVotingOpen(activeReleaseWindow, takeoverNowMs)
     );
-    const tvReleaseWindowGlassOverlayVisible = !!(!applauseOverlayVisible && tvReleaseWindowVisible && activeGameCartridgeMode);
+    const activeReleaseWindowSubjectType = String(activeReleaseWindow?.subjectType || '').trim().toLowerCase();
+    const releaseWindowShouldOverlayStage = ['continue_or_rotate', 'skip_performance'].includes(activeReleaseWindowSubjectType);
+    const tvReleaseWindowGlassOverlayVisible = !!(!applauseOverlayVisible && tvReleaseWindowVisible && (activeGameCartridgeMode || releaseWindowShouldOverlayStage));
     const tvReleaseWindowTakeoverVisible = !!(!tvReleaseWindowGlassOverlayVisible && tvReleaseWindowVisible);
+    const oneMinuteMicAutomationCommand = room?.audienceAutomationCommand && typeof room.audienceAutomationCommand === 'object'
+        ? room.audienceAutomationCommand
+        : null;
+    const oneMinuteMicRotateFadeActive = !!(
+        oneMinuteMicAutomationCommand
+        && String(oneMinuteMicAutomationCommand?.source || '').trim().toLowerCase() === 'one_minute_mic'
+        && String(oneMinuteMicAutomationCommand?.action || '').trim().toLowerCase() === 'finish_performance'
+        && String(oneMinuteMicAutomationCommand?.status || '').trim().toLowerCase() === 'fade_pending'
+        && Number(oneMinuteMicAutomationCommand?.fadeEndsAtMs || 0) > takeoverNowMs
+    );
+    const oneMinuteMicFadeStartedAtMs = Math.max(0, Number(oneMinuteMicAutomationCommand?.fadeStartedAtMs || 0) || 0);
+    const oneMinuteMicFadeEndsAtMs = Math.max(oneMinuteMicFadeStartedAtMs, Number(oneMinuteMicAutomationCommand?.fadeEndsAtMs || 0) || 0);
+    const oneMinuteMicFadeProgress = oneMinuteMicRotateFadeActive && oneMinuteMicFadeEndsAtMs > oneMinuteMicFadeStartedAtMs
+        ? Math.max(0, Math.min(1, (takeoverNowMs - oneMinuteMicFadeStartedAtMs) / (oneMinuteMicFadeEndsAtMs - oneMinuteMicFadeStartedAtMs)))
+        : 0;
+    const oneMinuteMicStageVideoVolume = oneMinuteMicRotateFadeActive
+        ? Math.max(0, Math.round((Number(room?.videoVolume ?? 100) || 100) * (1 - oneMinuteMicFadeProgress)))
+        : room?.videoVolume;
+    const activeAudienceDecision = room?.audienceDecision && typeof room.audienceDecision === 'object' ? room.audienceDecision : null;
+    const oneMinuteMicContinueCueVisible = !!(
+        activeAudienceDecision
+        && String(activeAudienceDecision?.type || '').trim().toLowerCase() === 'continue_or_rotate'
+        && String(activeAudienceDecision?.status || '').trim().toLowerCase() === 'resolved'
+        && String(activeAudienceDecision?.resolutionAction || '').trim().toLowerCase() === 'continue_song'
+        && Number(activeAudienceDecision?.resolvedAtMs || 0) > 0
+        && takeoverNowMs < (Number(activeAudienceDecision.resolvedAtMs || 0) + 6000)
+    );
+    const oneMinuteMicRoomModeActive = room?.oneMinuteMicEnabled === true
+        || String(room?.performanceProgressionMode || '').trim().toLowerCase() === 'one_minute_mic';
+    const oneMinuteMicVoteLive = !!(
+        activeAudienceDecision
+        && String(activeAudienceDecision?.type || '').trim().toLowerCase() === 'continue_or_rotate'
+        && String(activeAudienceDecision?.status || '').trim().toLowerCase() === 'open'
+    );
+    const oneMinuteMicModeStatusLabel = oneMinuteMicVoteLive
+        ? 'Vote Live Now'
+        : oneMinuteMicRotateFadeActive
+            ? 'Wrapping With Crowd'
+            : 'Crowd Decides At 1:00';
+
+    useEffect(() => {
+        if (isMarketingDemoFixture || !roomCode) return undefined;
+        const oneMinuteMicEnabled = room?.oneMinuteMicEnabled === true
+            || String(room?.performanceProgressionMode || '').trim().toLowerCase() === 'one_minute_mic';
+        if (!oneMinuteMicEnabled) return undefined;
+        if (String(room?.activeMode || '').trim().toLowerCase() !== 'karaoke') return undefined;
+
+        const decision = room?.audienceDecision && typeof room.audienceDecision === 'object' ? room.audienceDecision : null;
+        const decisionType = String(decision?.type || '').trim().toLowerCase();
+        const decisionStatus = String(decision?.status || '').trim().toLowerCase();
+        let targetMs = 0;
+        let syncPhase = '';
+        let syncSubject = '';
+
+        const automationCommand = room?.audienceAutomationCommand && typeof room.audienceAutomationCommand === 'object'
+            ? room.audienceAutomationCommand
+            : null;
+        if (
+            String(automationCommand?.source || '').trim().toLowerCase() === 'one_minute_mic'
+            && String(automationCommand?.action || '').trim().toLowerCase() === 'finish_performance'
+            && String(automationCommand?.status || '').trim().toLowerCase() === 'fade_pending'
+        ) {
+            targetMs = Math.max(0, Number(automationCommand?.fadeEndsAtMs || 0) || 0);
+            syncPhase = 'fade';
+            syncSubject = String(automationCommand?.id || automationCommand?.songId || '').trim();
+        } else if (['continue_or_rotate', 'skip_performance'].includes(decisionType) && decisionStatus === 'open') {
+            targetMs = Math.max(0, Number(decision?.closesAtMs || 0) || 0);
+            syncPhase = 'resolve';
+            syncSubject = String(decision?.id || decision?.subjectSongId || '').trim();
+        } else {
+            const currentSongId = String(current?.id || '').trim();
+            if (!currentSongId) return undefined;
+            const sessionSongId = String(room?.currentPerformanceSession?.songId || '').trim();
+            const metaSongId = String(room?.currentPerformanceMeta?.songId || '').trim();
+            const startedAtMs = Math.max(
+                sessionSongId === currentSongId ? Number(room?.currentPerformanceSession?.startedAtMs || 0) || 0 : 0,
+                metaSongId === currentSongId ? Number(room?.currentPerformanceMeta?.startedAtMs || 0) || 0 : 0,
+                getTimestampMs(current?.performingStartedAt),
+                getTimestampMs(current?.timestamp)
+            );
+            if (!startedAtMs) return undefined;
+            const openingWindowSec = Math.max(15, Math.min(180, Math.round(Number(room?.oneMinuteMicOpeningWindowSec || 60) || 60)));
+            targetMs = startedAtMs + (openingWindowSec * 1000);
+            syncPhase = 'open';
+            syncSubject = currentSongId + ':' + (String(room?.currentPerformanceSession?.sessionId || '').trim() || startedAtMs) + ':' + targetMs;
+            if (String(room?.oneMinuteMicLastDecisionKey || '').trim() === syncSubject) return undefined;
+        }
+
+        if (!targetMs || !syncPhase) return undefined;
+        const syncKey = `${syncPhase}:${syncSubject}:${targetMs}`;
+        const runSync = () => {
+            if (oneMinuteMicSyncKeyRef.current === syncKey) return;
+            oneMinuteMicSyncKeyRef.current = syncKey;
+            callFunction('syncOneMinuteMicRoom', { roomCode })
+                .catch((error) => {
+                    tvLogger.error('One-Minute Mic backend sync failed', error);
+                    oneMinuteMicSyncKeyRef.current = '';
+                });
+        };
+
+        const delayMs = Math.max(0, targetMs - nowMs() + 180);
+        if (delayMs <= 500) {
+            runSync();
+            return undefined;
+        }
+        const timer = setTimeout(runSync, Math.min(delayMs, 30 * 60 * 1000));
+        return () => clearTimeout(timer);
+    }, [
+        current?.id,
+        current?.performingStartedAt,
+        current?.timestamp,
+        isMarketingDemoFixture,
+        room?.activeMode,
+        room?.audienceDecision,
+        room?.currentPerformanceMeta?.songId,
+        room?.currentPerformanceMeta?.startedAtMs,
+        room?.currentPerformanceSession?.sessionId,
+        room?.currentPerformanceSession?.songId,
+        room?.currentPerformanceSession?.startedAtMs,
+        room?.oneMinuteMicEnabled,
+        room?.oneMinuteMicLastDecisionKey,
+        room?.oneMinuteMicOpeningWindowSec,
+        room?.audienceAutomationCommand,
+        room?.performanceProgressionMode,
+        roomCode
+    ]);
+
     const selfServeIdleAttractVisible = !!(
         selfServeMode
         && room?.activeMode === 'karaoke'
@@ -8516,6 +8747,17 @@ const PublicTV = ({ roomCode }) => {
             
             {multiplier >= 4 && <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,#000_120%)] opacity-50 mix-blend-overlay pointer-events-none"></div>}
 
+            {room?.popTriviaEnabled === true && hasActivePopTriviaPanel && (
+                <div data-feature-id="tv-pop-trivia-active-beacon" className="absolute top-3 right-3 md:top-5 md:right-5 z-[128] pointer-events-none">
+                    <div className={`rounded-full border px-4 py-2 md:px-5 md:py-2.5 shadow-[0_14px_38px_rgba(0,0,0,0.34)] backdrop-blur-xl ${popTriviaQuestion ? 'border-cyan-200/55 bg-cyan-500/18 text-cyan-50' : 'border-emerald-200/50 bg-emerald-500/18 text-emerald-50'}`}>
+                        <div className="flex items-center gap-2 text-[11px] md:text-[13px] font-black uppercase tracking-[0.2em]">
+                            <span>{popTriviaQuestion ? 'Pop-up Trivia Live' : 'Pop-up Trivia Results'}</span>
+                            <span className="font-mono tracking-normal">{popTriviaQuestion ? `${Math.max(0, Number(popTriviaState?.timeLeftSec || 0))}s` : 'recap'}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {!isCinema && hasActivePopTriviaPanel && (
                 <div className="absolute inset-y-3 left-3 right-3 md:inset-y-5 md:left-auto md:right-5 md:w-[min(46vw,920px)] 2xl:inset-y-8 2xl:right-8 z-[125] pointer-events-none">
                     <div
@@ -8633,14 +8875,21 @@ const PublicTV = ({ roomCode }) => {
                                     </div>
                                 </>
                             ) : (
-                                <div className="px-5 py-6 md:px-7 md:py-8 flex min-h-0 flex-1 flex-col">
-                                    <div className="text-[12px] md:text-[14px] uppercase tracking-[0.22em] text-emerald-100/90">Correct answer</div>
-                                    <div className="mt-3 rounded-[1.8rem] border border-emerald-300/30 bg-emerald-400/12 px-5 py-5 md:px-6 md:py-6">
+                                <div className="relative overflow-hidden px-5 py-6 md:px-7 md:py-8 flex min-h-0 flex-1 flex-col">
+                                                                        {popTriviaRevealHasWinners ? (
+                                        <div data-feature-id="tv-pop-trivia-winner-burst" className="pointer-events-none absolute inset-0 opacity-90">
+                                            <div className="absolute -top-24 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-emerald-300/24 blur-3xl animate-pulse" />
+                                            <div className="absolute right-8 top-8 h-24 w-24 rounded-full border border-yellow-200/40 bg-yellow-300/10 animate-ping" />
+                                            <div className="absolute bottom-10 left-8 h-28 w-28 rounded-full border border-cyan-200/30 bg-cyan-300/10 animate-pulse" />
+                                        </div>
+                                    ) : null}
+                                    <div className="relative z-10 text-[12px] md:text-[14px] uppercase tracking-[0.22em] text-emerald-100/90">Correct answer</div>
+                                    <div className="relative z-10 mt-3 rounded-[1.8rem] border border-emerald-300/30 bg-emerald-400/12 px-5 py-5 md:px-6 md:py-6">
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="min-w-0">
                                                 <div className="text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-emerald-100/75">Winning choice</div>
                                                 <div className="mt-2 text-[2rem] md:text-[3rem] 2xl:text-[3.5rem] font-black text-white leading-[0.96]">
-                                                    {popTriviaRevealCorrectOption || 'Answer reveal unavailable'}
+                                                    {popTriviaDisplayCorrectOption || 'Answer reveal unavailable'}
                                                 </div>
                                             </div>
                                             <div className="shrink-0 rounded-full border border-emerald-200/40 bg-emerald-300/18 px-4 py-2 text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-emerald-50">
@@ -8648,7 +8897,7 @@ const PublicTV = ({ roomCode }) => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="mt-4 rounded-[1.6rem] border border-fuchsia-300/24 bg-[linear-gradient(135deg,rgba(168,85,247,0.16),rgba(34,211,238,0.08))] px-5 py-4 md:px-6 md:py-5 shadow-[0_0_28px_rgba(168,85,247,0.14)]">
+                                    <div className="relative z-10 mt-4 rounded-[1.6rem] border border-yellow-200/30 bg-[linear-gradient(135deg,rgba(250,204,21,0.16),rgba(16,185,129,0.12),rgba(34,211,238,0.08))] px-5 py-4 shadow-[0_0_34px_rgba(250,204,21,0.16)] md:px-6 md:py-5">
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="min-w-0">
                                                 <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-fuchsia-100/80">Round resolution</div>
@@ -8673,17 +8922,17 @@ const PublicTV = ({ roomCode }) => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="mt-5 flex items-center justify-between gap-4">
+                                    <div className="relative z-10 mt-5 flex items-center justify-between gap-4">
                                         <div>
                                             <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-emerald-100/75">Correct responders</div>
                                             <div className="mt-1 text-[1.3rem] md:text-[2rem] font-black text-white leading-none">
-                                                {popTriviaRevealCorrectResponders.length > 0
-                                                    ? `${popTriviaRevealCorrectResponders.length} nailed it`
+                                                {popTriviaDisplayCorrectResponders.length > 0
+                                                    ? `${popTriviaDisplayCorrectResponders.length} nailed it`
                                                     : 'No correct answers yet'}
                                             </div>
-                                            {popTriviaCorrectPoints > 0 && popTriviaRevealAwardableResponders.length > 0 ? (
+                                            {popTriviaCorrectPoints > 0 && popTriviaRevealWinnerCount > 0 ? (
                                                 <div className="mt-2 text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-emerald-100/75">
-                                                    {`${popTriviaRevealAwardableResponders.length} credited at +${popTriviaCorrectPoints} pts`}
+                                                    {`${popTriviaRevealWinnerCount} credited at +${popTriviaCorrectPoints} pts`}
                                                 </div>
                                             ) : null}
                                         </div>
@@ -8692,15 +8941,19 @@ const PublicTV = ({ roomCode }) => {
                                             <div className="mt-1 text-[1.35rem] md:text-[2rem] font-black text-white leading-none">{popTriviaRevealAnswerCount}</div>
                                         </div>
                                     </div>
-                                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
-                                        {popTriviaRevealCorrectResponders.length > 0 ? (
-                                            popTriviaRevealCorrectResponders.map((entry) => (
+                                    <div className="relative z-10 mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+                                        {popTriviaDisplayCorrectResponders.length > 0 ? (
+                                            popTriviaDisplayCorrectResponders.map((entry) => (
                                                 <div
                                                     key={entry.id}
-                                                    className="rounded-[1.4rem] border border-white/12 bg-black/28 px-4 py-4 md:px-5 md:py-5"
+                                                    data-feature-id="tv-pop-trivia-winner-card"
+                                                    className="relative overflow-hidden rounded-[1.4rem] border border-yellow-200/35 bg-[linear-gradient(135deg,rgba(250,204,21,0.16),rgba(16,185,129,0.12),rgba(0,0,0,0.34))] px-4 py-4 shadow-[0_0_24px_rgba(250,204,21,0.14)] md:px-5 md:py-5"
                                                 >
+                                                    <div className="absolute right-3 top-3 rounded-full border border-yellow-100/35 bg-black/28 px-2.5 py-1 text-[10px] md:text-[12px] font-black uppercase tracking-[0.14em] text-yellow-50">
+                                                        {entry.points > 0 ? `+${entry.points}` : 'Winner'}
+                                                    </div>
                                                     <div className="text-[1.8rem] md:text-[2.4rem] leading-none">{entry.avatar}</div>
-                                                    <div className="mt-2 text-[1.05rem] md:text-[1.45rem] font-black text-white leading-tight break-words">
+                                                    <div className="mt-2 pr-14 text-[1.05rem] md:text-[1.45rem] font-black text-white leading-tight break-words">
                                                         {entry.name}
                                                     </div>
                                                 </div>
@@ -8812,7 +9065,7 @@ const PublicTV = ({ roomCode }) => {
                                 </div>
                             </div>
                         )}
-                        {room?.activeMode === 'selfie_cam' ? (
+                        {selfieCamTvVisible ? (
                             <div className="absolute inset-0 z-50 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.24),rgba(0,0,0,0)_32%),radial-gradient(circle_at_82%_18%,rgba(34,211,238,0.18),rgba(0,0,0,0)_22%),linear-gradient(180deg,rgba(3,7,18,0.76),rgba(2,6,23,0.9))]">
                                 <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),transparent_34%,rgba(255,255,255,0.03))]" />
                                 <div className="absolute left-1/2 top-1/2 h-[54vw] w-[54vw] max-h-[640px] max-w-[640px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/18 bg-cyan-300/8 blur-3xl" />
@@ -8895,7 +9148,8 @@ const PublicTV = ({ roomCode }) => {
                                     room={{
                                         ...(room || {}),
                                         roomCode,
-                                        joinUrlLabel: marketingJoinBase
+                                        joinUrlLabel: marketingJoinBase,
+                                        videoVolume: oneMinuteMicRotateFadeActive ? oneMinuteMicStageVideoVolume : room?.videoVolume
                                     }}
                                     current={current}
                                     started={started}
@@ -8906,6 +9160,32 @@ const PublicTV = ({ roomCode }) => {
                                     runOfShowHud={runOfShowHud}
                                     onPlaybackEvent={reportPerformanceSessionPlayback}
                                 />
+                                {oneMinuteMicContinueCueVisible ? (
+                                    <div className="pointer-events-none fixed inset-0 z-[193] flex items-start justify-center px-6 pt-10 text-white">
+                                        <div className="rounded-full border border-cyan-200/35 bg-black/65 px-7 py-4 text-center shadow-[0_24px_80px_rgba(34,211,238,0.28)] backdrop-blur-md animate-in fade-in zoom-in duration-300">
+                                            <div className="text-xs font-black uppercase tracking-[0.32em] text-cyan-200">Crowd Unlocked It</div>
+                                            <div className="mt-1 font-bebas text-[clamp(2rem,4vw,4.5rem)] leading-none text-white">Keep Singing</div>
+                                        </div>
+                                    </div>
+                                ) : null}
+                                {oneMinuteMicRotateFadeActive ? (
+                                    <div className="pointer-events-none fixed inset-0 z-[193] flex items-center justify-center bg-black/35 px-6 text-center text-white backdrop-blur-[1px] animate-in fade-in duration-300">
+                                        <div className="max-w-4xl rounded-[2rem] border border-pink-200/30 bg-black/68 px-8 py-6 shadow-[0_28px_90px_rgba(236,72,153,0.25)]">
+                                            <div className="text-sm font-black uppercase tracking-[0.32em] text-pink-200">Crowd Picked Next Singer</div>
+                                            <div className="mt-2 font-bebas text-[clamp(2.8rem,7vw,7rem)] leading-none text-white">Wrapping The Minute</div>
+                                        </div>
+                                    </div>
+                                ) : null}
+                                {tvReleaseWindowGlassOverlayVisible ? (
+                                    <RunOfShowReleaseWindowOverlay
+                                        roomCode={roomCode}
+                                        releaseWindow={activeReleaseWindow}
+                                        songs={songs}
+                                        roles={room?.runOfShowRoles || {}}
+                                        nowValue={takeoverNowMs}
+                                        displayMode="glass_overlay"
+                                    />
+                                ) : null}
                             </>
                         )}
                     </div>
@@ -8917,6 +9197,12 @@ const PublicTV = ({ roomCode }) => {
                 {!isCinema && !guitarTakeoverMode && (
                     <div className={`${sidebarAreaSpanClass} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden transition-all duration-500`}>
                         {renderJoinOverlayCard()}
+                         {oneMinuteMicRoomModeActive && (
+                            <div className={`px-3 py-2 rounded-2xl bg-black/72 border ${oneMinuteMicVoteLive ? 'border-emerald-300/45 text-emerald-100 shadow-[0_0_28px_rgba(16,185,129,0.22)]' : 'border-cyan-300/35 text-cyan-100'} text-sm md:text-base font-bold tracking-[0.14em] uppercase flex items-center justify-center gap-2`}>
+                                <i className="fa-solid fa-microphone-lines"></i>
+                                One-Minute Mic: {oneMinuteMicModeStatusLabel}
+                            </div>
+                         )}
                          {room?.bouncerMode && (
                             <div className="px-3 py-2 rounded-2xl bg-black/70 border border-red-400/45 text-red-200 text-sm md:text-base font-bold tracking-[0.14em] uppercase flex items-center justify-center gap-2">
                                 <i className="fa-solid fa-lock"></i>
@@ -9243,7 +9529,7 @@ const PublicTV = ({ roomCode }) => {
                 )}
             </div>
 
-            {room?.activeMode === 'selfie_challenge' && (
+            {selfieChallengeTvVisible && (
                 <div data-feature-id="tv-selfie-challenge" className="absolute inset-0 z-[120] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.22),rgba(0,0,0,0)_34%),radial-gradient(circle_at_20%_0%,rgba(236,72,153,0.24),rgba(0,0,0,0)_30%),linear-gradient(180deg,rgba(2,6,23,0.82),rgba(1,3,10,0.94))] backdrop-blur-sm flex flex-col p-4 md:p-6 2xl:p-10">
                     <div className="absolute inset-0 pointer-events-none opacity-75" aria-hidden="true">
                         <div className="selfie-grid-sheen absolute inset-x-0 top-0 h-[45%]" />
@@ -9408,7 +9694,7 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                         </div>
                     )}
-                    {room?.selfieChallenge?.status === 'ended' && room?.selfieChallenge?.winner && (!room?.selfieChallenge?.winnerExpiresAt || nowMs() < room.selfieChallenge.winnerExpiresAt) && (
+                    {room?.selfieChallenge?.status === 'ended' && room?.selfieChallenge?.winner && (!selfieWinnerExpiresAtMs || takeoverNowMs < selfieWinnerExpiresAtMs) && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                             <div className="bg-zinc-900 border border-[#00C4D9]/40 rounded-3xl p-4 md:p-8 text-center shadow-2xl">
                                 <div className="text-xs uppercase tracking-[0.4em] text-zinc-500">Winner</div>
@@ -10360,7 +10646,7 @@ const PublicTV = ({ roomCode }) => {
 
             {/* Reactions */}
             <div className={`absolute inset-0 ${applauseOverlayVisible ? 'z-[285]' : 'z-[200]'} pointer-events-none overflow-hidden`}>
-                {reactions.map(r => {
+                {reactions.filter((r) => !r.audienceDisplaySessionId).map(r => {
                     const reactionTheme = getTvReactionThemeKey(r.type);
                     return (
                         <div
@@ -10412,7 +10698,7 @@ const PublicTV = ({ roomCode }) => {
                                             {r.labelOverride || getTvReactionLabel(r.type)}
                                             {Number(r.burstCount || 1) > 1 ? ` x${Number(r.burstCount || 1)}` : ''}
                                         </div>
-                                        {Number(r.points || 0) > 0 && (
+                                        {Number(r.points || 0) > 0 && !r.spotlightSessionId && (
                                             <div className={`reaction-points-chip px-3 py-1 rounded-full text-[11px] md:text-sm font-semibold ${r.isVip ? 'text-yellow-200/90 bg-yellow-400/12 border border-yellow-300/35' : 'text-zinc-200 bg-white/8 border border-white/12'}`}>
                                                 +{r.points || 0} pts
                                             </div>
@@ -10424,6 +10710,59 @@ const PublicTV = ({ roomCode }) => {
                     );
                 })}
             </div>
+
+            {commentatorRowVisible && (
+                <div data-tv-audience-commentator-row className="pointer-events-none absolute inset-x-2 bottom-2 z-[245] md:inset-x-6 md:bottom-5">
+                    <div className="mx-auto flex max-w-[min(1180px,97vw)] items-end justify-center gap-2 rounded-[1.45rem] border border-white/18 bg-[linear-gradient(180deg,rgba(5,10,18,0.88),rgba(3,7,12,0.96))] px-2.5 py-2.5 shadow-[0_18px_70px_rgba(0,0,0,0.58),0_0_34px_rgba(34,211,238,0.12)] backdrop-blur-xl md:gap-3 md:rounded-[1.9rem] md:px-4">
+                        <div className="hidden min-w-[8rem] shrink-0 text-left md:block">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/24 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.9)]" />{audienceDisplayMeta.label}</div>
+                            <div className="mt-1.5 text-xs font-semibold text-zinc-300">Live lower-third</div>
+                        </div>
+                        <div className="flex min-w-0 flex-1 justify-center gap-2 md:gap-3">
+                            {audienceDisplaySelectedUsers.slice(0, audienceDisplay.maxVisible).map((entry) => {
+                                const displayUid = resolveRoomUserUid(entry);
+                                const latestReaction = audienceDisplayReactionByUid.get(displayUid) || null;
+                                const latestReactionMeta = latestReaction ? getAudienceDisplayCommentatorReactionMeta(latestReaction.type) : null;
+                                return (
+                                    <div key={displayUid || entry.id} className="relative flex min-w-0 flex-1 max-w-[12.5rem] flex-col items-center overflow-visible rounded-[1.1rem] border border-white/14 bg-[linear-gradient(180deg,rgba(20,30,45,0.86),rgba(7,10,16,0.94))] px-2 py-2.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.10)] md:rounded-[1.35rem] md:px-3">
+                                        {latestReaction && (
+                                            <div className="absolute -top-16 left-1/2 flex min-w-[7.5rem] -translate-x-1/2 flex-col items-center rounded-[1.1rem] border border-amber-200/40 bg-[linear-gradient(135deg,rgba(251,191,36,0.20),rgba(8,13,24,0.94))] px-3 py-2 shadow-[0_0_34px_rgba(251,191,36,0.24),0_12px_34px_rgba(0,0,0,0.48)]">
+                                                <div className="inline-flex items-center gap-2 rounded-full border border-white/14 bg-black/36 px-2.5 py-1 text-[0.72rem] font-black uppercase tracking-[0.2em] text-white md:text-[0.9rem]">
+                                                    {latestReactionMeta?.iconClass ? <i className={`fa-solid ${latestReactionMeta.iconClass}`}></i> : null}
+                                                    <span>{latestReactionMeta?.tvToken || latestReactionMeta?.shortLabel || 'LIVE'}</span>
+                                                </div>
+                                                <div className="mt-1 max-w-[7.5rem] truncate text-[9px] font-black uppercase tracking-[0.14em] text-amber-100">{latestReactionMeta?.label || latestReaction.labelOverride || getTvReactionLabel(latestReaction.type)}</div>
+                                            </div>
+                                        )}
+                                        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/18 bg-black/38 text-2xl shadow-[0_0_20px_rgba(34,211,238,0.12)] md:h-14 md:w-14 md:text-3xl">{entry.avatar || EMOJI.star}</div>
+                                        <div className="mt-1 max-w-full truncate text-[11px] font-black text-white md:text-sm">{entry.name || 'Guest'}</div>
+                                        <div className="hidden text-[9px] font-black uppercase tracking-[0.16em] text-zinc-300 sm:block">Commentator</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {lobbyWallVisible && !commentatorRowVisible && (
+                <div data-tv-audience-lobby-wall className="pointer-events-none absolute inset-x-3 bottom-3 z-[232] md:inset-x-6 md:bottom-5">
+                    <div className="mx-auto max-w-[min(1180px,96vw)] rounded-[1.75rem] border border-white/14 bg-black/68 px-3 py-3 shadow-[0_20px_60px_rgba(0,0,0,0.36)] backdrop-blur-md">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Lobby Wall</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">{roomUsers.length} in room</div>
+                        </div>
+                        <div className="grid grid-cols-6 gap-1.5 md:grid-cols-12 md:gap-2">
+                            {lobbyWallUsers.map((entry) => (
+                                <div key={resolveRoomUserUid(entry) || entry.id || entry.name} className="flex min-w-0 flex-col items-center rounded-xl border border-white/10 bg-zinc-950/64 px-1.5 py-2">
+                                    <div className="text-xl leading-none md:text-2xl">{entry.avatar || EMOJI.star}</div>
+                                    <div className="mt-1 max-w-full truncate text-[9px] font-bold text-zinc-100 md:text-[10px]">{entry.name || 'Guest'}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {tvExploreEnabled && (
                 <div className="absolute left-3 bottom-3 md:left-5 md:bottom-5 z-[245] pointer-events-auto">
@@ -10543,7 +10882,7 @@ const PublicTV = ({ roomCode }) => {
                 68% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.72), calc(var(--reaction-rise-y, 96px) * -0.38), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.62)); }
                 100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 1.22), calc(var(--reaction-rise-y, 96px) * -0.72), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
               }
-              @keyframes points-burst { 0% { opacity: 0; transform: translateY(12px) scale(0.55); } 22% { opacity: 1; transform: translateY(-2px) scale(1.12); } 70% { opacity: 0.86; } 100% { opacity: 0; transform: translateY(-34px) scale(1.45); } }
+              @keyframes points-burst { 0% { opacity: 0; transform: translate3d(0, 18px, 0) scale(0.42) rotate(0deg); } 14% { opacity: 1; transform: translate3d(var(--burst-pop-x, 0px), -8px, 0) scale(1.32) rotate(24deg); } 42% { opacity: 0.95; transform: translate3d(calc(var(--burst-x, 0px) * 0.38), -28px, 0) scale(1.05) rotate(96deg); } 78% { opacity: 0.74; } 100% { opacity: 0; transform: translate3d(var(--burst-x, 0px), -82px, 0) scale(1.82) rotate(210deg); } }
               @keyframes applause-meter-aurora { 0%, 100% { transform: translate3d(-2%, 0, 0) scale(1); opacity: 0.72; } 50% { transform: translate3d(2%, -1%, 0) scale(1.04); opacity: 0.94; } }
               @keyframes applause-meter-beam-sweep { 0% { opacity: 0; transform: translateX(-24vw) rotate(var(--beam-tilt, -8deg)); } 20% { opacity: 0.5; } 78% { opacity: 0.32; } 100% { opacity: 0; transform: translateX(28vw) rotate(var(--beam-tilt, -8deg)); } }
               @keyframes applause-meter-spark-rise { 0% { opacity: 0; transform: translate3d(0, 22px, 0) scale(0.62) rotate(0deg); } 18% { opacity: 0.95; } 100% { opacity: 0; transform: translate3d(var(--spark-x, 0px), -110px, 0) scale(1.08) rotate(var(--spark-rot, 18deg)); } }
@@ -10553,10 +10892,11 @@ const PublicTV = ({ roomCode }) => {
               @keyframes applause-front-pulse { 0%, 100% { opacity: 0.68; transform: translateX(-3px) scaleY(0.92); } 48% { opacity: 1; transform: translateX(5px) scaleY(1.12); } }
               @keyframes applause-spark-fly { 0% { opacity: 0; transform: translate3d(-14px, 12px, 0) scale(0.68); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate3d(32px, -28px, 0) scale(1.18); } }
               @keyframes applause-number-flare { 0%, 100% { text-shadow: 0 0 18px rgba(251,191,36,0.52), 0 0 36px rgba(34,211,238,0.18); } 50% { text-shadow: 0 0 30px rgba(251,191,36,0.88), 0 0 58px rgba(248,113,113,0.5), 0 0 80px rgba(34,211,238,0.28); } }
-              @keyframes score-charge-hit { 0% { transform: scale(1); filter: brightness(1); } 24% { transform: scale(1.1); filter: brightness(1.55) saturate(1.2); } 58% { transform: scale(1.02); filter: brightness(1.28) saturate(1.3); } 100% { transform: scale(1); filter: brightness(1); } }
+              @keyframes score-charge-hit { 0% { transform: scale(1); filter: brightness(1); } 12% { transform: scale(1.13); filter: brightness(1.8) saturate(1.45); } 34% { transform: scale(1.055); filter: brightness(1.5) saturate(1.42); } 62% { transform: scale(1.025); filter: brightness(1.28) saturate(1.26); } 100% { transform: scale(1); filter: brightness(1); } }
               @keyframes score-charge-scan { 0% { transform: translateX(-120%) skewX(-14deg); opacity: 0; } 20% { opacity: 0.72; } 100% { transform: translateX(160%) skewX(-14deg); opacity: 0; } }
-              @keyframes score-delta-rise { 0% { opacity: 0; transform: translateY(16px) scale(0.72); } 18% { opacity: 1; transform: translateY(-6px) scale(1.18); } 68% { opacity: 1; transform: translateY(-18px) scale(1.12); } 100% { opacity: 0; transform: translateY(-46px) scale(1.34); } }
-              @keyframes score-number-flare { 0%, 100% { text-shadow: 0 0 18px rgba(251,191,36,0.52), 0 0 32px rgba(34,211,238,0.18); } 50% { text-shadow: 0 0 28px rgba(251,191,36,0.82), 0 0 52px rgba(248,113,113,0.45), 0 0 70px rgba(34,211,238,0.28); } }
+              @keyframes score-delta-rise { 0% { opacity: 0; transform: translate3d(10px, 22px, 0) scale(0.62) rotate(-5deg); filter: brightness(0.75); } 12% { opacity: 1; transform: translate3d(0, -10px, 0) scale(1.32) rotate(2deg); filter: brightness(1.75); } 34% { opacity: 1; transform: translate3d(-8px, -18px, 0) scale(1.18) rotate(-1deg); filter: brightness(1.35); } 76% { opacity: 0.96; transform: translate3d(-14px, -34px, 0) scale(1.08) rotate(1deg); } 100% { opacity: 0; transform: translate3d(-20px, -76px, 0) scale(1.52) rotate(4deg); filter: brightness(1.05); } }
+              @keyframes score-number-flare { 0%, 100% { text-shadow: 0 0 18px rgba(251,191,36,0.52), 0 0 32px rgba(34,211,238,0.18); } 45% { text-shadow: 0 0 34px rgba(251,191,36,0.94), 0 0 64px rgba(248,113,113,0.56), 0 0 88px rgba(34,211,238,0.34); } }
+              @keyframes score-flourish-ring { 0% { opacity: 0; transform: scale(0.72); } 12% { opacity: 0.9; transform: scale(1.04); } 56% { opacity: 0.42; transform: scale(1.32); } 100% { opacity: 0; transform: scale(1.72); } }
               @keyframes recap-score-arrival-pop { 0% { opacity: 0; transform: translateY(72px) scale(0.62) rotate(-5deg); filter: brightness(0.62) saturate(0.7); } 26% { opacity: 1; transform: translateY(-22px) scale(1.2) rotate(2.4deg); filter: brightness(1.85) saturate(1.65); } 48% { opacity: 1; transform: translateY(8px) scale(0.96) rotate(-1deg); filter: brightness(1.3) saturate(1.32); } 72% { opacity: 1; transform: translateY(-3px) scale(1.035) rotate(0.4deg); filter: brightness(1.18) saturate(1.18); } 100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); filter: brightness(1); } }
               @keyframes recap-score-shimmer { 0% { transform: translateX(-145%) skewX(-18deg); opacity: 0; } 18% { opacity: 0.9; } 54% { opacity: 0.58; } 100% { transform: translateX(190%) skewX(-18deg); opacity: 0; } }
               @keyframes recap-prism-pulse { 0% { opacity: 0; transform: scale(0.8) rotate(0deg); } 24% { opacity: 0.88; transform: scale(1.08) rotate(18deg); } 62% { opacity: 0.46; transform: scale(1.18) rotate(42deg); } 100% { opacity: 0; transform: scale(1.28) rotate(72deg); } }
@@ -10985,7 +11325,7 @@ const PublicTV = ({ roomCode }) => {
                 z-index: 1;
               }
               .motion-safe-fx .tv-score-charge-scan { animation: score-charge-scan 2.4s ease-in-out infinite; }
-              .motion-safe-fx .tv-score-charge-pulse { animation: score-charge-hit 0.78s cubic-bezier(0.2, 0.75, 0.26, 1.25); }
+              .motion-safe-fx .tv-score-charge-pulse { animation: score-charge-hit 2.05s cubic-bezier(0.16, 0.82, 0.2, 1) both; }
               .tv-score-charge-meter {
                 position: absolute;
                 left: 0;
@@ -11034,15 +11374,28 @@ const PublicTV = ({ roomCode }) => {
                 -webkit-background-clip: text;
                 color: transparent;
                 font-weight: 900;
-                font-size: clamp(1.1rem, 2vw, 1.85rem);
-                text-shadow: 0 0 16px rgba(250,204,21,0.76), 0 0 28px rgba(248,113,113,0.46);
+                font-size: clamp(1.55rem, 3.2vw, 3rem);
+                text-shadow: 0 0 18px rgba(250,204,21,0.92), 0 0 34px rgba(248,113,113,0.58), 0 0 52px rgba(34,211,238,0.32);
               }
-              .motion-safe-fx .tv-score-delta { animation: score-delta-rise 1.55s ease-out both; }
-              .points-burst { position: absolute; width: 8px; height: 8px; border-radius: 9999px; background: #facc15; box-shadow: 0 0 12px rgba(250, 204, 21, 0.7); animation: points-burst 1.2s ease-out forwards; }
-              .points-burst-a { top: -6px; left: 18px; }
-              .points-burst-b { top: 6px; right: 10px; background: #22d3ee; box-shadow: 0 0 12px rgba(34, 211, 238, 0.7); }
-              .points-burst-c { bottom: -4px; left: 40px; background: #f472b6; box-shadow: 0 0 12px rgba(244, 114, 182, 0.7); }
-              .points-burst-d { bottom: 8px; right: 42px; background: #fb7185; box-shadow: 0 0 14px rgba(248, 113, 113, 0.72); }
+              .motion-safe-fx .tv-score-delta { animation: score-delta-rise 2.35s cubic-bezier(0.16, 0.86, 0.18, 1) both; }
+              .tv-score-flourish-ring {
+                position: absolute;
+                inset: -18%;
+                z-index: 4;
+                border-radius: 9999px;
+                border: 2px solid rgba(250,204,21,0.34);
+                background: radial-gradient(circle, rgba(250,204,21,0.18), rgba(244,114,182,0.1) 44%, rgba(34,211,238,0.08) 62%, transparent 72%);
+                box-shadow: 0 0 34px rgba(250,204,21,0.26), 0 0 62px rgba(34,211,238,0.16);
+                pointer-events: none;
+              }
+              .motion-safe-fx .tv-score-flourish-ring { animation: score-flourish-ring 2.35s ease-out both; }
+              .points-burst { position: absolute; width: 11px; height: 11px; border-radius: 9999px; background: #facc15; box-shadow: 0 0 14px rgba(250, 204, 21, 0.78), 0 0 28px rgba(250, 204, 21, 0.34); animation: points-burst 2.2s cubic-bezier(0.16, 0.82, 0.2, 1) forwards; }
+              .points-burst-a { top: -6px; left: 18px; --burst-x: -34px; --burst-pop-x: -6px; }
+              .points-burst-b { top: 6px; right: 10px; --burst-x: 42px; --burst-pop-x: 8px; background: #22d3ee; box-shadow: 0 0 16px rgba(34, 211, 238, 0.78), 0 0 30px rgba(34, 211, 238, 0.36); animation-delay: 80ms; }
+              .points-burst-c { bottom: -4px; left: 40px; --burst-x: -18px; --burst-pop-x: -4px; background: #f472b6; box-shadow: 0 0 16px rgba(244, 114, 182, 0.78), 0 0 32px rgba(244, 114, 182, 0.34); animation-delay: 150ms; }
+              .points-burst-d { bottom: 8px; right: 42px; --burst-x: 28px; --burst-pop-x: 6px; background: #fb7185; box-shadow: 0 0 18px rgba(248, 113, 113, 0.82), 0 0 34px rgba(248, 113, 113, 0.36); animation-delay: 220ms; }
+              .points-burst-e { top: 30%; left: 50%; --burst-x: -48px; --burst-pop-x: -10px; width: 7px; height: 7px; background: #fef3c7; box-shadow: 0 0 18px rgba(254,243,199,0.86), 0 0 34px rgba(250,204,21,0.36); animation-delay: 310ms; }
+              .points-burst-f { top: 48%; right: 24%; --burst-x: 54px; --burst-pop-x: 12px; width: 7px; height: 7px; background: #67e8f9; box-shadow: 0 0 18px rgba(103,232,249,0.82), 0 0 34px rgba(34,211,238,0.34); animation-delay: 390ms; }
               .tv-hype-meter {
                 background:
                   linear-gradient(180deg, rgba(8,13,28,0.9), rgba(4,8,18,0.78)),
@@ -11114,6 +11467,7 @@ const PublicTV = ({ roomCode }) => {
               .public-tv:not(.motion-safe-fx) .tv-score-charge-scan,
               .public-tv:not(.motion-safe-fx) .tv-score-charge-pulse,
               .public-tv:not(.motion-safe-fx) .tv-score-delta,
+              .public-tv:not(.motion-safe-fx) .tv-score-flourish-ring,
               .public-tv:not(.motion-safe-fx) .tv-hype-meter-fill,
               .public-tv:not(.motion-safe-fx) .tv-hype-meter-charge-front,
               .public-tv:not(.motion-safe-fx) .tv-hype-meter-sparks span {

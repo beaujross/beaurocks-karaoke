@@ -276,7 +276,6 @@ const MusicalMomentsGame = ({ isPlayer, roomCode, gameState, playerData, user, v
     const allTimingStats = buildTimingStats(scoredTaps, cue);
     const momentReveal = buildMomentReveal({ timingStats, vocalLift });
     const momentSpotlight = buildMomentSpotlight(scoredTaps, currentLoopIndex);
-    const timingTotal = Math.max(1, timingStats.total);
     const averageOffsetLabel = timingStats.total
         ? `${timingStats.averageOffsetMs > 0 ? '+' : ''}${timingStats.averageOffsetMs}ms`
         : '--';
@@ -285,14 +284,15 @@ const MusicalMomentsGame = ({ isPlayer, roomCode, gameState, playerData, user, v
         : '0ms';
     const beatPhase = buildBeatPhase({ phaseMs, targetMs, mysteryStartMs: cue.mysteryStartSec * 1000, loopMs, hitWindowMs: cue.hitWindowMs });
     const revealFeedbackActive = beatPhase.stage === 'reveal' || (phaseMs > targetMs + cue.hitWindowMs && phaseMs < loopMs - 320);
-                    <div className={`text-[clamp(3.4rem,10vw,10rem)] font-black leading-none ${revealFeedbackActive ? 'text-pink-100' : 'text-white'}`}>{blindListenCallout}</div>
+    const blindListenCallout = revealFeedbackActive
         ? 'HOW DID IT LAND?'
         : beatPhase.stage === 'mystery' || beatPhase.stage === 'tap_now'
             ? 'SILENCE IS LIVE'
             : 'FOLLOW THE MUSIC';
     const blindListenHelper = revealFeedbackActive
         ? 'Timing is revealed after the hit. Replay it cleaner next loop.'
-        : 'No countdown, no target marker. Tap when the music tells you.';    const loopHistory = buildMomentLoopHistory(scoredTaps, currentLoopIndex, cue);
+        : 'No countdown, no target marker. Tap when the music tells you.';
+    const loopHistory = buildMomentLoopHistory(scoredTaps, currentLoopIndex, cue);
     const audioScapeSamples = Array.isArray(data.audioScapeSamples) && data.audioScapeSamples.length
         ? data.audioScapeSamples
         : buildMomentAudioScapeSamples(cue);

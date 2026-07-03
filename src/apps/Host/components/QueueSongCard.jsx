@@ -37,6 +37,7 @@ const QueueSongCard = ({
     onDeletePending,
     lockedInLineup = false,
     lineupSlotLabel = '',
+    queuePositionLabel = '',
     selfServeState = null,
 }) => {
     const [selectedSlotId, setSelectedSlotId] = React.useState('');
@@ -144,6 +145,8 @@ const QueueSongCard = ({
             detailClass: 'text-cyan-100/85',
         };
     }, [selfServeState?.toneKey]);
+    const displayPositionLabel = String(queuePositionLabel || '').trim() || String(index + 1);
+    const positionLabelCompact = displayPositionLabel.length <= 2;
     const actionRailContainerClass = compactViewport
         ? 'w-full'
         : selected
@@ -194,7 +197,7 @@ const QueueSongCard = ({
                     onClick={() => onSelect?.(song)}
                     className={`min-w-0 flex flex-1 items-start text-left ${compactViewport ? 'gap-1.5' : 'gap-2'}`}
                 >
-                    <span className={`font-mono text-zinc-500 text-center text-[11px] ${compactViewport ? 'w-4 mt-0.5' : 'w-5 mt-0.5'}`}>{index + 1}</span>
+                    <span className={`shrink-0 rounded-md border border-white/10 bg-black/20 px-1.5 py-1 text-center font-black uppercase leading-none text-zinc-300 ${positionLabelCompact ? 'min-w-[26px] text-[10px] tracking-[0.12em]' : 'min-w-[42px] text-[9px] tracking-[0.1em]'} ${compactViewport ? 'mt-0.5' : 'mt-0.5'}`}>{displayPositionLabel}</span>
                         <span
                             data-queue-drag-handle="true"
                             className={`inline-flex items-center justify-center rounded-md border transition hover:text-zinc-300 ${

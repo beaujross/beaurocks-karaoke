@@ -32,13 +32,31 @@ Expected notes:
 - Chunk-size warnings may appear for large bundles.
 
 ## Deploy
+
+Match deploy scope to the change.
+
+Hosting-only changes:
 ```powershell
 npm run deploy:hosting
 ```
 
+Functions-only changes:
+```powershell
+npm run validate:functions
+npm run deploy:functions
+```
+
+Functions or Firestore rules changes:
+```powershell
+npm run validate:backend
+npm run deploy:backend
+```
+
 Expected success:
-- Firebase Hosting release completes for `beaurocks-karaoke-v2`.
-- Hosting URL returns updated build.
+- Firebase Hosting release completes for `beaurocks-karaoke-v2` when hosting is deployed.
+- Cloud Functions deploy completes when functions are deployed.
+- Firestore rules release completes when rules are deployed.
+- Hosting URL returns updated build after hosting deploy.
 
 ## Mandatory Release Gate
 

@@ -88,7 +88,6 @@ import {
 import {
   AUDIENCE_DECISION_TYPES,
   buildContinueOrRotateDecision,
-  resolveAudienceDecision,
 } from '../../../lib/audienceDecision';
 import { buildSelfServeQueueExplanation } from '../../../lib/selfServeQueueExplanation';
 import { getSelfServeAuctionState } from '../../../lib/selfServeAuction';
@@ -510,9 +509,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         soundboardOpen,
         setSoundboardOpen,
         applyWorkspacePreset,
-        expandAllPanels,
-        collapseAllPanels,
-        resetPanelLayout,
         searchQ,
         setSearchQ,
         autocompleteProvider,
@@ -2411,6 +2407,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         if (hallOfFameTimerRef.current) {
             clearTimeout(hallOfFameTimerRef.current);
         }
+        const selfieMomentStartedAtMs = nowMs();
         await updateRoom({
             activeMode: 'selfie_cam',
             selfieMoment: {
@@ -2418,12 +2415,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 songId,
                 singerName,
                 songTitle,
-                timestamp: nowMs()
+                timestamp: selfieMomentStartedAtMs
             },
-            selfieMomentExpiresAt: nowMs() + 12000
+            selfieMomentExpiresAt: selfieMomentStartedAtMs + 12000
         });
         hallOfFameTimerRef.current = setTimeout(() => {
-            updateRoom({ activeMode: 'karaoke', selfieMoment: null });
+            updateRoom({ activeMode: 'karaoke', selfieMoment: null, selfieMomentExpiresAt: null });
         }, 12000);
     };
     const logPerformance = async (songEntry) => {
@@ -2742,6 +2739,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 await updateRoom({
                     lastPerformance: recapPayload,
                     activeMode: 'karaoke',
+                    bonusDrop: null,
+                    selfieMoment: null,
+                    selfieMomentExpiresAt: null,
+                    selfieChallenge: null,
+                    photoOverlay: null,
                     applauseSubject: null,
                     mediaUrl: '',
                     currentPerformanceMeta: null,
@@ -3087,6 +3089,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         await stopAppleMusic?.();
         await updateRoom({
             activeMode: 'karaoke',
+            bonusDrop: null,
+            selfieMoment: null,
+            selfieMomentExpiresAt: null,
+            selfieChallenge: null,
+            photoOverlay: null,
             mediaUrl: '',
             currentPerformanceMeta: null,
             currentPerformanceSession: null,
@@ -3165,6 +3172,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             announcement: null,
             tvPreviewOverlay: null,
             roundWinnersMoment: null,
+            bonusDrop: null,
+            selfieMoment: null,
+            selfieMomentExpiresAt: null,
+            selfieChallenge: null,
+            photoOverlay: null,
             howToPlay: { active: false, id: nowMs() },
             'readyCheck.active': false
         });
@@ -3370,18 +3382,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         const closesAtMs = Math.max(0, Number(decision?.closesAtMs || 0) || 0);
         if (!closesAtMs) return undefined;
         const resolveDecision = () => {
-            const resolution = resolveAudienceDecision(decision, { nowMs: nowMs(), force: true });
-            if (!resolution.resolved) return;
-            const resolveKey = `${resolution.decision.id}:${resolution.resultChoice}:${resolution.decision.resolvedAtMs}`;
+            const resolveKey = `${decision.id || subjectSongId}:${closesAtMs}`;
             if (oneMinuteMicDecisionResolveKeyRef.current === resolveKey) return;
             oneMinuteMicDecisionResolveKeyRef.current = resolveKey;
-            const finishAfterResolution = resolution.resolutionAction === 'wrap_and_rotate';
-            updateRoom({ audienceDecision: resolution.decision })
-                .then(() => {
-                    if (finishAfterResolution) {
-                        return handleFinishPerformance(subjectSongId);
+            callFunction('syncOneMinuteMicRoom', { roomCode })
+                .then((result) => {
+                    if (String(result?.command || '').trim().toLowerCase() === 'finish_performance') {
+                        toast('Crowd picked the next singer. Wrapping with a quick fade.');
+                    } else if (result?.resolved) {
+                        toast('Crowd unlocked the rest of the song.');
                     }
-                    toast('Crowd unlocked the rest of the song.');
                     return null;
                 })
                 .catch((error) => {
@@ -3396,7 +3406,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         }
         const timer = setTimeout(resolveDecision, delayMs);
         return () => clearTimeout(timer);
-    }, [current?.id, handleFinishPerformance, room?.audienceDecision, toast, updateRoom]);
+    }, [current?.id, room?.audienceDecision, roomCode, toast]);
     useEffect(() => {
         const pendingSongId = autoDjApplausePendingSongRef.current;
         if (!pendingSongId) return;
@@ -5006,14 +5016,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 showQueueSummaryBar={showQueueSummaryBar}
                 onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
                 pending={pending}
-                pendingQueueOpen={pendingQueueOpen}
-                onTogglePendingQueue={() => setPendingQueueOpen((v) => !v)}
                 queue={queue}
-                readyQueueOpen={readyQueueOpen}
-                onToggleReadyQueue={() => setReadyQueueOpen((v) => !v)}
                 assigned={assigned}
-                assignedQueueOpen={assignedQueueOpen}
-                onToggleAssignedQueue={() => setAssignedQueueOpen((v) => !v)}
                 held={held}
                 onApprovePending={(songId) => updateStatus(songId, 'requested')}
                 onDeletePending={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
@@ -5763,41 +5767,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const queueWorkspacePanel = queueSurface.isCompactQueueSurface
         ? compactQueueSurfacePanel
         : desktopQueueSurfacePanel;
-    const hostPanelLayoutControls = (
-        <section className={`${sectionPaddingClass} border-b border-white/10`} data-feature-id="host-panel-layout-controls">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Host Panel</div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={expandAllPanels}
-                        data-feature-id="host-panel-expand-all"
-                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[10px]`}
-                    >
-                        Expand All
-                    </button>
-                    <button
-                        type="button"
-                        onClick={collapseAllPanels}
-                        data-feature-id="host-panel-collapse-all"
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px]`}
-                    >
-                        Collapse All
-                    </button>
-                    <button
-                        type="button"
-                        onClick={resetPanelLayout}
-                        data-feature-id="host-panel-reset-layout"
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px]`}
-                    >
-                        Reset
-                    </button>
-                </div>
-            </div>
-        </section>
-    );
     const legacySoundboardSection = !essentialsMode && showLegacyLiveEffects ? (
         <section className={`${sectionPaddingClass} border-b border-white/10`}>
             <SectionHeader
@@ -6076,7 +6045,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     <div className={`${STYLES.panel} ${allowHostPanelPageScroll ? 'min-h-0 overflow-visible' : 'h-full min-h-0 overflow-hidden'} flex flex-col`}>
                         <div className={allowHostPanelPageScroll ? '' : 'flex-1 min-h-0 overflow-y-auto custom-scrollbar'}>
                             <>
-                                {hostPanelLayoutControls}
                                 <section className={`${sectionPaddingClass} border-b border-white/10`}>
                                 <SectionHeader
                                     label="Stage"

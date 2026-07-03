@@ -375,7 +375,6 @@ const TeamPongGame = ({
     const canSendShield = Boolean(isPlayer) && !submittingAction && shieldCooldownRemainingMs <= 0;
     const canSendSlowMo = Boolean(isPlayer) && !submittingAction && slowMoCooldownRemainingMs <= 0;
     const canSendRedirect = Boolean(isPlayer) && !submittingAction && redirectCooldownRemainingMs <= 0 && redirectWindowActive;
-    const rallyTimeoutSeconds = (effectiveRallyTimeoutMs / 1000).toFixed(1);
     const tvBottomSafeStyle = { bottom: 'max(14px, env(safe-area-inset-bottom))' };
 
     const sendPongAction = useCallback(async (rawAction = 'save') => {

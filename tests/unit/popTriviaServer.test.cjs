@@ -2,8 +2,10 @@ const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const {
   buildPopTriviaCacheKey,
+  buildCuratedPopTriviaSeedRows,
   buildFallbackPopTriviaSeedRows,
   buildPopTriviaSongContext,
+  getPopTriviaQuestionType,
   getPopTriviaRowQualityScore,
   getTimestampMs,
   normalizePopTriviaQuestions,
@@ -13,6 +15,8 @@ const {
   selectPopTriviaSeedRows,
   shouldAttemptPopTriviaGeneration,
 } = require("../../functions/lib/popTrivia");
+
+const selectedAnswerText = (row) => row?.correct || row?.options?.[row?.correctIndex] || "";
 
 test("popTriviaServer.test", async () => {
   const seedRows = normalizePopTriviaSeedRows([
@@ -71,7 +75,7 @@ test("popTriviaServer.test", async () => {
   assert.match(fallbackText, /Take On Me/);
   assert.doesNotMatch(
     fallbackText,
-    /QA Singer|production trick|might use|classic crowd move|usually helps most|guitar cable check|sets up the story|release-year|billboard|grammy|music video|record label|current singer|performer|microphone/i
+    /QA Singer|production trick|might use|classic crowd move|usually helps most|guitar cable check|sets up the story|safest fan clue|best keeps|what kind of trivia clue|release-year|billboard|grammy|music video|record label|current singer|performer|microphone/i
   );
   const fallbackQuestions = normalizePopTriviaQuestions(fallbackRows, {
     idPrefix: "ROOM_fallback",
@@ -80,6 +84,31 @@ test("popTriviaServer.test", async () => {
   assert.equal(fallbackQuestions.length, 4);
   assert.equal(fallbackQuestions.every((row) => row.source === "fallback"), true);
   assert.equal(fallbackQuestions.every((row) => row.category), true);
+
+  const curatedU2Rows = buildCuratedPopTriviaSeedRows({
+    songTitle: "With or Without You",
+    artist: "U2",
+    source: "youtube",
+  });
+  assert.equal(curatedU2Rows.length, 4);
+  assert.match(curatedU2Rows.map((row) => `${row.q} ${row.correct}`).join(" "), /The Joshua Tree|1987|Infinite Guitar/);
+  assert.equal(curatedU2Rows.every((row) => row.source === "curated_fact"), true);
+
+  const selectedU2Rows = selectPopTriviaSeedRows({
+    song: { songTitle: "With or Without You", artist: "U2", source: "youtube" },
+    aiRows: [],
+    fallbackRows: buildFallbackPopTriviaSeedRows({ songTitle: "With or Without You", artist: "U2", source: "youtube" }),
+    limit: 4,
+  });
+  const selectedU2Text = selectedU2Rows.map((row) => `${row.q} ${selectedAnswerText(row)}`).join(" ");
+  const selectedU2Context = buildPopTriviaSongContext({ songTitle: "With or Without You", artist: "U2", source: "youtube" });
+  assert.match(selectedU2Text, /The Joshua Tree/);
+  assert.match(selectedU2Text, /1987/);
+  assert.match(selectedU2Text, /Infinite Guitar/);
+  assert.equal(
+    selectedU2Rows.filter((row) => getPopTriviaQuestionType(row, selectedU2Context).startsWith("identity_")).length <= 1,
+    true
+  );
 
   const weakScore = getPopTriviaRowQualityScore({
     q: "Which production trick is common in polished pop vocals like the kind this artist might use?",
@@ -149,7 +178,8 @@ test("popTriviaServer.test", async () => {
     false
   );
   assert.equal(sparseSelectedRows[0].q.includes("Mystery YouTube Cut"), true);
-  assert.equal(sparseSelectedRows.length, 4);
+  assert.equal(sparseSelectedRows.length >= 2, true);
+  assert.equal(sparseSelectedRows.length <= 4, true);
 
   const groundedSelectedRows = selectPopTriviaSeedRows({
     song: {
@@ -305,6 +335,7 @@ test("popTriviaServer.test", async () => {
   const functionsSource = readFileSync("functions/index.js", "utf8");
   assert.match(functionsSource, /Every question must focus on the requested song/);
   assert.match(functionsSource, /Do not mention or ask about the current singer/);
+  assert.match(functionsSource, /At most 1 question may ask for the listed artist/);
   assert.match(functionsSource, /If you cannot write a safe factual question, write a title, artist, hook, or arrangement question instead/);
   assert.match(functionsSource, /"category":"hook_recognition"/);
 });

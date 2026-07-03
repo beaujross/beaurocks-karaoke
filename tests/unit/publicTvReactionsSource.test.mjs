@@ -4,11 +4,14 @@ import { readFileSync } from 'node:fs';
 import { test } from 'vitest';
 
 const source = readFileSync('src/apps/TV/PublicTV.jsx', 'utf8');
+const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
+const hostQueueTabSource = readFileSync('src/apps/Host/components/HostQueueTab.jsx', 'utf8');
+const hostTopChromeSource = readFileSync('src/apps/Host/components/HostTopChrome.jsx', 'utf8');
 
 test('PublicTV keeps floating reaction emojis visible in simple profile while trimming the heavier labels', () => {
   assert.match(
     source,
-    /\{reactions\.map\(r => \{/,
+    /\{reactions\.filter\(\(r\) => !r\.audienceDisplaySessionId\)\.map\(r => \{/,
     'Reaction rendering should not be gated behind ambient-fx mode alone.',
   );
   assert.doesNotMatch(
@@ -112,5 +115,59 @@ test('PublicTV keeps clap reactions above the applause meter overlay', () => {
     source,
     /<div className=\{`absolute inset-0 \$\{applauseOverlayVisible \? 'z-\[285\]' : 'z-\[200\]'\} pointer-events-none overflow-hidden`\}>/,
     'The floating reaction layer should rise above the z-260 applause meter while applause mode is active.',
+  );
+});
+
+test('PublicTV ignores stale host-triggered visual moments', () => {
+  assert.match(
+    source,
+    /const BONUS_DROP_TV_VISIBILITY_MS = 9000;/,
+    'Made-it-rain moments should have an explicit PublicTV visibility window.',
+  );
+  assert.match(
+    source,
+    /\(nowMs\(\) - createdAtMs\) > BONUS_DROP_TV_VISIBILITY_MS/,
+    'PublicTV should ignore stale bonus drops that remain in the room document.',
+  );
+  assert.match(
+    source,
+    /const PHOTO_OVERLAY_TV_VISIBILITY_MS = 9000;/,
+    'Photo overlays should have an explicit PublicTV visibility window.',
+  );
+  assert.match(
+    source,
+    /\(nowMs\(\) - createdAtMs\) > PHOTO_OVERLAY_TV_VISIBILITY_MS/,
+    'PublicTV should ignore stale photo overlays that remain in the room document.',
+  );
+  assert.match(
+    source,
+    /selfieMomentStartedAtMs > 0 \? selfieMomentStartedAtMs \+ SELFIE_MOMENT_TV_VISIBILITY_MS : 0/,
+    'Selfie camera takeovers should fall back to a short visibility window when only a timestamp exists.',
+  );
+  assert.match(
+    source,
+    /const selfieChallengeTvVisible = room\?\.activeMode === 'selfie_challenge' && !selfieChallengeEndedExpired;/,
+    'Ended selfie challenges should stop rendering once their winner moment expires.',
+  );
+});
+
+test('Host controls clear sticky PublicTV visual moments on performance and reset paths', () => {
+  const stickyClearPattern = /bonusDrop: null,[\s\S]*selfieMoment: null,[\s\S]*selfieMomentExpiresAt: null,[\s\S]*selfieChallenge: null,[\s\S]*photoOverlay: null/;
+  assert.match(hostAppSource, stickyClearPattern, 'HostApp performance/reset paths should clear stale PublicTV moments.');
+  assert.match(hostQueueTabSource, stickyClearPattern, 'Queue-tab performance paths should clear stale PublicTV moments.');
+  assert.match(
+    hostTopChromeSource,
+    /effectId === 'clear'[\s\S]*bonusDrop: null,[\s\S]*selfieMoment: null,[\s\S]*selfieMomentExpiresAt: null,[\s\S]*selfieChallenge: null,[\s\S]*photoOverlay: null/,
+    'The host Clear button should clear sticky PublicTV moments.',
+  );
+  assert.match(
+    hostAppSource,
+    /photoOverlay: \{[\s\S]*createdAtMs: overlayStartedAtMs,[\s\S]*expiresAtMs: overlayStartedAtMs \+ 9000/,
+    'Host photo-bomb overlays should include an expiry when written to the room document.',
+  );
+  assert.match(
+    hostAppSource,
+    /bonusDrop: \{ id: dropStartedAtMs,[\s\S]*expiresAtMs: dropStartedAtMs \+ 6000/,
+    'Host bonus drops should include an expiry when written to the room document.',
   );
 });

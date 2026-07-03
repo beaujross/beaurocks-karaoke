@@ -59,7 +59,11 @@ export const REACTION_EMOJI = Object.freeze({
     spotlight_laugh: emoji(0x1F602),
     spotlight_skull: EMOJI.skull,
     spotlight_clap: EMOJI.clap,
-    spotlight_micdrop: emoji(0x1F3A4)
+    spotlight_micdrop: emoji(0x1F3A4),
+    commentator_hot_take: emoji(0x1F9E0),
+    commentator_callback: EMOJI.radio,
+    commentator_vibe_check: emoji(0x1F4AF),
+    commentator_wow: emoji(0x1F929)
 });
 
 export const getReactionEmoji = (type = '', fallback = EMOJI.heart) => {

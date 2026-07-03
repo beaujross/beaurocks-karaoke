@@ -18,7 +18,11 @@ export const TV_REACTION_LABELS = Object.freeze({
     spotlight_laugh: 'Laugh',
     spotlight_skull: 'Cooked',
     spotlight_clap: 'Good One',
-    spotlight_micdrop: 'Mic Drop'
+    spotlight_micdrop: 'Mic Drop',
+    commentator_hot_take: 'Hot Take',
+    commentator_callback: 'Callback',
+    commentator_vibe_check: 'Vibe Check',
+    commentator_wow: 'Wow'
 });
 
 export const getTvReactionLabel = (type = '') => {
@@ -51,7 +55,11 @@ export const getTvReactionThemeKey = (type = '') => ({
     spotlight_laugh: 'rocket',
     spotlight_skull: 'rocket',
     spotlight_mic: 'crown',
-    spotlight_micdrop: 'crown'
+    spotlight_micdrop: 'crown',
+    commentator_hot_take: 'commentator',
+    commentator_callback: 'commentator',
+    commentator_vibe_check: 'commentator',
+    commentator_wow: 'commentator'
 }[String(type || '').trim().toLowerCase()] || 'default');
 
 export const getTvReactionEmojiClass = (type = '') => ({
@@ -73,7 +81,11 @@ export const getTvReactionEmojiClass = (type = '') => ({
     spotlight_laugh: 'animate-float text-[clamp(2.5rem,8vw,6rem)]',
     spotlight_skull: 'animate-float text-[clamp(2.5rem,8vw,6rem)]',
     spotlight_mic: 'animate-float text-[clamp(2.6rem,8vw,6rem)]',
-    spotlight_micdrop: 'animate-float text-[clamp(2.6rem,8vw,6rem)]'
+    spotlight_micdrop: 'animate-float text-[clamp(2.6rem,8vw,6rem)]',
+    commentator_hot_take: 'animate-float text-[clamp(2.2rem,6vw,4.8rem)]',
+    commentator_callback: 'animate-float text-[clamp(2.2rem,6vw,4.8rem)]',
+    commentator_vibe_check: 'animate-float text-[clamp(2.2rem,6vw,4.8rem)]',
+    commentator_wow: 'animate-float text-[clamp(2.2rem,6vw,4.8rem)]'
 }[String(type || '').trim().toLowerCase()] || 'animate-float text-[clamp(2rem,6vw,4rem)]');
 
 const hashTvMotionSeed = (value = '') => {

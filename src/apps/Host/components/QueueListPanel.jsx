@@ -8,23 +8,16 @@ import {
 } from '../../../lib/selfServeKaraoke';
 import QueueSongCard from './QueueSongCard';
 
-const QueueSectionToggle = ({ label, count, toneClass, open, onToggle }) => (
-    <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={!!open}
-        className={`mb-2 flex min-h-[40px] w-full touch-manipulation items-center justify-between rounded-2xl border border-white/10 bg-black/25 px-3 py-1.5 text-left transition hover:border-cyan-300/25 ${toneClass}`}
-    >
-        <div className="flex items-center gap-2">
+const QueueSectionHeader = ({ label, count, toneClass, detail = '' }) => (
+    <div className={`mb-2 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 ${toneClass}`}>
+        <div className="flex min-h-[28px] items-center justify-between gap-2">
             <span className="text-xs font-bold uppercase tracking-[0.16em]">{label}</span>
             <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
                 {count}
             </span>
         </div>
-        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/25 text-zinc-200">
-            <i className={`fa-solid fa-chevron-down text-xs transition-transform ${open ? 'rotate-180' : ''}`}></i>
-        </span>
-    </button>
+        {detail ? <div className="mt-1 text-[11px] leading-4 text-zinc-400">{detail}</div> : null}
+    </div>
 );
 
 export const QueueSummaryBar = ({
@@ -55,9 +48,9 @@ export const QueueSummaryBar = ({
     const heldCount = Number.isFinite(Number(counts.held)) ? Number(counts.held) : held.length;
     const safeProtectedReadyQueueCount = Math.max(0, Math.min(queue.length, Number(protectedReadyQueueCount || 0)));
     const safeProtectedReadyQueueTarget = Math.max(safeProtectedReadyQueueCount, Number(protectedReadyQueueTarget || 0));
-    const laterReadyQueue = queue.slice(safeProtectedReadyQueueCount);
     const lockedLineupCount = Number(lineupHasCurrentPerformer ? 1 : 0) + safeProtectedReadyQueueCount;
     const lockedLineupTarget = Number(lineupHasCurrentPerformer ? 1 : 0) + safeProtectedReadyQueueTarget;
+    const laterReadyQueueCount = Math.max(0, readyCount - safeProtectedReadyQueueCount);
     const queueSummaryChips = [
         needsAttentionCount
             ? {
@@ -153,8 +146,8 @@ export const QueueSummaryBar = ({
                         ? {
                             eyebrow: 'Lineup protected',
                             title: `${lockedLineupCount}/${lockedLineupTarget} live spots locked`,
-                            detail: laterReadyQueue.length > 0
-                                ? `${laterReadyQueue.length} more ready performance${laterReadyQueue.length === 1 ? '' : 's'} are waiting behind the protected lineup.`
+                            detail: laterReadyQueueCount > 0
+                                ? `${laterReadyQueueCount} more ready performance${laterReadyQueueCount === 1 ? '' : 's'} are waiting behind the protected lineup.`
                                 : 'Stage can advance without touching review or slot assignment.',
                             toneClass: 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100',
                             accentClass: 'text-emerald-100'
@@ -271,14 +264,8 @@ const QueueListPanel = ({
     onToggleQueueSummaryBar,
     reviewRequiredCount = 0,
     pending,
-    pendingQueueOpen = true,
-    onTogglePendingQueue,
     queue,
-    readyQueueOpen = true,
-    onToggleReadyQueue,
     assigned = [],
-    assignedQueueOpen = true,
-    onToggleAssignedQueue,
     held = [],
     reviewRequired = [],
     onApprovePending,
@@ -413,30 +400,31 @@ const QueueListPanel = ({
     ]);
     if (!showQueueList) return null;
     const safeProtectedReadyQueueCount = Math.max(0, Math.min(queue.length, Number(protectedReadyQueueCount || 0)));
-    const lockedReadyQueue = queue.slice(0, safeProtectedReadyQueueCount);
-    const laterReadyQueue = queue.slice(safeProtectedReadyQueueCount);
     const lockedLineupCount = Number(lineupHasCurrentPerformer ? 1 : 0) + safeProtectedReadyQueueCount;
     const lockedLineupTarget = Number(lineupHasCurrentPerformer ? 1 : 0) + Math.max(safeProtectedReadyQueueCount, Number(protectedReadyQueueTarget || 0));
     const lockedLineupComplete = lockedLineupTarget > 0 && lockedLineupCount >= lockedLineupTarget;
-    const lockedQueueSectionLabel = spotlightAuctionLive
-        ? 'Opening Showcase Block'
+    const readyQueueHeaderLabel = spotlightAuctionLive
+        ? 'Live Showcase Queue'
         : spotlightAuctionComplete
-            ? 'Fair Queue On Deck'
+            ? 'Fair Queue'
             : selfServeFormat === SELF_SERVE_FORMATS.openStage
-                ? (lockedLineupComplete ? 'Open Stage On Deck' : 'Build Open Stage Deck')
-                : (lockedLineupComplete ? 'Up Next' : 'Build Up Next');
-    const benchSectionLabel = spotlightAuctionLive
-        ? 'Fair Queue Bench'
-        : selfServeFormat === SELF_SERVE_FORMATS.openStage
-            ? 'Open Stage Bench'
-            : 'Ready Queue';
-    const benchSectionDetail = spotlightAuctionLive
-        ? 'These ready singers stay warm behind the sponsored opening block and take over when fair queue resumes.'
-        : spotlightAuctionComplete
-            ? 'The sponsored block is done. These ready singers now carry the fair queue.'
-            : selfServeFormat === SELF_SERVE_FORMATS.openStage
-                ? 'These ready singers stay in fair rotation behind the protected deck.'
-                : 'Keep these vetted and ready, but do not disturb the protected lineup above.';
+                ? 'Open Stage Queue'
+                : 'Live Queue Order';
+    const readyQueueHeaderDetail = lineupHasCurrentPerformer
+        ? 'On Stage is separate. The first row here is Next, followed by Then and the rest of the queue.'
+        : 'No one is on stage. The first row is the next performance to start.';
+    const getReadyQueuePositionLabel = (index = 0) => {
+        const safeIndex = Math.max(0, Number(index || 0));
+        if (lineupHasCurrentPerformer) {
+            if (safeIndex === 0) return 'Next';
+            if (safeIndex === 1) return 'Then';
+            return `Q${safeIndex + 1}`;
+        }
+        if (safeIndex === 0) return 'Start';
+        if (safeIndex === 1) return 'Next';
+        if (safeIndex === 2) return 'Then';
+        return `Q${safeIndex + 1}`;
+    };
 
     return (
         <>
@@ -466,127 +454,73 @@ const QueueListPanel = ({
                         Reorder mode is live. Drag a song by its handle, then tap Done Reordering.
                     </div>
                 ) : null}
-                <QueueSectionToggle
-                    label={lockedQueueSectionLabel}
-                    count={lockedReadyQueue.length}
+                <QueueSectionHeader
+                    label={readyQueueHeaderLabel}
+                    count={queue.length}
                     toneClass={spotlightAuctionLive ? 'text-amber-200' : 'text-cyan-200'}
-                    open={readyQueueOpen}
-                    onToggle={onToggleReadyQueue}
+                    detail={readyQueueHeaderDetail}
                 />
-                {readyQueueOpen ? lockedReadyQueue.map((s, i) => (
-                    <QueueSongCard
-                        key={s.id}
-                        song={s}
-                        index={i}
-                        dragQueueId={dragQueueId}
-                        dragOverId={dragOverId}
-                        setDragQueueId={setDragQueueId}
-                        setDragOverId={setDragOverId}
-                        reorderQueue={reorderQueue}
-                        touchReorderEnabled={touchReorderEnabled}
-                        touchReorderMode={touchReorderMode}
-                        handleTouchStart={handleTouchStart}
-                        handleTouchMove={handleTouchMove}
-                        handleTouchEnd={handleTouchEnd}
-                        updateStatus={updateStatus}
-                        startEdit={startEdit}
-                        onRetryLyrics={onRetryLyrics}
-                        onFetchTimedLyrics={onFetchTimedLyrics}
-                        onApproveAudienceBacking={onApproveAudienceBacking}
-                        onAvoidAudienceBacking={onAvoidAudienceBacking}
-                        onMoveNext={onMoveNext}
-                        onHoldSinger={onHoldSinger}
-                        onRestoreSinger={onRestoreSinger}
-                        onRemove={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
-                        backingDecisionBusyKey={backingDecisionBusyKey}
-                        statusPill={statusPill}
-                        styles={styles}
-                        compactViewport={compactViewport}
-                        selected={selectedSong?.id === s.id}
-                        onSelect={(song) => setSelectedSongId((prev) => prev === song?.id ? '' : (song?.id || ''))}
-                        runOfShowAssignableSlots={runOfShowAssignableSlots}
-                        runOfShowOpenSlots={runOfShowOpenSlots}
-                        onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
-                        onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
-                        onApprovePending={onApprovePending}
-                        onDeletePending={onDeletePending}
-                        lockedInLineup
-                        lineupSlotLabel={lineupHasCurrentPerformer
-                            ? (i === 0 ? 'Next' : 'Then')
-                            : (i === 0 ? 'Now' : i === 1 ? 'Next' : 'Then')}
-                        selfServeState={buildSelfServeRowState(s, { lockedIndex: i })}
-                    />
-                )) : null}
-                {readyQueueOpen && laterReadyQueue.length > 0 ? (
-                    <div className="mt-3 border-t border-white/10 pt-3">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                            <div className={`text-xs font-bold uppercase tracking-[0.16em] ${spotlightAuctionLive ? 'text-amber-200' : 'text-zinc-300'}`}>{benchSectionLabel}</div>
-                            <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
-                                {laterReadyQueue.length}
-                            </span>
-                        </div>
-                        <div className="mb-2 text-[11px] text-zinc-400">
-                            {benchSectionDetail}
-                        </div>
-                        {laterReadyQueue.map((s, i) => (
-                            <QueueSongCard
-                                key={s.id}
-                                song={s}
-                                index={safeProtectedReadyQueueCount + i}
-                                dragQueueId={dragQueueId}
-                                dragOverId={dragOverId}
-                                setDragQueueId={setDragQueueId}
-                                setDragOverId={setDragOverId}
-                                reorderQueue={reorderQueue}
-                                touchReorderEnabled={touchReorderEnabled}
-                                touchReorderMode={touchReorderMode}
-                                handleTouchStart={handleTouchStart}
-                                handleTouchMove={handleTouchMove}
-                                handleTouchEnd={handleTouchEnd}
-                                updateStatus={updateStatus}
-                                startEdit={startEdit}
-                                onRetryLyrics={onRetryLyrics}
-                                onFetchTimedLyrics={onFetchTimedLyrics}
-                                onApproveAudienceBacking={onApproveAudienceBacking}
-                                onAvoidAudienceBacking={onAvoidAudienceBacking}
-                                onMoveNext={lockedLineupComplete ? null : onMoveNext}
-                                onHoldSinger={onHoldSinger}
-                                onRestoreSinger={onRestoreSinger}
-                                onRemove={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
-                                backingDecisionBusyKey={backingDecisionBusyKey}
-                                statusPill={statusPill}
-                                styles={styles}
-                                compactViewport={compactViewport}
-                                selected={selectedSong?.id === s.id}
-                                onSelect={(song) => setSelectedSongId((prev) => prev === song?.id ? '' : (song?.id || ''))}
-                                runOfShowAssignableSlots={runOfShowAssignableSlots}
-                                runOfShowOpenSlots={runOfShowOpenSlots}
-                                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
-                                onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
-                                onApprovePending={onApprovePending}
-                                onDeletePending={onDeletePending}
-                                selfServeState={buildSelfServeRowState(s)}
-                            />
-                        ))}
-                    </div>
-                ) : null}
+                {queue.map((s, i) => {
+                    const lockedInLiveLineup = i < safeProtectedReadyQueueCount;
+                    return (
+                        <QueueSongCard
+                            key={s.id}
+                            song={s}
+                            index={i}
+                            queuePositionLabel={getReadyQueuePositionLabel(i)}
+                            dragQueueId={dragQueueId}
+                            dragOverId={dragOverId}
+                            setDragQueueId={setDragQueueId}
+                            setDragOverId={setDragOverId}
+                            reorderQueue={reorderQueue}
+                            touchReorderEnabled={touchReorderEnabled}
+                            touchReorderMode={touchReorderMode}
+                            handleTouchStart={handleTouchStart}
+                            handleTouchMove={handleTouchMove}
+                            handleTouchEnd={handleTouchEnd}
+                            updateStatus={updateStatus}
+                            startEdit={startEdit}
+                            onRetryLyrics={onRetryLyrics}
+                            onFetchTimedLyrics={onFetchTimedLyrics}
+                            onApproveAudienceBacking={onApproveAudienceBacking}
+                            onAvoidAudienceBacking={onAvoidAudienceBacking}
+                            onMoveNext={lockedLineupComplete ? null : onMoveNext}
+                            onHoldSinger={onHoldSinger}
+                            onRestoreSinger={onRestoreSinger}
+                            onRemove={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
+                            backingDecisionBusyKey={backingDecisionBusyKey}
+                            statusPill={statusPill}
+                            styles={styles}
+                            compactViewport={compactViewport}
+                            selected={selectedSong?.id === s.id}
+                            onSelect={(song) => setSelectedSongId((prev) => prev === song?.id ? '' : (song?.id || ''))}
+                            runOfShowAssignableSlots={runOfShowAssignableSlots}
+                            runOfShowOpenSlots={runOfShowOpenSlots}
+                            onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                            onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
+                            onApprovePending={onApprovePending}
+                            onDeletePending={onDeletePending}
+                            lockedInLineup={lockedInLiveLineup}
+                            lineupSlotLabel={lockedInLiveLineup ? getReadyQueuePositionLabel(i) : ''}
+                            selfServeState={buildSelfServeRowState(s, { lockedIndex: lockedInLiveLineup ? i : -1 })}
+                        />
+                    );
+                })}
             </div>
             {pending.length > 0 ? (
                 <div className={`mb-3 border-t border-white/10 ${compactViewport ? 'pt-2' : 'pt-3'}`}>
-                    <QueueSectionToggle
+                    <QueueSectionHeader
                         label="Awaiting Approval"
                         count={pending.length}
                         toneClass="text-orange-300"
-                        open={pendingQueueOpen}
-                        onToggle={onTogglePendingQueue}
+                        detail="Approve or review these before they enter the live queue."
                     />
-                    {pendingQueueOpen ? (
-                        <>
-                        {pending.map((s, i) => (
+                    {pending.map((s, i) => (
                             <QueueSongCard
                                 key={s.id}
                                 song={s}
                                 index={i}
+                                queuePositionLabel="Check"
                                 dragQueueId={dragQueueId}
                                 dragOverId={dragOverId}
                                 setDragQueueId={setDragQueueId}
@@ -617,26 +551,22 @@ const QueueListPanel = ({
                                 onDeletePending={onDeletePending}
                             />
                         ))}
-                        </>
-                    ) : null}
                 </div>
             ) : null}
             {assigned.length > 0 ? (
                 <div className={`mt-3 border-t border-white/10 ${compactViewport ? 'pt-2' : 'pt-3'}`}>
-                    <QueueSectionToggle
+                    <QueueSectionHeader
                         label="Tied To Show"
                         count={assigned.length}
                         toneClass="text-violet-200"
-                        open={assignedQueueOpen}
-                        onToggle={onToggleAssignedQueue}
+                        detail="Linked songs are controlled by run-of-show slots, not the live queue order."
                     />
-                    {assignedQueueOpen ? (
-                        <>
-                        {assigned.map((s, i) => (
+                    {assigned.map((s, i) => (
                             <QueueSongCard
                                 key={s.id}
                                 song={s}
                                 index={queue.length + i}
+                                queuePositionLabel="Linked"
                                 dragQueueId={dragQueueId}
                                 dragOverId={dragOverId}
                                 setDragQueueId={setDragQueueId}
@@ -671,24 +601,22 @@ const QueueListPanel = ({
                                 onDeletePending={onDeletePending}
                             />
                         ))}
-                        </>
-                    ) : null}
                 </div>
             ) : null}
             {held.length > 0 ? (
                 <div className={`mt-3 border-t border-white/10 ${compactViewport ? 'pt-2' : 'pt-3'}`}>
-                    <QueueSectionToggle
+                    <QueueSectionHeader
                         label="Held"
                         count={held.length}
                         toneClass="text-zinc-200"
-                        open
-                        onToggle={() => {}}
+                        detail="Held singers are parked until they are restored."
                     />
                     {held.map((s, i) => (
                         <QueueSongCard
                             key={s.id}
                             song={s}
                             index={i}
+                            queuePositionLabel="Held"
                             dragQueueId={dragQueueId}
                             dragOverId={dragOverId}
                             setDragQueueId={setDragQueueId}

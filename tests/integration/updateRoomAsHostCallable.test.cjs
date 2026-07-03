@@ -491,6 +491,68 @@ async function run() {
       assert.equal(snap.get("oneMinuteMicOpeningWindowSec"), 60);
       assert.equal(snap.get("oneMinuteMicVoteWindowSec"), 12);
     }],
+
+    ["host can update audience display runtime controls", async () => {
+      const audienceDisplay = {
+        mode: "commentator_row",
+        selectedUids: ["guest-1", "guest-2"],
+        roleSource: "manual",
+        showReactions: true,
+        maxVisible: 4,
+        sessionId: "audience_display_test",
+        updatedAtMs: 1714411111000,
+      };
+
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        audienceDisplay,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, ["audienceDisplay"]);
+
+      let snap = await roomRef.get();
+      assert.equal(snap.get("audienceDisplay.mode"), "commentator_row");
+      assert.deepEqual(snap.get("audienceDisplay.selectedUids"), ["guest-1", "guest-2"]);
+      assert.equal(snap.get("audienceDisplay.roleSource"), "manual");
+      assert.equal(snap.get("audienceDisplay.showReactions"), true);
+      assert.equal(snap.get("audienceDisplay.maxVisible"), 4);
+
+      await updateRoomAsHost.run(requestFor(HOST_UID, { audienceDisplay: null }));
+      snap = await roomRef.get();
+      assert.equal(snap.get("audienceDisplay"), null);
+    }],
+    ["host can open and clear a bounded audience decision", async () => {
+      const decision = {
+        id: "continue_or_rotate:song_123:perf_123",
+        type: "continue_or_rotate",
+        status: "open",
+        active: true,
+        subjectSongId: "song_123",
+        subjectSessionId: "perf_123",
+        openedAtMs: 1714411111000,
+        closesAtMs: 1714411122000,
+        choices: [
+          { id: "keep_singing", label: "Keep singing" },
+          { id: "next_singer", label: "Next singer" },
+        ],
+        votesByUid: {},
+      };
+
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        audienceDecision: decision,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, ["audienceDecision"]);
+
+      let snap = await roomRef.get();
+      assert.equal(snap.get("audienceDecision.type"), "continue_or_rotate");
+      assert.equal(snap.get("audienceDecision.status"), "open");
+
+      await updateRoomAsHost.run(requestFor(HOST_UID, { audienceDecision: null }));
+      snap = await roomRef.get();
+      assert.equal(snap.get("audienceDecision"), null);
+    }],
     ["host can archive and restore room metadata", async () => {
       await updateRoomAsHost.run(requestFor(HOST_UID, {
         archivedAt: { __hostOp: "serverTimestamp" },
