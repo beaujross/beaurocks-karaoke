@@ -14,7 +14,7 @@ Reduce confusion between the **Admin Workspace** and the **Live Deck / live host
 | `marqueeEnabled` | Live Deck `Overlays` dropdown | Admin `Marquee` tab | Keep in both | Live moment toggle vs content/rotation management in Admin. |
 | Vibe Sync effects (`storm`, `strobe`, `guitar`, `banger`, `ballad`, `selfie_cam`) | Live Deck `Vibe` dropdown | Admin `Live Effects` tab | Live Deck primary, Admin secondary | Runtime control belongs in Live Deck; Admin keeps fallback + reset controls. |
 | Soundboard / SFX | Live Deck `SFX` dropdown | Admin `Live Effects` tab | Live Deck primary, Admin secondary | Low-latency triggers should stay in Live Deck; Admin remains backup. Longer term, the primary host runtime should favor outcome-driven `Moments` over raw SFX browsing. See `HOST_CONSOLE_MOMENT_AUDIO_SPEC.md`. |
-| Apple Music connection | Top status pill | Admin `Playback` tab | Keep in both | Status pill = quick health + deep-link; Admin = full connect/disconnect workflow. |
+| Apple Music connection + library picker | Top status pill | Admin `Playback` tab | Keep in both, but runtime playback stays on BG controls | Status pill = quick health + deep-link; Admin = connect/disconnect, playlist browsing, and setup. The BG button remains the single background start/stop control. |
 | AI access status | Top status pill | Admin `Billing` / AI setup | Keep in both | Status pill gives instant health; Admin handles entitlement/workspace setup. |
 | Access/Auth status | Top status pill | Admin `Room Setup` | Keep in both | Pill exposes operational readiness; Admin owns permission configuration. |
 

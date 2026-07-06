@@ -1,0 +1,92 @@
+{
+  "capturedAt": "2026-07-06T16:33:39.590Z",
+  "purpose": "YouTube API Services audit/quota-extension product evidence",
+  "source": "deterministic QA fixtures rendered from the built dist artifact",
+  "outputDir": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit",
+  "screenshots": [
+    {
+      "id": "host-youtube-add-panel",
+      "surface": "host",
+      "url": "http://127.0.0.1:63542/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=run-of-show-console",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\host-youtube-add-panel.png",
+      "requiredText": [
+        "YouTube",
+        "Any YouTube",
+        "Search YouTube",
+        "Karaoke"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "host-room-library-curator",
+      "surface": "host",
+      "url": "http://127.0.0.1:63542/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=run-of-show-console&hostUiVersion=v2&view=ops&section=ops.room_setup&tab=admin",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\host-room-library-curator.png",
+      "requiredText": [
+        "Room Library Curator",
+        "YouTube API Services",
+        "YouTube Terms of Service",
+        "Google Privacy Policy",
+        "searches left"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "audience-youtube-search",
+      "surface": "audience",
+      "url": "http://127.0.0.1:63542/?mode=mobile&room=DEMOAUD&mkDemoEmbed=1&qaAudienceFixture=youtube-audit-search",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\audience-youtube-search.png",
+      "requiredText": [
+        "YouTube Search",
+        "Karaoke",
+        "Any YouTube",
+        "YouTube API Services",
+        "YouTube Terms of Service",
+        "Google Privacy Policy"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "audience-youtube-url-paste",
+      "surface": "audience",
+      "url": "http://127.0.0.1:63542/?mode=mobile&room=DEMOAUD&mkDemoEmbed=1&qaAudienceFixture=youtube-audit-paste",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\audience-youtube-url-paste.png",
+      "requiredText": [
+        "Paste a YouTube link",
+        "Dreams",
+        "Fleetwood Mac",
+        "Advanced Backing Link"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "tv-youtube-performance",
+      "surface": "tv",
+      "url": "http://127.0.0.1:63542/?mode=tv&room=DEMOAAHF&mkDemoEmbed=1&qaTvFixture=youtube-audit-performance",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\tv-youtube-performance.png",
+      "requiredText": [
+        "Dreams",
+        "Alex Rivers"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "tv-apple-background",
+      "surface": "tv",
+      "url": "http://127.0.0.1:63542/?mode=tv&room=DEMOAAHF&mkDemoEmbed=1&qaTvFixture=apple-audit-background",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\tv-apple-background.png",
+      "requiredText": [
+        "Apple Music Background",
+        "Fourth of July Background",
+        "Auto-DJ background playlist"
+      ],
+      "status": "captured"
+    }
+  ],
+  "remainingLiveEvidence": [
+    "Google Cloud Console YouTube Data API quota page for the live project",
+    "Authenticated production host session for the live audit room, if reviewers request live-room evidence",
+    "Quota exhaustion fallback state from a real exhausted/cooldown condition or controlled production test",
+    "Room permanent-delete path from a live test room"
+  ]
+}

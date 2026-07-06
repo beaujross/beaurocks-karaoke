@@ -19,11 +19,11 @@ const getEmbedStatusMeta = (status) => {
         return {
             tone: 'border-orange-400/50',
             chipClass: 'text-sm text-orange-300 font-bold',
-            chipIcon: 'fa-up-right-from-square',
+            chipIcon: 'fa-ban',
             chipLabel: 'Not embeddable',
-            helper: 'YouTube blocks iframe playback for this video, so the host has to launch it in a separate backing window instead of the TV embed.',
-            actionClass: 'bg-orange-900/50 text-orange-200 hover:bg-orange-800/50',
-            actionLabel: 'USE EXTERNAL',
+            helper: 'YouTube blocks playback inside BeauRocks. Try another link.',
+            actionClass: 'bg-zinc-800 text-zinc-500 cursor-not-allowed',
+            actionLabel: 'CAN\'T USE',
             recheckClass: 'bg-orange-950/50 text-orange-200 hover:bg-orange-900/50',
             recheckLabel: 'Recheck'
         };
@@ -46,7 +46,7 @@ const getEmbedStatusMeta = (status) => {
         chipClass: 'text-sm text-cyan-200 font-bold',
         chipIcon: 'fa-circle-question',
         chipLabel: 'Status pending',
-        helper: 'We check whether the track embeds on TV or needs an external backing window.',
+        helper: 'We check whether the track embeds on TV before it can be used.',
         actionClass: 'bg-cyan-600 text-white hover:bg-cyan-500',
         actionLabel: 'USE',
         recheckClass: 'bg-cyan-950/50 text-cyan-200 hover:bg-cyan-900/50',
@@ -59,6 +59,8 @@ const QueueYouTubeSearchModal = ({
     styles,
     ytSearchQ,
     setYtSearchQ,
+    youtubeSearchMode = 'karaoke',
+    setYoutubeSearchMode = () => {},
     ytEditingQuery,
     setYtEditingQuery,
     ytLoading,
@@ -103,16 +105,33 @@ const QueueYouTubeSearchModal = ({
                     </button>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div className="text-xs text-zinc-400">
                         Searching for: <span className="text-white font-bold">{ytSearchQ || '...'}</span>
                     </div>
-                    <button
-                        onClick={() => setYtEditingQuery(prev => !prev)}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3`}
-                    >
-                        {ytEditingQuery ? 'Done' : 'Edit'}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex overflow-hidden rounded-full border border-white/10 bg-black/30 p-0.5">
+                            {[
+                                ['karaoke', 'Karaoke'],
+                                ['any', 'Any YouTube']
+                            ].map(([mode, label]) => (
+                                <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => setYoutubeSearchMode(mode)}
+                                    className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${youtubeSearchMode === mode ? 'bg-red-500/18 text-red-100' : 'text-zinc-400 hover:text-zinc-100'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={() => setYtEditingQuery(prev => !prev)}
+                            className={`${styles.btnStd} ${styles.btnNeutral} px-3`}
+                        >
+                            {ytEditingQuery ? 'Done' : 'Edit'}
+                        </button>
+                    </div>
                 </div>
                 {ytEditingQuery && (
                     <div className="flex gap-2 mb-4">
@@ -121,7 +140,7 @@ const QueueYouTubeSearchModal = ({
                             onChange={e => setYtSearchQ(e.target.value)}
                             onKeyPress={e => e.key === 'Enter' && searchYouTube()}
                             className={styles.input}
-                            placeholder="Refine search..."
+                            placeholder="Search or paste YouTube URL..."
                         />
                         <button
                             onClick={() => searchYouTube()}
@@ -170,10 +189,10 @@ const QueueYouTubeSearchModal = ({
                                                     </button>
                                                     <button
                                                         onClick={() => selectYouTubeVideo(video)}
-                                                        disabled={isTesting}
-                                                        className={`ml-auto text-sm px-3 py-0.5 rounded font-bold flex items-center gap-1 ${statusMeta.actionClass} ${isTesting ? 'cursor-wait opacity-70' : ''}`}
+                                                        disabled={isTesting || embedStatus === 'fail'}
+                                                        className={`ml-auto text-sm px-3 py-0.5 rounded font-bold flex items-center gap-1 ${statusMeta.actionClass} ${isTesting ? 'cursor-wait opacity-70' : ''} ${embedStatus === 'fail' ? 'opacity-70' : ''}`}
                                                     >
-                                                        {embedStatus === 'fail' ? <i className="fa-solid fa-up-right-from-square"></i> : null}
+                                                        {embedStatus === 'fail' ? <i className="fa-solid fa-ban"></i> : null}
                                                         {statusMeta.actionLabel}
                                                     </button>
                                                 </div>
@@ -190,14 +209,12 @@ const QueueYouTubeSearchModal = ({
                 </div>
 
                 <div className="mt-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[11px] text-zinc-400">
-                    <span className="text-emerald-300 font-semibold">Embeds on TV</span> keeps playback in the in-room player.
-                    {' '}
-                    <span className="text-orange-300 font-semibold">Not embeddable</span> means YouTube does not allow iframe/API playback for that video, so it uses a separate host-controlled window while the queue item and performance flow still stay in the app.
+                    <span className="text-emerald-300 font-semibold">Embeds on TV</span> keeps playback in the in-room player. Karaoke adds the karaoke keyword; Any YouTube searches exactly what you type. Pasted YouTube URLs are checked before they can be used.
                 </div>
 
                 {ytSearchQ && ytResults.length === 0 && !ytLoading && (
                     <div className="host-search-helper text-center py-8">
-                        No YouTube karaoke results. Try a different keyword or paste a direct YouTube URL.
+                        No embeddable YouTube results. Try a different keyword or paste a direct YouTube URL.
                     </div>
                 )}
 

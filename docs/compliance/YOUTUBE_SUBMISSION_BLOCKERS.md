@@ -1,6 +1,6 @@
 # YouTube Submission Blockers
 
-Last updated: 2026-05-02
+Last updated: 2026-07-06
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Use this as the go/no-go checklist.
 The repo now has the core YouTube compliance hardening in place:
 
 - live YouTube search has cache, cooldown, and quota-backoff behavior
-- room-level `ytIndex` now has temporary retention, ID-based refresh, nightly cleanup, and permanent-delete cleanup
+- room-level `ytIndex` now has temporary retention, ID-based refresh, nightly cleanup, permanent-delete cleanup, and bounded canonical candidate backfill
 - public legal routes now exist in the app for:
   - `/karaoke/terms`
   - `/karaoke/privacy`
@@ -21,22 +21,29 @@ The repo now has the core YouTube compliance hardening in place:
 - singer and host YouTube surfaces now include `This application uses YouTube API Services` disclosure text
 - the singer join flow now links to Terms, Privacy, and data-deletion pages
 - the internal YouTube meter is now clearly labeled as request count rather than official Google quota usage
+- canonical backing candidates now preserve embeddability, host feedback, and source-discovery provenance
+- `test:callables:media-catalog` verifies account/global index writes and canonical backing candidate persistence in Firestore emulator
+- production hosting was redeployed on 2026-07-06 15:49 UTC (2026-07-06 08:49 America/Los_Angeles); Firebase analyzed functions and skipped them because no deployable function changes were detected
+- production legal URLs were verified HTTP 200 on 2026-07-06 and again after the 2026-07-06 15:49 UTC hosting release
+- desktop and mobile legal-page screenshots were captured under `docs/compliance/evidence/2026-07-06-youtube-audit/`
+- QA product-surface screenshots were captured under `docs/compliance/evidence/2026-07-06-youtube-product-audit/`
 
-The remaining blockers are now mostly deployment, verification, and audit-packet assembly.
+The remaining blockers are now live Google Cloud quota evidence, quota-exhaustion/cooldown evidence, room permanent-delete evidence, final business/contact confirmation, and final submission assembly. No known code blocker remains for the quota-mitigation story.
 
-## Blocker 1: Public Legal Pages Must Be Deployed And Verified
+## Resolved: Public Legal Pages Are Deployed And Verified
 
 Current repo state:
 
 - [src/App.jsx](</C:/Users/beauj/Desktop/beaurocks-karaoke/src/App.jsx:274>) now defines real Terms, Privacy, and data-deletion pages
 - [TERMS.md](</C:/Users/beauj/Desktop/beaurocks-karaoke/TERMS.md:1>) no longer says `Draft`
 
-Why this still blocks submission:
+Verification result:
 
-- the audit packet needs real production URLs, not only repo code
-- the submitted URLs must be reachable without login and render correctly in production
+- production legal URLs returned HTTP 200 on 2026-07-06
+- desktop and mobile screenshots were captured in `docs/compliance/evidence/2026-07-06-youtube-audit/`
+- this no longer blocks submission assembly
 
-Minimum acceptance criteria:
+Verified criteria:
 
 - production URLs are live for:
   - `https://beaurocks.app/karaoke/terms`
@@ -61,28 +68,28 @@ Minimum acceptance criteria:
 - confirm `hello@beaurocks.app` is the correct audit/legal contact
 - confirm the business/product naming on Terms, Privacy, and deletion pages is final
 
-## Blocker 3: Final Audit Evidence Has Not Been Captured Yet
+## Blocker 3: Live-Only Audit Evidence Still Needs To Be Captured
 
 Current repo state:
 
 - the repo now has the right surfaces to screenshot
-- [YOUTUBE_AUDIT_PACKET_CHECKLIST.md](</C:/Users/beauj/Desktop/beaurocks-karaoke/docs/compliance/YOUTUBE_AUDIT_PACKET_CHECKLIST.md>) and [YOUTUBE_AUDIT_SUBMISSION_DRAFT.md](</C:/Users/beauj/Desktop/beaurocks-karaoke/docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md>) already describe what to collect
+- public legal-page screenshots are captured
+- QA product-surface screenshots are captured for host YouTube search/add, Room Library Curator, audience YouTube search, audience URL paste, TV YouTube performance, and TV Apple Music background playback
+- [YOUTUBE_AUDIT_PACKET_CHECKLIST.md](</C:/Users/beauj/Desktop/beaurocks-karaoke/docs/compliance/YOUTUBE_AUDIT_PACKET_CHECKLIST.md>) and [YOUTUBE_AUDIT_SUBMISSION_DRAFT.md](</C:/Users/beauj/Desktop/beaurocks-karaoke/docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md>) describe the evidence packet
 
 Why this still blocks submission:
 
 - reviewers will understand the product much faster with concrete screenshots that match your narrative
+- a few screenshots require live project state or a live test room rather than deterministic QA fixtures
 
 Minimum acceptance criteria:
 
 - capture screenshots for:
-  - Terms page
-  - Privacy page
-  - data-deletion page
-  - singer join flow showing legal links
-  - host YouTube search/index surface showing disclosure
-  - singer/audience YouTube-backed search or request surface showing disclosure
-  - quota exhaustion fallback state
-  - room permanent-delete path
+  - quota exhaustion fallback state from a real exhausted/cooldown condition or controlled production test
+  - room permanent-delete path from a live test room
+  - authenticated production host session for the live audit room, if reviewers request live-room evidence beyond the QA product-surface packet
+
+Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capture steps and filenames.
 
 ## Blocker 4: Google Cloud Quota Evidence Still Needs To Be Captured
 
@@ -120,6 +127,7 @@ Minimum acceptance criteria:
   - temporary room-scoped YouTube metadata
   - up to 30 days unless refreshed sooner
   - nightly cleanup
+  - bounded canonical candidate backfill for verified embeddable indexed tracks
   - permanent room deletion removes the room host library
 
 ## Resolved In Repo
@@ -133,11 +141,13 @@ These are no longer the main blockers in the codebase:
 - missing YouTube API Services disclosure in inspected host/singer surfaces
 - indefinite `ytIndex` retention
 - missing room-host-library cleanup on permanent delete
+- missing canonical candidate persistence from curated index promotion
+- missing source-discovery provenance for indexed backing entries
+- missing bounded backfill for existing verified canonical-indexed tracks
 
 ## Recommended Submission Sequence
 
-1. Deploy the current legal and disclosure changes to the production surface.
-2. Verify the three public legal URLs in production.
-3. Capture the screenshot packet and Google Cloud quota screenshots.
-4. Review the submission draft against the live product once.
-5. Only then submit the audit/quota-extension request.
+1. Capture live Google Cloud quota screenshots, quota exhaustion/cooldown evidence, and room permanent-delete evidence.
+2. Confirm final business/contact details.
+3. Review `docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md` and the submission draft against the live product once.
+4. Only then submit the audit/quota-extension request.

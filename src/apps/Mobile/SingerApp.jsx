@@ -52,7 +52,7 @@ import { POINTS_PACKS, SUBSCRIPTIONS } from '../../billing/catalog';
 import { BILLING_PLATFORMS, createBillingProvider, detectBillingPlatform } from '../../billing/provider';
 import { DEFAULT_TIP_CRATES, TOP100_SEED } from '../Host/hostAppData';
 import { resolveSongCatalog, extractYouTubeId, buildSongKey } from '../../lib/songCatalog';
-import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
+import { getBackingSourceLabel, normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import {
     AUDIENCE_ACCESS_MODES,
     CO_HOST_CREDIT_POLICIES,
@@ -93,6 +93,7 @@ import { REACTION_COSTS } from '../../lib/reactionConstants';
 import groupChatMessages from '../../lib/chatGrouping';
 import {
     DEFAULT_POP_TRIVIA_ROUND_SEC,
+    DEFAULT_POP_TRIVIA_REVEAL_SEC,
     POP_TRIVIA_VOTE_TYPE,
     dedupeQuestionVotes,
     getActivePopTriviaQuestion
@@ -1684,6 +1685,7 @@ const SingerApp = ({ roomCode, uid }) => {
     // UI State
     const [searchQ, setSearchQ] = useState('');
     const [catalogSearchMode, setCatalogSearchMode] = useState('catalog');
+    const [audienceYoutubeSearchMode, setAudienceYoutubeSearchMode] = useState('karaoke');
     const [results, setResults] = useState([]);
     const [catalogResultsLoading, setCatalogResultsLoading] = useState(false);
     const [youtubeResults, setYoutubeResults] = useState([]);
@@ -4399,11 +4401,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (applePlaybackActive) {
             const title = applePlayback?.title || 'Apple Music';
             const state = applePlayback?.status === 'paused' ? 'Paused' : 'Live';
-            return { source: 'Apple Music', title, state, sourceKey: 'apple' };
+            return { source: getBackingSourceLabel({ usesAppleBacking: true, variant: 'compact' }), title, state, sourceKey: 'apple' };
         }
         if (mediaUrl) {
             const state = room?.videoPlaying ? 'Playing' : 'Paused';
-            const source = isYoutube ? 'YouTube' : isNativeVideo ? 'Local Video' : isAudio ? 'Local Audio' : 'Media';
+            const source = getBackingSourceLabel({ mediaUrl, source: isYoutube ? 'youtube' : 'local', variant: 'compact' });
             const title = currentSinger?.songTitle || 'Now Playing';
             const sourceKey = isYoutube ? 'youtube' : (isNativeVideo || isAudio) ? 'local' : 'media';
             return { source, title, state, sourceKey };
@@ -4919,9 +4921,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         8,
         Number(room?.popTriviaRoundSec || room?.gameDefaults?.triviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC)
     );
-    const popTriviaRevealHoldMs = Math.max(
-        6000,
-        Number(room?.gameDefaults?.popTriviaRevealHoldSec || DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC) * 1000
+    const popTriviaQuestionRevealSec = Math.max(
+        3,
+        Number(room?.gameDefaults?.popTriviaQuestionRevealSec || DEFAULT_POP_TRIVIA_REVEAL_SEC)
     );
     const popTriviaCorrectPoints = Math.max(
         0,
@@ -4934,21 +4936,24 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         return getActivePopTriviaQuestion({
             song: currentSinger,
             now: popTriviaNow,
-            roundSec: popTriviaRoundSec
+            roundSec: popTriviaRoundSec,
+            revealSec: popTriviaQuestionRevealSec
         });
-    }, [currentSinger, popTriviaNow, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
+    }, [currentSinger, popTriviaNow, popTriviaQuestionRevealSec, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
     const popTriviaQuestion = popTriviaState?.question || null;
     const popTriviaQuestionId = popTriviaQuestion?.id || '';
-    const showPopTriviaEndState = (
-        popTriviaState?.status === 'complete'
-        && (popTriviaNow - Number(popTriviaState?.completedAtMs || 0)) < popTriviaRevealHoldMs
-    );
+    const popTriviaRevealQuestionFromState = popTriviaState?.status === 'reveal'
+        ? (popTriviaState?.revealQuestion || null)
+        : null;
+    const popTriviaRevealQuestionFromStateId = String(popTriviaRevealQuestionFromState?.id || '').trim();
+    const showPopTriviaEndState = !!popTriviaRevealQuestionFromState;
+    const popTriviaVoteQuestionId = popTriviaQuestionId || popTriviaRevealQuestionFromStateId;
     const popTriviaProgressPct = popTriviaQuestion
         ? Math.max(0, Math.min(100, (Number(popTriviaState?.timeLeftSec || 0) / Math.max(1, Number(popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC))) * 100))
         : 0;
     const popTriviaCardKey = popTriviaQuestionId || (
         showPopTriviaEndState
-            ? `complete_${Number(popTriviaState?.completedAtMs || 0)}`
+            ? `reveal_${popTriviaRevealQuestionFromStateId}`
             : ''
     );
     const showPopTriviaCard = !!popTriviaCardKey && dismissedPopTriviaCardKey !== popTriviaCardKey;
@@ -4976,7 +4981,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         const val = Number(mine.val);
         return Number.isInteger(val) ? val : null;
     }, [form.emoji, form.name, popTriviaVotes, uid, user?.avatar, user?.name]);
-    const popTriviaRevealQuestion = showPopTriviaEndState ? (popTriviaRevealSnapshot?.question || null) : null;
+    const popTriviaRevealQuestion = showPopTriviaEndState ? (popTriviaRevealQuestionFromState || popTriviaRevealSnapshot?.question || null) : null;
     const popTriviaRevealCorrectIndex = Number.isInteger(popTriviaRevealQuestion?.correct)
         ? Number(popTriviaRevealQuestion.correct)
         : -1;
@@ -5035,7 +5040,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         )
         : popTriviaRevealMyVote !== null
             ? 'Your answer locked in, but this was not the winning choice.'
-            : 'Trivia complete. Back to the song.';
+            : 'Answer revealed. Back to the song.';
     const popTriviaAwardPulseKey = popTriviaAwardWinnerForMe
         ? `${popTriviaRevealQuestionId}_${popTriviaConfirmedAwardDelta}_server`
         : (popTriviaAwardSync.questionId === popTriviaRevealQuestionId ? `${popTriviaAwardSync.questionId}_${popTriviaAwardSync.delta}` : '');
@@ -5074,14 +5079,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     }, [currentSinger?.id, popTriviaCardKey, lobbyVolleySceneActive, karaokePerformanceVotingOpen]);
 
     useEffect(() => {
-        if (!popTriviaQuestionId) {
+        if (!popTriviaVoteQuestionId) {
             setPopTriviaVotes([]);
             return () => {};
         }
         const voteQuery = query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
             where('roomCode', '==', roomCode),
-            where('questionId', '==', popTriviaQuestionId)
+            where('questionId', '==', popTriviaVoteQuestionId)
         );
         const unsub = onSnapshot(voteQuery, (snap) => {
             const deduped = dedupeQuestionVotes(
@@ -5091,7 +5096,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setPopTriviaVotes(deduped);
         });
         return () => unsub();
-    }, [roomCode, popTriviaQuestionId]);
+    }, [roomCode, popTriviaVoteQuestionId]);
     useEffect(() => {
         if (!popTriviaQuestion) return;
         setPopTriviaRevealSnapshot({
@@ -5922,7 +5927,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         return {
             label: 'Not embeddable',
             className: 'border-orange-300/40 bg-orange-500/10 text-orange-100',
-            detail: 'The host can still run it, but it opens in a separate window.',
+            detail: 'This video cannot play inside BeauRocks.',
         };
     }, []);
 
@@ -5954,11 +5959,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             }
             try {
                 const data = await searchYouTubeCatalog({
-                    query: `${searchQ} karaoke`,
+                    query: audienceYoutubeSearchMode === 'any' ? searchQ : `${searchQ} karaoke`,
                     maxResults: 8,
                     playableOnly: true,
                     roomCode,
-                    usageSource: 'audience_request_youtube_search',
+                    usageSource: audienceYoutubeSearchMode === 'any' ? 'audience_request_youtube_search_any' : 'audience_request_youtube_search_karaoke',
                     usageSurface: 'audience',
                 });
                 if (cancelled) return;
@@ -5991,7 +5996,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             cancelled = true;
             clearTimeout(t);
         };
-    }, [audienceManualBackingAllowed, catalogSearchMode, globalYtIndex, normalizeAudienceYouTubeSearchItems, roomCode, searchQ]);
+    }, [audienceManualBackingAllowed, audienceYoutubeSearchMode, catalogSearchMode, globalYtIndex, normalizeAudienceYouTubeSearchItems, roomCode, searchQ]);
 
     const getAudienceBackingBadgeMeta = useCallback((candidate = null) => {
         const layer = String(candidate?.resolutionLayer || candidate?.layer || '').trim().toLowerCase();
@@ -7794,16 +7799,16 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             const trackSource = options.trackSource || 'youtube';
             const explicitResolutionStatus = String(options.resolutionStatus || '').trim().toLowerCase();
             const explicitResolutionLayer = String(options.resolutionLayer || '').trim();
-            const requestedYoutubePlaybackStatus = String(options.youtubePlaybackStatus || '').trim();
-            const requestedYoutubeEmbeddable = options.youtubeEmbeddable === true
+            let requestedYoutubePlaybackStatus = String(options.youtubePlaybackStatus || '').trim();
+            let requestedYoutubeEmbeddable = options.youtubeEmbeddable === true
                 ? true
                 : options.youtubeEmbeddable === false
                     ? false
                     : null;
-            const requestedYoutubeUploadStatus = String(options.youtubeUploadStatus || '').trim().toLowerCase();
-            const requestedYoutubePrivacyStatus = String(options.youtubePrivacyStatus || '').trim().toLowerCase();
+            let requestedYoutubeUploadStatus = String(options.youtubeUploadStatus || '').trim().toLowerCase();
+            let requestedYoutubePrivacyStatus = String(options.youtubePrivacyStatus || '').trim().toLowerCase();
             if (backingUrl && trackSource === 'youtube' && !extractYouTubeId(backingUrl)) {
-                toast('Use a valid YouTube URL for the backing track.');
+                toast('Use a valid YouTube URL.');
                 return;
             }
             if (isAudienceBackingBlockedByPolicy({
@@ -7824,6 +7829,33 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             let resolvedDurationSec = Math.max(0, Math.round(Number(options.durationSec || 0)));
             let resolvedAudioOnly = !!options.audioOnly;
             let playbackReady = !!backingUrl;
+            const needsPastedYouTubeValidation = !!backingUrl && trackSource === 'youtube' && !options.mediaUrl;
+            if (needsPastedYouTubeValidation) {
+                const pastedYoutubeId = extractYouTubeId(backingUrl);
+                try {
+                    const details = await callFunction('youtubeDetails', {
+                        ids: [pastedYoutubeId],
+                        roomCode,
+                        usageContext: { source: 'audience_request_youtube_url_details', surface: 'audience' }
+                    });
+                    const detailItem = details?.items?.[0] || null;
+                    const playbackState = normalizeYouTubePlaybackState(detailItem || { id: pastedYoutubeId });
+                    if (playbackState.youtubePlaybackStatus !== YOUTUBE_PLAYBACK_STATUSES.embeddable) {
+                        toast('That YouTube link cannot play inside BeauRocks. Try another link.');
+                        return;
+                    }
+                    requestedYoutubePlaybackStatus = playbackState.youtubePlaybackStatus;
+                    requestedYoutubeEmbeddable = playbackState.embeddable === true;
+                    requestedYoutubeUploadStatus = playbackState.uploadStatus || requestedYoutubeUploadStatus;
+                    requestedYoutubePrivacyStatus = playbackState.privacyStatus || requestedYoutubePrivacyStatus;
+                    resolvedDurationSec = Math.max(resolvedDurationSec, Math.round(Number(detailItem?.durationSec || 0)));
+                    playbackReady = true;
+                } catch (youtubeUrlError) {
+                    console.warn('Singer YouTube URL validation failed', youtubeUrlError);
+                    toast('Could not check that YouTube link. Try search or another link.');
+                    return;
+                }
+            }
             let {
                 mediaResolutionStatus,
                 resolutionStatus,
@@ -11986,7 +12018,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         ? (
             popTriviaQuestion
                 ? (popTriviaMyVote !== null ? 'Trivia live | Answer locked' : `Trivia live | ${popTriviaState?.timeLeftSec || 0}s`)
-                : 'Trivia recap'
+                : 'Trivia reveal'
         )
         : homeStageInteractionState === 'volley'
             ? (
@@ -12002,7 +12034,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         ? (
             popTriviaQuestion
                 ? (popTriviaMyVote !== null ? 'Trivia Locked' : `Answer Trivia - ${popTriviaState?.timeLeftSec || 0}s`)
-                : 'Trivia Recap'
+                : 'Trivia Reveal'
         )
         : homeStageInteractionState === 'volley'
             ? (
@@ -12132,63 +12164,62 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         );
                     })}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
-                        <i className="fa-solid fa-list text-[10px]"></i>
-                        {queueSongsView.length}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
-                        <i className="fa-solid fa-clock text-[10px]"></i>
-                        {formatWaitTime(queueWaitTimeSec)}
-                    </span>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            pulseNativeUiFeedback();
-                            copyInviteLink();
-                        }}
-                        className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-zinc-100 hover:border-white/20 hover:bg-black/45"
+                {activePrimaryStageTab === 'request' ? (
+                    <div
+                        role="tablist"
+                        aria-label="Song request sections"
+                        className="grid min-h-[42px] gap-1 rounded-2xl border border-white/10 bg-black/20 px-1 py-1"
+                        style={{ gridTemplateColumns: `repeat(${streamlinedSongsNavItems.length}, minmax(0, 1fr))` }}
                     >
-                        <i className="fa-solid fa-link text-[10px]"></i>
-                        <span>Share</span>
-                    </button>
-                </div>
-                {activePrimaryStageTab === 'request' && (
-                    <>
-                        <div
-                            role="tablist"
-                            aria-label="Song request sections"
-                            className="grid gap-1 border-b border-white/10 px-1 pt-1"
-                            style={{ gridTemplateColumns: `repeat(${streamlinedSongsNavItems.length}, minmax(0, 1fr))` }}
+                        {streamlinedSongsNavItems.map((item) => {
+                            const isActive = songsTab === item.key;
+                            return (
+                                <button
+                                    key={item.key}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={isActive}
+                                    onClick={() => openStreamlinedSongsStageTab(item.key)}
+                                    className={`relative inline-flex min-h-[34px] items-center justify-center gap-1.5 rounded-xl border px-2 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                                        isActive
+                                            ? 'border-cyan-300/55 bg-cyan-500/14 text-white'
+                                            : 'border-transparent bg-transparent text-zinc-400 hover:border-white/10 hover:bg-white/[0.05] hover:text-zinc-100'
+                                    }`}
+                                    style={isActive ? streamlinedSongsTabActiveStyle : undefined}
+                                >
+                                    <i className={`fa-solid ${item.icon} text-[10px]`}></i>
+                                    <span className="truncate">{item.label}</span>
+                                    {typeof item.badge === 'number' ? (
+                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/12 text-cyan-50' : 'bg-white/8 text-zinc-300'}`}>
+                                            {item.badge}
+                                        </span>
+                                    ) : null}
+                                </button>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="flex min-h-[42px] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
+                            <i className="fa-solid fa-list text-[10px]"></i>
+                            {queueSongsView.length}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
+                            <i className="fa-solid fa-clock text-[10px]"></i>
+                            {formatWaitTime(queueWaitTimeSec)}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                pulseNativeUiFeedback();
+                                copyInviteLink();
+                            }}
+                            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-zinc-100 hover:border-white/20 hover:bg-black/45"
                         >
-                            {streamlinedSongsNavItems.map((item) => {
-                                const isActive = songsTab === item.key;
-                                return (
-                                    <button
-                                        key={item.key}
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={isActive}
-                                        onClick={() => openStreamlinedSongsStageTab(item.key)}
-                                        className={`relative inline-flex min-h-[38px] items-center justify-center gap-2 border-b-2 px-2 pb-2 pt-1 text-[11px] font-black uppercase tracking-[0.16em] transition-colors ${
-                                            isActive
-                                                ? 'border-cyan-300 bg-transparent text-white'
-                                                : 'border-transparent bg-transparent text-zinc-400 hover:text-zinc-100'
-                                        }`}
-                                        style={isActive ? streamlinedSongsTabActiveStyle : undefined}
-                                    >
-                                        <i className={`fa-solid ${item.icon} text-[10px]`}></i>
-                                        <span>{item.label}</span>
-                                        {typeof item.badge === 'number' ? (
-                                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/12 text-cyan-50' : 'bg-white/8 text-zinc-300'}`}>
-                                                {item.badge}
-                                            </span>
-                                        ) : null}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </>
+                            <i className="fa-solid fa-link text-[10px]"></i>
+                            <span>Share</span>
+                        </button>
+                    </div>
                 )}
             </div>
         </div>
@@ -13357,7 +13388,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 {showPopTriviaCard && !showPopTriviaStandaloneSheet && (
                                     <div data-feature-id="pop-trivia-card" className="mt-3 overflow-hidden rounded-3xl border-2 border-yellow-300/70 bg-gradient-to-br from-[#070b1a]/98 via-[#11162b]/98 to-[#180a1f]/98 shadow-[0_18px_54px_rgba(250,204,21,0.28)] backdrop-blur p-4">
                                         <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.22em] text-cyan-100">
-                                            <span>{popTriviaQuestion ? 'Answer pop-up trivia now' : 'Pop-up Trivia Complete'}</span>
+                                            <span>{popTriviaQuestion ? 'Answer pop-up trivia now' : 'Answer Revealed'}</span>
                                             <div className="flex items-center gap-2">
                                                 {popTriviaQuestion ? (
                                                     <span className={`rounded-full border px-3 py-1 font-black ${Number(popTriviaState?.timeLeftSec || 0) <= 5 ? 'border-yellow-300/60 bg-yellow-300/15 text-yellow-100' : 'border-cyan-300/45 bg-cyan-300/12 text-cyan-100'}`}>
@@ -14448,7 +14479,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     ? (catalogSearchMode === 'youtube'
                                                         ? `${youtubeResults.length} YouTube result${youtubeResults.length === 1 ? '' : 's'}${enrichedCatalogResults.length ? ` | ${enrichedCatalogResults.length} song match${enrichedCatalogResults.length === 1 ? '' : 'es'}` : ''}`
                                                         : `${results.length} match${results.length === 1 ? '' : 'es'}`)
-                                                    : (catalogSearchMode === 'youtube' ? 'Search YouTube karaoke' : 'Search song + artist')}
+                                                    : (catalogSearchMode === 'youtube' ? (audienceYoutubeSearchMode === 'any' ? 'Search YouTube' : 'Search YouTube karaoke') : 'Search song + artist')}
                                             </div>
                                         </div>
                                         <button
@@ -14465,7 +14496,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                 <div className="mb-3 flex flex-wrap gap-2">
                                                     {[
                                                         ['catalog', 'Song search'],
-                                                        ['youtube', 'YouTube search']
+                                                        ['youtube', 'YouTube']
                                                     ].map(([mode, label]) => (
                                                         <button
                                                             key={mode}
@@ -14482,6 +14513,23 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     ))}
                                                 </div>
                                             )}
+                                            {catalogSearchMode === 'youtube' && (
+                                                <div className="mb-3 inline-flex overflow-hidden rounded-full border border-white/10 bg-black/25 p-0.5">
+                                                    {[
+                                                        ['karaoke', 'Karaoke'],
+                                                        ['any', 'Any YouTube']
+                                                    ].map(([mode, label]) => (
+                                                        <button
+                                                            key={mode}
+                                                            type="button"
+                                                            onClick={() => setAudienceYoutubeSearchMode(mode)}
+                                                            className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] ${audienceYoutubeSearchMode === mode ? audienceSearchModeActiveClass : audienceSearchModeInactiveClass}`}
+                                                        >
+                                                            {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                             <div className="flex items-center gap-3">
                                                 <i className={audienceSearchIconClass}></i>
                                                 <input
@@ -14489,14 +14537,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     value={searchQ}
                                                     onChange={(e) => setSearchQ(e.target.value)}
                                                     className={audienceSearchInputClass}
-                                                    placeholder={catalogSearchMode === 'youtube' ? 'Search YouTube karaoke...' : 'Search songs...'}
+                                                    placeholder={catalogSearchMode === 'youtube' ? (audienceYoutubeSearchMode === 'any' ? 'Search YouTube...' : 'Search YouTube karaoke...') : 'Search songs...'}
                                                 />
                                             </div>
                                             <div className={audienceSearchHelperTextClass}>
                                                 {audienceYouTubeOnlySearch
-                                                    ? 'This room is locked to YouTube karaoke search for guest requests.'
+                                                    ? 'This room is locked to YouTube search for guest requests.'
                                                     : catalogSearchMode === 'youtube'
-                                                    ? 'Search direct YouTube karaoke backings first. Song matches stay below as a fallback if you need them.'
+                                                    ? (audienceYoutubeSearchMode === 'any' ? 'Search YouTube exactly as typed. Only videos that play inside BeauRocks can be added.' : 'Karaoke mode adds karaoke to the search. Song matches stay below as a fallback if you need them.')
                                                     : 'Search by song and artist. Browse only shows picks that already have approved backing.'}
                                             </div>
                                             {catalogSearchMode === 'youtube' && (
@@ -14516,7 +14564,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         {searchQ.trim().length < 3 ? (
                                             <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
                                                 {catalogSearchMode === 'youtube'
-                                                    ? 'Type at least 3 characters. Song + artist + karaoke works best.'
+                                                    ? (audienceYoutubeSearchMode === 'any' ? 'Type at least 3 characters or paste a YouTube link in the request form.' : 'Type at least 3 characters. Song + artist + karaoke works best.')
                                                     : 'Type at least 3 characters. Song + artist works best.'}
                                             </div>
                                         ) : catalogSearchMode === 'youtube' ? (
@@ -14539,7 +14587,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     </div>
                                                     {youtubeResultsLoading ? (
                                                         <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
-                                                            Searching YouTube karaoke results...
+                                                            {audienceYoutubeSearchMode === 'any' ? 'Searching YouTube results...' : 'Searching YouTube karaoke results...'}
                                                         </div>
                                                     ) : youtubeResultsError ? (
                                                         <div className="rounded-2xl border border-amber-300/25 bg-amber-500/10 px-4 py-5 text-sm text-amber-100">
@@ -14873,7 +14921,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className="text-left">
                                                         <div className="text-sm uppercase tracking-[0.35em] text-zinc-400">Advanced Backing Link</div>
-                                                        <div className="mt-1 text-sm text-zinc-300">Only use this if you already know the exact YouTube karaoke backing.</div>
+                                                        <div className="mt-1 text-sm text-zinc-300">Paste a YouTube link when you need a specific version.</div>
                                                     </div>
                                                     <button
                                                         type="button"
@@ -14889,9 +14937,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                             value={form.backingUrl}
                                                             onChange={e => setForm(prev => ({ ...prev, backingUrl: e.target.value }))}
                                                             className={audienceFormInputClass}
-                                                            placeholder="YouTube URL for the backing track"
+                                                            placeholder="Paste YouTube URL"
                                                         />
-                                                        <div className="text-sm text-zinc-400">YouTube links only. Host still controls playback.</div>
+                                                        <div className="text-sm text-zinc-400">Only links that play inside BeauRocks can be added.</div>
                                                     </div>
                                                 )}
                                             </div>
@@ -15223,7 +15271,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         <div className="flex items-start justify-between gap-3">
                                             <div>
                                                 <div className="text-sm uppercase tracking-[0.35em] text-zinc-500">Advanced Backing Link</div>
-                                                <div className="text-sm text-zinc-400">Use a direct YouTube link only when you need a specific backing.</div>
+                                                <div className="text-sm text-zinc-400">Paste a YouTube link when you need a specific version.</div>
                                             </div>
                                             <button
                                                 type="button"
@@ -15239,9 +15287,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     value={form.backingUrl}
                                                     onChange={e => setForm(prev => ({ ...prev, backingUrl: e.target.value }))}
                                                     className={audienceFormInputClass}
-                                                    placeholder="YouTube URL for the backing track"
+                                                    placeholder="Paste YouTube URL"
                                                 />
-                                                <div className="text-sm text-zinc-500">Applies to the next request you send.</div>
+                                                <div className="text-sm text-zinc-500">Only links that play inside BeauRocks can be added.</div>
                                             </div>
                                         )}
                                     </div>
@@ -15781,7 +15829,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 >
                     <div className="mx-auto max-w-xl pointer-events-auto max-h-[calc(100dvh-5.5rem)] overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar rounded-3xl border-2 border-yellow-300/80 bg-gradient-to-br from-[#070b1a]/98 via-[#11162b]/98 to-[#180a1f]/98 p-4 shadow-[0_18px_64px_rgba(0,0,0,0.72),0_0_42px_rgba(250,204,21,0.28)] backdrop-blur-xl">
                         <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.2em] text-yellow-100">
-                            <span>{popTriviaQuestion ? 'Answer pop-up trivia now' : 'Pop-up Trivia Complete'}</span>
+                            <span>{popTriviaQuestion ? 'Answer pop-up trivia now' : 'Answer Revealed'}</span>
                             <div className="flex items-center gap-2">
                                 {popTriviaQuestion ? (
                                     <span className={`rounded-full border px-3 py-1 font-black ${Number(popTriviaState?.timeLeftSec || 0) <= 5 ? 'border-yellow-300/70 bg-yellow-300/20 text-yellow-50' : 'border-cyan-300/45 bg-cyan-300/12 text-cyan-100'}`}>
@@ -15902,8 +15950,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     className="fixed right-4 z-[95] rounded-full border border-cyan-300/55 bg-cyan-500/22 text-cyan-100 shadow-[0_10px_28px_rgba(34,211,238,0.35)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em]"
                     style={{ bottom: `calc(${mobileFloatingBottomInset} + 4.75rem)` }}
                 >
-                    <i className={`fa-solid ${popTriviaQuestion ? 'fa-brain' : 'fa-flag-checkered'} mr-2`}></i>
-                    {popTriviaQuestion ? 'Trivia Live' : 'Trivia Recap'}
+                    <i className={`fa-solid ${popTriviaQuestion ? 'fa-brain' : 'fa-circle-check'} mr-2`}></i>
+                    {popTriviaQuestion ? 'Trivia Live' : 'Trivia Reveal'}
                 </button>
             )}
             {floatingEngagementPrompt && (

@@ -6,7 +6,7 @@ const clampPostPerformanceHoldMs = (value = 0) => Math.max(0, Math.min(60000, Ma
 
 const defaultIsQueueEntryPlayable = (song = {}, { appleMusicEnabled = true } = {}) => {
     const mediaResolutionStatus = String(song?.mediaResolutionStatus || '').trim().toLowerCase();
-    if (mediaResolutionStatus === 'needs_backing') return false;
+    if (mediaResolutionStatus === 'needs_backing' || mediaResolutionStatus === 'pending_youtube_match') return false;
     if (song?.playbackReady === false) return false;
     const appleMusicId = String(song?.appleMusicId || '').trim();
     if (appleMusicId) return !!appleMusicEnabled;

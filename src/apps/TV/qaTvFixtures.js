@@ -14,6 +14,7 @@ const QA_REACTION_USERS = Object.freeze([
     { userName: 'Rin', avatar: '🎸' },
     { userName: 'Skye', avatar: '🎶' },
     { userName: 'Paz', avatar: '✨' },
+
 ]);
 
 export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
@@ -63,6 +64,18 @@ export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
         id: 'support-purchase-rain',
         roomCode: 'DEMOAAHF',
         expectedTexts: ['Maya boosted the room', 'Festival support spotlight'],
+        mismatchThresholdPct: 1.0,
+    },
+    {
+        id: 'youtube-audit-performance',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Dreams', 'Alex Rivers'],
+        mismatchThresholdPct: 1.0,
+    },
+    {
+        id: 'apple-audit-background',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Apple Music Background', 'Fourth of July Background', 'Auto-DJ background playlist'],
         mismatchThresholdPct: 1.0,
     },
 ]);
@@ -420,6 +433,75 @@ export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs 
                 { id: 'qa-activity-1', text: 'Avery is lighting up the stage', emoji: '🔥', at: performanceStartedAt },
                 { id: 'qa-activity-2', text: 'Mika sent bonus points', emoji: '✨', at: performanceStartedAt + 12000 },
             ],
+        };
+    }
+    if (safeId === 'youtube-audit-performance') {
+        const performanceStartedAt = Number(nowMs || FIXED_QA_TV_NOW_MS) - 45000;
+        return {
+            started: true,
+            room: {
+                ...room,
+                activeMode: 'karaoke',
+                layoutMode: 'minimal',
+                hideJoinOverlay: false,
+                videoPlaying: true,
+                videoStartTimestamp: performanceStartedAt,
+                pausedAt: null,
+                currentPerformanceMeta: {
+                    songId: 'audit-youtube-song',
+                    startedAtMs: performanceStartedAt,
+                    durationSec: 212,
+                    backingDurationSec: 212,
+                },
+                currentPerformanceSession: {
+                    sessionId: 'audit-youtube-session',
+                    songId: 'audit-youtube-song',
+                    startedAtMs: performanceStartedAt,
+                    playbackState: 'playing',
+                    expectedDurationSec: 212,
+                },
+            },
+            songs: [
+                {
+                    id: 'audit-youtube-song',
+                    roomCode,
+                    status: 'performing',
+                    title: 'Dreams',
+                    songTitle: 'Dreams',
+                    artist: 'Fleetwood Mac',
+                    artistName: 'Fleetwood Mac',
+                    singerName: 'Alex Rivers',
+                    singer: 'Alex Rivers',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
+                    youtubeId: 'yt_demo_backing_01',
+                    duration: 212,
+                    performingStartedAt: performanceStartedAt,
+                },
+            ],
+        };
+    }
+
+    if (safeId === 'apple-audit-background') {
+        const playbackStartedAt = Number(nowMs || FIXED_QA_TV_NOW_MS) - 75000;
+        return {
+            started: true,
+            room: {
+                ...room,
+                activeMode: 'karaoke',
+                layoutMode: 'minimal',
+                hideJoinOverlay: false,
+                appleMusicAutoPlaylistId: 'pl.audit-background',
+                appleMusicAutoPlaylistTitle: 'Fourth of July Background',
+                appleMusicPlayback: {
+                    id: 'pl.audit-background',
+                    type: 'playlist',
+                    title: 'Fourth of July Background',
+                    status: 'playing',
+                    startedAt: playbackStartedAt,
+                    durationSec: 1800,
+                },
+            },
+            songs: [],
         };
     }
 

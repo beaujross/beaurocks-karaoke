@@ -23,7 +23,7 @@ import {
     extractYouTubeId
 } from '../../../lib/songCatalog';
 import { normalizeBackingChoice } from '../../../lib/playbackSource';
-import { requiresBackingHostReview } from '../../../lib/requestModes';
+import { RESOLUTION_STATUSES, requiresBackingHostReview } from '../../../lib/requestModes';
 import { buildHostEditedReviewState } from '../../../lib/queueSongReviewState';
 import { getTrackDurationSecFromSearchResult } from '../hostPlaybackAutomation';
 import { normalizeYouTubePlaybackState } from '../../../lib/youtubePlaybackStatus';
@@ -655,6 +655,7 @@ const useQueueSongActions = ({
         const isApple = r.source === 'itunes';
         const explicitAppleId = isApple ? String(r.trackId || '') : '';
         const preferAppleDefault = isApple && !!explicitAppleId;
+        const appleIntentNeedsBacking = preferAppleDefault && options?.queueAppleBacking !== true;
         const itunesArt = (r.artworkUrl100 || '').replace('100x100', '600x600');
         const selectedDuration = getTrackDurationSecFromSearchResult(r, manual.duration || 180);
         const trackSource = preferAppleDefault
@@ -685,7 +686,7 @@ const useQueueSongActions = ({
             appleMusicId: preferAppleDefault ? explicitAppleId : '',
             duration: resolvedDuration,
             backingAudioOnly: queueYouTubePlaybackPatch.backingAudioOnly || false,
-            audioOnly: trackSource === 'apple' ? true : r.mediaType === 'audio' || isAudioUrl(r.url)
+            audioOnly: appleIntentNeedsBacking ? false : trackSource === 'apple' ? true : r.mediaType === 'audio' || isAudioUrl(r.url)
         };
         const initialSongId = buildSongKey(r.trackName, r.artistName || 'Unknown');
 
@@ -705,6 +706,11 @@ const useQueueSongActions = ({
                 lyricsTimed: null,
                 appleMusicId: nextSong.appleMusicId,
                 musicSource: nextSong.appleMusicId ? 'apple' : '',
+                ...(appleIntentNeedsBacking ? {
+                    resolutionStatus: RESOLUTION_STATUSES.reviewRequired,
+                    mediaResolutionStatus: 'pending_youtube_match',
+                    playbackReady: false
+                } : {}),
                 lyricsSource: '',
                 lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
                 lyricsGenerationResolution: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
@@ -719,9 +725,11 @@ const useQueueSongActions = ({
                 audioOnly: nextSong.audioOnly || isAudioUrl(nextSong.url)
             });
 
-            const statusText = preferAppleDefault
-                ? 'Queued with Apple backing (finalizing lyrics...)'
-                : 'Queued (finalizing lyrics...)';
+            const statusText = appleIntentNeedsBacking
+                ? 'Queued song from Apple Music. Pick a YouTube backing or approve Apple sing-along.'
+                : preferAppleDefault
+                    ? 'Queued with Apple backing (finalizing lyrics...)'
+                    : 'Queued (finalizing lyrics...)';
             toast(statusText);
 
             void (async () => {
@@ -810,7 +818,12 @@ const useQueueSongActions = ({
                 duration: nextSong.duration ? Math.round(nextSong.duration) : 180,
                 statusText,
                 lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
-                lyricsGenerationResolution: room?.autoLyricsOnQueue ? 'pending' : 'disabled'
+                lyricsGenerationResolution: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
+                ...(appleIntentNeedsBacking ? {
+                    resolutionStatus: RESOLUTION_STATUSES.reviewRequired,
+                    mediaResolutionStatus: 'pending_youtube_match',
+                    playbackReady: false
+                } : {})
             };
         } catch (err) {
             console.warn('Failed to queue song', err);

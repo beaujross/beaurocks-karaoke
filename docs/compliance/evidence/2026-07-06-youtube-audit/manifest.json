@@ -1,0 +1,102 @@
+{
+  "capturedAt": "2026-07-06T14:34:28.806Z",
+  "purpose": "YouTube API Services audit/quota-extension evidence",
+  "outputDir": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-audit",
+  "screenshots": [
+    {
+      "id": "desktop-terms",
+      "route": "terms",
+      "profile": "desktop",
+      "url": "https://beaurocks.app/karaoke/terms",
+      "status": 200,
+      "title": "Terms of Service | BeauRocks Karaoke",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-audit\\desktop-terms.png",
+      "requiredText": [
+        "Terms of Service",
+        "YouTube API Services",
+        "YouTube Terms of Service",
+        "Google Privacy Policy"
+      ]
+    },
+    {
+      "id": "desktop-privacy",
+      "route": "privacy",
+      "profile": "desktop",
+      "url": "https://beaurocks.app/karaoke/privacy",
+      "status": 200,
+      "title": "Privacy Policy | BeauRocks Karaoke",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-audit\\desktop-privacy.png",
+      "requiredText": [
+        "Privacy Policy",
+        "YouTube API Services",
+        "Google Privacy Policy"
+      ]
+    },
+    {
+      "id": "desktop-data-deletion",
+      "route": "data-deletion",
+      "profile": "desktop",
+      "url": "https://beaurocks.app/karaoke/data-deletion",
+      "status": 200,
+      "title": "Data Deletion | BeauRocks Karaoke",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-audit\\desktop-data-deletion.png",
+      "requiredText": [
+        "Data Deletion",
+        "delete",
+        "YouTube"
+      ]
+    },
+    {
+      "id": "mobile-terms",
+      "route": "terms",
+      "profile": "mobile",
+      "url": "https://beaurocks.app/karaoke/terms",
+      "status": 200,
+      "title": "Terms of Service | BeauRocks Karaoke",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-audit\\mobile-terms.png",
+      "requiredText": [
+        "Terms of Service",
+        "YouTube API Services",
+        "YouTube Terms of Service",
+        "Google Privacy Policy"
+      ]
+    },
+    {
+      "id": "mobile-privacy",
+      "route": "privacy",
+      "profile": "mobile",
+      "url": "https://beaurocks.app/karaoke/privacy",
+      "status": 200,
+      "title": "Privacy Policy | BeauRocks Karaoke",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-audit\\mobile-privacy.png",
+      "requiredText": [
+        "Privacy Policy",
+        "YouTube API Services",
+        "Google Privacy Policy"
+      ]
+    },
+    {
+      "id": "mobile-data-deletion",
+      "route": "data-deletion",
+      "profile": "mobile",
+      "url": "https://beaurocks.app/karaoke/data-deletion",
+      "status": 200,
+      "title": "Data Deletion | BeauRocks Karaoke",
+      "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-audit\\mobile-data-deletion.png",
+      "requiredText": [
+        "Data Deletion",
+        "delete",
+        "YouTube"
+      ]
+    }
+  ],
+  "pendingManualEvidence": [
+    "Google Cloud Console YouTube Data API quota page for the live project",
+    "Authenticated host YouTube search/index surface with disclosure",
+    "Authenticated audience YouTube request/search surface",
+    "Quota exhaustion fallback state",
+    "Room Library Curator catalog health/status strip",
+    "Host review flow showing Known backing suggestions",
+    "Room permanent-delete path"
+  ]
+}

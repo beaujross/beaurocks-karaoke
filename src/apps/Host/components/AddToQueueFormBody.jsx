@@ -5,6 +5,7 @@ import {
     YOUTUBE_PLAYBACK_STATUSES,
     normalizeYouTubePlaybackState
 } from '../../../lib/youtubePlaybackStatus';
+import { getBackingSourceLabel } from '../../../lib/playbackSource';
 
 const baseResultsCardClass = 'rounded-2xl border border-cyan-400/25 bg-zinc-950/98';
 
@@ -57,6 +58,17 @@ const ResultList = ({
                     ? normalizeYouTubePlaybackState(r)
                     : null;
                 const durationLabel = formatResultDuration(getResultDurationSec(r));
+                const sourceLabel = getBackingSourceLabel({
+                    source: r.source,
+                    mediaUrl: r.url || r.mediaUrl,
+                    usesAppleBacking: r.source === 'itunes',
+                    variant: 'compact'
+                });
+                const thumbnailSourceLabel = r.source === 'itunes'
+                    ? 'Apple'
+                    : r.source === 'youtube'
+                        ? 'YouTube'
+                        : 'Known';
 
                 return (
                     <div
@@ -76,7 +88,7 @@ const ResultList = ({
                                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent px-1.5 py-1.5">
                                     <div className="flex items-center justify-between gap-1 text-[8px] font-black uppercase tracking-[0.14em] text-white">
                                         <span>#{idx + 1}</span>
-                                        <span>{r.source === 'itunes' ? 'Apple' : r.source === 'youtube' ? 'YouTube' : 'Local'}</span>
+                                        <span>{thumbnailSourceLabel}</span>
                                     </div>
                                 </div>
                             </div>
@@ -98,7 +110,7 @@ const ResultList = ({
                                                 ? 'border-red-300/40 bg-red-500/10 text-red-100'
                                                 : 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100'
                                     }`}>
-                                        {r.source === 'itunes' ? 'Apple' : r.source === 'youtube' ? 'Karaoke' : 'Local'}
+                                        {sourceLabel}
                                     </span>
                                     {r.source === 'youtube' ? (
                                         <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
@@ -335,6 +347,8 @@ const AddToQueueFormBody = ({
     setSearchQ,
     autocompleteProvider,
     setAutocompleteProvider,
+    youtubeSearchMode = 'karaoke',
+    setYoutubeSearchMode = () => {},
     styles,
     quickAddOnResultClick,
     setQuickAddOnResultClick,
@@ -600,6 +614,19 @@ const AddToQueueFormBody = ({
         });
     };
 
+    const mediaSourceButtonClass = (active, tone = 'cyan') => {
+        const activeClass = tone === 'red'
+            ? 'border-red-300/35 bg-red-500/14 text-red-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+            : 'border-pink-300/35 bg-pink-500/14 text-pink-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]';
+        return `min-h-[34px] rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
+            active ? activeClass : 'border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
+        }`;
+    };
+    const youtubeModeButtonClass = (active) => (
+        `min-h-[30px] rounded-md px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] transition ${
+            active ? 'bg-red-500/16 text-red-100' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+        }`
+    );
     return (
         <div className={`mt-2 pr-1 ${dockResults ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
             <div className="mb-2 flex flex-wrap gap-2">
@@ -698,7 +725,7 @@ const AddToQueueFormBody = ({
             ) : (
                 <div className={`host-autocomplete-shell relative z-30 w-full min-w-0 ${dockResults ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
                     <div className={`host-autocomplete-field-wrap w-full min-w-0 rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 ${dockResults ? 'sticky top-0 z-20 shrink-0 py-1.5' : 'py-2'}`}>
-                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(13rem,0.8fr)] lg:grid-cols-[minmax(0,1.35fr)_minmax(14rem,0.9fr)_auto]">
+                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(13rem,0.8fr)] xl:grid-cols-[minmax(0,1.35fr)_minmax(14rem,0.9fr)_minmax(18rem,auto)]">
                             <div className="relative">
                                 <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
                                 <input
@@ -711,41 +738,56 @@ const AddToQueueFormBody = ({
                             <div className="min-w-0">
                                 {performerSelect}
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 md:col-span-2 lg:col-span-1 lg:justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => setAutocompleteProvider('youtube')}
-                                    className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${
-                                        autocompleteProvider === 'youtube'
-                                            ? 'border-red-300/45 bg-red-500/12 text-red-100'
-                                            : 'border-zinc-700 bg-zinc-900/70 text-zinc-400'
-                                    }`}
-                                >
-                                    <i className="fa-brands fa-youtube mr-1"></i>
-                                    YouTube
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setAutocompleteProvider('apple')}
-                                    className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${
-                                        autocompleteProvider === 'apple'
-                                            ? 'border-pink-300/45 bg-pink-500/12 text-pink-100'
-                                            : 'border-zinc-700 bg-zinc-900/70 text-zinc-400'
-                                    }`}
-                                    title={appleMusicAuthorized ? 'Use Apple Music autocomplete' : 'Connect Apple Music to use Apple autocomplete'}
-                                >
-                                    <i className="fa-brands fa-apple mr-1"></i>
-                                    Apple Music
-                                </button>
-                                {typeof openYtSearch === 'function' ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => openYtSearch('manual', searchQ || `${manual.song || ''} ${manual.artist || ''}`.trim())}
-                                        className={`${styles.btnStd} ${styles.btnSecondary} min-h-[38px] px-3 py-1 text-[11px]`}
-                                    >
-                                        Search YouTube
-                                    </button>
-                                ) : null}
+                            <div className="md:col-span-2 xl:col-span-1">
+                                <div className="grid gap-1.5 rounded-xl border border-white/10 bg-black/25 p-1.5 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[18rem]">
+                                    <div className="grid min-w-0 grid-cols-2 gap-1 rounded-lg bg-zinc-950/80 p-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setAutocompleteProvider('youtube')}
+                                            className={mediaSourceButtonClass(autocompleteProvider === 'youtube', 'red')}
+                                            title="Use YouTube backing search"
+                                        >
+                                            <i className="fa-brands fa-youtube mr-1.5"></i>
+                                            YouTube
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAutocompleteProvider('apple')}
+                                            className={mediaSourceButtonClass(autocompleteProvider === 'apple', 'pink')}
+                                            title={appleMusicAuthorized ? 'Use Apple Music autocomplete' : 'Connect Apple Music to use Apple autocomplete'}
+                                        >
+                                            <i className="fa-brands fa-apple mr-1.5"></i>
+                                            Apple
+                                        </button>
+                                    </div>
+                                    {typeof openYtSearch === 'function' ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => openYtSearch('manual', searchQ || `${manual.song || ''} ${manual.artist || ''}`.trim())}
+                                            className={`${styles.btnStd} ${styles.btnSecondary} min-h-[38px] justify-center px-3 py-1 text-[11px] sm:min-w-[8.5rem]`}
+                                        >
+                                            <i className="fa-solid fa-magnifying-glass mr-1.5"></i>
+                                            Search YouTube
+                                        </button>
+                                    ) : null}
+                                    {autocompleteProvider === 'youtube' ? (
+                                        <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-zinc-950/60 p-1 sm:col-span-2">
+                                            {[
+                                                ['karaoke', 'Karaoke'],
+                                                ['any', 'Any YouTube']
+                                            ].map(([mode, label]) => (
+                                                <button
+                                                    key={mode}
+                                                    type="button"
+                                                    onClick={() => setYoutubeSearchMode(mode)}
+                                                    className={youtubeModeButtonClass(youtubeSearchMode === mode)}
+                                                >
+                                                    {label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : null}
+                                </div>
                             </div>
                         </div>
                         {queueSearchSourceNote ? (

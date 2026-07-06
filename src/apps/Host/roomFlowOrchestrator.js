@@ -21,7 +21,7 @@ const normalizeKey = (value = '') => normalizeText(value).toLowerCase();
 
 const defaultIsQueueEntryPlayable = (song = {}, { appleMusicEnabled = true } = {}) => {
     const mediaResolutionStatus = normalizeKey(song?.mediaResolutionStatus);
-    if (mediaResolutionStatus === 'needs_backing') return false;
+    if (mediaResolutionStatus === 'needs_backing' || mediaResolutionStatus === 'pending_youtube_match') return false;
     if (song?.playbackReady === false) return false;
     const appleMusicId = normalizeText(song?.appleMusicId);
     if (appleMusicId) return !!appleMusicEnabled;

@@ -68,7 +68,8 @@ const AutomationControls = ({
                     setAutoBgMusic(!next);
                     return;
                 }
-                if (next && !playingBg) setBgMusicState(true);
+                if (next && !playingBg) await setBgMusicState(true);
+                if (!next && playingBg) await setBgMusicState(false);
             }}
             className={`${styles.btnStd} ${autoBgMusic ? styles.btnPrimary : styles.btnNeutral}`}
             title="Keep BG music rolling between songs"

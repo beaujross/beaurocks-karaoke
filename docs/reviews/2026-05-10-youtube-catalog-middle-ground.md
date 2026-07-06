@@ -43,3 +43,8 @@ If we want to push the strategy further without broad UI churn:
 1. bias host review flows harder toward trusted room picks before any live search
 2. surface a simple `known/proven backing` label more consistently across singer and host flows
 3. add a refresh-on-use policy for long-lived approved picks so stable favorites revalidate naturally
+4. layer Apple Music playlist/library browsing into Media Setup so hosts can use their own playlists for background music without spending YouTube search quota for room vibe tracks
+
+## Related Follow-Up
+
+See `docs/reviews/2026-07-06-apple-music-youtube-media-plan.md` for the integrated Apple Music picker, background playback, and YouTube quota-reduction plan.

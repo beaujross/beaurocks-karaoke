@@ -1,6 +1,6 @@
 # YouTube Data Lifecycle
 
-Last updated: 2026-05-02
+Last updated: 2026-07-06
 
 ## Scope
 
@@ -12,12 +12,13 @@ This document describes how BeauRocks Karaoke uses and stores YouTube API data f
 - Verify whether a known YouTube video is embeddable/playable
 - Inspect playlist items when a host indexes a YouTube playlist
 - Refresh previously indexed room-level YouTube entries by known `videoId`
+- Reuse verified canonical backing candidates before spending live search quota
 
 ## API Methods In Use
 
 - `search.list`
   - used for live YouTube search
-  - high-cost method
+  - scarce live-search bucket
 - `videos.list`
   - used for status/playability checks
   - used for duration/details checks
@@ -53,6 +54,34 @@ Purpose:
 - reduce repeated `search.list` calls
 - reduce quota burn
 - improve latency
+
+
+### Canonical backing candidates
+
+Used to avoid repeated live search for songs that already have verified embeddable backing tracks.
+
+Stored fields may include:
+- canonical song ID
+- backing candidate ID
+- YouTube video ID
+- title and channel/artist text
+- thumbnail URL
+- embeddability/playability metadata
+- source-discovery provenance such as `host_feedback`, `host_search`, `host_paste`, `playlist_index`, or `idle_refresh`
+- aggregate feedback telemetry such as host up/down votes and completion/skip counts
+
+Storage location:
+- `songs/{songId}/backing_candidates/{candidateId}`
+
+Promotion rules:
+- only entries with a canonical song ID are eligible
+- only explicitly playable and embeddable YouTube entries are eligible
+- non-embeddable, unknown-playback, private, blocked, or unanchored entries are skipped
+
+Purpose:
+- rank known good backing tracks for a canonical song
+- reduce repeated `search.list` calls
+- let normal host actions improve future suggestions without adding host controls
 
 ### Room-level YouTube index (`ytIndex`)
 
@@ -95,6 +124,8 @@ Refresh behavior:
 
 Dormant-room cleanup:
 - a nightly scheduled cleanup prunes expired `ytIndex` entries from stored room host libraries
+- the same job can refresh stale high-value entries by `videoId` with `videos.list`
+- the same job can backfill a bounded set of verified embeddable indexed tracks into canonical backing candidates without live search
 
 ## Deletion Behavior
 
@@ -125,6 +156,7 @@ The intended compliance posture is:
 - prefer cheap `videos.list` refreshes for known IDs
 - avoid indefinite storage of room-level YouTube metadata
 - make deletion and retention behavior explicit and defensible during audit
+- preserve source-discovery provenance so ranking/audit explanations can distinguish host feedback, host search, pasted URLs, playlist indexing, and idle refresh
 
 ## Evidence To Pair With This Doc
 

@@ -9,6 +9,10 @@ import {
 } from '../../lib/songCatalog';
 import { buildTrustedCatalogEntry } from '../../lib/songRequestResolution';
 import {
+    normalizeBackingCandidateTelemetry,
+    normalizeBackingTrackCandidate,
+} from '../../lib/backingTrackRanking';
+import {
     buildRejectedReviewState,
     buildResolvedReviewState,
 } from '../../lib/queueSongReviewState';
@@ -39,6 +43,61 @@ const getHostLibraryRef = (roomCode = '') => doc(
 const nowMs = () => Date.now();
 const HOST_REVIEW_RETURN_LABEL = 'Needs your update';
 const HOST_REVIEW_RETURN_DETAIL = 'The host sent this back so you can swap the backing track or ask for help.';
+
+const buildRankedBackingCandidatePatch = ({
+    song = {},
+    songLike = {},
+    existingEntry = {},
+    videoId = '',
+    mediaUrl = '',
+    rating = 'up',
+} = {}) => {
+    const existingTelemetry = normalizeBackingCandidateTelemetry(existingEntry?.backingTelemetry || existingEntry?.telemetry || {});
+    const telemetry = {
+        ...existingTelemetry,
+        hostUpvotes: existingTelemetry.hostUpvotes + (rating === 'down' ? 0 : 1),
+        hostDownvotes: existingTelemetry.hostDownvotes + (rating === 'down' ? 1 : 0),
+        usageCount: existingTelemetry.usageCount + 1,
+        completionCount: existingTelemetry.completionCount + (rating === 'down' ? 0 : 1),
+        skipCount: existingTelemetry.skipCount + (rating === 'down' ? 1 : 0),
+    };
+    const normalized = normalizeBackingTrackCandidate({
+        canonicalSongId: song.songId,
+        appleMusicId: songLike?.appleMusicId || existingEntry?.appleMusicId || '',
+        provider: 'youtube',
+        videoId,
+        mediaUrl,
+        title: song.songTitle || existingEntry?.trackName || '',
+        artist: song.artist || existingEntry?.artistName || '',
+        embeddable: songLike?.embeddable ?? existingEntry?.embeddable,
+        uploadStatus: songLike?.uploadStatus || existingEntry?.uploadStatus || '',
+        privacyStatus: songLike?.privacyStatus || existingEntry?.privacyStatus || '',
+        youtubePlaybackStatus: songLike?.youtubePlaybackStatus || existingEntry?.youtubePlaybackStatus || '',
+        backingAudioOnly: songLike?.backingAudioOnly === true || existingEntry?.backingAudioOnly === true,
+        titleIntentMatch: 1,
+        durationFit: Number(songLike?.durationFit ?? existingEntry?.durationFit ?? 0) || 0,
+        sourceTrust: 1,
+        viewCount: Number(songLike?.viewCount ?? existingEntry?.viewCount ?? 0) || 0,
+        telemetry,
+    }, {
+        canonicalSongId: song.songId,
+        appleMusicId: songLike?.appleMusicId || existingEntry?.appleMusicId || '',
+        title: song.songTitle,
+        artist: song.artist,
+    });
+    return {
+        canonicalSongId: normalized.canonicalSongId,
+        appleMusicId: normalized.appleMusicId,
+        backingCandidateId: normalized.candidateId,
+        backingProvider: normalized.provider,
+        providerTrackId: normalized.providerTrackId,
+        rankingScore: normalized.rankingScore,
+        backingTelemetry: normalized.telemetry,
+        titleIntentMatch: normalized.titleIntentMatch,
+        durationFit: normalized.durationFit,
+        sourceTrust: normalized.sourceTrust,
+    };
+};
 
 const buildQueueSongYouTubePlaybackPatch = (candidate = null) => {
     const candidateSource = String(candidate?.source || '').trim().toLowerCase();
@@ -237,6 +296,10 @@ export const persistTrustedCatalogChoiceForRoom = async ({
         label: candidate.label || '',
         layer,
         qualityScore: candidate.score || candidate.qualityScore || 0,
+        rankingScore: candidate.rankingScore || 0,
+        backingCandidateId: candidate.backingCandidateId || '',
+        canonicalSongId: candidate.canonicalSongId || resolvedSongId,
+        backingTelemetry: candidate.backingTelemetry || null,
         approvalState: layer === 'host_favorite' ? 'approved' : (candidate.approvalState || 'candidate')
     });
     await setDoc(getHostLibraryRef(safeRoomCode), {
@@ -296,6 +359,10 @@ export const clearTrustedCatalogBackingForRoom = async ({
         nextEntry[`${prefix}Source`] = '';
         nextEntry[`${prefix}Label`] = '';
         nextEntry[`${prefix}QualityScore`] = 0;
+        nextEntry[`${prefix}RankingScore`] = 0;
+        nextEntry[`${prefix}BackingCandidateId`] = '';
+        nextEntry[`${prefix}CanonicalSongId`] = '';
+        nextEntry[`${prefix}BackingTelemetry`] = null;
         nextEntry[`${prefix}ApprovalState`] = 'candidate';
         nextEntry[`${prefix}UpdatedAtMs`] = nowMs();
     });
@@ -339,13 +406,47 @@ export const saveHostBackingPreferenceForRoom = async ({
         ? ytIndex.find((entry) => String(entry?.videoId || '').trim() === videoId)
         : null;
     const baseQualityScore = Math.max(0, Number(existingEntry?.qualityScore || 0));
+    const explicitEmbeddable = songLike?.embeddable === true
+        || songLike?.youtubeEmbeddable === true
+        || existingEntry?.embeddable === true
+        || String(songLike?.youtubePlaybackStatus || existingEntry?.youtubePlaybackStatus || '').trim().toLowerCase() === 'embeddable';
+    const playbackState = normalizeYouTubePlaybackState({
+        playable: songLike?.playable === true || existingEntry?.playable === true || explicitEmbeddable,
+        embeddable: explicitEmbeddable,
+        uploadStatus: songLike?.uploadStatus || songLike?.youtubeUploadStatus || existingEntry?.uploadStatus || '',
+        privacyStatus: songLike?.privacyStatus || songLike?.youtubePrivacyStatus || existingEntry?.privacyStatus || '',
+        youtubePlaybackStatus: explicitEmbeddable ? 'embeddable' : (songLike?.youtubePlaybackStatus || existingEntry?.youtubePlaybackStatus || ''),
+        backingAudioOnly: songLike?.backingAudioOnly === true || existingEntry?.backingAudioOnly === true,
+    });
+    const rankingPatch = buildRankedBackingCandidatePatch({
+        song,
+        songLike: {
+            ...songLike,
+            embeddable: playbackState.embeddable,
+            uploadStatus: playbackState.uploadStatus,
+            privacyStatus: playbackState.privacyStatus,
+            youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+            backingAudioOnly: playbackState.backingAudioOnly,
+        },
+        existingEntry,
+        videoId,
+        mediaUrl,
+        rating
+    });
     const candidate = {
         trackId: String(songLike?.trackId || '').trim(),
         mediaUrl,
-        appleMusicId: String(songLike?.appleMusicId || '').trim(),
+        appleMusicId: String(songLike?.appleMusicId || rankingPatch.appleMusicId || '').trim(),
         source: 'youtube',
         label: 'Host-approved YouTube track',
-        qualityScore: Math.max(baseQualityScore, 120)
+        playable: playbackState.playable,
+        embeddable: playbackState.embeddable,
+        uploadStatus: playbackState.uploadStatus,
+        privacyStatus: playbackState.privacyStatus,
+        youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+        backingAudioOnly: playbackState.backingAudioOnly,
+        qualityScore: Math.max(baseQualityScore, 120),
+        ...rankingPatch
     };
 
     if (rating === 'down') {
@@ -358,7 +459,9 @@ export const saveHostBackingPreferenceForRoom = async ({
             playable: false,
             qualityScore: 0,
             sourceDetail: 'Host marked this track as a bad fit for future requests.',
-            failureCountDelta: 1
+            sourceDiscovery: 'host_feedback',
+            failureCountDelta: 1,
+            ...rankingPatch
         }]);
         if (roomCode) {
             await recordTrackFeedback({
@@ -373,6 +476,10 @@ export const saveHostBackingPreferenceForRoom = async ({
                 source: candidate.source,
                 label: candidate.label,
                 qualityScore: candidate.qualityScore,
+                backingCandidateId: candidate.backingCandidateId,
+                canonicalSongId: candidate.canonicalSongId,
+                rankingScore: candidate.rankingScore,
+                backingTelemetry: candidate.backingTelemetry,
                 albumArtUrl: songLike?.albumArtUrl || existingEntry?.artworkUrl100 || '',
                 verifiedBy: 'host'
             }).catch((error) => {
@@ -403,7 +510,9 @@ export const saveHostBackingPreferenceForRoom = async ({
         youtubePlaybackStatus: candidate?.youtubePlaybackStatus || existingEntry?.youtubePlaybackStatus || '',
         backingAudioOnly: candidate?.backingAudioOnly === true || existingEntry?.backingAudioOnly === true,
         qualityScore: Math.max(baseQualityScore, 140),
-        sourceDetail: 'Host marked this track as a good fit for future requests.'
+        sourceDetail: 'Host marked this track as a good fit for future requests.',
+        sourceDiscovery: 'host_feedback',
+        ...rankingPatch
     }]);
     if (typeof onPersistTrustedCatalogChoice === 'function') {
         await onPersistTrustedCatalogChoice(song, candidate, 'host_favorite');

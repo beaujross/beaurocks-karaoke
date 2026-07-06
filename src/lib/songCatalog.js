@@ -180,6 +180,10 @@ const recordTrackFeedback = async ({
   backingOnly,
   approvalState,
   qualityScore,
+  backingCandidateId,
+  canonicalSongId,
+  rankingScore,
+  backingTelemetry,
   albumArtUrl,
   verifiedBy
 } = {}) => {
@@ -199,6 +203,10 @@ const recordTrackFeedback = async ({
     backingOnly: !!backingOnly,
     approvalState: approvalState || '',
     qualityScore: Number.isFinite(Number(qualityScore)) ? Number(qualityScore) : null,
+    backingCandidateId: backingCandidateId || '',
+    canonicalSongId: canonicalSongId || songId || '',
+    rankingScore: Number.isFinite(Number(rankingScore)) ? Number(rankingScore) : null,
+    backingTelemetry: backingTelemetry && typeof backingTelemetry === 'object' ? backingTelemetry : null,
     albumArtUrl: albumArtUrl || '',
     verifiedBy: verifiedBy || 'host'
   });

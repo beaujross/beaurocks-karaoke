@@ -76,6 +76,13 @@ import {
     searchYouTubeCatalog
 } from '../../lib/youtubeSearchClient';
 import {
+    YOUTUBE_INDEX_RETENTION_MS,
+    isYtIndexEntryExpired,
+    planYouTubeIndexRefresh,
+    resolveYtIndexExpiresAtMs,
+    resolveYtIndexLastValidatedAtMs,
+} from '../../lib/youtubeIndexMaintenance';
+import {
     getAppleSearchTelemetrySnapshot,
     searchAppleCatalog,
     subscribeToAppleSearchTelemetry
@@ -440,8 +447,7 @@ const SUPPORT_DROP_AMOUNT_PRESETS = Object.freeze([5, 10, 20, 25]);
 const YOUTUBE_PLAYLIST_MAX_TOTAL = 1000;
 let itunesBackoffUntil = 0;
 const nowMs = () => Date.now();
-const YT_INDEX_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-const YT_INDEX_REFRESH_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const YT_INDEX_RETENTION_MS = YOUTUBE_INDEX_RETENTION_MS;
 const YT_INDEX_REFRESH_RETRY_MS = 5 * 60 * 1000;
 const sanitizeHostAccountOrgToken = (value = '') => String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
 const buildHostAccountOrgId = (uid = '') => {
@@ -1862,6 +1868,46 @@ const parseAppleMusicPlaylistId = (value = '') => {
     return trimmed;
 };
 
+const APPLE_MUSIC_PICKER_MODES = Object.freeze([
+    { id: 'library', label: 'My Playlists' },
+    { id: 'heavy', label: 'From Your Music' },
+    { id: 'search', label: 'Search' }
+]);
+
+const readAppleMusicResponseItems = (response, mode = '') => {
+    const payload = response?.data || response || {};
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (mode === 'search' && Array.isArray(payload?.results?.playlists?.data)) {
+        return payload.results.playlists.data;
+    }
+    if (Array.isArray(payload?.results?.playlists)) return payload.results.playlists;
+    return [];
+};
+
+const resolveAppleMusicArtworkUrl = (artwork = null, size = 120) => {
+    const template = String(artwork?.url || '').trim();
+    if (!template) return '';
+    return template.replace('{w}', String(size)).replace('{h}', String(size));
+};
+
+const normalizeAppleMusicPlaylistChoice = (item = {}, mode = 'library') => {
+    const attributes = item?.attributes || {};
+    const id = String(item?.id || '').trim();
+    if (!id) return null;
+    const itemType = String(item?.type || '').trim().toLowerCase();
+    const isPlaylist = itemType.includes('playlist') || id.startsWith('pl.') || id.startsWith('p.');
+    if (!isPlaylist) return null;
+    const title = String(attributes.name || attributes.title || 'Apple Music playlist').trim();
+    const curator = String(attributes.curatorName || attributes.artistName || attributes.description?.short || '').trim();
+    return {
+        id,
+        title,
+        subtitle: curator || (mode === 'library' ? 'Your library playlist' : 'Apple Music playlist'),
+        artworkUrl: resolveAppleMusicArtworkUrl(attributes.artwork),
+        sourceType: mode === 'library' ? 'library_playlist' : 'catalog_playlist'
+    };
+};
+
 const DEFAULT_HOST_MUSIC_PREFS = Object.freeze({
     appleAutoConnect: false,
     applePlaylistUrl: '',
@@ -1904,8 +1950,8 @@ const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search',
                 sourceReason: reason,
                 sourceDetail: reason === 'apple_missing'
                     ? (playbackState.backingAudioOnly
-                        ? 'Apple Music account not connected. This YouTube track opens in an external host window.'
-                        : 'Apple Music account not connected. Showing verified embeddable YouTube tracks.')
+                        ? 'No Apple song match yet. This YouTube track opens in an external host window.'
+                        : 'No Apple song match yet. Showing verified embeddable YouTube tracks.')
                     : (playbackState.backingAudioOnly
                         ? 'YouTube track is not embeddable and opens in an external host window.'
                         : 'Verified YouTube embeddable track.')
@@ -1914,33 +1960,6 @@ const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search',
         .filter(Boolean)
 );
 
-const resolveYtIndexLastValidatedAtMs = (entry = {}, overrides = {}, now = nowMs()) => {
-    const explicit = Math.max(0, Number(overrides.lastValidatedAtMs ?? entry.lastValidatedAtMs ?? 0) || 0);
-    if (explicit > 0) return explicit;
-    const curatedAtMs = Math.max(0, Number(overrides.curatedAtMs ?? entry.curatedAtMs ?? 0) || 0);
-    return curatedAtMs > 0 ? curatedAtMs : now;
-};
-
-const resolveYtIndexExpiresAtMs = (entry = {}, overrides = {}, lastValidatedAtMs = 0) => {
-    const explicit = Math.max(0, Number(overrides.expiresAtMs ?? entry.expiresAtMs ?? 0) || 0);
-    if (explicit > 0) return explicit;
-    return lastValidatedAtMs > 0 ? lastValidatedAtMs + YT_INDEX_RETENTION_MS : 0;
-};
-
-const isYtIndexEntryExpired = (entry = {}, atMs = nowMs()) => {
-    const normalized = entry && typeof entry === 'object' ? entry : {};
-    const lastValidatedAtMs = resolveYtIndexLastValidatedAtMs(normalized, {}, atMs);
-    const expiresAtMs = resolveYtIndexExpiresAtMs(normalized, {}, lastValidatedAtMs);
-    return expiresAtMs > 0 && expiresAtMs <= atMs;
-};
-
-const shouldRefreshYtIndexEntry = (entry = {}, atMs = nowMs()) => {
-    const normalized = entry && typeof entry === 'object' ? entry : {};
-    const lastValidatedAtMs = resolveYtIndexLastValidatedAtMs(normalized, {}, atMs);
-    const expiresAtMs = resolveYtIndexExpiresAtMs(normalized, {}, lastValidatedAtMs);
-    if (!lastValidatedAtMs || !expiresAtMs) return true;
-    return expiresAtMs <= (atMs + YT_INDEX_REFRESH_WINDOW_MS);
-};
 
 const annotateQueueSearchResults = (items = [], { sourceReason = '', sourceDetail = '' } = {}) => (
     (Array.isArray(items) ? items : []).map((item) => ({
@@ -2596,7 +2615,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
                 )}
             </div>
             <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-3">
+                <div className="space-y-4">
                     <div className="text-sm uppercase tracking-widest text-zinc-500">Prompt</div>
                     <textarea value={promptText} onChange={e=>setPromptText(e.target.value)} className={`${STYLES.input} h-20`} placeholder="Give us your best Blue Steel face..." />
                     <div className="flex gap-2">
@@ -2609,7 +2628,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
                     </div>
                     {aiPrompt && <div className="text-xs text-zinc-400">AI: {aiPrompt}</div>}
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-4">
                     <div className="text-sm uppercase tracking-widest text-zinc-500">Participants</div>
                     <div className="flex gap-2">
                         <button onClick={() => setSelectedParticipants(sortedUsers.map((u) => resolveRoomUserUid(u)).filter(Boolean))} className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1`}>Select all</button>
@@ -3818,7 +3837,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                             <button onClick={clearGameRecap} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}>
                                 <i className="fa-solid fa-check mr-1"></i> Clear Recap
                             </button>
-                            <button onClick={openTv} className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs`}>
+                            <button onClick={openTv} className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[40px] px-4 py-2 text-sm`}>
                                 <i className="fa-solid fa-tv mr-1"></i> Open TV
                             </button>
                         </div>
@@ -3910,7 +3929,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         <button onClick={() => setTab('stage')} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}>
                             <i className="fa-solid fa-sliders mr-1"></i> Crowd FX
                         </button>
-                        <button onClick={openTv} className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs`}>
+                        <button onClick={openTv} className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[40px] px-4 py-2 text-sm`}>
                             <i className="fa-solid fa-tv mr-1"></i> Open TV
                         </button>
                         <button onClick={closeGameMode} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs`}>
@@ -4967,6 +4986,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         syncApplePlaybackState
     ]);
 
+    const fetchAppleMusicPlaylistTitle = useCallback(async (playlistId) => {
+        if (!playlistId) return '';
+        try {
+            const instance = await ensureAppleMusic();
+            const storefront = instance.storefrontId || 'us';
+            const safePlaylistId = encodeURIComponent(String(playlistId));
+            const lookupPaths = [
+                `v1/catalog/${storefront}/playlists/${safePlaylistId}`,
+                `v1/me/library/playlists/${safePlaylistId}`
+            ];
+            for (const lookupPath of lookupPaths) {
+                try {
+                    const res = await instance.api.music(lookupPath);
+                    const first = readAppleMusicResponseItems(res)[0];
+                    const name = first?.attributes?.name || first?.attributes?.title || '';
+                    if (name) return name;
+                } catch (_lookupError) {
+                    // Try the next playlist namespace before surfacing a lookup failure.
+                }
+            }
+        } catch (e) {
+            hostLogger.warn('Apple Music playlist title lookup failed', e);
+        }
+        return '';
+    }, [ensureAppleMusic]);
+
     const playAppleMusicPlaylist = useCallback(async (playlistId, meta = {}) => {
         if (!playlistId) return;
         const instance = await ensureAppleMusic();
@@ -4974,15 +5019,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await instance.authorize();
             setAppleMusicAuthorized(true);
         }
-        let resolvedTitle = meta.title || '';
-        try {
-            const storefront = instance.storefrontId || 'us';
-            const res = await instance.api.music(`v1/catalog/${storefront}/playlists/${playlistId}`);
-            const name = res?.data?.data?.[0]?.attributes?.name;
-            if (name) resolvedTitle = name;
-        } catch (e) {
-            hostLogger.warn('Apple Music playlist lookup failed', e);
-        }
+        const resolvedTitle = meta.title || await fetchAppleMusicPlaylistTitle(playlistId) || '';
         await instance.setQueue({ playlist: String(playlistId) });
         await instance.play();
         setAppleMusicPlaying(true);
@@ -4997,20 +5034,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
             });
         }
-    }, [ensureAppleMusic, roomCode, updateRoom]);
-
-    const fetchAppleMusicPlaylistTitle = async (playlistId) => {
-        if (!playlistId) return '';
-        try {
-            const instance = await ensureAppleMusic();
-            const storefront = instance.storefrontId || 'us';
-            const res = await instance.api.music(`v1/catalog/${storefront}/playlists/${playlistId}`);
-            return res?.data?.data?.[0]?.attributes?.name || '';
-        } catch (e) {
-            hostLogger.warn('Apple Music playlist title lookup failed', e);
-            return '';
-        }
-    };
+    }, [ensureAppleMusic, fetchAppleMusicPlaylistTitle, roomCode, updateRoom]);
     
     // 2. Local State
     const [view, setView] = useState('landing');
@@ -5145,6 +5169,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [ytPlaylistLoading, setYtPlaylistLoading] = useState(false);
     const [appleMusicPlaylistUrl, setAppleMusicPlaylistUrl] = useState('');
     const [appleMusicPlaylistStatus, setAppleMusicPlaylistStatus] = useState('');
+    const [appleMusicPickerMode, setAppleMusicPickerMode] = useState('library');
+    const [appleMusicPickerQuery, setAppleMusicPickerQuery] = useState('');
+    const [appleMusicPickerItems, setAppleMusicPickerItems] = useState([]);
+    const [appleMusicPickerLoading, setAppleMusicPickerLoading] = useState(false);
+    const [appleMusicPickerError, setAppleMusicPickerError] = useState('');
     const [ytPlaylistStatus, setYtPlaylistStatus] = useState('');
     const [ytAddTitle, setYtAddTitle] = useState('');
     const [ytAddArtist, setYtAddArtist] = useState('');
@@ -5154,12 +5183,80 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [ytCurateQuery, setYtCurateQuery] = useState('');
     const [ytCurateResults, setYtCurateResults] = useState([]);
     const [ytCurateLoading, setYtCurateLoading] = useState(false);
+
     const [ytCurateStatus, setYtCurateStatus] = useState('');
     const [ytIndexSort, setYtIndexSort] = useState('recent');
     const [ytIndexActionVideoId, setYtIndexActionVideoId] = useState('');
     const [ytDiagnosticsMap, setYtDiagnosticsMap] = useState({});
     const [ytDiagnosticsLoadingKey, setYtDiagnosticsLoadingKey] = useState('');
     const [itunesBackoffRemaining, setItunesBackoffRemaining] = useState(0);
+
+    const loadAppleMusicPicker = useCallback(async (mode = appleMusicPickerMode) => {
+        const nextMode = String(mode || 'library');
+        setAppleMusicPickerMode(nextMode);
+        setAppleMusicPickerLoading(true);
+        setAppleMusicPickerError('');
+        try {
+            const instance = await ensureAppleMusic();
+            if (!instance.isAuthorized) {
+                await instance.authorize();
+                setAppleMusicAuthorized(true);
+            }
+            const storefront = instance.storefrontId || 'us';
+            let apiPath = 'v1/me/library/playlists?limit=25';
+            if (nextMode === 'heavy') {
+                apiPath = 'v1/me/history/heavy-rotation?limit=25';
+            } else if (nextMode === 'search') {
+                const query = String(appleMusicPickerQuery || '').trim();
+                if (!query) {
+                    setAppleMusicPickerItems([]);
+                    setAppleMusicPickerError('Search for a playlist name first.');
+                    return;
+                }
+                apiPath = `v1/catalog/${storefront}/search?term=${encodeURIComponent(query)}&types=playlists&limit=20`;
+            }
+            const response = await instance.api.music(apiPath);
+            const choices = readAppleMusicResponseItems(response, nextMode)
+                .map((item) => normalizeAppleMusicPlaylistChoice(item, nextMode))
+                .filter(Boolean);
+            setAppleMusicPickerItems(choices);
+            if (!choices.length) {
+                setAppleMusicPickerError(nextMode === 'heavy'
+                    ? 'No playlist-style recommendations were returned yet.'
+                    : 'No Apple Music playlists found.');
+            }
+        } catch (error) {
+            hostLogger.warn('Apple Music picker load failed', error);
+            setAppleMusicPickerItems([]);
+            setAppleMusicPickerError('Could not load Apple Music playlists.');
+        } finally {
+            setAppleMusicPickerLoading(false);
+        }
+    }, [appleMusicPickerMode, appleMusicPickerQuery, ensureAppleMusic]);
+
+    const applyAppleMusicPlaylistForBg = useCallback(async (choice = {}) => {
+        const playlistId = parseAppleMusicPlaylistId(choice.id || '');
+        if (!playlistId) return;
+        const title = String(choice.title || '').trim();
+        setAppleMusicAutoPlaylistId(playlistId);
+        setAppleMusicAutoPlaylistTitle(title);
+        setAppleMusicPlaylistUrl(playlistId);
+        await updateRoom({
+            appleMusicAutoPlaylistId: playlistId,
+            appleMusicAutoPlaylistTitle: title
+        });
+        setAppleMusicPlaylistStatus(`${title || 'Apple Music playlist'} set for BG.`);
+    }, [updateRoom]);
+
+    const playAppleMusicPlaylistChoiceNow = useCallback(async (choice = {}) => {
+        const playlistId = parseAppleMusicPlaylistId(choice.id || '');
+        if (!playlistId) return;
+        const title = String(choice.title || '').trim();
+        setAppleMusicPlaylistStatus('Starting playlist...');
+        await playAppleMusicPlaylist(playlistId, { title });
+        setAppleMusicPlaylistUrl(playlistId);
+        setAppleMusicPlaylistStatus(`${title || 'Apple Music playlist'} playing.`);
+    }, [playAppleMusicPlaylist]);
     const [pendingLocalFile, setPendingLocalFile] = useState(null);
     const [uploadingLocal, setUploadingLocal] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -5200,6 +5297,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ...(params && typeof params === 'object' ? params : {})
         });
     }, [normalizedInitialCode, roomCode]);
+    const [opsStripNowMs, setOpsStripNowMs] = useState(() => nowMs());
+    const [youtubeSearchTelemetry, setYouTubeSearchTelemetry] = useState(() => getYouTubeSearchTelemetrySnapshot());
+    const [appleSearchTelemetry, setAppleSearchTelemetry] = useState(() => getAppleSearchTelemetrySnapshot());
+    const [aiGenerationTelemetry, setAiGenerationTelemetry] = useState(() => getAiGenerationTelemetrySnapshot());
     const ytIndexFilteredSorted = useMemo(() => {
         const needle = ytIndexFilter.trim().toLowerCase();
         const filtered = (ytIndex || [])
@@ -5213,16 +5314,71 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
         return filtered.sort(sorters[ytIndexSort] || sorters.recent);
     }, [ytIndex, ytIndexFilter, ytIndexSort]);
-    const _ytIndexStats = useMemo(() => {
+    const ytIndexHealthSummary = useMemo(() => {
         const safeList = (ytIndex || []).map((entry) => normalizeYtIndexEntry(entry)).filter(Boolean);
+        const atMs = opsStripNowMs || nowMs();
         const playableCount = safeList.filter((entry) => entry.playable !== false).length;
         const provenCount = safeList.filter((entry) => Number(entry.successCount || 0) > 0).length;
+        const expiredCount = safeList.filter((entry) => isYtIndexEntryExpired(entry, atMs)).length;
+        const duePlan = planYouTubeIndexRefresh({
+            entries: safeList,
+            atMs,
+            maxIds: Math.max(1, safeList.length),
+            telemetry: null,
+        });
+        const reservePlan = planYouTubeIndexRefresh({
+            entries: safeList,
+            atMs,
+            telemetry: youtubeSearchTelemetry,
+        });
+        const dueIds = new Set((duePlan.candidates || []).map((entry) => String(entry?.videoId || '').trim()).filter(Boolean));
+        const freshCount = safeList.filter((entry) => {
+            const videoId = String(entry?.videoId || '').trim();
+            return entry.playable !== false && !isYtIndexEntryExpired(entry, atMs) && (!videoId || !dueIds.has(videoId));
+        }).length;
+        const newestValidatedAtMs = safeList.reduce((latest, entry) => {
+            const validatedAtMs = Math.max(0, Number(entry?.lastValidatedAtMs || entry?.curatedAtMs || 0));
+            return Math.max(latest, validatedAtMs);
+        }, 0);
+        const todayFreshSearchesLeft = Math.max(0, Number(youtubeSearchTelemetry?.todayEstimatedFreshSearchesLeft || 0));
+        const dueCount = Math.max(0, Number(duePlan.candidates?.length || 0));
+        let state = 'Ready';
+        let icon = 'fa-circle-check';
+        let toneClass = 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100';
+        let support = 'Known backings are available before live YouTube search is needed.';
+        if (!safeList.length) {
+            state = 'Needs Tracks';
+            icon = 'fa-circle-plus';
+            toneClass = 'border-amber-300/35 bg-amber-500/10 text-amber-100';
+            support = 'Add a few trusted backings so guests can reuse them without live YouTube lookup.';
+        } else if (reservePlan.heldForReserve) {
+            state = 'Quota Protected';
+            icon = 'fa-shield-halved';
+            toneClass = 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100';
+            support = 'Refresh is paused while event-day search reserve stays protected.';
+        } else if (dueCount > 0 || expiredCount > 0) {
+            state = 'Refreshing';
+            icon = 'fa-rotate';
+            toneClass = 'border-amber-300/35 bg-amber-500/10 text-amber-100';
+            support = `${Math.min(dueCount || expiredCount, 12)} high-value backing${Math.min(dueCount || expiredCount, 12) === 1 ? '' : 's'} will refresh from the index path before more live search is spent.`;
+        }
         return {
             total: safeList.length,
             playable: playableCount,
             proven: provenCount,
+            fresh: freshCount,
+            due: dueCount,
+            expired: expiredCount,
+            selectedRefreshCount: reservePlan.ids?.length || 0,
+            heldForReserve: reservePlan.heldForReserve === true,
+            todayFreshSearchesLeft,
+            newestValidatedLabel: newestValidatedAtMs ? formatRelativeShortAge(newestValidatedAtMs, atMs) : 'not yet',
+            state,
+            icon,
+            toneClass,
+            support,
         };
-    }, [ytIndex]);
+    }, [opsStripNowMs, youtubeSearchTelemetry, ytIndex]);
     const isAudioUrl = useCallback((url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || ''), []);
     const roomUploadLibraryItems = useMemo(() => (
         (Array.isArray(localLibrary) ? localLibrary : [])
@@ -5857,12 +6013,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         totals: { estimatedOverageCents: 0 },
         loading: false,
         error: ''
-    });
-    const [opsStripNowMs, setOpsStripNowMs] = useState(() => nowMs());
-    const [youtubeSearchTelemetry, setYouTubeSearchTelemetry] = useState(() => getYouTubeSearchTelemetrySnapshot());
-    const [appleSearchTelemetry, setAppleSearchTelemetry] = useState(() => getAppleSearchTelemetrySnapshot());
-    const [aiGenerationTelemetry, setAiGenerationTelemetry] = useState(() => getAiGenerationTelemetrySnapshot());
-    const [selectedUsagePeriod, setSelectedUsagePeriod] = useState(getCurrentUsagePeriodKey());
+    });    const [selectedUsagePeriod, setSelectedUsagePeriod] = useState(getCurrentUsagePeriodKey());
     const [invoiceDraft, setInvoiceDraft] = useState(null);
     const [invoiceDraftLoading, setInvoiceDraftLoading] = useState(false);
     const [invoiceSaveLoading, setInvoiceSaveLoading] = useState(false);
@@ -11366,21 +11517,69 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!bgAudio.current || playingBgRef.current || !activeBgTrack?.url) return;
         bgAudio.current.src = activeBgTrack.url;
     }, [activeBgTrack?.url]);
-    const setBgMusicState = useCallback((next) => {
+    const getAppleBackgroundPlaylistConfig = useCallback(() => {
+        const liveRoom = roomRef.current || room || {};
+        const playlistId = parseAppleMusicPlaylistId(appleMusicAutoPlaylistId || liveRoom?.appleMusicAutoPlaylistId || '');
+        return {
+            playlistId,
+            title: String(appleMusicAutoPlaylistTitle || liveRoom?.appleMusicAutoPlaylistTitle || '').trim()
+        };
+    }, [appleMusicAutoPlaylistId, appleMusicAutoPlaylistTitle, room]);
+    const appleMusicBackgroundActive = useMemo(() => {
+        const playback = room?.appleMusicPlayback || {};
+        const status = String(playback?.status || '').trim().toLowerCase();
+        return String(playback?.type || '').trim().toLowerCase() === 'playlist'
+            && ['playing', 'paused'].includes(status);
+    }, [room?.appleMusicPlayback]);
+    const backgroundMusicActive = !!playingBg || appleMusicBackgroundActive;
+    const backgroundMusicSourceLabel = appleMusicBackgroundActive
+        ? (room?.appleMusicPlayback?.title || appleMusicAutoPlaylistTitle || 'Apple Music background')
+        : (activeBgTrack?.name || 'BG Track');
+    const setBgMusicState = useCallback(async (next) => {
+        const { playlistId, title } = getAppleBackgroundPlaylistConfig();
+        const livePlayback = roomRef.current?.appleMusicPlayback || room?.appleMusicPlayback || {};
+        const livePlaybackStatus = String(livePlayback?.status || '').trim().toLowerCase();
+        const applePlaylistIsActive = String(livePlayback?.type || '').trim().toLowerCase() === 'playlist'
+            && ['playing', 'paused'].includes(livePlaybackStatus);
+        const configuredApplePlaylistIsActive = applePlaylistIsActive
+            && (!playlistId || String(livePlayback?.id || '').trim() === playlistId);
+
+        if (next && playlistId) {
+            if (bgAudio.current && playingBgRef.current) {
+                bgAudio.current.pause();
+                playingBgRef.current = false;
+                setPlayingBg(false);
+            }
+            await updateRoom({ bgMusicPlaying: false, bgMusicUrl: '' });
+            if (configuredApplePlaylistIsActive && livePlaybackStatus === 'playing') return;
+            await playAppleMusicPlaylist(playlistId, { title });
+            return;
+        }
+
+        if (!next && applePlaylistIsActive) {
+            await stopAppleMusic?.();
+            await updateRoom({ appleMusicPlayback: null });
+        }
+
         if (!bgAudio.current) return;
-        if (playingBgRef.current === next) return;
+        if (playingBgRef.current === next) {
+            if (!next) await updateRoom({ bgMusicPlaying: false, bgMusicUrl: '' });
+            return;
+        }
         playingBgRef.current = next;
         setPlayingBg(next);
         if (next) {
             if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
                 bgCtxRef.current.resume().catch(() => {});
             }
+            await stopAppleMusic?.();
+            await updateRoom({ appleMusicPlayback: null });
             bgAudio.current.play().catch(() => {});
         } else {
             bgAudio.current.pause();
         }
-        updateRoom({ bgMusicPlaying: next, bgMusicUrl: activeBgTrack?.url || '' });
-    }, [activeBgTrack?.url, updateRoom]);
+        await updateRoom({ bgMusicPlaying: next, bgMusicUrl: next ? (activeBgTrack?.url || '') : '' });
+    }, [activeBgTrack?.url, getAppleBackgroundPlaylistConfig, playAppleMusicPlaylist, room?.appleMusicPlayback, stopAppleMusic, updateRoom]);
     const selectBgTrack = useCallback(async (
         trackId = '',
         {
@@ -12224,19 +12423,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
     }, [updateRoom]);
     const toggleBgMusic = async () => {
-        if (playingBg && autoBgMusic) {
+        if (backgroundMusicActive && autoBgMusic) {
             setAutoBgMusic(false);
             await updateRoom({ autoBgMusic: false });
         }
-        setBgMusicState(!playingBg);
+        await setBgMusicState(!backgroundMusicActive);
     };
     const skipBg = useCallback(() => {
+        if (appleMusicBackgroundActive) {
+            toast('Use Apple Music to skip playlist tracks.');
+            return;
+        }
         advanceBgTrack({ shouldPlay: playingBgRef.current, syncRoom: playingBgRef.current });
-    }, [advanceBgTrack]);
+    }, [advanceBgTrack, appleMusicBackgroundActive, toast]);
     useEffect(() => {
         if (!autoBgMusic) return;
         if (stageActivationPendingRef.current) return;
-        if (!currentSong && !playingBgRef.current) {
+        if (!currentSong && !backgroundMusicActive) {
             const preferredTrack = activeBgTrack?.autoEligible === false
                 ? (autoBgTrackOptions[0] || roomBgTrackOptions[0] || null)
                 : activeBgTrack;
@@ -12244,16 +12447,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 void selectBgTrack(preferredTrack.id, { shouldPlay: true, syncRoom: true });
                 return;
             }
-            setBgMusicState(true);
+            void setBgMusicState(true);
         }
-    }, [activeBgTrack, autoBgMusic, autoBgTrackOptions, currentSong, playingBg, roomBgTrackOptions, selectBgTrack, setBgMusicState]);
+    }, [activeBgTrack, autoBgMusic, autoBgTrackOptions, backgroundMusicActive, currentSong, roomBgTrackOptions, selectBgTrack, setBgMusicState]);
 
     useEffect(() => {
         if (!autoBgMusic) return;
         if (!currentSong) return;
-        if (!playingBgRef.current) return;
-        setBgMusicState(false);
-    }, [autoBgMusic, currentSong, setBgMusicState]);
+        if (!backgroundMusicActive) return;
+        void setBgMusicState(false);
+    }, [autoBgMusic, backgroundMusicActive, currentSong, setBgMusicState]);
 
     const fadeMixFader = useCallback((targetPercent, durationMs = 800) => {
         if (mixFadeRef.current) {
@@ -12924,11 +13127,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             setSearchSources(normalizeHostSearchSources(payload.searchSources || {}, DEFAULT_SEARCH_SOURCES));
 
-            if (payload.autoBgMusic && !playingBg) {
-                setBgMusicState(true);
+            if (payload.autoBgMusic && !backgroundMusicActive) {
+                await setBgMusicState(true);
             }
-            if (!payload.autoBgMusic && playingBg) {
-                setBgMusicState(false);
+            if (!payload.autoBgMusic && backgroundMusicActive) {
+                await setBgMusicState(false);
             }
 
             if (preset.autoStartApplePlaylist) {
@@ -13159,12 +13362,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const currentEntries = (Array.isArray(entries) ? entries : [])
             .map((entry) => normalizeYtIndexEntry(entry))
             .filter(Boolean);
-        const refreshIds = [...new Set(
-            currentEntries
-                .filter((entry) => shouldRefreshYtIndexEntry(entry))
-                .map((entry) => String(entry?.videoId || '').trim())
-                .filter(Boolean)
-        )];
+        const refreshPlan = planYouTubeIndexRefresh({
+            entries: currentEntries,
+            telemetry: youtubeSearchTelemetry,
+        });
+        const refreshIds = refreshPlan.ids;
         if (!roomCode || !refreshIds.length) return currentEntries;
 
         const data = await callFunction('youtubeRefreshIndexEntries', {
@@ -13202,7 +13404,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (JSON.stringify(nextEntries) === JSON.stringify(currentEntries)) return nextEntries;
         await persistYtIndex(nextEntries);
         return nextEntries;
-    }, [persistYtIndex, roomCode, ytIndex]);
+    }, [persistYtIndex, roomCode, youtubeSearchTelemetry, ytIndex]);
 
     const successfulYoutubePerformanceKeyRef = useRef('');
     useEffect(() => {
@@ -13228,6 +13430,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             url: lastPerformanceUrl,
             playable: true,
             sourceDetail: 'Successful live performance backing.',
+            sourceDiscovery: 'host_feedback',
             usageCountDelta: 1,
             successCountDelta: 1
         }]).catch((error) => {
@@ -13459,9 +13662,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [currentHostAccountOrgId, isMarketingDemoFixture]);
     useEffect(() => {
         if (!roomCode || isMarketingDemoFixture || !Array.isArray(ytIndex) || ytIndex.length === 0) return;
-        const refreshCandidates = ytIndex.filter((entry) => shouldRefreshYtIndexEntry(entry));
-        if (!refreshCandidates.length) return;
-        const refreshIds = [...new Set(refreshCandidates.map((entry) => String(entry?.videoId || '').trim()).filter(Boolean))];
+        const refreshPlan = planYouTubeIndexRefresh({
+            entries: ytIndex,
+            telemetry: youtubeSearchTelemetry,
+        });
+        const refreshIds = refreshPlan.ids;
         if (!refreshIds.length) return;
         const refreshKey = `${roomCode}:${refreshIds.join(',')}`;
         const now = nowMs();
@@ -13475,7 +13680,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         void refreshRoomYouTubeIndexEntries(ytIndex).catch((error) => {
             hostLogger.warn('YouTube room index refresh failed', error);
         });
-    }, [isMarketingDemoFixture, refreshRoomYouTubeIndexEntries, roomCode, ytIndex]);
+    }, [isMarketingDemoFixture, refreshRoomYouTubeIndexEntries, roomCode, youtubeSearchTelemetry, ytIndex]);
 
     const deleteRoomCollection = async (collectionName, targetRoomCode = roomCode) => {
         const nextRoomCode = String(targetRoomCode || '').trim().toUpperCase();
@@ -13600,9 +13805,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const artworkUrl100 = String(overrides.artworkUrl100 || overrides.thumbnail || entry.artworkUrl100 || entry.thumbnail || '').trim();
         const url = String(overrides.url || entry.url || `https://www.youtube.com/watch?v=${videoId}`).trim();
         const qualityScore = Math.max(0, Number(overrides.qualityScore ?? entry.qualityScore ?? 0) || 0);
+        const rankingScore = Math.max(0, Number(overrides.rankingScore ?? entry.rankingScore ?? 0) || 0);
         const usageCount = Math.max(0, Number(overrides.usageCount ?? entry.usageCount ?? 0) || 0);
         const successCount = Math.max(0, Number(overrides.successCount ?? entry.successCount ?? 0) || 0);
         const failureCount = Math.max(0, Number(overrides.failureCount ?? entry.failureCount ?? 0) || 0);
+        const backingTelemetry = (overrides.backingTelemetry && typeof overrides.backingTelemetry === 'object')
+            ? overrides.backingTelemetry
+            : ((entry.backingTelemetry && typeof entry.backingTelemetry === 'object') ? entry.backingTelemetry : null);
         const playbackState = normalizeYouTubePlaybackState({
             embeddable: overrides.embeddable ?? entry.embeddable,
             uploadStatus: overrides.uploadStatus ?? entry.uploadStatus,
@@ -13628,7 +13837,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     ? 'YouTube track opens in an external host window.'
                     : 'Verified YouTube embeddable track.'
             )).trim(),
+            sourceDiscovery: String(overrides.sourceDiscovery || entry.sourceDiscovery || '').trim(),
             qualityScore,
+            rankingScore,
+            canonicalSongId: String(overrides.canonicalSongId || entry.canonicalSongId || '').trim(),
+            appleMusicId: String(overrides.appleMusicId || entry.appleMusicId || '').trim(),
+            backingCandidateId: String(overrides.backingCandidateId || entry.backingCandidateId || '').trim(),
+            backingProvider: String(overrides.backingProvider || entry.backingProvider || 'youtube').trim().toLowerCase() || 'youtube',
+            providerTrackId: String(overrides.providerTrackId || entry.providerTrackId || videoId).trim(),
+            titleIntentMatch: Math.max(0, Number(overrides.titleIntentMatch ?? entry.titleIntentMatch ?? 0) || 0),
+            durationFit: Math.max(0, Number(overrides.durationFit ?? entry.durationFit ?? 0) || 0),
+            sourceTrust: Math.max(0, Number(overrides.sourceTrust ?? entry.sourceTrust ?? 0) || 0),
+            backingTelemetry,
             usageCount,
             successCount,
             failureCount,
@@ -13662,7 +13882,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             playable: true,
             embeddable: true,
             youtubePlaybackStatus: YOUTUBE_PLAYBACK_STATUSES.embeddable,
-            sourceDetail: 'Indexed and embeddable YouTube track.'
+            sourceDetail: 'Indexed and embeddable YouTube track.',
+            sourceDiscovery: 'playlist_index'
         })));
         return playableItems;
     };
@@ -13842,7 +14063,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     uploadStatus: playbackState.uploadStatus,
                     privacyStatus: playbackState.privacyStatus,
                     youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
-                    backingAudioOnly: playbackState.backingAudioOnly
+                    backingAudioOnly: playbackState.backingAudioOnly,
+                    sourceDiscovery: 'host_search'
                 };
             }
             await upsertYtIndexEntries([{
@@ -13859,7 +14081,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 backingAudioOnly: item.backingAudioOnly === true,
                 sourceDetail: item.backingAudioOnly
                     ? 'YouTube track added to the room index. This one opens in an external host window.'
-                    : 'Verified YouTube embeddable track.'
+                    : 'Verified YouTube embeddable track.',
+                sourceDiscovery: item.sourceDiscovery || (url ? 'host_paste' : 'host_search')
             }]);
             setYtAddStatus(`Added "${item.title}"`);
             setYtAddTitle('');
@@ -17341,7 +17564,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             Pick once, then tap album art or add. You can change the target any time.
                                         </div>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2.5">
                                         <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${catalogueHelperSingerAssigned ? 'border-emerald-300/30 bg-emerald-500/12 text-emerald-100' : 'border-yellow-300/28 bg-yellow-500/12 text-yellow-100'}`}>
                                             {catalogueHelperSingerAssigned ? catalogueHelperSingerBadge : 'Required for helper adds'}
                                         </div>
@@ -18288,7 +18511,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     )}
                                 </div>
                                 {nightSetupStep === 0 && (
-                                    <div className="space-y-3">
+                                    <div className="space-y-4">
                                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
                                             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Room Defaults</div>
                                         </div>
@@ -19900,8 +20123,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAutoBgMusic(next);
         try {
             await updateRoom({ autoBgMusic: next });
-            if (next && !playingBg) {
-                setBgMusicState(true);
+            if (next && !backgroundMusicActive) {
+                await setBgMusicState(true);
+            } else if (!next && backgroundMusicActive) {
+                await setBgMusicState(false);
             }
         } catch (error) {
             console.error('Failed to update auto background music from host chrome', error);
@@ -20738,8 +20963,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     bgVolume={bgVolume}
                     setBgVolume={setBgVolume}
                     toggleBgMusic={toggleBgMusic}
-                    playingBg={playingBg}
+                    playingBg={backgroundMusicActive}
                     skipBg={skipBg}
+                    canSkipBg={!appleMusicBackgroundActive}
                     autoBgMusic={autoBgMusic}
                     setAutoBgMusic={setAutoBgMusic}
                     autoPlayMedia={autoPlayMedia}
@@ -20766,7 +20992,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     chatUnread={chatUnread}
                     setBgMusicState={setBgMusicState}
                     toggleBgMute={toggleBgMute}
-                    currentTrackName={activeBgTrack?.name || 'BG Track'}
+                    currentTrackName={backgroundMusicSourceLabel}
                     mixFader={mixFader}
                     handleMixFaderChange={handleMixFaderChange}
                     startReadyCheck={startReadyCheck}
@@ -21132,7 +21358,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <div className="text-sm font-black uppercase tracking-[0.2em] text-cyan-100">Audience On TV</div>
                                             <div className="mt-1 text-sm text-zinc-300">Cast the lobby into the show without creating a new game mode.</div>
                                         </div>
-                                        <div className="flex flex-wrap items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-2.5">
                                             <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${audienceDisplayActive ? 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-white/5 text-zinc-300'}`}>
                                                 {audienceDisplayMeta.label}
                                             </span>
@@ -21522,6 +21748,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 <button
                                                     onClick={() => toggleLobbyUserCoHost(selectedLobbyUser)}
                                                     disabled={!selectedLobbyUserUid}
+                                                    aria-label={selectedLobbyUserIsCoHost ? 'REMOVE CO-HOST' : 'MAKE CO-HOST'}
+                                                    title={selectedLobbyUserIsCoHost ? 'REMOVE CO-HOST' : 'MAKE CO-HOST'}
                                                     className={`${STYLES.btnStd} ${selectedLobbyUserIsCoHost ? STYLES.btnHighlight : STYLES.btnNeutral} px-3 py-1 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
                                                     {selectedLobbyUserIsCoHost ? 'Remove Co-Host' : 'Make Co-Host'}
@@ -21902,7 +22130,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                                 <div className={`${STYLES.panel} p-4 border-white/10 mt-3`}>
                                     <div className="text-sm text-zinc-400 mb-3 font-bold uppercase tracking-wider">Support Drops</div>
-                                    <div className="space-y-3">
+                                    <div className="space-y-4">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                             <input
                                                 value={supportDropDonorName}
@@ -21934,7 +22162,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <div className="flex flex-wrap items-center gap-2">
+                                            <div className="flex flex-wrap items-center gap-2.5">
                                                 <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Quick amount</div>
                                                 {SUPPORT_DROP_AMOUNT_PRESETS.map((amount) => (
                                                     <button
@@ -21947,7 +22175,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     </button>
                                                 ))}
                                             </div>
-                                            <div className="flex flex-wrap items-center gap-2">
+                                            <div className="flex flex-wrap items-center gap-2.5">
                                                 <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Auto-calc</div>
                                                 {SUPPORT_DROP_RATE_PRESETS.map((rate) => (
                                                     <button
@@ -22085,7 +22313,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="fixed inset-0 z-[85] bg-black/70 flex items-center justify-center p-4">
                     <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
                         <div className="text-lg font-bold text-white mb-4">Edit Performance Score</div>
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                             <div>
                                 <label className="text-sm uppercase tracking-widest text-zinc-500">Hype</label>
                                 <input value={scoreForm.hype} onChange={e=>setScoreForm({...scoreForm, hype:e.target.value})} className={STYLES.input} placeholder="Hype points" />
@@ -23345,7 +23573,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         </div>
                             <div className="pt-2">
-                                <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2.5">
                                     <div className="text-sm uppercase tracking-widest text-zinc-400">Audience branding</div>
                                     <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
                                         audienceBrandThemePresetId === 'custom'
@@ -23730,9 +23958,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <button
                                         type="button"
                                         onClick={async () => {
-                                            const next = !autoBgMusic;
-                                            setAutoBgMusic(next);
-                                            await updateRoom({ autoBgMusic: next });
+                                            await toggleAutoBgMusicQuick();
                                         }}
                                         className={`${STYLES.btnStd} ${autoBgMusic ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
                                     >
@@ -24089,10 +24315,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                     <button
                                         onClick={async () => {
-                                            const next = !autoBgMusic;
-                                            setAutoBgMusic(next);
-                                            await updateRoom({ autoBgMusic: next });
-                                            toast(next ? 'Auto BG music enabled' : 'Auto BG music disabled');
+                                            await toggleAutoBgMusicQuick();
                                         }}
                                         className={`${STYLES.btnStd} ${autoBgMusic ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
                                     >
@@ -24657,7 +24880,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                     )}
                                     {usageAttributionMeters.length > 0 && (
-                                        <div className="space-y-3">
+                                        <div className="space-y-4">
                                             <div className="text-[10px] uppercase tracking-widest text-zinc-500">Usage Attribution</div>
                                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                                                 {usageAttributionMeters.map((meter) => {
@@ -25095,11 +25318,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                         <div className="mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
                             <div className="text-xs text-cyan-100/80 uppercase tracking-widest">YouTube playlist index</div>
-                            <div className="flex flex-wrap gap-2 items-center">
+                            <div className="flex flex-wrap gap-2.5 items-center">
                                 <input
                                     value={ytPlaylistUrl}
                                     onChange={e => setYtPlaylistUrl(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
+                                    className={`${STYLES.input} min-h-[42px] py-2 text-sm bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                     placeholder="Paste a YouTube playlist URL or ID..."
                                     title="Paste a playlist URL or ID to index"
                                 />
@@ -25141,7 +25364,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 toast('Copy failed');
                                             }
                                         }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[40px] px-4 py-2 text-sm border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                     >
                                         Copy QA URL
                                     </button>
@@ -25155,7 +25378,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             setQaYtPlaylistUrl(next);
                                             toast('Saved current URL as QA shortcut');
                                         }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[40px] px-4 py-2 text-sm border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                     >
                                         Save Current as QA
                                     </button>
@@ -25165,89 +25388,166 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="host-form-helper">Indexes up to 1000 videos per playlist load. INDEX + QUEUE ALL enables Auto-DJ and queues every indexed track.</div>
                         </div>
 
-                        <div className="mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
-                            <div className="text-sm text-cyan-100/80 uppercase tracking-widest">Apple Music playback</div>
-                            <div className="flex items-center justify-between text-sm">
-                                <div className="uppercase tracking-[0.25em] text-cyan-100/65">Apple Music login</div>
+                        <div className="mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 sm:p-5 space-y-4 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
+                            <div className="text-base sm:text-lg font-black text-cyan-50 uppercase tracking-[0.12em]">Apple Music background</div>
+                            <div className="flex flex-wrap items-center justify-between gap-3 text-base">
+                                <div className="font-semibold uppercase tracking-[0.14em] text-cyan-100/70">Apple Music</div>
                                 {appleMusicAuthorized ? (
                                     <div className="flex items-center gap-2">
                                         <span className="text-emerald-300 font-bold">Connected</span>
-                                        <button onClick={disconnectAppleMusic} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-sm border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}>Disconnect</button>
+                                        <button onClick={disconnectAppleMusic} className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[40px] px-3 py-2 text-sm border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}>Disconnect</button>
                                     </div>
                                 ) : (
-                                    <button onClick={connectAppleMusic} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm shadow-[0_0_24px_rgba(236,72,153,0.24)]`}>Connect</button>
+                                    <button onClick={connectAppleMusic} className={`${STYLES.btnStd} ${STYLES.btnHighlight} min-h-[42px] px-4 py-2 text-base shadow-[0_0_24px_rgba(236,72,153,0.24)]`}>Connect</button>
                                 )}
                             </div>
                             {appleMusicStatus ? (
-                                <div className="text-sm text-cyan-100/75 mt-1">{appleMusicStatus}</div>
+                                <div className="text-base text-cyan-100/80 mt-1">{appleMusicStatus}</div>
                             ) : null}
-                            <div className="flex flex-wrap gap-2 items-center">
-                                <input
-                                    value={appleMusicPlaylistUrl}
-                                    onChange={e => setAppleMusicPlaylistUrl(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
-                                    placeholder="Paste an Apple Music playlist URL or ID..."
-                                    title="Paste a playlist URL or ID to play"
-                                />
-                                <button
-                                    onClick={async () => {
-                                        const playlistId = parseAppleMusicPlaylistId(appleMusicPlaylistUrl);
-                                        if (!playlistId) {
-                                            setAppleMusicPlaylistStatus('Paste a valid playlist ID or URL.');
-                                            return;
-                                        }
-                                        setAppleMusicPlaylistStatus('Starting playlist...');
-                                        await playAppleMusicPlaylist(playlistId, { title: 'Playlist' });
-                                        setAppleMusicPlaylistStatus('Playing playlist.');
-                                    }}
-                                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4 flex-shrink-0 bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent`}
-                                >
-                                    Play
-                                </button>
-                                <button
-                                    onClick={() => (appleMusicPlaying ? pauseAppleMusic() : resumeAppleMusic())}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 flex-shrink-0 border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
-                                >
-                                    {appleMusicPlaying ? 'Pause' : 'Resume'}
-                                </button>
-                            </div>
+                            {appleMusicAutoPlaylistId ? (
+                                <div className="rounded-lg border border-emerald-300/25 bg-emerald-500/10 px-4 py-3 text-base text-emerald-100">
+                                    <span className="text-emerald-200/75 uppercase tracking-[0.12em] text-sm sm:text-base font-black">BG playlist</span><div className="mt-1 font-semibold text-white break-words">{appleMusicAutoPlaylistTitle || appleMusicAutoPlaylistId}</div>
+                                </div>
+                            ) : null}
+                            {appleMusicAuthorized ? (
+                                <div className="space-y-4">
+                                    <div className="flex flex-wrap items-center gap-2.5">
+                                        {APPLE_MUSIC_PICKER_MODES.map((option) => (
+                                            <button
+                                                key={`apple-picker-${option.id}`}
+                                                type="button"
+                                                onClick={() => {
+                                                    setAppleMusicPickerMode(option.id);
+                                                    if (option.id !== 'search') void loadAppleMusicPicker(option.id);
+                                                }}
+                                                className={`${STYLES.btnStd} ${appleMusicPickerMode === option.id ? STYLES.btnInfo : STYLES.btnNeutral} min-h-[40px] px-4 py-2 text-sm`}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                        {appleMusicPickerMode !== 'search' ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => { void loadAppleMusicPicker(appleMusicPickerMode); }}
+                                                disabled={appleMusicPickerLoading}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[40px] px-4 py-2 text-sm border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
+                                            >
+                                                {appleMusicPickerLoading ? 'Loading...' : 'Refresh'}
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                    {appleMusicPickerMode === 'search' ? (
+                                        <div className="flex flex-wrap gap-2.5 items-center">
+                                            <input
+                                                value={appleMusicPickerQuery}
+                                                onChange={(event) => setAppleMusicPickerQuery(event.target.value)}
+                                                onKeyDown={(event) => {
+                                                    if (event.key === 'Enter') void loadAppleMusicPicker('search');
+                                                }}
+                                                className={`${STYLES.input} min-h-[42px] py-2 text-sm bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
+                                                placeholder="Search Apple Music playlists..."
+                                                title="Search Apple Music playlists"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => { void loadAppleMusicPicker('search'); }}
+                                                disabled={appleMusicPickerLoading}
+                                                className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[42px] px-5 py-2 text-sm flex-shrink-0`}
+                                            >
+                                                {appleMusicPickerLoading ? 'Searching...' : 'Search'}
+                                            </button>
+                                        </div>
+                                    ) : null}
+                                    {appleMusicPickerError ? (
+                                        <div className="host-form-helper host-form-helper-status text-sm sm:text-base">{appleMusicPickerError}</div>
+                                    ) : null}
+                                    {appleMusicPickerItems.length ? (
+                                        <div className="max-h-80 overflow-y-auto rounded-xl border border-cyan-300/15 bg-black/20 divide-y divide-cyan-300/10">
+                                            {appleMusicPickerItems.map((choice) => (
+                                                <div key={`${choice.sourceType}-${choice.id}`} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                                                    {choice.artworkUrl ? (
+                                                        <img src={choice.artworkUrl} alt="" className="h-12 w-12 rounded-md object-cover border border-white/10" />
+                                                    ) : (
+                                                        <div className="h-12 w-12 rounded-md border border-cyan-300/20 bg-cyan-500/10 flex items-center justify-center text-cyan-100">
+                                                            <i className="fa-solid fa-music"></i>
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-[180px] flex-1">
+                                                        <div className="text-base font-semibold text-white truncate">{choice.title}</div>
+                                                        <div className="text-sm text-cyan-100/65 truncate">{choice.subtitle}</div>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2 ml-auto">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { void applyAppleMusicPlaylistForBg(choice); }}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[40px] px-4 py-2 text-sm`}
+                                                        >
+                                                            Use for BG
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { void playAppleMusicPlaylistChoiceNow(choice); }}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[40px] px-4 py-2 text-sm border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
+                                                        >
+                                                            Play Now
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            ) : (
+                                <div className="text-base text-cyan-100/75">Connect to browse playlists.</div>
+                            )}
+                            <details className="rounded-lg border border-cyan-300/15 bg-black/15 px-4 py-3">
+                                <summary className="cursor-pointer text-sm font-bold uppercase tracking-[0.12em] text-cyan-100/70">Paste playlist URL or ID</summary>
+                                <div className="mt-3 flex flex-wrap gap-2 items-center">
+                                    <input
+                                        value={appleMusicPlaylistUrl}
+                                        onChange={e => setAppleMusicPlaylistUrl(e.target.value)}
+                                        className={`${STYLES.input} min-h-[42px] py-2 text-sm bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
+                                        placeholder="Paste an Apple Music playlist URL or ID..."
+                                        title="Paste a playlist URL or ID"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const playlistId = parseAppleMusicPlaylistId(appleMusicPlaylistUrl);
+                                            if (!playlistId) {
+                                                setAppleMusicPlaylistStatus('Paste a valid playlist ID or URL.');
+                                                return;
+                                            }
+                                            const title = await fetchAppleMusicPlaylistTitle(playlistId);
+                                            await applyAppleMusicPlaylistForBg({ id: playlistId, title: title || playlistId });
+                                        }}
+                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[42px] px-5 py-2 text-sm flex-shrink-0`}
+                                    >
+                                        Use for BG
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const playlistId = parseAppleMusicPlaylistId(appleMusicPlaylistUrl);
+                                            if (!playlistId) {
+                                                setAppleMusicPlaylistStatus('Paste a valid playlist ID or URL.');
+                                                return;
+                                            }
+                                            setAppleMusicPlaylistStatus('Starting playlist...');
+                                            const title = await fetchAppleMusicPlaylistTitle(playlistId);
+                                            await playAppleMusicPlaylist(playlistId, { title: title || 'Playlist' });
+                                            setAppleMusicPlaylistStatus('Playing playlist.');
+                                        }}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[42px] px-5 py-2 text-sm flex-shrink-0 border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
+                                    >
+                                        Play Now
+                                    </button>
+                                </div>
+                            </details>
                             {appleMusicPlaylistStatus ? (
-                                <div className="host-form-helper host-form-helper-status">{appleMusicPlaylistStatus}</div>
+                                <div className="host-form-helper host-form-helper-status text-sm sm:text-base">{appleMusicPlaylistStatus}</div>
                             ) : null}
-                            <div className="host-form-helper">Connect Apple Music first. Playlist defaults live here after that and are saved to your account for future sessions.</div>
-                            <div className="host-form-helper">Playlist playback is host-only and drives the room vibe.</div>
-                        </div>
 
-                        <div className="mt-4 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
-                            <div className="text-sm text-cyan-100/80 uppercase tracking-widest">Auto-DJ playlist fallback</div>
-                            <div className="flex flex-wrap gap-2 items-center">
-                                <input
-                                    value={appleMusicAutoPlaylistId}
-                                    onChange={e => setAppleMusicAutoPlaylistId(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
-                                    placeholder="Paste an Apple Music playlist URL or ID..."
-                                    title="Auto-DJ uses this playlist when the queue is empty"
-                                />
-                                <button
-                                    onClick={async () => {
-                                        const pid = parseAppleMusicPlaylistId(appleMusicAutoPlaylistId);
-                                        if (!pid) return;
-                                        const title = await fetchAppleMusicPlaylistTitle(pid);
-                                        if (title) setAppleMusicAutoPlaylistTitle(title);
-                                    }}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 flex-shrink-0 border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
-                                >
-                                    Lookup
-                                </button>
-                            </div>
-                            <input
-                                value={appleMusicAutoPlaylistTitle}
-                                onChange={e => setAppleMusicAutoPlaylistTitle(e.target.value)}
-                                className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
-                                placeholder="Playlist title (optional)"
-                                title="Shown in Apple Music playback status"
-                            />
-                            <div className="host-form-helper">Auto-DJ will start this playlist when no requests are queued.</div>
                         </div>
 
                         <div className="mt-4 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
@@ -25256,14 +25556,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <input
                                     value={ytAddTitle}
                                     onChange={e => setYtAddTitle(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
+                                    className={`${STYLES.input} min-h-[42px] py-2 text-sm bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                     placeholder="Song title"
                                     title="Title used for search and display"
                                 />
                                 <input
                                     value={ytAddArtist}
                                     onChange={e => setYtAddArtist(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
+                                    className={`${STYLES.input} min-h-[42px] py-2 text-sm bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                     placeholder="Artist (optional)"
                                     title="Optional artist name"
                                 />
@@ -25272,12 +25572,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <input
                                 value={ytAddUrl}
                                 onChange={e => setYtAddUrl(e.target.value)}
-                                className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
+                                className={`${STYLES.input} min-h-[42px] py-2 text-sm bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                 placeholder="YouTube URL (optional)"
                                 title="Optional YouTube URL for the backing track"
                             />
                             <div className="host-form-helper">Leave URL empty to auto-search YouTube later.</div>
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2.5">
                                 <button
                                     onClick={addYouTubeIndexEntry}
                                     disabled={ytAddLoading}
@@ -25301,7 +25601,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <i className="fa-solid fa-hard-drive text-[#00C4D9]"></i>
                                 Room Uploads
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2.5">
                                 <input
                                     type="file"
                                     accept="video/*,audio/*,image/*"
@@ -25701,7 +26001,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
                                     <button onClick={() => { setShowYtIndex(false); setYtIndexFilter(''); setYtCurateQuery(''); setYtCurateResults([]); setYtCurateStatus(''); }} className="text-zinc-400 text-sm">&larr; Back</button>
                                     <div className="text-lg font-bold">Room Library Curator</div>
-                                    <div className="text-sm text-zinc-500">{roomLibraryStats.total} items</div>
+                                    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-black ${ytIndexHealthSummary.toneClass}`}>
+                                        <i className={`fa-solid ${ytIndexHealthSummary.icon}`}></i>
+                                        {ytIndexHealthSummary.state}
+                                    </div>
                                 </div>
                                 <div className="flex-1 min-h-0 px-6 pb-6 pt-4 custom-scrollbar touch-scroll-y">
                                     <div className="grid grid-cols-1 xl:grid-cols-[420px,minmax(0,1fr)] gap-4 min-h-0">
@@ -25728,21 +26031,41 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 </div>
                                                 <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
                                                     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">YouTube</div>
-                                                        <div className="mt-1 text-lg font-black text-white">{roomLibraryStats.youtube}</div>
+                                                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">YouTube Indexed</div>
+                                                        <div className="mt-1 text-xl font-black text-white">{ytIndexHealthSummary.total}</div>
                                                     </div>
                                                     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Uploads</div>
-                                                        <div className="mt-1 text-lg font-black text-cyan-200">{roomLibraryStats.uploads}</div>
+                                                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Fresh</div>
+                                                        <div className="mt-1 text-xl font-black text-emerald-200">{ytIndexHealthSummary.fresh}</div>
+                                                        <div className="mt-1 text-xs text-zinc-500">{ytIndexHealthSummary.playable} playable</div>
                                                     </div>
                                                     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Offline</div>
-                                                        <div className="mt-1 text-lg font-black text-emerald-200">{roomLibraryStats.offline}</div>
+                                                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Proven</div>
+                                                        <div className="mt-1 text-xl font-black text-cyan-200">{ytIndexHealthSummary.proven}</div>
+                                                        <div className="mt-1 text-xs text-zinc-500">host approved</div>
                                                     </div>
                                                     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Suppressed</div>
-                                                        <div className="mt-1 text-lg font-black text-rose-200">{ytDiagnosticsStats.suppressed}</div>
-                                                        <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">{ytDiagnosticsStats.loaded} loaded</div>
+                                                        <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Suppressed</div>
+                                                        <div className="mt-1 text-xl font-black text-rose-200">{ytDiagnosticsStats.suppressed}</div>
+                                                        <div className="mt-1 text-xs text-zinc-500">{ytDiagnosticsStats.loaded} loaded</div>
+                                                    </div>
+                                                </div>
+                                                <div className={`mt-3 rounded-2xl border px-4 py-3 ${ytIndexHealthSummary.toneClass}`}>
+                                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <i className={`fa-solid ${ytIndexHealthSummary.icon} text-base`}></i>
+                                                            <div>
+                                                                <div className="text-sm font-black uppercase tracking-[0.14em]">{ytIndexHealthSummary.state}</div>
+                                                                <div className="mt-1 text-sm normal-case tracking-normal opacity-90">{ytIndexHealthSummary.support}</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2 text-sm font-bold">
+                                                            <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1">{roomLibraryStats.total} room items</span>
+                                                            <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1">{roomLibraryStats.uploads + roomLibraryStats.offline} local backups</span>
+                                                            <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1">Checked {ytIndexHealthSummary.newestValidatedLabel}</span>
+                                                            <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1">{ytIndexHealthSummary.due} due</span>
+                                                            <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1">{ytIndexHealthSummary.todayFreshSearchesLeft} searches left</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 {ytCurateStatus && (

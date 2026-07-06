@@ -5,6 +5,7 @@ import {
     searchYouTubeCatalog
 } from '../../../lib/youtubeSearchClient';
 import {
+    YOUTUBE_PLAYBACK_STATUSES,
     getYouTubeEmbedCacheStatus,
     isYouTubeEmbeddable,
     normalizeYouTubePlaybackState
@@ -17,14 +18,14 @@ const useQueueMediaTools = ({
     persistYtIndex,
     ytSearchQ,
     setYtSearchQ,
+    youtubeSearchMode = 'karaoke',
     setYtSearchOpen,
     setYtSearchTarget,
     setYtEditingQuery,
     setYtResults,
     setYtLoading,
     setYtSearchError,
-    setEmbedCache,
-    hideNonEmbeddableYouTube = false
+    setEmbedCache
 }) => {
     const parseYouTubeId = useCallback((url = '') => {
         const match = url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/);
@@ -126,7 +127,7 @@ const useQueueMediaTools = ({
         if (!q) return [];
         return ytIndex
             .filter(item => {
-                if (hideNonEmbeddableYouTube && !isYouTubeEmbeddable(item)) return false;
+                if (!isYouTubeEmbeddable(item)) return false;
                 const title = (item.trackName || '').toLowerCase();
                 const artist = (item.artistName || '').toLowerCase();
                 return title.includes(q) || artist.includes(q);
@@ -146,42 +147,55 @@ const useQueueMediaTools = ({
                 backingAudioOnly: item.backingAudioOnly === true,
                 sourceDetail: item.sourceDetail || ''
             }));
-    }, [hideNonEmbeddableYouTube, ytIndex]);
+    }, [ytIndex]);
 
     const searchYouTube = useCallback(async (queryOverride) => {
         const query = (queryOverride ?? ytSearchQ).trim();
         if (!query) return;
+        const directVideoId = parseYouTubeId(query);
+        const searchMode = String(youtubeSearchMode || 'karaoke').toLowerCase() === 'any' ? 'any' : 'karaoke';
+        const searchQuery = searchMode === 'karaoke' && !directVideoId ? `${query} karaoke` : query;
+        const resultSourceDetail = searchMode === 'karaoke'
+            ? 'YouTube karaoke search result. Verified to embed on Public TV.'
+            : 'YouTube search result. Verified to embed on Public TV.';
         setYtLoading(true);
         setYtSearchError('');
         try {
-            const data = await searchYouTubeCatalog({
-                query: `${query} karaoke`,
-                maxResults: 10,
-                playableOnly: hideNonEmbeddableYouTube === true,
-                roomCode,
-                usageSource: 'host_queue_media_search',
-                usageSurface: 'host',
-                timeoutMs: 8000
-            });
+            const data = directVideoId
+                ? await callFunction('youtubeDetails', {
+                    ids: [directVideoId],
+                    roomCode,
+                    usageContext: { source: 'host_queue_media_url_lookup', surface: 'host' }
+                })
+                : await searchYouTubeCatalog({
+                    query: searchQuery,
+                    maxResults: 10,
+                    playableOnly: true,
+                    roomCode,
+                    usageSource: searchMode === 'karaoke' ? 'host_queue_media_search_karaoke' : 'host_queue_media_search_any',
+                    usageSurface: 'host',
+                    timeoutMs: 8000
+                });
             const results = (data?.items || [])
                 .map(item => {
+                    const itemId = String(item?.id || directVideoId || '').trim();
+                    if (!itemId) return null;
                     const playbackState = normalizeYouTubePlaybackState(item);
-                    if (hideNonEmbeddableYouTube && !isYouTubeEmbeddable(playbackState)) return null;
+                    if (!isYouTubeEmbeddable(playbackState)) return null;
                     return {
-                        id: item.id,
-                        title: item.title,
-                        channel: item.channelTitle,
+                        id: itemId,
+                        title: item.title || 'YouTube Track',
+                        channel: item.channelTitle || item.channel || 'YouTube',
                         thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
-                        url: `https://www.youtube.com/watch?v=${item.id}`,
+                        url: `https://www.youtube.com/watch?v=${itemId}`,
                         playable: playbackState.playable,
                         embeddable: playbackState.embeddable,
                         uploadStatus: playbackState.uploadStatus,
                         privacyStatus: playbackState.privacyStatus,
-                        youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
-                        backingAudioOnly: playbackState.backingAudioOnly,
-                        sourceDetail: playbackState.backingAudioOnly
-                            ? 'YouTube karaoke search result. This backing does not embed on Public TV, so the host must launch it in the external backing window.'
-                            : 'YouTube karaoke search result. Verified to embed on Public TV.'
+                        youtubePlaybackStatus: playbackState.youtubePlaybackStatus || YOUTUBE_PLAYBACK_STATUSES.embeddable,
+                        backingAudioOnly: false,
+                        durationSec: Math.max(0, Math.round(Number(item.durationSec || 0))),
+                        sourceDetail: directVideoId ? 'Pasted YouTube URL. Verified to embed on Public TV.' : resultSourceDetail
                     };
                 })
                 .filter(Boolean);
@@ -195,9 +209,9 @@ const useQueueMediaTools = ({
             });
             if (!results.length) {
                 setYtSearchError(
-                    hideNonEmbeddableYouTube
-                        ? 'No embeddable YouTube results found. Try a different keyword.'
-                        : 'No YouTube karaoke results found. Try a different keyword.'
+                    directVideoId
+                        ? 'That YouTube link cannot play inside BeauRocks. Try another link.'
+                        : 'No embeddable YouTube results found. Try a different keyword.'
                 );
             }
             const updated = (() => {
@@ -216,7 +230,8 @@ const useQueueMediaTools = ({
                         privacyStatus: item.privacyStatus || '',
                         youtubePlaybackStatus: item.youtubePlaybackStatus || '',
                         backingAudioOnly: item.backingAudioOnly === true,
-                        sourceDetail: item.sourceDetail || 'YouTube karaoke search result.'
+                        durationSec: item.durationSec || 0,
+                        sourceDetail: item.sourceDetail || 'YouTube search result. Verified to embed on Public TV.'
                     });
                 });
                 return Array.from(existing.values());
@@ -242,8 +257,8 @@ const useQueueMediaTools = ({
                 });
                 setYtSearchError(
                     isYouTubeQuotaBlockedError(e)
-                        ? 'Live YouTube search is paused because the YouTube quota is exhausted. Showing indexed playlist results.'
-                        : 'Live YouTube search failed. Showing indexed playlist results.'
+                        ? 'Live YouTube search is paused because the YouTube quota is exhausted. Showing indexed embeddable results.'
+                        : 'Live YouTube search failed. Showing indexed embeddable results.'
                 );
             } else if (isYouTubeQuotaBlockedError(e)) {
                 setYtSearchError('Live YouTube search is temporarily paused because the YouTube quota is exhausted. Use indexed tracks or paste a direct URL.');
@@ -264,9 +279,10 @@ const useQueueMediaTools = ({
         setYtSearchError,
         roomCode,
         setEmbedCache,
-        hideNonEmbeddableYouTube,
+        parseYouTubeId,
         ytIndex,
-        ytSearchQ
+        ytSearchQ,
+        youtubeSearchMode
     ]);
 
     const openYtSearch = useCallback((target, query) => {

@@ -16,7 +16,7 @@ import GameContainer from '../../components/GameContainer';
 import { emoji, EMOJI, getReactionEmoji } from '../../lib/emoji';
 import { HOW_TO_PLAY } from '../../lib/howToPlay';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
-import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
+import { getAppleMusicPlaybackDisplay, normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import { resolveRoomUserUid } from '../../lib/gameLaunchSupport';
 import { createLogger } from '../../lib/logger';
 import groupChatMessages from '../../lib/chatGrouping';
@@ -24,6 +24,7 @@ import { buildPerformanceSessionPlaybackWrite } from '../../lib/performanceSessi
 import useTvVisualizerSettings from './hooks/useTvVisualizerSettings';
 import {
     DEFAULT_POP_TRIVIA_ROUND_SEC,
+    DEFAULT_POP_TRIVIA_REVEAL_SEC,
     POP_TRIVIA_VOTE_TYPE,
     dedupeQuestionVotes,
     getActivePopTriviaQuestion
@@ -2604,10 +2605,15 @@ const HowToPlayOverlay = ({
 const MiniVideoPane = ({ room, current, muted = false }) => {
     const mediaUrl = resolveStageMediaUrl(current, room);
     const isBackingAudioOnly = current?.backingAudioOnly || false;
-    const stageBacking = normalizeBackingChoice({ mediaUrl });
+    const stageBacking = normalizeBackingChoice(current ? { ...current, mediaUrl } : { mediaUrl });
     const isNativeVideo = /\.(mp4|webm|ogg)$/i.test(stageBacking.mediaUrl || '');
     const youtubeId = stageBacking.youtubeId;
     const isYoutube = stageBacking.isYouTube;
+    const appleMusicDisplay = useMemo(
+        () => getAppleMusicPlaybackDisplay({ currentSong: current, room, nowMs: nowMs() }),
+        [current, room]
+    );
+    const showAppleMusicPane = appleMusicDisplay.active && (!stageBacking.mediaUrl || stageBacking.usesAppleBacking || isBackingAudioOnly);
 
     const iframeRef = useRef(null);
     const nativeVideoRef = useRef(null);
@@ -2672,6 +2678,54 @@ const MiniVideoPane = ({ room, current, muted = false }) => {
             nativeVideoRef.current.volume = muted ? 0 : room.videoVolume / 100;
         }
     }, [room?.videoVolume, muted]);
+
+    if (showAppleMusicPane) {
+        const progressWidth = `${Math.max(0, Math.min(100, Number(appleMusicDisplay.progressPct || 0)))}%`;
+        return (
+            <div className="w-full aspect-video overflow-hidden rounded-2xl border border-pink-300/20 bg-[radial-gradient(circle_at_18%_14%,rgba(244,114,182,0.28),transparent_32%),radial-gradient(circle_at_84%_12%,rgba(34,211,238,0.18),transparent_30%),linear-gradient(145deg,rgba(10,10,18,0.96),rgba(25,8,30,0.94))] shadow-lg relative">
+                <div className="absolute inset-0 opacity-70" aria-hidden="true">
+                    <div className="absolute left-[-8%] top-[12%] h-32 w-32 rounded-full border border-pink-200/15" />
+                    <div className="absolute right-[8%] top-[10%] h-20 w-20 rounded-full border border-cyan-200/15" />
+                    <div className="absolute bottom-[-16%] left-[22%] h-44 w-44 rounded-full bg-pink-500/10 blur-2xl" />
+                </div>
+                <div className="relative z-10 flex h-full flex-col justify-between p-4 md:p-5">
+                    <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-pink-100/85">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-pink-200/20 bg-pink-500/10 px-2.5 py-1">
+                            <i className="fa-brands fa-apple"></i>
+                            {appleMusicDisplay.eyebrow}
+                        </span>
+                        <span
+                            className={`rounded-full border px-2.5 py-1 ${appleMusicDisplay.status === 'playing' ? 'border-emerald-200/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-200/30 bg-amber-500/10 text-amber-100'}`}
+                        >
+                            {appleMusicDisplay.statusLabel}
+                        </span>
+                    </div>
+                    <div className="min-w-0">
+                        <div className="line-clamp-2 text-2xl font-black leading-tight text-white md:text-3xl">
+                            {appleMusicDisplay.title}
+                        </div>
+                        <div className="mt-1 truncate text-sm font-bold text-pink-100/85 md:text-base">
+                            {appleMusicDisplay.subtitle}
+                        </div>
+                        <div className="mt-2 text-[11px] uppercase tracking-[0.16em] text-zinc-300">
+                            {appleMusicDisplay.detail}
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        {appleMusicDisplay.durationSec > 0 ? (
+                            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                                <div className="h-full rounded-full bg-gradient-to-r from-pink-300 via-cyan-200 to-emerald-200" style={{ width: progressWidth }} />
+                            </div>
+                        ) : null}
+                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
+                            <span>Host controls playback</span>
+                            <span>{appleMusicDisplay.isPerformance ? 'Performance' : 'Background'}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (!mediaUrl || isBackingAudioOnly) return null;
 
@@ -5504,6 +5558,10 @@ const PublicTV = ({ roomCode }) => {
         6000,
         Number(room?.gameDefaults?.popTriviaRevealHoldSec || DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC) * 1000
     );
+    const popTriviaQuestionRevealSec = Math.max(
+        3,
+        Number(room?.gameDefaults?.popTriviaQuestionRevealSec || DEFAULT_POP_TRIVIA_REVEAL_SEC)
+    );
     const popTriviaCorrectPoints = Math.max(
         0,
         Number(room?.gameDefaults?.popTriviaCorrectPoints || DEFAULT_POP_TRIVIA_CORRECT_POINTS)
@@ -5515,15 +5573,18 @@ const PublicTV = ({ roomCode }) => {
         return getActivePopTriviaQuestion({
             song: current,
             now: popTriviaNow,
-            roundSec: popTriviaRoundSec
+            roundSec: popTriviaRoundSec,
+            revealSec: popTriviaQuestionRevealSec
         });
-    }, [current, popTriviaNow, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
+    }, [current, popTriviaNow, popTriviaQuestionRevealSec, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
     const popTriviaQuestion = popTriviaState?.question || null;
     const popTriviaQuestionId = popTriviaQuestion?.id || '';
-    const showPopTriviaEndState = (
-        popTriviaState?.status === 'complete'
-        && (popTriviaNow - Number(popTriviaState?.completedAtMs || 0)) < popTriviaRevealHoldMs
-    );
+    const popTriviaRevealQuestionFromState = popTriviaState?.status === 'reveal'
+        ? (popTriviaState?.revealQuestion || null)
+        : null;
+    const popTriviaRevealQuestionFromStateId = String(popTriviaRevealQuestionFromState?.id || '').trim();
+    const showPopTriviaEndState = !!popTriviaRevealQuestionFromState;
+    const popTriviaVoteQuestionId = popTriviaQuestionId || popTriviaRevealQuestionFromStateId;
     const popTriviaVoteCounts = useMemo(() => {
         const count = Array.from({ length: popTriviaQuestion?.options?.length || 0 }, () => 0);
         popTriviaVotes.forEach((vote) => {
@@ -5536,7 +5597,7 @@ const PublicTV = ({ roomCode }) => {
     }, [popTriviaVotes, popTriviaQuestion?.options?.length]);
     const popTriviaTotalVotes = popTriviaVoteCounts.reduce((sum, val) => sum + val, 0);
     const popTriviaRevealQuestion = showPopTriviaEndState
-        ? (popTriviaRevealSnapshot?.question || null)
+        ? (popTriviaRevealQuestionFromState || popTriviaRevealSnapshot?.question || null)
         : null;
     const popTriviaRevealVotes = useMemo(
         () => (showPopTriviaEndState
@@ -5658,14 +5719,14 @@ const PublicTV = ({ roomCode }) => {
             setPopTriviaVotes(Array.isArray(demoFixture?.popTriviaVotes) ? demoFixture.popTriviaVotes : []);
             return () => {};
         }
-        if (!roomCode || !popTriviaQuestionId) {
+        if (!roomCode || !popTriviaVoteQuestionId) {
             setPopTriviaVotes([]);
             return () => {};
         }
         const voteQuery = query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
             where('roomCode', '==', roomCode),
-            where('questionId', '==', popTriviaQuestionId)
+            where('questionId', '==', popTriviaVoteQuestionId)
         );
         const unsub = onSnapshot(voteQuery, (snap) => {
             const entries = dedupeQuestionVotes(
@@ -5675,7 +5736,7 @@ const PublicTV = ({ roomCode }) => {
             setPopTriviaVotes(entries);
         });
         return () => unsub();
-    }, [demoFixture?.popTriviaVotes, isMarketingDemoFixture, roomCode, popTriviaQuestionId]);
+    }, [demoFixture?.popTriviaVotes, isMarketingDemoFixture, roomCode, popTriviaVoteQuestionId]);
     useEffect(() => {
         if (!popTriviaQuestion) return;
         setPopTriviaRevealSnapshot({
@@ -8751,8 +8812,8 @@ const PublicTV = ({ roomCode }) => {
                 <div data-feature-id="tv-pop-trivia-active-beacon" className="absolute top-3 right-3 md:top-5 md:right-5 z-[128] pointer-events-none">
                     <div className={`rounded-full border px-4 py-2 md:px-5 md:py-2.5 shadow-[0_14px_38px_rgba(0,0,0,0.34)] backdrop-blur-xl ${popTriviaQuestion ? 'border-cyan-200/55 bg-cyan-500/18 text-cyan-50' : 'border-emerald-200/50 bg-emerald-500/18 text-emerald-50'}`}>
                         <div className="flex items-center gap-2 text-[11px] md:text-[13px] font-black uppercase tracking-[0.2em]">
-                            <span>{popTriviaQuestion ? 'Pop-up Trivia Live' : 'Pop-up Trivia Results'}</span>
-                            <span className="font-mono tracking-normal">{popTriviaQuestion ? `${Math.max(0, Number(popTriviaState?.timeLeftSec || 0))}s` : 'recap'}</span>
+                            <span>{popTriviaQuestion ? 'Pop-up Trivia Live' : 'Answer Revealed'}</span>
+                            <span className="font-mono tracking-normal">{`${Math.max(0, Number(popTriviaState?.timeLeftSec || 0))}s`}</span>
                         </div>
                     </div>
                 </div>
@@ -8775,12 +8836,12 @@ const PublicTV = ({ roomCode }) => {
                             }`}>
                                 <div className="min-w-0">
                                     <div className={`text-[12px] md:text-[14px] ${popTriviaQuestion ? 'text-cyan-200' : 'text-emerald-200'}`}>
-                                        {popTriviaQuestion ? 'Pop-up Trivia' : 'Pop-up Trivia Complete'}
+                                        {popTriviaQuestion ? 'Pop-up Trivia' : 'Answer Revealed'}
                                     </div>
                                     <div className="mt-2 text-[11px] md:text-[13px] text-zinc-300 tracking-[0.18em]">
                                         {popTriviaQuestion
                                             ? `Question ${Number(popTriviaState?.index || 0) + 1} of ${popTriviaState?.total || 0}`
-                                            : `${popTriviaState?.total || 0} questions finished`}
+                                            : `Question ${Number(popTriviaState?.index || 0) + 1} results`}
                                     </div>
                                 </div>
                                 <div className="shrink-0 text-right">

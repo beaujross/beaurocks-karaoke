@@ -1,5 +1,6 @@
 import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme.js';
 import { normalizeAudienceFeatureAccess } from '../../lib/audienceFeatureAccess.js';
+import { AUDIENCE_BACKING_MODES, REQUEST_MODES, UNKNOWN_BACKING_POLICIES } from '../../lib/requestModes.js';
 
 const DEFAULT_ROOM_CODE = 'DEMOAUD';
 const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
@@ -202,6 +203,8 @@ export const QA_AUDIENCE_FIXTURE_IDS = Object.freeze([
     'streamlined-aahf-rules',
     'streamlined-aahf-join-about',
     'streamlined-aahf-join-access',
+    'youtube-audit-search',
+    'youtube-audit-paste',
     'cohost-song-faceoff',
     'crowd-song-faceoff',
     'cohost-unlimited-reactions',
@@ -266,6 +269,32 @@ export const buildQaAudienceFixture = (fixtureId = '', { roomCode = DEFAULT_ROOM
             room: buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
             tab: 'request',
             songsTab: 'queue',
+        };
+    }
+    if (safeId === 'youtube-audit-search' || safeId === 'youtube-audit-paste') {
+        const base = buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' });
+        return {
+            ...base,
+            room: {
+                ...buildBaseRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+                requestMode: REQUEST_MODES.guestBackingOptional,
+                allowSingerTrackSelect: true,
+                audienceBackingMode: AUDIENCE_BACKING_MODES.canonicalPlusAudienceYoutube,
+                unknownBackingPolicy: UNKNOWN_BACKING_POLICIES.requireReview,
+                audienceYoutubeOnlySearch: false,
+            },
+            user: { uid: 'fixture_user', name: 'Taylor Demo', avatar: 'Mic', isVip: false, vipLevel: 0 },
+            profile: { uid: 'fixture_user', name: 'Taylor Demo', avatar: 'Mic', isVip: false, vipLevel: 0, totalFamePoints: 1800, currentLevel: 4, points: 640 },
+            tab: 'request',
+            songsTab: 'browse',
+            catalogSearchOpen: safeId === 'youtube-audit-search',
+            manualRequestComposerOpen: safeId === 'youtube-audit-paste',
+            searchQ: 'Dreams Fleetwood Mac',
+            form: {
+                song: 'Dreams',
+                artist: 'Fleetwood Mac',
+                backingUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
+            },
         };
     }
 

@@ -181,6 +181,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
     const [ytSearchOpen, setYtSearchOpen] = useState(false);
     const [ytSearchTarget, setYtSearchTarget] = useState('manual');
     const [ytSearchQ, setYtSearchQ] = useState('');
+    const [youtubeSearchMode, setYoutubeSearchMode] = useState('karaoke');
     const [ytEditingQuery, setYtEditingQuery] = useState(false);
     const [ytResults, setYtResults] = useState([]);
     const [ytLoading, setYtLoading] = useState(false);
@@ -385,6 +386,8 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         setYtSearchTarget,
         ytSearchQ,
         setYtSearchQ,
+        youtubeSearchMode,
+        setYoutubeSearchMode,
         ytEditingQuery,
         setYtEditingQuery,
         ytResults,

@@ -36,6 +36,7 @@ const buildCatalogCandidateId = (candidate = {}, fallback = '') => (
 const candidateLayerWeight = (layer = '') => {
   const safeLayer = String(layer || '').trim().toLowerCase();
   if (safeLayer === 'host_favorite') return 120;
+  if (safeLayer === 'canonical_backing') return 95;
   if (safeLayer === 'room_recent') return 85;
   if (safeLayer === 'global_approved') return 70;
   if (safeLayer === 'global_catalog') return 40;
@@ -53,6 +54,10 @@ const buildTrustedCandidate = ({
   label = '',
   layer = 'global_catalog',
   qualityScore = 0,
+  rankingScore = 0,
+  backingCandidateId = '',
+  canonicalSongId = '',
+  backingTelemetry = null,
   successCount = 0,
   usageCount = 0,
   failureCount = 0,
@@ -70,6 +75,10 @@ const buildTrustedCandidate = ({
   label: String(label || '').trim(),
   layer: String(layer || 'global_catalog').trim(),
   qualityScore: Number(qualityScore || 0),
+  rankingScore: Number(rankingScore || 0),
+  backingCandidateId: String(backingCandidateId || '').trim(),
+  canonicalSongId: String(canonicalSongId || songId || '').trim(),
+  backingTelemetry: backingTelemetry && typeof backingTelemetry === 'object' ? backingTelemetry : null,
   successCount: Number(successCount || 0),
   usageCount: Number(usageCount || 0),
   failureCount: Number(failureCount || 0),
@@ -89,6 +98,10 @@ const buildYouTubeIndexCandidate = (entry = {}) => ({
   label: 'Host-curated YouTube',
   layer: 'room_recent',
   qualityScore: Number(entry.qualityScore || 0),
+  rankingScore: Number(entry.rankingScore || 0),
+  backingCandidateId: String(entry.backingCandidateId || '').trim(),
+  canonicalSongId: String(entry.canonicalSongId || '').trim(),
+  backingTelemetry: entry.backingTelemetry && typeof entry.backingTelemetry === 'object' ? entry.backingTelemetry : null,
   successCount: Number(entry.successCount || 0),
   usageCount: Number(entry.usageCount || 0),
   failureCount: Number(entry.failureCount || 0),
@@ -131,6 +144,10 @@ const rankSongRequestCandidates = ({
         label: trustedCatalogEntry.hostFavoriteLabel || 'Host favorite',
         layer: 'host_favorite',
         qualityScore: trustedCatalogEntry.hostFavoriteQualityScore,
+        rankingScore: trustedCatalogEntry.hostFavoriteRankingScore,
+        backingCandidateId: trustedCatalogEntry.hostFavoriteBackingCandidateId,
+        canonicalSongId: trustedCatalogEntry.hostFavoriteCanonicalSongId,
+        backingTelemetry: trustedCatalogEntry.hostFavoriteBackingTelemetry,
         successCount: trustedCatalogEntry.hostFavoriteSuccessCount,
         usageCount: trustedCatalogEntry.hostFavoriteUsageCount,
         approvalState: trustedCatalogEntry.hostFavoriteApprovalState || 'approved',
@@ -149,6 +166,10 @@ const rankSongRequestCandidates = ({
         label: trustedCatalogEntry.roomRecentLabel || 'Room recent',
         layer: 'room_recent',
         qualityScore: trustedCatalogEntry.roomRecentQualityScore,
+        rankingScore: trustedCatalogEntry.roomRecentRankingScore,
+        backingCandidateId: trustedCatalogEntry.roomRecentBackingCandidateId,
+        canonicalSongId: trustedCatalogEntry.roomRecentCanonicalSongId,
+        backingTelemetry: trustedCatalogEntry.roomRecentBackingTelemetry,
         successCount: trustedCatalogEntry.roomRecentSuccessCount,
         usageCount: trustedCatalogEntry.roomRecentUsageCount,
         approvalState: trustedCatalogEntry.roomRecentApprovalState || 'candidate',
@@ -178,6 +199,7 @@ const rankSongRequestCandidates = ({
       const artistScore = scoreTextMatch(requestArtist, candidate.artist || '');
       const layerScore = candidateLayerWeight(candidate.layer);
       const qualityScore = Number(candidate.qualityScore || 0);
+      const rankingSignal = Math.min(80, Math.max(0, Number(candidate.rankingScore || 0) - 50));
       const successScore = Math.min(40, Number(candidate.successCount || 0) * 4);
       const usageScore = Math.min(24, Number(candidate.usageCount || 0) * 2);
       const failurePenalty = Math.min(24, Number(candidate.failureCount || 0) * 6);
@@ -190,7 +212,7 @@ const rankSongRequestCandidates = ({
         ...candidate,
         titleScore,
         artistScore,
-        score: layerScore + titleScore + artistScore + qualityScore + successScore + usageScore + approvalScore - failurePenalty
+        score: layerScore + titleScore + artistScore + qualityScore + rankingSignal + successScore + usageScore + approvalScore - failurePenalty
       };
     })
     .filter((candidate) => candidate.score > 0)
@@ -210,6 +232,10 @@ const buildTrustedCatalogEntry = ({
   label = '',
   layer = 'room_recent',
   qualityScore = 0,
+  rankingScore = 0,
+  backingCandidateId = '',
+  canonicalSongId = '',
+  backingTelemetry = null,
   approvalState = '',
   nowMs = Date.now()
 } = {}) => {
@@ -228,6 +254,10 @@ const buildTrustedCatalogEntry = ({
   next[`${prefix}Source`] = String(source || '').trim().toLowerCase() || '';
   next[`${prefix}Label`] = String(label || '').trim() || '';
   next[`${prefix}QualityScore`] = Number(qualityScore || 0);
+  next[`${prefix}RankingScore`] = Number(rankingScore || 0);
+  next[`${prefix}BackingCandidateId`] = String(backingCandidateId || '').trim() || '';
+  next[`${prefix}CanonicalSongId`] = String(canonicalSongId || songId || '').trim() || '';
+  next[`${prefix}BackingTelemetry`] = backingTelemetry && typeof backingTelemetry === 'object' ? backingTelemetry : null;
   next[`${prefix}ApprovalState`] = String(approvalState || (safeLayer === 'host_favorite' ? 'approved' : 'candidate')).trim().toLowerCase();
   next[`${prefix}UsageCount`] = Math.max(1, Number(next[`${prefix}UsageCount`] || 0) + 1);
   next[`${prefix}SuccessCount`] = Math.max(

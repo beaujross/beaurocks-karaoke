@@ -22,6 +22,27 @@ test("popTriviaViewState returns live question during active rounds", () => {
   assert.equal(state?.question?.id, "q1");
   assert.equal(state?.timeLeftSec, 7);
 });
+test("popTriviaViewState returns reveal state immediately after a question closes", () => {
+  const startMs = 1_700_000_000_000;
+  const state = getActivePopTriviaQuestion({
+    song: {
+      performingStartedAt: startMs,
+      popTrivia: [
+        { id: "q1", q: "Question one", options: ["A", "B"], correct: 0 },
+        { id: "q2", q: "Question two", options: ["A", "B"], correct: 1 },
+      ],
+    },
+    now: startMs + 17_000,
+    roundSec: 16,
+    revealSec: 5,
+  });
+
+  assert.equal(state?.status, "reveal");
+  assert.equal(state?.question, null);
+  assert.equal(state?.revealQuestion?.id, "q1");
+  assert.equal(state?.index, 0);
+  assert.equal(state?.timeLeftSec, 4);
+});
 
 test("popTriviaViewState returns complete state after final round ends", () => {
   const startMs = 1_700_000_000_000;
@@ -33,7 +54,7 @@ test("popTriviaViewState returns complete state after final round ends", () => {
         { id: "q2", q: "Question two", options: ["A", "B"], correct: 1 },
       ],
     },
-    now: startMs + 33_000,
+    now: startMs + 43_000,
     roundSec: 16,
   });
 
@@ -41,5 +62,5 @@ test("popTriviaViewState returns complete state after final round ends", () => {
   assert.equal(state?.question, null);
   assert.equal(state?.index, 2);
   assert.equal(state?.timeLeftSec, 0);
-  assert.equal(state?.completedAtMs, startMs + 32_000);
+  assert.equal(state?.completedAtMs, startMs + 42_000);
 });

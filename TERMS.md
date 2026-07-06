@@ -4,8 +4,9 @@ Last updated: 2026-05-02
 
 These terms apply to the BeauRocks Karaoke experience ("BeauRocks," "we," "us") and the host, singer, audience, and TV surfaces of the Service.
 
-This application uses YouTube API Services. By using features that rely on YouTube content or search, you also agree to the YouTube Terms of Service:
+This application uses YouTube API Services. By using features that rely on YouTube content or search, you also agree to the YouTube Terms of Service and acknowledge that Google may process data as described in the Google Privacy Policy:
 - https://www.youtube.com/t/terms
+- https://policies.google.com/privacy
 
 By using the Service, you agree to these terms and the BeauRocks Privacy Policy.
 

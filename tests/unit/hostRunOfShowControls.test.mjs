@@ -369,6 +369,10 @@ test("Host queue review presents Apple sing-along and YouTube backing as primary
   assert.match(source, /Find YouTube Backing/);
   assert.match(source, /resolveAppleSingAlongReviewRequest\(song\)/);
   assert.match(source, /canUseAppleSingAlong \|\| sourceLabel\.includes\('apple'\) \|\| sourceLabel\.includes\('itunes'\)/);
+  assert.match(source, /resolveSongCatalog\(\{/);
+  assert.match(source, /canonicalReviewCandidateMap/);
+  assert.match(source, /catalogCandidates: canonicalReviewCandidates/);
+  assert.match(source, /Ranked from host feedback for this song\./);
 });
 
 test('Scene image uploads use org media upload sessions', () => {
@@ -478,7 +482,7 @@ test("Host scene presets can be slotted into the conveyor from the media library
   assert.match(queueTabSource, /SFX/);
   assert.match(queueTabSource, /BG Music/);
   assert.match(queueTabSource, /sceneLibrarySeedPack\.label/);
-  assert.match(queueTabSource, /Use In Run Of Show/);
+  assert.match(hostSource, /Use In Run Of Show/);
   assert.match(queueSongCardSource, /Assign To Next Open Slot/);
   assert.match(queueSongCardSource, /Assign Selected Slot/);
   assert.match(hostSource, /const saveMediaAssetAsScenePreset = useCallback\(async \(item = \{\}, options = \{\}\) => \{/);

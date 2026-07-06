@@ -1,5 +1,6 @@
 export const POP_TRIVIA_VOTE_TYPE = 'vote_popup_trivia';
 export const DEFAULT_POP_TRIVIA_ROUND_SEC = 16;
+export const DEFAULT_POP_TRIVIA_REVEAL_SEC = 5;
 export const DEFAULT_POP_TRIVIA_MAX_QUESTIONS = 4;
 
 export const getTimestampMs = (value) => {
@@ -142,12 +143,18 @@ export const normalizePopTriviaQuestions = (rows = [], options = {}) => {
     return normalized.slice(0, limit);
 };
 
-export const getActivePopTriviaQuestion = ({ song = null, now = Date.now(), roundSec = DEFAULT_POP_TRIVIA_ROUND_SEC } = {}) => {
+export const getActivePopTriviaQuestion = ({
+    song = null,
+    now = Date.now(),
+    roundSec = DEFAULT_POP_TRIVIA_ROUND_SEC,
+    revealSec = DEFAULT_POP_TRIVIA_REVEAL_SEC
+} = {}) => {
     if (!song) return null;
     const questions = Array.isArray(song?.popTrivia) ? song.popTrivia.filter(Boolean) : [];
     if (!questions.length) return null;
 
     const safeRoundSec = Math.max(8, Number(roundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
+    const safeRevealSec = Math.max(3, Number(revealSec || DEFAULT_POP_TRIVIA_REVEAL_SEC));
     const songDurationSec = getSongDurationSec(song);
     const startMs = getTimestampMs(song?.performingStartedAt)
         || getTimestampMs(song?.stageStartedAt)
@@ -155,7 +162,8 @@ export const getActivePopTriviaQuestion = ({ song = null, now = Date.now(), roun
         || Number(now || Date.now());
     const elapsedMs = Math.max(0, Number(now || Date.now()) - startMs);
     const elapsedSec = Math.floor(elapsedMs / 1000);
-    const sequentialDurationSec = questions.length * safeRoundSec;
+    const slotDurationSec = safeRoundSec + safeRevealSec;
+    const sequentialDurationSec = questions.length * slotDurationSec;
     const introBufferSec = Math.min(18, Math.max(6, Math.round(safeRoundSec * 0.6)));
     const outroBufferSec = Math.min(18, Math.max(8, Math.round(safeRoundSec * 0.65)));
     const usableSongSec = Math.max(0, songDurationSec - introBufferSec - outroBufferSec);
@@ -164,31 +172,37 @@ export const getActivePopTriviaQuestion = ({ song = null, now = Date.now(), roun
         ? questions.map((question, index) => {
             const slotSpanSec = usableSongSec / questions.length;
             const slotStartSec = introBufferSec + (slotSpanSec * index);
-            const centeredOffsetSec = Math.max(0, (slotSpanSec - safeRoundSec) / 2);
+            const centeredOffsetSec = Math.max(0, (slotSpanSec - slotDurationSec) / 2);
             const questionStartSec = Math.max(0, Math.floor(slotStartSec + centeredOffsetSec));
             return {
                 question,
                 index,
                 startSec: questionStartSec,
-                endSec: questionStartSec + safeRoundSec
+                endSec: questionStartSec + safeRoundSec,
+                revealStartSec: questionStartSec + safeRoundSec,
+                revealEndSec: questionStartSec + safeRoundSec + safeRevealSec
             };
         })
         : questions.map((question, index) => ({
             question,
             index,
-            startSec: index * safeRoundSec,
-            endSec: (index + 1) * safeRoundSec
+            startSec: index * slotDurationSec,
+            endSec: (index * slotDurationSec) + safeRoundSec,
+            revealStartSec: (index * slotDurationSec) + safeRoundSec,
+            revealEndSec: (index + 1) * slotDurationSec
         }));
-    const completedAtSec = schedule.length ? schedule[schedule.length - 1].endSec : sequentialDurationSec;
+    const completedAtSec = schedule.length ? schedule[schedule.length - 1].revealEndSec : sequentialDurationSec;
     const completedAtMs = startMs + (completedAtSec * 1000);
     if (elapsedSec >= completedAtSec) {
         return {
             question: null,
+            revealQuestion: null,
             index: questions.length,
             total: questions.length,
             elapsedSec,
             timeLeftSec: 0,
             roundSec: safeRoundSec,
+            revealSec: safeRevealSec,
             songDurationSec,
             startMs,
             status: 'complete',
@@ -196,14 +210,35 @@ export const getActivePopTriviaQuestion = ({ song = null, now = Date.now(), roun
         };
     }
     const activeWindow = schedule.find((entry) => elapsedSec >= entry.startSec && elapsedSec < entry.endSec) || null;
+    const revealWindow = activeWindow
+        ? null
+        : schedule.find((entry) => elapsedSec >= entry.revealStartSec && elapsedSec < entry.revealEndSec) || null;
+    if (revealWindow) {
+        return {
+            question: null,
+            revealQuestion: revealWindow.question,
+            index: revealWindow.index,
+            total: questions.length,
+            elapsedSec,
+            timeLeftSec: Math.max(0, Math.ceil(revealWindow.revealEndSec - elapsedSec)),
+            roundSec: safeRoundSec,
+            revealSec: safeRevealSec,
+            songDurationSec,
+            startMs,
+            status: 'reveal',
+            completedAtMs
+        };
+    }
     if (!activeWindow) {
         return {
             question: null,
+            revealQuestion: null,
             index: -1,
             total: questions.length,
             elapsedSec,
             timeLeftSec: 0,
             roundSec: safeRoundSec,
+            revealSec: safeRevealSec,
             songDurationSec,
             startMs,
             status: 'gap',
@@ -214,11 +249,13 @@ export const getActivePopTriviaQuestion = ({ song = null, now = Date.now(), roun
 
     return {
         question: activeWindow.question,
+        revealQuestion: null,
         index: activeWindow.index,
         total: questions.length,
         elapsedSec,
         timeLeftSec,
         roundSec: safeRoundSec,
+        revealSec: safeRevealSec,
         songDurationSec,
         startMs,
         status: 'live',

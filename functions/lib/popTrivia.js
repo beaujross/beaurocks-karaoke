@@ -5,7 +5,7 @@ const DEFAULT_POP_TRIVIA_MAX_QUESTIONS = 4;
 const POP_TRIVIA_PENDING_RETRY_AFTER_MS = 45 * 1000;
 const POP_TRIVIA_FAILED_RETRY_AFTER_MS = 5 * 60 * 1000;
 const POP_TRIVIA_FACT_HEAVY_PATTERN = /\b(what year|which year|release(?:d)?|release year|billboard|chart|grammy|award|which album|album\b|soundtrack|label\b|music video|director\b|producer\b|written by|city\b|country\b|born\b|debut|number one|top 10|peak(?:ed)? at)\b/i;
-const POP_TRIVIA_LOW_QUALITY_PATTERN = /\b(which production trick is common|what usually helps most|classic crowd move|sets up the story or mood|artist might use|like the kind .* might use|random tempo changes|guitar cable check|start packing up|go completely silent|turning away from the crowd|ignoring the rhythm|singer strategy|crowd-energy|current singer|live karaoke performance|safest fan clue|safest trivia clue|best keeps this pop-up trivia|what kind of trivia clue)\b/i;
+const POP_TRIVIA_LOW_QUALITY_PATTERN = /\b(which artist is listed|which phrase is the title hook|title hook listeners should catch|artist-title pairing|pairing matches this request|which requested title|which title is paired|which production trick is common|what usually helps most|classic crowd move|sets up the story or mood|artist might use|like the kind .* might use|random tempo changes|guitar cable check|start packing up|go completely silent|turning away from the crowd|ignoring the rhythm|singer strategy|crowd-energy|current singer|live karaoke performance|safest fan clue|safest trivia clue|best keeps this pop-up trivia|what kind of trivia clue)\b/i;
 const POP_TRIVIA_SONG_ANCHOR_PATTERN = /\b(hook|chorus|verse|bridge|intro|outro|beat|rhythm|tempo|key|melody|harmony|lyric|title phrase|song title|artist|band|duo|group|fan|fans|fact|factoid|album|release|genre|soundtrack)\b/i;
 const POP_TRIVIA_PERFORMER_REFERENCE_PATTERN = /\b(karaoke|singer|sings|sing it|mic|microphone|stage|crowd|room|performance|performer|backing track|join in|sing-along|singalong)\b/i;
 const POP_TRIVIA_ALLOWED_CATEGORIES = new Set([
@@ -219,26 +219,7 @@ const buildFallbackPopTriviaSeedRows = (song = {}) => {
   const releaseYear = cleanText(context.metadata?.releaseYear || "");
   const genre = cleanText(context.metadata?.genre || "");
 
-  const rows = [
-    {
-      q: `Which artist is listed for "${songTitle}"?`,
-      correct: artist,
-      w1: "A different artist",
-      w2: "A playlist curator",
-      w3: "A fan nickname",
-      category: "artist_fact",
-      source: "fallback",
-    },
-    {
-      q: `Which phrase is the title hook listeners should catch in "${songTitle}"?`,
-      correct: songTitle,
-      w1: `${artist} Live`,
-      w2: "The encore chant",
-      w3: "A fake remix title",
-      category: "hook_recognition",
-      source: "fallback",
-    },
-  ];
+  const rows = [];
 
   if (releaseYear) {
     const yearNumber = Number(releaseYear);
@@ -264,27 +245,7 @@ const buildFallbackPopTriviaSeedRows = (song = {}) => {
       category: "song_fact",
       source: "fallback",
     });
-  } else {
-    rows.push({
-      q: `Which artist-title pairing matches this request?`,
-      correct: `"${songTitle}" by ${artist}`,
-      w1: `"${artist}" by ${songTitle}`,
-      w2: `"${songTitle}" by a different artist`,
-      w3: "An unrelated playlist item",
-      category: "song_fact",
-      source: "fallback",
-    });
   }
-
-  rows.push({
-    q: `Which requested title is paired with ${artist} for "${songTitle}"?`,
-    correct: songTitle,
-    w1: "A different queue song",
-    w2: "A tour nickname",
-    w3: "A playlist label",
-    category: "song_fact",
-    source: "fallback",
-  });
 
   if (genre && rows.length < DEFAULT_POP_TRIVIA_MAX_QUESTIONS) {
     rows.push({
@@ -493,6 +454,13 @@ const isLowQualityPopTriviaRow = (entry = {}, context = {}) => {
   const haystack = [question, ...options.map((option) => cleanText(option)).filter(Boolean)].join(" ");
   if (!question || POP_TRIVIA_LOW_QUALITY_PATTERN.test(haystack)) return true;
   if (POP_TRIVIA_PERFORMER_REFERENCE_PATTERN.test(haystack)) return true;
+  if (!isCuratedPopTriviaRow(entry)) {
+    const correct = normalizeOptionText(getEntryCorrectText(entry));
+    const title = normalizeOptionText(context?.songTitle || "");
+    const artist = normalizeOptionText(context?.artist || "");
+    if ((title && correct === title) || (artist && correct === artist)) return true;
+  }
+  if (!isCuratedPopTriviaRow(entry) && isIdentityPopTriviaType(getPopTriviaQuestionType(entry, context))) return true;
   if (!isCuratedPopTriviaRow(entry) && isFactHeavyPopTriviaRow(entry) && context?.metadataConfidence === "sparse") return true;
   if (!isCuratedPopTriviaRow(entry) && ["youtube", "custom"].includes(context?.sourceMode) && isFactHeavyPopTriviaRow(entry)) return true;
   return getPopTriviaRowQualityScore(entry, context) < 1;
@@ -545,10 +513,6 @@ const selectPopTriviaSeedRows = ({
   filteredAiRows.forEach((entry) => pushRow(entry));
   filteredCuratedRows.forEach((entry) => pushRow(entry));
   filteredFallbackRows.forEach((entry) => pushRow(entry));
-  if (!selected.length) {
-    normalizedFallbackRows.forEach((entry) => pushRow(entry, { allowIdentity: true }));
-  }
-
   return selected.slice(0, safeLimit);
 };
 

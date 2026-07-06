@@ -126,6 +126,7 @@ const HostTopChrome = ({
     toggleBgMusic,
     playingBg,
     skipBg,
+    canSkipBg = true,
     autoBgMusic,
     setAutoBgMusic,
     toggleHowToPlay,
@@ -1572,7 +1573,7 @@ const HostTopChrome = ({
                                             <button onClick={toggleBgMusic} className={`${styles.btnStd} ${playingBg ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`} title="Toggle BG music">
                                                 <i className={`fa-solid ${playingBg ? 'fa-pause' : 'fa-play'} w-4 text-center`}></i>
                                             </button>
-                                            <button onClick={skipBg} className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`} title="Skip BG track">
+                                            <button onClick={skipBg} disabled={!canSkipBg} className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100 ${canSkipBg ? '' : 'opacity-45 cursor-not-allowed'}`} title={canSkipBg ? "Skip BG track" : "Apple Music playlist skipping stays in Apple Music"}>
                                                 <i className="fa-solid fa-forward-step w-4 text-center"></i>
                                             </button>
                                             <button
@@ -1580,7 +1581,8 @@ const HostTopChrome = ({
                                                     const next = !autoBgMusic;
                                                     setAutoBgMusic(next);
                                                     await updateRoom({ autoBgMusic: next });
-                                                    if (next && !playingBg) setBgMusicState(true);
+                                                    if (next && !playingBg) await setBgMusicState(true);
+                                                    if (!next && playingBg) await setBgMusicState(false);
                                                 }}
                                                 className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}
                                                 title="Keep BG music rolling between songs"

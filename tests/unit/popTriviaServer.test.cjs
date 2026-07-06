@@ -67,12 +67,14 @@ test("popTriviaServer.test", async () => {
     songTitle: "Take On Me",
     artist: "A-ha",
     singerName: "QA Singer",
+    year: 1985,
+    genre: "Synth-pop",
   });
-  assert.equal(fallbackRows.length, 4);
+  assert.equal(fallbackRows.length, 2);
   assert.equal(fallbackRows.every((row) => row.source === "fallback"), true);
   assert.equal(fallbackRows.every((row) => row.category), true);
   const fallbackText = fallbackRows.map((row) => `${row.q} ${row.correct} ${row.w1} ${row.w2} ${row.w3}`).join(" ");
-  assert.match(fallbackText, /Take On Me/);
+  assert.match(fallbackText, /1985|Synth-pop/);
   assert.doesNotMatch(
     fallbackText,
     /QA Singer|production trick|might use|classic crowd move|usually helps most|guitar cable check|sets up the story|safest fan clue|best keeps|what kind of trivia clue|release-year|billboard|grammy|music video|record label|current singer|performer|microphone/i
@@ -81,7 +83,7 @@ test("popTriviaServer.test", async () => {
     idPrefix: "ROOM_fallback",
     createdAtMs: 5678,
   });
-  assert.equal(fallbackQuestions.length, 4);
+  assert.equal(fallbackQuestions.length, 2);
   assert.equal(fallbackQuestions.every((row) => row.source === "fallback"), true);
   assert.equal(fallbackQuestions.every((row) => row.category), true);
 
@@ -177,9 +179,7 @@ test("popTriviaServer.test", async () => {
     sparseSelectedRows.some((row) => /production trick|might use/i.test(row.q)),
     false
   );
-  assert.equal(sparseSelectedRows[0].q.includes("Mystery YouTube Cut"), true);
-  assert.equal(sparseSelectedRows.length >= 2, true);
-  assert.equal(sparseSelectedRows.length <= 4, true);
+  assert.equal(sparseSelectedRows.length, 0);
 
   const groundedSelectedRows = selectPopTriviaSeedRows({
     song: {
@@ -224,14 +224,14 @@ test("popTriviaServer.test", async () => {
     true
   );
   assert.equal(
-    groundedSelectedRows.some((row) => row.source === "fallback"),
+    groundedSelectedRows.some((row) => selectedAnswerText(row) === "Take On Me" || selectedAnswerText(row) === "A-ha"),
     false
   );
 
   const cache = normalizePopTriviaSongCache({
     "take_on_me_a-ha": {
       seedRows: [
-        ...buildFallbackPopTriviaSeedRows({ songTitle: "Take On Me", artist: "A-ha", year: 1985 }),
+        ...buildFallbackPopTriviaSeedRows({ songTitle: "Take On Me", artist: "A-ha", year: 1985, genre: "Synth-pop" }),
         {
           q: "What should the current singer do during Take On Me?",
           correct: "Work the stage",
@@ -247,7 +247,7 @@ test("popTriviaServer.test", async () => {
     },
   });
   assert.equal(Object.keys(cache).length, 1);
-  assert.equal(cache["take_on_me-a-ha"]?.seedRows?.length || cache["take_on_me_a-ha"].seedRows.length, 4);
+  assert.equal(cache["take_on_me-a-ha"]?.seedRows?.length || cache["take_on_me_a-ha"].seedRows.length, 2);
   assert.equal(cache["take_on_me_a-ha"].seedRows.some((row) => /current singer|stage/i.test(row.q)), false);
 
   const now = Date.now();

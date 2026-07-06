@@ -278,7 +278,7 @@ const LegalPageShell = ({ eyebrow = 'BeauRocks Karaoke', title = '', children })
 const KaraokeTerms = () => (
     <LegalPageShell title="Terms Of Service">
         <p>Last updated: 2026-05-02</p>
-        <p>This application uses YouTube API Services. By using BeauRocks Karaoke, you also agree to the <a href={YOUTUBE_TERMS_URL} target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">YouTube Terms of Service</a>.</p>
+        <p>This application uses YouTube API Services. By using BeauRocks Karaoke, you also agree to the <a href={YOUTUBE_TERMS_URL} target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">YouTube Terms of Service</a> and acknowledge that Google may process data as described in the <a href={GOOGLE_PRIVACY_URL} target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">Google Privacy Policy</a>.</p>
         <p>These terms apply to the BeauRocks Karaoke experience, including host, singer, and TV surfaces of the Service. By using the Service, you agree to these terms and our <a href={getLegalRoutePath('privacy')} className="text-cyan-200 underline underline-offset-4">Privacy Policy</a>.</p>
         <div>
             <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Use Of The Service</h2>

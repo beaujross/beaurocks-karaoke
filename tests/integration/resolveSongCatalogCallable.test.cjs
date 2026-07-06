@@ -30,7 +30,14 @@ const requestFor = (uid, data = {}) => ({
   },
 });
 
+async function clearCollection(collectionRef) {
+  const snap = await collectionRef.get();
+  await Promise.all(snap.docs.map((docSnap) => docSnap.ref.delete()));
+}
+
 async function resetState() {
+  await clearCollection(songRef.collection("backing_candidates"));
+
   for (const ref of [roomRef, hostLibraryRef, songRef]) {
     try {
       await ref.delete();
@@ -70,6 +77,10 @@ async function run() {
             url: "https://www.youtube.com/watch?v=yt123abc456",
             playable: true,
             qualityScore: 18,
+            rankingScore: 124,
+            backingCandidateId: "shallow__youtube__yt123abc456",
+            canonicalSongId: SONG_ID,
+            backingTelemetry: { hostUpvotes: 2, hostDownvotes: 0 },
             successCount: 3,
             usageCount: 4,
           },
@@ -86,6 +97,56 @@ async function run() {
       assert.equal(result.track?.source, "youtube");
       assert.equal(result.track?.mediaUrl, "https://www.youtube.com/watch?v=yt123abc456");
       assert.equal(result.track?.resolutionLayer, "room_index");
+      assert.equal(result.track?.rankingScore, 124);
+      assert.equal(result.track?.backingCandidateId, "shallow__youtube__yt123abc456");
+      assert.equal(result.track?.canonicalSongId, SONG_ID);
+      assert.deepEqual(result.track?.backingTelemetry, { hostUpvotes: 2, hostDownvotes: 0 });
+      assert.equal(result.found, true);
+    }],
+    ["resolveSongCatalog can reuse ranked canonical backing candidates", async () => {
+      const candidateRef = songRef.collection("backing_candidates").doc("shallow__youtube__gold999");
+      await candidateRef.set({
+        candidateId: "shallow__youtube__gold999",
+        songId: SONG_ID,
+        canonicalSongId: SONG_ID,
+        title: "Shallow Karaoke Version",
+        artist: "Lady Gaga",
+        provider: "youtube",
+        providerTrackId: "gold999",
+        mediaUrl: "https://www.youtube.com/watch?v=gold999",
+        playable: true,
+        embeddable: true,
+        qualityScore: 16,
+        rankingScore: 141,
+        telemetry: {
+          hostUpvotes: 3,
+          usageCount: 5,
+          completionCount: 4,
+          skipCount: 0,
+        },
+      });
+
+      const result = await resolveSongCatalog.run(requestFor(USER_UID, {
+        title: "Shallow",
+        artist: "Lady Gaga",
+        roomCode: ROOM_CODE,
+      }));
+
+      assert.equal(result.songId, SONG_ID);
+      assert.equal(result.track?.source, "youtube");
+      assert.equal(result.track?.mediaUrl, "https://www.youtube.com/watch?v=gold999");
+      assert.equal(result.track?.resolutionLayer, "canonical_backing");
+      assert.equal(result.track?.rankingScore, 141);
+      assert.equal(result.track?.backingCandidateId, "shallow__youtube__gold999");
+      assert.equal(result.track?.canonicalSongId, SONG_ID);
+      assert.equal(result.track?.usageCount, 5);
+      assert.equal(result.track?.successCount, 4);
+      assert.deepEqual(result.track?.backingTelemetry, {
+        hostUpvotes: 3,
+        usageCount: 5,
+        completionCount: 4,
+        skipCount: 0,
+      });
       assert.equal(result.found, true);
     }],
   ];

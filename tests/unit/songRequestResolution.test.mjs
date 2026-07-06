@@ -67,6 +67,107 @@ it('increments room recent usage and success', () => {
   expect(next.updatedAtMs).toBe(1234);
 });
 
+it('persists canonical backing ranking metadata on trusted catalog entries', () => {
+  const next = buildTrustedCatalogEntry({
+    songId: 'flowers__miley cyrus',
+    title: 'Flowers',
+    artist: 'Miley Cyrus',
+    trackId: 'track_123',
+    mediaUrl: 'https://youtube.com/watch?v=flowers',
+    source: 'youtube',
+    layer: 'host_favorite',
+    rankingScore: 118,
+    backingCandidateId: 'flowers__youtube__flowers',
+    canonicalSongId: 'apple:144000',
+    backingTelemetry: { hostUpvotes: 2, hostDownvotes: 0 },
+    nowMs: 1234
+  });
+
+  expect(next.hostFavoriteRankingScore).toBe(118);
+  expect(next.hostFavoriteBackingCandidateId).toBe('flowers__youtube__flowers');
+  expect(next.hostFavoriteCanonicalSongId).toBe('apple:144000');
+  expect(next.hostFavoriteBackingTelemetry).toEqual({ hostUpvotes: 2, hostDownvotes: 0 });
+});
+
+it('uses backing ranking score as a resolver signal for equivalent catalog candidates', () => {
+  const ranked = rankSongRequestCandidates({
+    request: {
+      songId: 'flowers__miley cyrus',
+      songTitle: 'Flowers',
+      artist: 'Miley Cyrus'
+    },
+    catalogCandidates: [
+      {
+        trackId: 'generic_pick',
+        mediaUrl: 'https://youtube.com/watch?v=generic_pick',
+        source: 'youtube',
+        title: 'Flowers Karaoke',
+        artist: 'Miley Cyrus',
+        layer: 'global_catalog',
+        qualityScore: 30,
+        rankingScore: 55
+      },
+      {
+        trackId: 'host_ranked_pick',
+        mediaUrl: 'https://youtube.com/watch?v=host_ranked_pick',
+        source: 'youtube',
+        title: 'Flowers Karaoke',
+        artist: 'Miley Cyrus',
+        layer: 'global_catalog',
+        qualityScore: 30,
+        rankingScore: 125,
+        backingCandidateId: 'flowers__youtube__host_ranked_pick'
+      }
+    ]
+  });
+
+  expect(ranked[0]?.trackId).toBe('host_ranked_pick');
+  expect(ranked[0]?.backingCandidateId).toBe('flowers__youtube__host_ranked_pick');
+});
+
+it('prefers canonical backing candidates over generic catalog matches before live search', () => {
+  const ranked = rankSongRequestCandidates({
+    request: {
+      songId: 'flowers__miley cyrus',
+      songTitle: 'Flowers',
+      artist: 'Miley Cyrus'
+    },
+    catalogCandidates: [
+      {
+        trackId: 'generic_catalog_pick',
+        mediaUrl: 'https://youtube.com/watch?v=generic_catalog_pick',
+        source: 'youtube',
+        title: 'Flowers Karaoke',
+        artist: 'Miley Cyrus',
+        layer: 'global_catalog',
+        qualityScore: 45,
+        rankingScore: 70,
+        approvalState: 'approved'
+      },
+      {
+        trackId: 'canonical_liked_pick',
+        mediaUrl: 'https://youtube.com/watch?v=canonical_liked_pick',
+        source: 'youtube',
+        title: 'Flowers Karaoke',
+        artist: 'Miley Cyrus',
+        layer: 'canonical_backing',
+        qualityScore: 12,
+        rankingScore: 132,
+        backingCandidateId: 'flowers__youtube__canonical_liked_pick',
+        canonicalSongId: 'flowers__miley cyrus',
+        backingTelemetry: { hostUpvotes: 2, completionCount: 3, usageCount: 3 },
+        successCount: 3,
+        usageCount: 3,
+        approvalState: 'approved'
+      }
+    ]
+  });
+
+  expect(ranked[0]?.trackId).toBe('canonical_liked_pick');
+  expect(ranked[0]?.layer).toBe('canonical_backing');
+  expect(ranked[0]?.backingCandidateId).toBe('flowers__youtube__canonical_liked_pick');
+});
+
 it('penalizes failure-heavy candidates in ranking', () => {
   const ranked = rankSongRequestCandidates({
     request: {

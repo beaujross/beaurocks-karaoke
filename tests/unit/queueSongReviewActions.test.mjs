@@ -189,6 +189,9 @@ describe('queueSongReviewActions', () => {
         artist: 'Miley Cyrus',
         mediaUrl: 'https://youtube.com/watch?v=flowers123',
         albumArtUrl: 'https://example.com/flowers.jpg',
+        youtubeEmbeddable: true,
+        youtubeUploadStatus: 'processed',
+        youtubePrivacyStatus: 'public',
       },
       rating: 'up',
       onUpsertYtIndexEntries,
@@ -199,13 +202,33 @@ describe('queueSongReviewActions', () => {
       expect.objectContaining({
         videoId: 'flowers123',
         playable: true,
+        embeddable: true,
+        uploadStatus: 'processed',
+        privacyStatus: 'public',
+        youtubePlaybackStatus: 'embeddable',
+        backingAudioOnly: false,
+        sourceDiscovery: 'host_feedback',
+        canonicalSongId: 'song_up',
+        backingCandidateId: 'song-up__youtube__flowers123',
+        rankingScore: expect.any(Number),
+        backingTelemetry: expect.objectContaining({
+          hostUpvotes: 1,
+          hostDownvotes: 0,
+          completionCount: 1,
+          skipCount: 0,
+        }),
       }),
     ]);
     expect(setDoc).toHaveBeenCalledWith(
       expect.objectContaining({ path: expect.stringContaining('host_libraries/ROOM1') }),
       expect.objectContaining({
         trustedCatalog: expect.objectContaining({
-          song_up: expect.any(Object),
+          song_up: expect.objectContaining({
+            hostFavoriteBackingCandidateId: 'song-up__youtube__flowers123',
+            hostFavoriteCanonicalSongId: 'song_up',
+            hostFavoriteRankingScore: expect.any(Number),
+            hostFavoriteBackingTelemetry: expect.objectContaining({ hostUpvotes: 1 }),
+          }),
         }),
       }),
       { merge: true }
@@ -247,13 +270,26 @@ describe('queueSongReviewActions', () => {
       expect.objectContaining({
         videoId: 'down123',
         playable: false,
+        sourceDiscovery: 'host_feedback',
         failureCountDelta: 1,
+        canonicalSongId: 'song_down',
+        backingCandidateId: 'song-down__youtube__down123',
+        backingTelemetry: expect.objectContaining({
+          hostUpvotes: 0,
+          hostDownvotes: 1,
+          completionCount: 0,
+          skipCount: 1,
+        }),
       }),
     ]);
     expect(recordTrackFeedback).toHaveBeenCalledWith(expect.objectContaining({
       roomCode: 'ROOM1',
       rating: 'down',
       songId: 'song_down',
+      canonicalSongId: 'song_down',
+      backingCandidateId: 'song-down__youtube__down123',
+      rankingScore: expect.any(Number),
+      backingTelemetry: expect.objectContaining({ hostDownvotes: 1 }),
     }));
     expect(onTrackFeedbackError).not.toHaveBeenCalled();
     expect(setDoc).toHaveBeenCalledWith(
@@ -263,6 +299,10 @@ describe('queueSongReviewActions', () => {
           song_down: expect.objectContaining({
             hostFavoriteTrackId: '',
             hostFavoriteMediaUrl: '',
+            hostFavoriteBackingCandidateId: '',
+            hostFavoriteCanonicalSongId: '',
+            hostFavoriteRankingScore: 0,
+            hostFavoriteBackingTelemetry: null,
           }),
         }),
       }),

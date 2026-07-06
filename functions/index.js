@@ -45,6 +45,17 @@ const {
   shouldAttemptPopTriviaGeneration,
 } = require("./lib/popTrivia");
 const {
+  BACKING_CANDIDATES_SUBCOLLECTION,
+  buildCanonicalBackingCandidatePatchFromYouTubeIndexEntry,
+  buildCanonicalBackingCandidateSummaries,
+  recordCanonicalBackingFeedbackAdmin,
+  upsertCanonicalBackingCandidateFromYouTubeIndexTx,
+} = require("./lib/backingCandidates");
+const {
+  applyYouTubeIndexRefreshResults,
+  planYouTubeIndexRefresh: planYouTubeIndexRefreshForAdmin,
+} = require("./lib/youtubeIndexMaintenance");
+const {
   buildAudienceLedQueueFaceOffPlan,
   buildOneMinuteMicAdvancePlan,
   buildOneMinuteMicFinalizePlan,
@@ -3756,6 +3767,33 @@ const toWholeNumber = (value, fallback = 0) => {
   return Math.max(0, Math.floor(n));
 };
 
+
+const assignNestedUsageValue = (target = {}, dottedKey = "", value = undefined) => {
+  const parts = String(dottedKey || "").split(".").map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return;
+  let cursor = target;
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    const last = index === parts.length - 1;
+    if (last) {
+      if (cursor[part] === undefined) cursor[part] = value;
+      return;
+    }
+    if (!isPlainObject(cursor[part])) cursor[part] = {};
+    cursor = cursor[part];
+  }
+};
+
+const normalizeUsageDocumentData = (data = {}) => {
+  const normalized = isPlainObject(data) ? { ...data } : {};
+  Object.entries(isPlainObject(data) ? data : {}).forEach(([key, value]) => {
+    if (!key.includes(".")) return;
+    if (!key.startsWith("meters.") && !key.startsWith("analytics.")) return;
+    assignNestedUsageValue(normalized, key, value);
+  });
+  return normalized;
+};
+
 const readOrganizationUsageSummary = async ({
   orgId = "",
   entitlements = null,
@@ -3777,7 +3815,7 @@ const readOrganizationUsageSummary = async ({
   }
   const usageRef = orgsCollection().doc(orgId).collection("usage").doc(periodKey);
   const usageSnap = await usageRef.get();
-  const usageData = usageSnap.data() || {};
+  const usageData = normalizeUsageDocumentData(usageSnap.data() || {});
   const meterData = usageData.meters || {};
   const meters = {};
   let estimatedOverageCents = 0;
@@ -6167,7 +6205,7 @@ const reserveOrganizationUsageUnits = async ({
 
   const nextUsed = await db.runTransaction(async (tx) => {
     const snap = await tx.get(usageRef);
-    const data = snap.data() || {};
+    const data = normalizeUsageDocumentData(snap.data() || {});
     const currentUsed = toWholeNumber(data?.meters?.[meterId]?.used, 0);
     const plannedUsed = currentUsed + safeUnits;
     if (quota.hardLimit > 0 && plannedUsed > quota.hardLimit) {
@@ -6176,48 +6214,73 @@ const reserveOrganizationUsageUnits = async ({
         `${meter.label} monthly hard limit reached for this workspace.`
       );
     }
+    const meterPatch = {
+      used: plannedUsed,
+      included: quota.included,
+      hardLimit: quota.hardLimit,
+      overageRateCents: quota.overageRateCents,
+      passThroughUnitCostCents: quota.passThroughUnitCostCents,
+      markupMultiplier: quota.markupMultiplier,
+      billableUnitRateCents: quota.billableUnitRateCents,
+      updatedAt: now,
+    };
     const patch = {
       orgId,
       period: periodKey,
       planIdSnapshot: entitlements?.planId || "free",
       statusSnapshot: entitlements?.status || "inactive",
       updatedAt: now,
-      [`meters.${meterId}.used`]: plannedUsed,
-      [`meters.${meterId}.included`]: quota.included,
-      [`meters.${meterId}.hardLimit`]: quota.hardLimit,
-      [`meters.${meterId}.overageRateCents`]: quota.overageRateCents,
-      [`meters.${meterId}.passThroughUnitCostCents`]: quota.passThroughUnitCostCents,
-      [`meters.${meterId}.markupMultiplier`]: quota.markupMultiplier,
-      [`meters.${meterId}.billableUnitRateCents`]: quota.billableUnitRateCents,
-      [`meters.${meterId}.updatedAt`]: now,
+      meters: {
+        [meterId]: meterPatch,
+      },
     };
     if (safeSource) {
       const currentSourceUsed = toWholeNumber(data?.meters?.[meterId]?.sources?.[safeSource]?.used, 0);
-      patch[`meters.${meterId}.sources.${safeSource}.used`] = currentSourceUsed + safeUnits;
-      patch[`meters.${meterId}.sources.${safeSource}.source`] = safeSource;
-      patch[`meters.${meterId}.sources.${safeSource}.label`] = formatUsageDimensionLabel(safeSource, safeSource);
-      patch[`meters.${meterId}.sources.${safeSource}.updatedAt`] = now;
+      meterPatch.sources = {
+        ...(meterPatch.sources || {}),
+        [safeSource]: {
+          used: currentSourceUsed + safeUnits,
+          source: safeSource,
+          label: formatUsageDimensionLabel(safeSource, safeSource),
+          updatedAt: now,
+        },
+      };
     }
     if (safeActorUid) {
       const currentActorUsed = toWholeNumber(data?.meters?.[meterId]?.actors?.[safeActorUid]?.used, 0);
-      patch[`meters.${meterId}.actors.${safeActorUid}.used`] = currentActorUsed + safeUnits;
-      patch[`meters.${meterId}.actors.${safeActorUid}.uid`] = safeActorUid;
-      patch[`meters.${meterId}.actors.${safeActorUid}.label`] = safeActorUid;
-      patch[`meters.${meterId}.actors.${safeActorUid}.updatedAt`] = now;
+      meterPatch.actors = {
+        ...(meterPatch.actors || {}),
+        [safeActorUid]: {
+          used: currentActorUsed + safeUnits,
+          uid: safeActorUid,
+          label: safeActorUid,
+          updatedAt: now,
+        },
+      };
     }
     if (safeRoomCode) {
       const currentRoomUsed = toWholeNumber(data?.meters?.[meterId]?.rooms?.[safeRoomCode]?.used, 0);
-      patch[`meters.${meterId}.rooms.${safeRoomCode}.used`] = currentRoomUsed + safeUnits;
-      patch[`meters.${meterId}.rooms.${safeRoomCode}.roomCode`] = safeRoomCode;
-      patch[`meters.${meterId}.rooms.${safeRoomCode}.label`] = safeRoomCode;
-      patch[`meters.${meterId}.rooms.${safeRoomCode}.updatedAt`] = now;
+      meterPatch.rooms = {
+        ...(meterPatch.rooms || {}),
+        [safeRoomCode]: {
+          used: currentRoomUsed + safeUnits,
+          roomCode: safeRoomCode,
+          label: safeRoomCode,
+          updatedAt: now,
+        },
+      };
     }
     if (safeSurface) {
       const currentSurfaceUsed = toWholeNumber(data?.meters?.[meterId]?.surfaces?.[safeSurface]?.used, 0);
-      patch[`meters.${meterId}.surfaces.${safeSurface}.used`] = currentSurfaceUsed + safeUnits;
-      patch[`meters.${meterId}.surfaces.${safeSurface}.surface`] = safeSurface;
-      patch[`meters.${meterId}.surfaces.${safeSurface}.label`] = formatUsageDimensionLabel(safeSurface, safeSurface);
-      patch[`meters.${meterId}.surfaces.${safeSurface}.updatedAt`] = now;
+      meterPatch.surfaces = {
+        ...(meterPatch.surfaces || {}),
+        [safeSurface]: {
+          used: currentSurfaceUsed + safeUnits,
+          surface: safeSurface,
+          label: formatUsageDimensionLabel(safeSurface, safeSurface),
+          updatedAt: now,
+        },
+      };
     }
     if (!snap.exists) {
       patch.createdAt = now;
@@ -6301,19 +6364,28 @@ const trackOrganizationUsageAnalytics = async ({
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(usageRef);
-    const data = snap.data() || {};
+    const data = normalizeUsageDocumentData(snap.data() || {});
     const currentUsed = toWholeNumber(data?.analytics?.[safeSignalId]?.used, 0);
+    const analyticsPatch = {
+      used: currentUsed + safeUnits,
+      updatedAt: now,
+    };
     const patch = {
       orgId: safeOrgId,
       period: periodKey,
       updatedAt: now,
-      [`analytics.${safeSignalId}.used`]: currentUsed + safeUnits,
-      [`analytics.${safeSignalId}.updatedAt`]: now,
+      analytics: {
+        [safeSignalId]: analyticsPatch,
+      },
     };
     if (safeSource) {
       const currentSourceUsed = toWholeNumber(data?.analytics?.[safeSignalId]?.sources?.[safeSource]?.used, 0);
-      patch[`analytics.${safeSignalId}.sources.${safeSource}.used`] = currentSourceUsed + safeUnits;
-      patch[`analytics.${safeSignalId}.sources.${safeSource}.updatedAt`] = now;
+      analyticsPatch.sources = {
+        [safeSource]: {
+          used: currentSourceUsed + safeUnits,
+          updatedAt: now,
+        },
+      };
     }
     if (!snap.exists) {
       patch.createdAt = now;
@@ -9206,6 +9278,10 @@ const ensureTrackAdmin = async ({
   addedBy,
   approvalState,
   qualityScore,
+  backingCandidateId,
+  canonicalSongId,
+  rankingScore,
+  backingTelemetry,
 }) => {
   if (!songId) return null;
   const cleanSource = source || "custom";
@@ -9239,6 +9315,12 @@ const ensureTrackAdmin = async ({
   if (addedBy) payload.addedBy = addedBy;
   if (approvalState) payload.approvalState = normalizeTrackApprovalState(approvalState);
   if (Number.isFinite(Number(qualityScore))) payload.qualityScore = Number(qualityScore);
+  if (backingCandidateId) payload.backingCandidateId = String(backingCandidateId).trim().slice(0, 260);
+  if (canonicalSongId || songId) payload.canonicalSongId = String(canonicalSongId || songId).trim().slice(0, 220);
+  if (Number.isFinite(Number(rankingScore))) payload.rankingScore = Math.max(0, Number(rankingScore));
+  if (backingTelemetry && typeof backingTelemetry === 'object' && !Array.isArray(backingTelemetry)) {
+    payload.backingTelemetry = backingTelemetry;
+  }
 
   if (trackId) {
     const ref = admin.firestore().collection("tracks").doc(trackId);
@@ -9858,6 +9940,19 @@ const normalizeRoomYouTubeIndexEntry = (value = {}) => {
     curatedAtMs,
     lastValidatedAtMs,
     expiresAtMs,
+    rankingScore: Math.max(0, Number(entry.rankingScore || 0) || 0),
+    canonicalSongId: String(entry.canonicalSongId || '').trim().slice(0, 220),
+    appleMusicId: String(entry.appleMusicId || '').trim().slice(0, 220),
+    backingCandidateId: String(entry.backingCandidateId || '').trim().slice(0, 260),
+    backingProvider: String(entry.backingProvider || 'youtube').trim().toLowerCase().slice(0, 40) || 'youtube',
+    providerTrackId: String(entry.providerTrackId || videoId).trim().slice(0, 220),
+    titleIntentMatch: Math.max(0, Number(entry.titleIntentMatch || 0) || 0),
+    durationFit: Math.max(0, Number(entry.durationFit || 0) || 0),
+    sourceTrust: Math.max(0, Number(entry.sourceTrust || 0) || 0),
+    backingTelemetry: entry.backingTelemetry && typeof entry.backingTelemetry === 'object' && !Array.isArray(entry.backingTelemetry)
+      ? entry.backingTelemetry
+      : null,
+    sourceDiscovery: String(entry.sourceDiscovery || '').trim().slice(0, 80),
   };
 };
 
@@ -9874,6 +9969,10 @@ const GLOBAL_YOUTUBE_INDEX_DOC_ID = "karaoke";
 const ACCOUNT_YOUTUBE_INDEX_MAX_ENTRIES = 500;
 const GLOBAL_YOUTUBE_INDEX_MAX_ENTRIES = 750;
 const GLOBAL_YOUTUBE_PROMOTION_MIN_SUCCESS_COUNT = 2;
+const NIGHTLY_YOUTUBE_INDEX_REFRESH_MAX_LIBRARIES = 10;
+const NIGHTLY_YOUTUBE_INDEX_REFRESH_IDS_PER_LIBRARY = 12;
+const NIGHTLY_YOUTUBE_INDEX_BACKFILL_MAX_LIBRARIES = 10;
+const NIGHTLY_YOUTUBE_INDEX_BACKFILL_CANDIDATES_PER_LIBRARY = 20;
 
 const clampIndexCounter = (value = 0) => Math.max(0, Math.min(999999, Math.round(Number(value || 0) || 0)));
 
@@ -9888,7 +9987,15 @@ const normalizeCuratedYouTubeIndexContribution = (value = {}) => {
     artworkUrl100: String(entry.artworkUrl100 || value.thumbnail || "").trim().slice(0, 700),
     url: String(entry.url || `https://www.youtube.com/watch?v=${entry.videoId}`).trim().slice(0, 700),
     sourceDetail: String(entry.sourceDetail || value.sourceDetail || "Host-learned karaoke backing.").trim().slice(0, 240),
+    sourceDiscovery: String(entry.sourceDiscovery || value.sourceDiscovery || "trusted_catalog").trim().slice(0, 80) || "trusted_catalog",
     qualityScore: Math.max(0, Number(entry.qualityScore || value.qualityScore || 0) || 0),
+    rankingScore: Math.max(0, Number(entry.rankingScore || value.rankingScore || 0) || 0),
+    canonicalSongId: String(entry.canonicalSongId || value.canonicalSongId || "").trim().slice(0, 220),
+    appleMusicId: String(entry.appleMusicId || value.appleMusicId || "").trim().slice(0, 220),
+    backingCandidateId: String(entry.backingCandidateId || value.backingCandidateId || "").trim().slice(0, 260),
+    backingProvider: String(entry.backingProvider || value.backingProvider || "youtube").trim().toLowerCase().slice(0, 40) || "youtube",
+    providerTrackId: String(entry.providerTrackId || value.providerTrackId || entry.videoId || "").trim().slice(0, 220),
+    backingTelemetry: entry.backingTelemetry && typeof entry.backingTelemetry === "object" ? entry.backingTelemetry : null,
     usageCount: clampIndexCounter(entry.usageCount || value.usageCount),
     successCount: clampIndexCounter(entry.successCount || value.successCount),
     failureCount: clampIndexCounter(entry.failureCount || value.failureCount),
@@ -9941,8 +10048,8 @@ const mergeCuratedYouTubeIndexEntries = ({ existing = [], contributions = [], la
     .filter((entry) => entry && !isKnownNonEmbeddableYouTubePayload(entry))
     .filter((entry) => !normalizeRoomYouTubeIndexEntry(entry) ? false : true)
     .sort((left, right) => {
-      const leftScore = (Number(left.successCount || 0) * 8) + (Number(left.usageCount || 0) * 3) + Number(left.qualityScore || 0) - (Number(left.failureCount || 0) * 12);
-      const rightScore = (Number(right.successCount || 0) * 8) + (Number(right.usageCount || 0) * 3) + Number(right.qualityScore || 0) - (Number(right.failureCount || 0) * 12);
+      const leftScore = (Number(left.successCount || 0) * 8) + (Number(left.usageCount || 0) * 3) + Number(left.qualityScore || 0) + Math.max(0, Number(left.rankingScore || 0) - 50) - (Number(left.failureCount || 0) * 12);
+      const rightScore = (Number(right.successCount || 0) * 8) + (Number(right.usageCount || 0) * 3) + Number(right.qualityScore || 0) + Math.max(0, Number(right.rankingScore || 0) - 50) - (Number(right.failureCount || 0) * 12);
       if (rightScore !== leftScore) return rightScore - leftScore;
       return Number(right.lastValidatedAtMs || right.curatedAtMs || 0) - Number(left.lastValidatedAtMs || left.curatedAtMs || 0);
     });
@@ -10007,6 +10114,7 @@ const getTrackLayerScore = (track = {}, trustedSongEntry = null) => {
 
 const buildTrackUsageScore = (track = {}) => {
   const qualityScore = Math.max(0, Number(track?.qualityScore || 0));
+  const rankingSignal = Math.min(80, Math.max(0, Number(track?.rankingScore || 0) - 50));
   const successScore = Math.min(40, Math.max(0, Number(track?.successCount || 0)) * 4);
   const usageScore = Math.min(24, Math.max(0, Number(track?.usageCount || 0)) * 2);
   const failurePenalty = Math.min(24, Math.max(0, Number(track?.failureCount || 0)) * 6);
@@ -10016,7 +10124,7 @@ const buildTrackUsageScore = (track = {}) => {
     : approvalState === "submitted"
       ? 10
       : 0;
-  return qualityScore + successScore + usageScore + approvalScore - failurePenalty;
+  return qualityScore + rankingSignal + successScore + usageScore + approvalScore - failurePenalty;
 };
 
 const scoreTrack = (track = {}, trustedSongEntry = null) => {
@@ -10055,6 +10163,10 @@ const buildTrackCandidateSummary = (track = {}, trustedSongEntry = null) => ({
   updatedAt: track.updatedAt || null,
   approvalState: normalizeTrackApprovalState(track.approvalState),
   qualityScore: Number(track.qualityScore || 0),
+  rankingScore: Number(track.rankingScore || 0),
+  backingCandidateId: String(track.backingCandidateId || '').trim(),
+  canonicalSongId: String(track.canonicalSongId || track.songId || '').trim(),
+  backingTelemetry: track.backingTelemetry && typeof track.backingTelemetry === 'object' ? track.backingTelemetry : null,
   successCount: Number(track.successCount || 0),
   usageCount: Number(track.usageCount || 0),
   failureCount: Number(track.failureCount || 0),
@@ -10122,6 +10234,8 @@ const buildYouTubeIndexCandidateSummaries = ({
       const artistScore = scoreCatalogTextMatch(requestArtist, candidateArtist);
       if (!exactSongMatch && (titleScore + artistScore) < 48) return null;
       const qualityScore = Math.max(0, Number(entry?.qualityScore || 0));
+      const rankingScore = Math.max(0, Number(entry?.rankingScore || 0));
+      const rankingSignal = Math.min(80, Math.max(0, rankingScore - 50));
       const successCount = Math.max(0, Number(entry?.successCount || 0));
       const usageCount = Math.max(0, Number(entry?.usageCount || 0));
       const failureCount = Math.max(0, Number(entry?.failureCount || 0));
@@ -10138,11 +10252,15 @@ const buildYouTubeIndexCandidateSummaries = ({
         updatedAt: null,
         approvalState: entry?.playable === false ? "candidate" : "approved",
         qualityScore,
+        rankingScore,
+        backingCandidateId: String(entry?.backingCandidateId || '').trim(),
+        canonicalSongId: String(entry?.canonicalSongId || '').trim(),
+        backingTelemetry: entry?.backingTelemetry && typeof entry.backingTelemetry === 'object' ? entry.backingTelemetry : null,
         successCount,
         usageCount,
         failureCount,
         layer: "room_index",
-        score: exactMatchScore + titleScore + artistScore + qualityScore + popularityScore,
+        score: exactMatchScore + titleScore + artistScore + qualityScore + rankingSignal + popularityScore,
         label: String(entry?.sourceDetail || "Host-curated YouTube").trim() || "Host-curated YouTube",
       };
     })
@@ -10424,6 +10542,10 @@ exports.ensureTrack = onCall({ cors: true }, async (request) => {
     addedBy: data.addedBy || "",
     approvalState: data.approvalState || "",
     qualityScore: data.qualityScore ?? null,
+    backingCandidateId: data.backingCandidateId || "",
+    canonicalSongId: data.canonicalSongId || data.songId || "",
+    rankingScore: data.rankingScore ?? null,
+    backingTelemetry: data.backingTelemetry || null,
   });
   return { trackId: res?.trackId || null };
 });
@@ -10489,6 +10611,10 @@ exports.recordTrackFeedback = onCall({ cors: true }, async (request) => {
       addedBy: uid || data.hostName || "Host",
       approvalState: data.approvalState || "",
       qualityScore: data.qualityScore ?? null,
+      backingCandidateId: data.backingCandidateId || "",
+      canonicalSongId: data.canonicalSongId || songId || "",
+      rankingScore: data.rankingScore ?? null,
+      backingTelemetry: data.backingTelemetry || null,
     });
     trackId = String(trackResult?.trackId || "").trim();
   }
@@ -10499,14 +10625,48 @@ exports.recordTrackFeedback = onCall({ cors: true }, async (request) => {
   const trackRef = admin.firestore().collection("tracks").doc(trackId);
   const roomCode = normalizeRoomCode(data.roomCode || "");
   const now = admin.firestore.FieldValue.serverTimestamp();
+  const backingMetadata = {};
+  const backingCandidateId = String(data.backingCandidateId || "").trim().slice(0, 260);
+  const canonicalBackingSongId = String(data.canonicalSongId || songId || "").trim().slice(0, 220);
+  const rankingScore = Number(data.rankingScore);
+  if (backingCandidateId) backingMetadata.backingCandidateId = backingCandidateId;
+  if (canonicalBackingSongId) backingMetadata.canonicalSongId = canonicalBackingSongId;
+  if (Number.isFinite(rankingScore)) backingMetadata.rankingScore = Math.max(0, rankingScore);
+  if (data.backingTelemetry && typeof data.backingTelemetry === "object" && !Array.isArray(data.backingTelemetry)) {
+    backingMetadata.backingTelemetry = data.backingTelemetry;
+  }
+  const backingFeedbackBase = {
+    rating,
+    actorUid: uid,
+    actorRole: data.actorRole || "host",
+    roomCode,
+    songId,
+    title: canonicalTitle,
+    artist: canonicalArtist,
+    trackId,
+    source: sourceGuess,
+    mediaUrl,
+    appleMusicId,
+    backingCandidateId: backingCandidateId || data.backingCandidateId || "",
+    rankingScore: Number.isFinite(rankingScore) ? Math.max(0, rankingScore) : null,
+    backingTelemetry: data.backingTelemetry || null,
+    qualityScore: data.qualityScore ?? null,
+    label: data.label || "",
+    now,
+  };
 
   if (rating === "up") {
     await trackRef.set({
       updatedAt: now,
       lastPositiveFeedbackAt: now,
       lastPositiveFeedbackRoomCode: roomCode || null,
+      ...backingMetadata,
     }, { merge: true });
-    return { trackId, songId, recorded: true, rating };
+    const backingFeedbackRecord = await recordCanonicalBackingFeedbackAdmin({
+      ...backingFeedbackBase,
+      extractYouTubeId,
+    });
+    return { trackId, songId, recorded: true, rating, backingCandidateId: backingFeedbackRecord?.candidateId || backingCandidateId || "" };
   }
 
   await admin.firestore().runTransaction(async (tx) => {
@@ -10537,6 +10697,7 @@ exports.recordTrackFeedback = onCall({ cors: true }, async (request) => {
       lastAvoidedRoomCode: roomCode || null,
       globalAvoidRoomCount: distinctAvoidRoomCount,
       globalFeedbackState: nextFeedbackState,
+      ...backingMetadata,
     };
     if (!snap.exists) {
       updates.createdAt = now;
@@ -10553,7 +10714,11 @@ exports.recordTrackFeedback = onCall({ cors: true }, async (request) => {
     tx.set(trackRef, updates, { merge: true });
   });
 
-  return { trackId, songId, recorded: true, rating };
+  const backingFeedbackRecord = await recordCanonicalBackingFeedbackAdmin({
+    ...backingFeedbackBase,
+    extractYouTubeId,
+  });
+  return { trackId, songId, recorded: true, rating, backingCandidateId: backingFeedbackRecord?.candidateId || backingCandidateId || "" };
 });
 
 exports.getTrackDiagnostics = onCall({ cors: true }, async (request) => {
@@ -11429,6 +11594,7 @@ exports.upsertCuratedYouTubeIndexes = onCall({ cors: true }, async (request) => 
   let accountCount = 0;
   let globalCount = 0;
   let promotedCount = 0;
+  const canonicalCandidateIds = new Set();
 
   await admin.firestore().runTransaction(async (tx) => {
     const [accountSnap, globalSnap] = await Promise.all([tx.get(accountRef), tx.get(globalRef)]);
@@ -11468,9 +11634,20 @@ exports.upsertCuratedYouTubeIndexes = onCall({ cors: true }, async (request) => 
         updatedAtMs: nowMs(),
       }, { merge: true });
     }
+    const candidateTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    contributions.forEach((entry) => {
+      const result = upsertCanonicalBackingCandidateFromYouTubeIndexTx(tx, {
+        entry,
+        roomCode,
+        actorUid: callerUid,
+        sourceDiscovery: entry.sourceDiscovery || "trusted_catalog",
+        timestamp: candidateTimestamp,
+      });
+      if (result?.candidateId) canonicalCandidateIds.add(result.candidateId);
+    });
   });
 
-  return { ok: true, orgId, accountCount, globalCount, promotedCount };
+  return { ok: true, orgId, accountCount, globalCount, promotedCount, canonicalCandidateCount: canonicalCandidateIds.size };
 });
 exports.youtubeRefreshIndexEntries = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_refresh_index_entries");
@@ -12046,14 +12223,16 @@ exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
   const songRef = admin.firestore().collection("songs").doc(songId);
   const lyricsRef = admin.firestore().collection("song_lyrics").doc(songId);
   const trackQuery = admin.firestore().collection("tracks").where("songId", "==", songId).limit(20);
+  const backingCandidatesQuery = songRef.collection(BACKING_CANDIDATES_SUBCOLLECTION).limit(20);
   const roomLibraryPromise = roomCode
     ? readRoomHostLibrary(roomCode)
     : Promise.resolve({ trustedCatalog: {}, ytIndex: [] });
 
-  const [songSnap, lyricsSnap, trackSnap, roomLibrary] = await Promise.all([
+  const [songSnap, lyricsSnap, trackSnap, backingCandidateSnap, roomLibrary] = await Promise.all([
     songRef.get(),
     lyricsRef.get(),
     trackQuery.get(),
+    backingCandidatesQuery.get(),
     roomLibraryPromise,
   ]);
 
@@ -12062,13 +12241,20 @@ exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
   const trackCandidates = tracks
     .map((track) => buildTrackCandidateSummary(track, trustedSongEntry))
     .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+  const backingCandidates = buildCanonicalBackingCandidateSummaries({
+    candidateDocs: backingCandidateSnap.docs,
+    songId,
+    title: canonicalMatch?.title || title,
+    artist: canonicalMatch?.artist || artist,
+    scoreCatalogTextMatch,
+  });
   const ytIndexCandidates = buildYouTubeIndexCandidateSummaries({
     ytIndex: roomLibrary?.ytIndex || [],
     songId,
     title: canonicalMatch?.title || title,
     artist: canonicalMatch?.artist || artist,
   });
-  const rankedCandidates = [...trackCandidates, ...ytIndexCandidates]
+  const rankedCandidates = [...trackCandidates, ...backingCandidates, ...ytIndexCandidates]
     .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
     .slice(0, 5);
   const bestTrack = rankedCandidates[0] || null;
@@ -12093,6 +12279,10 @@ exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
       approvalState: normalizeTrackApprovalState(bestTrack.approvalState),
       resolutionLayer: bestTrack.resolutionLayer || bestTrack.layer || "global_catalog",
       qualityScore: Number(bestTrack.qualityScore || 0),
+      rankingScore: Number(bestTrack.rankingScore || 0),
+      backingCandidateId: String(bestTrack.backingCandidateId || '').trim(),
+      canonicalSongId: String(bestTrack.canonicalSongId || songId || '').trim(),
+      backingTelemetry: bestTrack.backingTelemetry && typeof bestTrack.backingTelemetry === 'object' ? bestTrack.backingTelemetry : null,
       successCount: Number(bestTrack.successCount || 0),
       usageCount: Number(bestTrack.usageCount || 0),
       failureCount: Number(bestTrack.failureCount || 0),
@@ -13021,16 +13211,36 @@ exports.recoverPendingPopTrivia = onSchedule(
   }
 );
 
+const fetchYouTubeIndexRefreshItemsAdmin = async ({ apiKey = "", ids = [] } = {}) => {
+  const safeIds = [...new Set((Array.isArray(ids) ? ids : []).map((id) => String(id || "").trim()).filter(Boolean))].slice(0, 50);
+  if (!apiKey || !safeIds.length) return [];
+  ensureYouTubeApiQuotaAvailable();
+  const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,snippet&id=${safeIds.join(",")}`;
+  const res = await fetch(url);
+  await assertYouTubeApiResponseOk(res, "YouTube index maintenance refresh");
+  const data = await res.json();
+  return Array.isArray(data.items) ? data.items : [];
+};
+
 exports.nightlyYouTubeIndexCleanup = onSchedule(
   {
     schedule: "45 3 * * *",
     timeZone: "America/Los_Angeles",
+    secrets: [YOUTUBE_API_KEY],
   },
   async () => {
     const hostLibrariesRef = getRootRef().collection("host_libraries");
+    const apiKey = YOUTUBE_API_KEY.value();
+    const maintenanceAtMs = nowMs();
     let lastDoc = null;
     let scanned = 0;
     let updated = 0;
+    let refreshLibraries = 0;
+    let refreshIds = 0;
+    let refreshedEntries = 0;
+    let removedByRefresh = 0;
+    let backfillLibraries = 0;
+    let backfilledCandidates = 0;
     while (true) {
       let queryRef = hostLibrariesRef
         .orderBy(admin.firestore.FieldPath.documentId())
@@ -13045,20 +13255,108 @@ exports.nightlyYouTubeIndexCleanup = onSchedule(
           ? data.ytIndex.filter((entry) => entry && typeof entry === "object")
           : [];
         const normalizedEntries = normalizeRoomYouTubeIndex(rawEntries);
-        if (JSON.stringify(normalizedEntries) === JSON.stringify(rawEntries)) continue;
-        await docSnap.ref.set({
-          ytIndex: normalizedEntries,
+        let nextEntries = normalizedEntries;
+        if (apiKey && refreshLibraries < NIGHTLY_YOUTUBE_INDEX_REFRESH_MAX_LIBRARIES && normalizedEntries.length) {
+          const refreshPlan = planYouTubeIndexRefreshForAdmin({
+            entries: normalizedEntries,
+            atMs: maintenanceAtMs,
+            maxIds: NIGHTLY_YOUTUBE_INDEX_REFRESH_IDS_PER_LIBRARY,
+          });
+          if (refreshPlan.ids.length) {
+            try {
+              const refreshedItems = await fetchYouTubeIndexRefreshItemsAdmin({
+                apiKey,
+                ids: refreshPlan.ids,
+              });
+              const applied = applyYouTubeIndexRefreshResults({
+                entries: normalizedEntries,
+                refreshIds: refreshPlan.ids,
+                refreshedItems,
+                atMs: maintenanceAtMs,
+              });
+              nextEntries = normalizeRoomYouTubeIndex(applied.entries);
+              refreshLibraries += 1;
+              refreshIds += refreshPlan.ids.length;
+              refreshedEntries += applied.refreshedCount;
+              removedByRefresh += applied.removedCount;
+            } catch (error) {
+              console.warn("nightlyYouTubeIndexCleanup refresh failed", {
+                libraryId: docSnap.id,
+                ids: refreshPlan.ids,
+                error: error?.message || String(error),
+              });
+              if (String(error?.code || "").includes("resource-exhausted")) {
+                refreshLibraries = NIGHTLY_YOUTUBE_INDEX_REFRESH_MAX_LIBRARIES;
+              }
+            }
+          }
+        }
+        let backfilledForLibrary = 0;
+        if (backfillLibraries < NIGHTLY_YOUTUBE_INDEX_BACKFILL_MAX_LIBRARIES && nextEntries.length) {
+          const candidateTimestamp = admin.firestore.FieldValue.serverTimestamp();
+          const candidateBatch = admin.firestore().batch();
+          const seenCandidateKeys = new Set();
+          for (const entry of nextEntries) {
+            if (backfilledForLibrary >= NIGHTLY_YOUTUBE_INDEX_BACKFILL_CANDIDATES_PER_LIBRARY) break;
+            const candidate = buildCanonicalBackingCandidatePatchFromYouTubeIndexEntry({
+              entry,
+              roomCode: docSnap.id,
+              actorUid: data.updatedByUid || "nightly_youtube_index_cleanup",
+              sourceDiscovery: entry.sourceDiscovery || "idle_refresh",
+              timestamp: candidateTimestamp,
+            });
+            if (!candidate) continue;
+            const candidateKey = `${candidate.songId}/${candidate.candidateId}`;
+            if (seenCandidateKeys.has(candidateKey)) continue;
+            seenCandidateKeys.add(candidateKey);
+            const candidateRef = admin.firestore()
+              .collection("songs")
+              .doc(candidate.songId)
+              .collection(BACKING_CANDIDATES_SUBCOLLECTION)
+              .doc(candidate.candidateId);
+            candidateBatch.set(candidateRef, {
+              ...candidate.data,
+              sourceRoomCodes: admin.firestore.FieldValue.arrayUnion(docSnap.id),
+            }, { merge: true });
+            backfilledForLibrary += 1;
+          }
+          if (backfilledForLibrary > 0) {
+            await candidateBatch.commit();
+            backfillLibraries += 1;
+            backfilledCandidates += backfilledForLibrary;
+          }
+        }
+        const entriesChanged = JSON.stringify(nextEntries) !== JSON.stringify(rawEntries);
+        if (!entriesChanged && !backfilledForLibrary) continue;
+        const libraryPatch = {
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+          youtubeIndexMaintenance: {
+            lastCleanedAtMs: maintenanceAtMs,
+            refreshedEntries,
+            removedByRefresh,
+            backfilledCandidates,
+          },
+        };
+        if (entriesChanged) libraryPatch.ytIndex = nextEntries;
+        await docSnap.ref.set(libraryPatch, { merge: true });
         updated += 1;
       }
       lastDoc = snap.docs[snap.docs.length - 1] || null;
       if (snap.size < 100) break;
     }
-    console.log("nightlyYouTubeIndexCleanup", { scanned, updated });
+    console.log("nightlyYouTubeIndexCleanup", {
+      scanned,
+      updated,
+      refreshLibraries,
+      refreshIds,
+      refreshedEntries,
+      removedByRefresh,
+      backfillLibraries,
+      backfilledCandidates,
+      refreshEnabled: !!apiKey,
+    });
   }
 );
-
 const FIREBASE_HOSTING_SITE_ID = "beaurocks-karaoke-v2";
 const DEFAULT_PUBLIC_ORIGIN = "https://beaurocks.app";
 const FIRST_PARTY_ROOT_DOMAINS = [

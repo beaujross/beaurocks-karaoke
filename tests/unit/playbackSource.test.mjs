@@ -6,7 +6,8 @@ import {
     resolveQueuePlayback,
     isQueueEntryPlayable,
     isBackingPlaying,
-    getBackingSourceLabel
+    getBackingSourceLabel,
+    getAppleMusicPlaybackDisplay
 } from '../../src/lib/playbackSource.js';
 
 test("playbackSource.test", () => {
@@ -70,6 +71,7 @@ test("playbackSource.test", () => {
     assert.equal(isQueueEntryPlayable({ appleMusicId: '777', playbackReady: true }, { appleMusicEnabled: true }), true);
     assert.equal(isQueueEntryPlayable({ appleMusicId: '777', playbackReady: true }, { appleMusicEnabled: false }), false);
     assert.equal(isQueueEntryPlayable({ mediaResolutionStatus: 'needs_backing', playbackReady: false }), false);
+    assert.equal(isQueueEntryPlayable({ appleMusicId: '777', mediaResolutionStatus: 'pending_youtube_match' }, { appleMusicEnabled: true }), false);
 
     assert.equal(
         isBackingPlaying({
@@ -109,8 +111,62 @@ test("playbackSource.test", () => {
         false
     );
 
-    assert.equal(getBackingSourceLabel({ usesAppleBacking: true, mediaUrl: '' }), 'Apple Music');
-    assert.equal(getBackingSourceLabel({ usesAppleBacking: false, mediaUrl: 'https://youtu.be/abc12345' }), 'YouTube');
-    assert.equal(getBackingSourceLabel({ usesAppleBacking: false, mediaUrl: 'https://example.com/a.mp4' }), 'Local');
+    assert.equal(getBackingSourceLabel({ usesAppleBacking: true, mediaUrl: '' }), 'Apple Music full song');
+    assert.equal(getBackingSourceLabel({ usesAppleBacking: false, mediaUrl: 'https://youtu.be/abc12345' }), 'YouTube karaoke backing');
+    assert.equal(getBackingSourceLabel({ usesAppleBacking: false, mediaUrl: 'https://example.com/a.mp4' }), 'Known backing');
     assert.equal(getBackingSourceLabel({ usesAppleBacking: false, mediaUrl: '' }), 'No backing');
+    assert.equal(getBackingSourceLabel({ source: 'itunes', variant: 'compact' }), 'Apple full song');
+    assert.equal(getBackingSourceLabel({ source: 'youtube', variant: 'compact' }), 'YouTube backing');
+    assert.equal(getBackingSourceLabel({ source: 'local', variant: 'compact' }), 'Known backing');
+});
+
+test("playbackSource Apple Music display model", () => {
+    const performanceDisplay = getAppleMusicPlaybackDisplay({
+        currentSong: {
+            songTitle: 'Purple Rain',
+            artist: 'Prince',
+            appleMusicId: 'apple_song_1',
+            duration: 240
+        },
+        room: {
+            appleMusicPlayback: {
+                type: 'song',
+                id: 'apple_song_1',
+                title: 'Purple Rain',
+                artist: 'Prince',
+                status: 'playing',
+                startedAt: 1_000,
+                durationSec: 240
+            }
+        },
+        nowMs: 61_000
+    });
+    assert.equal(performanceDisplay.active, true);
+    assert.equal(performanceDisplay.eyebrow, 'Apple Music Backing');
+    assert.equal(performanceDisplay.title, 'Purple Rain');
+    assert.equal(performanceDisplay.subtitle, 'Prince');
+    assert.equal(performanceDisplay.statusLabel, 'Playing');
+    assert.equal(performanceDisplay.progressPct, 25);
+
+    const playlistDisplay = getAppleMusicPlaybackDisplay({
+        room: {
+            appleMusicAutoPlaylistTitle: 'Party Background',
+            appleMusicPlayback: {
+                type: 'playlist',
+                id: 'pl.abc',
+                status: 'paused',
+                startedAt: 10_000,
+                pausedAt: 70_000
+            }
+        },
+        nowMs: 120_000
+    });
+    assert.equal(playlistDisplay.active, true);
+    assert.equal(playlistDisplay.eyebrow, 'Apple Music Background');
+    assert.equal(playlistDisplay.title, 'Party Background');
+    assert.equal(playlistDisplay.subtitle, 'Background music');
+    assert.equal(playlistDisplay.statusLabel, 'Paused');
+    assert.equal(playlistDisplay.elapsedSec, 60);
+
+    assert.equal(getAppleMusicPlaybackDisplay({ room: {} }).active, false);
 });

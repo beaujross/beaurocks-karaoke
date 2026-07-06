@@ -59,7 +59,7 @@ import {
   resolveQueueReviewSelectionForHost,
   saveHostBackingPreferenceForRoom,
 } from '../queueSongReviewActions';
-import { buildSongKey, ensureSong } from '../../../lib/songCatalog';
+import { buildSongKey, ensureSong, resolveSongCatalog } from '../../../lib/songCatalog';
 import {
   buildCollaborationSuggestionMap,
   rankSongRequestCandidates,
@@ -292,6 +292,56 @@ const buildQueueReviewSearchQuery = (song = {}) => (
   [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' ')
 );
 
+const getReviewCanonicalResolutionKey = (song = {}) => {
+  const requestId = String(song?.id || '').trim();
+  const songId = String(song?.songId || buildSongKey(song?.songTitle || song?.title || '', song?.artist || 'Unknown')).trim();
+  return [requestId, songId].filter(Boolean).join(':');
+};
+
+const normalizeResolvedReviewCandidates = (resolved = null, song = {}) => {
+  const rawCandidates = [];
+  if (resolved?.track) rawCandidates.push(resolved.track);
+  if (Array.isArray(resolved?.candidates)) rawCandidates.push(...resolved.candidates);
+  const seen = new Set();
+  return rawCandidates
+    .map((candidate, index) => {
+      const source = String(candidate?.source || '').trim().toLowerCase() || 'youtube';
+      const mediaUrl = String(candidate?.mediaUrl || '').trim();
+      const appleMusicId = String(candidate?.appleMusicId || '').trim();
+      if (!mediaUrl && !appleMusicId) return null;
+      const layer = String(candidate?.resolutionLayer || candidate?.layer || 'canonical_backing').trim().toLowerCase() || 'canonical_backing';
+      const backingCandidateId = String(candidate?.backingCandidateId || '').trim();
+      const candidateId = String(candidate?.id || backingCandidateId || mediaUrl || appleMusicId || `resolved:${index}`).trim();
+      const key = [source, mediaUrl, appleMusicId, backingCandidateId, candidateId].filter(Boolean).join('|');
+      if (!key || seen.has(key)) return null;
+      seen.add(key);
+      return {
+        id: candidateId,
+        trackId: candidateId.startsWith('yt_index:') || candidateId.startsWith('canonical_backing:') ? '' : candidateId,
+        mediaUrl,
+        appleMusicId,
+        source,
+        title: String(candidate?.title || song?.songTitle || song?.title || '').trim(),
+        artist: String(candidate?.artist || song?.artist || 'Unknown').trim() || 'Unknown',
+        label: String(candidate?.label || (layer === 'canonical_backing' ? 'Known backing' : 'Resolved backing')).trim(),
+        layer,
+        qualityScore: Number(candidate?.qualityScore || 0),
+        rankingScore: Number(candidate?.rankingScore || 0),
+        backingCandidateId,
+        canonicalSongId: String(candidate?.canonicalSongId || resolved?.songId || song?.songId || '').trim(),
+        backingTelemetry: candidate?.backingTelemetry && typeof candidate.backingTelemetry === 'object' ? candidate.backingTelemetry : null,
+        successCount: Number(candidate?.successCount || 0),
+        usageCount: Number(candidate?.usageCount || 0),
+        failureCount: Number(candidate?.failureCount || 0),
+        approvalState: String(candidate?.approvalState || 'approved').trim().toLowerCase(),
+        reason: layer === 'canonical_backing'
+          ? 'Ranked from host feedback for this song.'
+          : 'Resolved from the song catalog before live YouTube search.'
+      };
+    })
+    .filter(Boolean);
+};
+
 const isStrongQueueReviewCandidate = (candidate = null) => {
   if (!candidate || typeof candidate !== 'object') return false;
   const score = Number(candidate.score || 0);
@@ -378,10 +428,10 @@ const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search',
         sourceReason: reason,
         sourceDetail: reason === 'apple_missing'
           ? (playbackState.backingAudioOnly
-            ? 'Apple Music account not connected. This YouTube track opens in an external host window.'
-            : 'Apple Music account not connected. Showing verified embeddable YouTube tracks.')
+            ? 'No Apple song match yet. This YouTube track cannot play inside BeauRocks.'
+            : 'No Apple song match yet. Showing verified embeddable YouTube tracks.')
           : (playbackState.backingAudioOnly
-            ? 'YouTube track is not embeddable and opens in an external host window.'
+            ? 'YouTube track is not embeddable inside BeauRocks.'
             : 'Verified YouTube embeddable track.'),
       };
     })
@@ -553,6 +603,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         setYtSearchTarget,
         ytSearchQ,
         setYtSearchQ,
+        youtubeSearchMode,
+        setYoutubeSearchMode,
         ytEditingQuery,
         setYtEditingQuery,
         ytResults,
@@ -680,6 +732,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const autoDjObservedSongRef = useRef('');
     const autoDjObservedPerfTsRef = useRef(0);
     const reviewAutoSuggestingIdsRef = useRef(new Set());
+    const canonicalReviewResolutionKeysRef = useRef(new Set());
     const postPerformanceBackingPromptKeyRef = useRef('');
     const oneMinuteMicDecisionOpenKeyRef = useRef('');
     const oneMinuteMicDecisionResolveKeyRef = useRef('');
@@ -690,6 +743,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [queueSearchSourceNote, setQueueSearchSourceNote] = useState('');
     const [queueSearchNoResultHint, setQueueSearchNoResultHint] = useState('');
     const [trustedCatalog, setTrustedCatalog] = useState({});
+    const [canonicalReviewCandidateMap, setCanonicalReviewCandidateMap] = useState({});
     const [reviewActionBusyKey, setReviewActionBusyKey] = useState('');
     const [backingDecisionBusyKey, setBackingDecisionBusyKey] = useState('');
     const [postPerformanceBackingPrompt, setPostPerformanceBackingPrompt] = useState(null);
@@ -1543,6 +1597,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         persistYtIndex,
         ytSearchQ,
         setYtSearchQ,
+        youtubeSearchMode,
         setYtSearchOpen,
         setYtSearchTarget,
         setYtEditingQuery,
@@ -1692,10 +1747,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     if (cancelled) return;
                     const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
                         sourceReason: 'apple_authorized',
-                        sourceDetail: 'Apple Music/iTunes search match.'
+                        sourceDetail: 'Apple Music song match. Pick a YouTube backing or approve Apple sing-along.'
                     });
-                    setQueueSearchSourceNote('Autocomplete source: Apple Music + local library.');
-                    setQueueSearchNoResultHint('No Apple Music matches yet. Try song + artist.');
+                    setQueueSearchSourceNote('Autocomplete source: Apple Music song intent + local library.');
+                    setQueueSearchNoResultHint('No Apple Music song matches yet. Try song + artist.');
                     setResults(mergeUniqueQueueSearchResults(localMatches, itunesMatches));
                 } catch (_error) {
                     if (cancelled) return;
@@ -1714,15 +1769,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             }
 
             const ytMatchesRaw = buildIndexedYouTubeAutocompleteEntries(ytIndex, normalizedQuery);
-            const ytMatches = annotateQueueSearchResults(ytMatchesRaw.filter((entry) => (
-                hideNonEmbeddableYouTube ? isYouTubeEmbeddable(entry) : true
-            )), {
+            const ytMatches = annotateQueueSearchResults(ytMatchesRaw.filter((entry) => isYouTubeEmbeddable(entry)), {
                 sourceReason: 'youtube_index',
                 sourceDetail: 'Indexed YouTube playlist match.'
             });
             const curatedMatches = annotateQueueSearchResults(
                 buildCuratedYouTubeAutocompleteEntries([...accountYtIndex, ...globalYtIndex, ...buildBrowseCuratedYouTubeIndex()], normalizedQuery)
-                    .filter((entry) => (hideNonEmbeddableYouTube ? isYouTubeEmbeddable(entry) : true)),
+                    .filter((entry) => isYouTubeEmbeddable(entry)),
                 {
                     sourceReason: 'curated_browse',
                     sourceDetail: 'Known playable Browse catalogue backing. No live YouTube search needed.'
@@ -1732,18 +1785,19 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             let liveYouTubeMatches = [];
             if (knownYouTubeMatches.length < 4) {
                 try {
+                    const ytSearchMode = String(youtubeSearchMode || 'karaoke').toLowerCase() === 'any' ? 'any' : 'karaoke';
                     const ytFallbackData = await searchYouTubeCatalog({
-                        query: `${normalizedQuery} karaoke`,
+                        query: ytSearchMode === 'karaoke' ? `${normalizedQuery} karaoke` : normalizedQuery,
                         maxResults: 6,
-                        playableOnly: hideNonEmbeddableYouTube === true,
+                        playableOnly: true,
                         roomCode,
-                        usageSource: 'host_queue_search_youtube_fallback',
+                        usageSource: ytSearchMode === 'karaoke' ? 'host_queue_search_youtube_fallback_karaoke' : 'host_queue_search_youtube_fallback_any',
                         usageSurface: 'host',
                     });
                     if (cancelled) return;
                     liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
                         reason: 'youtube_search',
-                        hideNonEmbeddable: hideNonEmbeddableYouTube
+                        hideNonEmbeddable: true
                     });
                 } catch(e) {
                     if (cancelled) return;
@@ -1751,19 +1805,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 }
             }
             if (cancelled) return;
-            setQueueSearchSourceNote(hideNonEmbeddableYouTube
-                ? 'Autocomplete source: indexed + curated embeddable YouTube tracks, then live YouTube if needed.'
-                : 'Autocomplete source: indexed + curated YouTube tracks, then live YouTube if needed. Non-embeddable picks are labeled.');
-            setQueueSearchNoResultHint(hideNonEmbeddableYouTube
-                ? 'No embeddable YouTube tracks found. Try artist + song or use manual YouTube search.'
-                : 'No YouTube tracks found. Try artist + song or use manual YouTube search.');
+            setQueueSearchSourceNote(youtubeSearchMode === 'any'
+                ? 'Autocomplete source: indexed + curated embeddable YouTube tracks, then live exact YouTube search if needed.'
+                : 'Autocomplete source: indexed + curated embeddable YouTube tracks, then live karaoke YouTube search if needed.');
+            setQueueSearchNoResultHint('No embeddable YouTube tracks found. Try artist + song, switch YouTube mode, or paste a URL in manual YouTube search.');
             setResults(mergeUniqueQueueSearchResults(localMatches, knownYouTubeMatches, liveYouTubeMatches));
         }, 500); 
         return () => {
             cancelled = true;
             clearTimeout(t);
         }; 
-    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, accountYtIndex, globalYtIndex, searchSources, setResults, appleMusicAuthorized, roomCode, hideNonEmbeddableYouTube]);
+    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, accountYtIndex, globalYtIndex, searchSources, setResults, appleMusicAuthorized, roomCode, youtubeSearchMode]);
 
     const getResultRowKey = (r, idx = 0) => {
         return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
@@ -1814,18 +1866,90 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         () => buildCollaborationSuggestionMap({ songs, users }),
         [songs, users]
     );
+    useEffect(() => {
+        const reviewSongs = Array.isArray(reviewRequired) ? reviewRequired : [];
+        if (!roomCode || !reviewSongs.length) {
+            canonicalReviewResolutionKeysRef.current.clear();
+            setCanonicalReviewCandidateMap((current) => (Object.keys(current || {}).length ? {} : current));
+            return () => {};
+        }
+
+        const desiredKeys = new Set(reviewSongs.map(getReviewCanonicalResolutionKey).filter(Boolean));
+        canonicalReviewResolutionKeysRef.current.forEach((key) => {
+            if (!desiredKeys.has(key)) canonicalReviewResolutionKeysRef.current.delete(key);
+        });
+        setCanonicalReviewCandidateMap((current) => {
+            const next = {};
+            let changed = false;
+            Object.entries(current || {}).forEach(([key, value]) => {
+                if (desiredKeys.has(key)) next[key] = value;
+                else changed = true;
+            });
+            return changed ? next : current;
+        });
+
+        const pending = reviewSongs
+            .map((song) => ({ song, key: getReviewCanonicalResolutionKey(song) }))
+            .filter(({ key }) => key && !canonicalReviewResolutionKeysRef.current.has(key))
+            .slice(0, 4);
+        if (!pending.length) return () => {};
+
+        pending.forEach(({ key }) => canonicalReviewResolutionKeysRef.current.add(key));
+        setCanonicalReviewCandidateMap((current) => {
+            const next = { ...(current || {}) };
+            pending.forEach(({ key }) => {
+                next[key] = { ...(next[key] || {}), loading: true, loaded: false };
+            });
+            return next;
+        });
+
+        let cancelled = false;
+        pending.forEach(async ({ song, key }) => {
+            try {
+                const resolved = await resolveSongCatalog({
+                    songId: song?.songId || '',
+                    title: song?.songTitle || song?.title || '',
+                    artist: song?.artist || 'Unknown',
+                    roomCode
+                });
+                if (cancelled) return;
+                const candidates = normalizeResolvedReviewCandidates(resolved, song);
+                setCanonicalReviewCandidateMap((current) => ({
+                    ...(current || {}),
+                    [key]: { loading: false, loaded: true, candidates }
+                }));
+            } catch (error) {
+                hostLogger.debug('Queue review canonical backing lookup failed', error);
+                if (cancelled) return;
+                setCanonicalReviewCandidateMap((current) => ({
+                    ...(current || {}),
+                    [key]: { loading: false, loaded: true, candidates: [], error: true }
+                }));
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [reviewRequired, roomCode]);
     const reviewQueueItems = useMemo(
-        () => reviewRequired.map((song) => ({
-            ...song,
-            reviewCandidates: prioritizeQueueReviewCandidates(rankSongRequestCandidates({
-                request: song,
-                trustedCatalogEntry: trustedCatalog?.[song.songId] || null,
-                catalogCandidates: [],
-                ytIndex
-            })),
-            collaborationCandidates: reviewCollaborationMap[song.id] || []
-        })),
-        [reviewRequired, reviewCollaborationMap, trustedCatalog, ytIndex]
+        () => reviewRequired.map((song) => {
+            const canonicalReviewKey = getReviewCanonicalResolutionKey(song);
+            const canonicalReviewEntry = canonicalReviewCandidateMap[canonicalReviewKey] || {};
+            const canonicalReviewCandidates = Array.isArray(canonicalReviewEntry.candidates) ? canonicalReviewEntry.candidates : [];
+            return {
+                ...song,
+                canonicalBackingLookupLoading: canonicalReviewEntry.loading === true,
+                reviewCandidates: prioritizeQueueReviewCandidates(rankSongRequestCandidates({
+                    request: song,
+                    trustedCatalogEntry: trustedCatalog?.[song.songId] || null,
+                    catalogCandidates: canonicalReviewCandidates,
+                    ytIndex
+                })),
+                collaborationCandidates: reviewCollaborationMap[song.id] || []
+            };
+        }),
+        [canonicalReviewCandidateMap, reviewRequired, reviewCollaborationMap, trustedCatalog, ytIndex]
     );
     useEffect(() => {
         if (!reviewQueueOpen || !reviewQueueItems.length) return;
@@ -2083,13 +2207,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         let cancelled = false;
         reviewAutoSuggestingIdsRef.current.add(nextSong.id);
 
-        const resolveReviewCandidates = (song, extraYtMatches = []) => prioritizeQueueReviewCandidates(rankSongRequestCandidates({
-            request: song,
-            trustedCatalogEntry: trustedCatalog?.[song.songId] || null,
-            catalogCandidates: [],
-            ytIndex: [...(ytIndex || []), ...(Array.isArray(extraYtMatches) ? extraYtMatches : [])]
-        }));
-
+        const resolveReviewCandidates = (song, extraYtMatches = []) => {
+            const canonicalReviewEntry = canonicalReviewCandidateMap[getReviewCanonicalResolutionKey(song)] || {};
+            const canonicalReviewCandidates = Array.isArray(canonicalReviewEntry.candidates) ? canonicalReviewEntry.candidates : [];
+            return prioritizeQueueReviewCandidates(rankSongRequestCandidates({
+                request: song,
+                trustedCatalogEntry: trustedCatalog?.[song.songId] || null,
+                catalogCandidates: canonicalReviewCandidates,
+                ytIndex: [...(ytIndex || []), ...(Array.isArray(extraYtMatches) ? extraYtMatches : [])]
+            }));
+        };
     const applyAutoSuggestion = async () => {
             const searchQuery = buildQueueReviewSearchQuery(nextSong);
             try {
@@ -2111,14 +2238,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         const ytData = await searchYouTubeCatalog({
                             query: `${searchQuery} karaoke`,
                             maxResults: 5,
-                            playableOnly: hideNonEmbeddableYouTube === true,
+                            playableOnly: true,
                             roomCode,
                             usageSource: 'host_queue_review_auto_youtube',
                             usageSurface: 'host',
                         });
                         liveMatches = normalizeYouTubeSearchItems(ytData?.items || [], {
                             reason: 'queue_review_auto',
-                            hideNonEmbeddable: hideNonEmbeddableYouTube
+                            hideNonEmbeddable: true
                         });
                         if (liveMatches.length && !cancelled) {
                             await onUpsertYtIndexEntries(liveMatches.map((match) => ({
@@ -2178,7 +2305,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         return () => {
             cancelled = true;
         };
-    }, [reviewRequired, roomCode, trustedCatalog, ytIndex, onUpsertYtIndexEntries, hideNonEmbeddableYouTube]);
+    }, [canonicalReviewCandidateMap, reviewRequired, roomCode, trustedCatalog, ytIndex, onUpsertYtIndexEntries, hideNonEmbeddableYouTube]);
 
     const resolveReviewRequest = useCallback(async (song, candidate, options = {}) => {
         if (!song?.id || !candidate) return;
@@ -2299,7 +2426,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                       ? YOUTUBE_PLAYBACK_STATUSES.notEmbeddable
                       : video.youtubePlaybackStatus
           });
-          const isFailed = playbackState.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable;
+          if (playbackState.youtubePlaybackStatus !== YOUTUBE_PLAYBACK_STATUSES.embeddable) {
+              toast('That YouTube video cannot play inside BeauRocks. Try another link.');
+              return;
+          }
           const displayTitle = video.title.replace(' (Karaoke)', '').replace(' Karaoke', '');
           const nextEditForm = {
               ...editForm,
@@ -2339,9 +2469,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                       duration: resolvedDuration || nextEditForm.duration || 180,
                   },
                   closeEditor: true,
-                  successToast: isFailed
-                      ? 'Backing attached and request resolved. This track will open in the external backing window.'
-                      : 'Backing attached and request resolved.',
+                  successToast: 'Backing attached and request resolved.',
               });
               setYtSearchOpen(false);
               setYtSearchQ('');
@@ -2351,7 +2479,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
           setYtSearchOpen(false);
           setYtSearchQ('');
           setYtResults([]);
-          toast(isFailed ? `${EMOJI.radio} Not embeddable - opens in external backing window` : `${EMOJI.check} Embeds on TV`);
+          toast(`${EMOJI.check} Embeds on TV`);
       };
 
     const testEmbedVideo = async (video) => {
@@ -2364,7 +2492,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             if (status === 'ok') {
                 toast(`${EMOJI.check} Embeds on the TV player`);
             } else if (status === 'fail') {
-                toast(`${EMOJI.radio} Not embeddable - opens in an external backing window`);
+                toast('That YouTube video cannot play inside BeauRocks. Try another link.');
             } else {
                 toast(`${EMOJI.cross} Could not confirm embed status`);
             }
@@ -4215,6 +4343,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     setSearchQ={setSearchQ}
                     autocompleteProvider={autocompleteProvider}
                     setAutocompleteProvider={setAutocompleteProvider}
+                    youtubeSearchMode={youtubeSearchMode}
+                    setYoutubeSearchMode={setYoutubeSearchMode}
                     styles={STYLES}
                     quickAddOnResultClick={quickAddOnResultClick}
                     setQuickAddOnResultClick={setQuickAddOnResultClick}
@@ -5801,6 +5931,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         styles={STYLES}
                         ytSearchQ={ytSearchQ}
                         setYtSearchQ={setYtSearchQ}
+                        youtubeSearchMode={youtubeSearchMode}
+                        setYoutubeSearchMode={setYoutubeSearchMode}
                         ytEditingQuery={ytEditingQuery}
                         setYtEditingQuery={setYtEditingQuery}
                         ytLoading={ytLoading}
