@@ -3418,42 +3418,6 @@ const SingerApp = ({ roomCode, uid }) => {
         }
         openEmailAccessModal();
     }, [allowsDonationAccess, openEmailAccessModal, roomSupportHasEmbed, roomSupportOffer, simplifyFestivalSupportAccess]);
-    const eventCreditsSummary = useMemo(() => {
-        if (!roomCode) {
-            return {
-                title: 'Room points',
-                body: 'You are seeing the standard room points wallet right now.',
-                tone: 'cyan',
-                showClaims: false,
-            };
-        }
-        if (!activeEventCredits.enabled) {
-            return {
-                title: 'No event bonuses on this room',
-                body: 'This room is using the standard points wallet. Games, reactions, host gifts, and room boosts can still move the score.',
-                tone: 'zinc',
-                showClaims: false,
-            };
-        }
-        if (!eventPromoSummary.hasPromoClaims) {
-            return {
-                title: activeEventCredits.eventLabel || 'Tonight\'s event credits',
-                body: activeEventCredits.generalAdmissionPoints > 0
-                    ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. The host can also enable refills, bonus drops, support rewards, or promo codes for tonight.`
-                    : 'Custom credits are enabled for this room. The host has not published starter points or promo campaigns yet.',
-                tone: 'amber',
-                showClaims: false,
-            };
-        }
-        return {
-            title: activeEventCredits.eventLabel || 'Tonight\'s event credits',
-            body: activeEventCredits.generalAdmissionPoints > 0
-                ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. Room promos, QR drops, and host-published codes can add more when they are active.`
-                : 'This room has optional bonus credits and linked perks available below.',
-            tone: 'amber',
-            showClaims: true,
-        };
-    }, [activeEventCredits, eventPromoSummary, roomCode]);
     const formatPointsLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} pts`;
     const formatDollarLabel = (value = 0) => {
         const amount = Math.max(0, Number(value) || 0);
@@ -3462,11 +3426,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const timedLobbyIntervalLabel = activeEventCredits.timedLobbyEnabled
         ? `Every ${Math.max(1, Number(activeEventCredits.timedLobbyIntervalMin || 10))} min`
         : 'Not recharging tonight';
-    const timedLobbyBankLabel = activeEventCredits.timedLobbyEnabled
-        ? activeEventCredits.timedLobbyMaxPerGuest > 0
-            ? `${formatPointsLabel(activeEventCredits.timedLobbyMaxPerGuest)} max from auto refills`
-            : 'No refill cap published'
-        : 'No auto-refill bank tonight';
     const roomWideSupportOffers = useMemo(() => (
         donationPointOffers.filter((offer) => ['room', 'buyer_and_room'].includes(String(offer.rewardScope || '').trim().toLowerCase()))
     ), [donationPointOffers]);
@@ -3488,9 +3447,6 @@ const SingerApp = ({ roomCode, uid }) => {
         : roomSupportOffer?.supportProvider
             ? roomSupportOffer.supportProvider
             : 'the room checkout';
-    const supportTargetLabel = roomSupportOffer?.label
-        || activeEventCredits.eventLabel
-        || (isCustomAudienceBrand ? audienceBrandTitle : 'this room');
     const questLogItems = useMemo(() => {
         const items = [];
         if (activeEventCredits.websiteCheckInPoints > 0) {
@@ -3532,295 +3488,152 @@ const SingerApp = ({ roomCode, uid }) => {
         });
         return items;
     }, [activeEventCredits.socialPromoPoints, activeEventCredits.websiteCheckInPoints, eventPromoSummary.promoCampaigns]);
-    const topRoomBoostOffer = roomShopOffers.length
-        ? [...roomShopOffers].sort((left, right) => Number(right?.points || 0) - Number(left?.points || 0))[0]
-        : null;
-    const topPersonalPackOffer = personalShopOffers.length
-        ? [...personalShopOffers].sort((left, right) => Number(right?.points || 0) - Number(left?.points || 0))[0]
-        : null;
-    const getOfferRateLabel = (offer = {}) => {
-        const amount = Math.max(0, Number(offer?.amount || 0) || 0);
-        const points = Math.max(0, Number(offer?.points || 0) || 0);
-        if (!amount || !points) return '';
-        return `${Math.round(points / amount)} pts / $1`;
-    };
     const visibleRoomShopOffers = useMemo(
         () => sortPointStorefrontOffers(roomShopOffers).slice(0, POINTS_STOREFRONT_ROOM_OFFER_LIMIT),
         [roomShopOffers]
     );
-    const hiddenRoomShopOfferCount = Math.max(0, roomShopOffers.length - visibleRoomShopOffers.length);
     const visiblePersonalShopOffers = useMemo(
         () => sortPointStorefrontOffers(personalShopOffers).slice(0, POINTS_STOREFRONT_PERSONAL_OFFER_LIMIT),
         [personalShopOffers]
     );
-    const hiddenPersonalShopOfferCount = Math.max(0, personalShopOffers.length - visiblePersonalShopOffers.length);
     const visibleQuestLogItems = useMemo(
         () => questLogItems.slice(0, POINTS_STOREFRONT_EARN_LIMIT),
         [questLogItems]
     );
-    const hiddenQuestLogItemCount = Math.max(0, questLogItems.length - visibleQuestLogItems.length);
     const pointsDrawerContent = (
         <>
-            <div className="space-y-4" data-feature-id="audience-points-storefront">
-                <div className="relative overflow-hidden rounded-[1.75rem] border border-cyan-300/28 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.28),transparent_42%),linear-gradient(145deg,rgba(8,13,30,0.98),rgba(28,14,42,0.96))] p-4 shadow-[0_24px_60px_rgba(0,0,0,0.38)]">
-                    <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-pink-400/18 blur-3xl" />
-                    <div className="relative flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-100/80">Tonight&apos;s wallet</div>
-                            <div className="mt-1 text-[clamp(2.4rem,12vw,4.2rem)] font-black leading-none text-white drop-shadow-[0_0_24px_rgba(34,211,238,0.32)]">
-                                {formatPointsLabel(getEffectivePoints())}
-                            </div>
-                            <div className="mt-2 text-sm font-semibold text-zinc-200">
-                                Use points for reactions, votes, power moments, and room games.
-                            </div>
-                        </div>
-                        <div className="shrink-0 rounded-2xl border border-white/12 bg-black/30 px-3 py-2 text-right">
-                            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Refill</div>
-                            <div className="mt-1 text-xs font-black text-cyan-100">
-                                {activeEventCredits.timedLobbyEnabled ? `${formatPointsLabel(activeEventCredits.timedLobbyPoints)} ${timedLobbyIntervalLabel.toLowerCase()}` : 'Manual'}
-                            </div>
-                        </div>
+            <div className="space-y-5" data-feature-id="audience-points-storefront">
+                <section className="relative overflow-hidden rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(34,211,238,0.22),rgba(236,72,153,0.15)_42%,rgba(12,18,32,0.98))] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.34)]">
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/78">Available now</div>
+                    <div className="mt-2 text-[clamp(3rem,15vw,5rem)] font-black leading-none text-white">
+                        {formatPointsLabel(getEffectivePoints())}
                     </div>
-                    <div className="relative mt-4 grid grid-cols-3 gap-2">
-                        <div className="rounded-2xl border border-white/10 bg-black/22 px-3 py-2">
-                            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Start</div>
-                            <div className="mt-1 text-sm font-black text-white">{formatPointsLabel(activeEventCredits.generalAdmissionPoints)}</div>
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/22 px-3 py-2">
-                            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Bank</div>
-                            <div className="mt-1 truncate text-sm font-black text-white">{timedLobbyBankLabel}</div>
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/22 px-3 py-2">
-                            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Mode</div>
-                            <div className="mt-1 text-sm font-black text-white">{activeEventCredits.creditEarningMode || 'standard'}</div>
-                        </div>
-                    </div>
-                    {(activeEventCredits.vipBonusPoints > 0 || activeEventCredits.skipLineBonusPoints > 0 || eventPromoSummary.usesGivebutter) && (
-                        <div className="relative mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100">
-                            {activeEventCredits.vipBonusPoints > 0 ? `VIP match: ${formatPointsLabel(activeEventCredits.vipBonusPoints)}. ` : ''}
-                            {activeEventCredits.skipLineBonusPoints > 0 ? `Skip-line match: ${formatPointsLabel(activeEventCredits.skipLineBonusPoints)}. ` : ''}
-                            {eventPromoSummary.usesGivebutter ? 'Ticket or supporter matching can attach automatically when your signed-in email matches.' : ''}
-                        </div>
-                    )}
-                </div>
-
-                <div className="rounded-[1.35rem] border border-emerald-300/30 bg-[linear-gradient(145deg,rgba(8,47,73,0.72),rgba(6,78,59,0.52))] p-3" data-feature-id="audience-room-boost-storefront">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-100/80">Party boosts</div>
-                            <div className="mt-1 text-xl font-black leading-none text-white">Buy points for everyone</div>
-                            <div className="mt-1 text-xs text-emerald-50/86">
-                                Trigger a TV burst and refill the room.
-                            </div>
-                        </div>
-                        {topRoomBoostOffer ? (
-                            <div className="shrink-0 rounded-2xl border border-emerald-200/28 bg-black/30 px-3 py-2 text-right">
-                                <div className="text-[9px] font-black uppercase tracking-[0.18em] text-emerald-100/70">Top</div>
-                                <div className="mt-1 text-sm font-black text-white">{formatPointsLabel(topRoomBoostOffer.points)}</div>
-                            </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {activeEventCredits.generalAdmissionPoints > 0 ? (
+                            <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black text-white">
+                                Start +{formatPointsLabel(activeEventCredits.generalAdmissionPoints)}
+                            </span>
+                        ) : null}
+                        {activeEventCredits.timedLobbyEnabled ? (
+                            <span className="rounded-full bg-cyan-300/16 px-3 py-1.5 text-xs font-black text-cyan-50">
+                                +{formatPointsLabel(activeEventCredits.timedLobbyPoints)} {timedLobbyIntervalLabel.toLowerCase()}
+                            </span>
                         ) : null}
                     </div>
-                    {visibleRoomShopOffers.length > 0 ? (
-                        <>
-                            <div className="mt-3 grid grid-cols-2 gap-2">
-                                {visibleRoomShopOffers.map((crate, idx) => {
-                                    const label = crate.label || `Room Boost ${idx + 1}`;
-                                    const earnsBadge = crate.awardBadge !== false;
-                                    const checkoutKey = 'room:' + String(crate?.id || crate?.label || 'boost');
-                                    const pending = pointsCheckoutPendingKey === checkoutKey;
-                                    const rateLabel = getOfferRateLabel(crate);
-                                    const visual = getPointOfferPackageVisual(crate, idx, 'room');
-                                    return (
-                                        <button
-                                            key={crate.id || `${label}-${idx}`}
-                                            onClick={() => startTipCrateCheckout(crate)}
-                                            disabled={!!pointsCheckoutPendingKey}
-                                            className={`group relative min-h-[9.25rem] w-full overflow-hidden rounded-[1.1rem] border px-3 py-3 text-left shadow-[0_14px_34px_rgba(0,0,0,0.22)] transition ${pending ? 'border-emerald-100/70 bg-emerald-300/18' : 'border-emerald-200/28 bg-black/26 active:scale-[0.99]'}`}
-                                            data-feature-id="audience-room-boost-card"
-                                        >
-                                            <div className="absolute inset-y-0 right-0 w-20 bg-[radial-gradient(circle_at_center,rgba(52,211,153,0.2),transparent_68%)]" />
-                                            <div className="relative flex h-full flex-col justify-between gap-2">
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${visual.className} shadow-[0_10px_24px_rgba(0,0,0,0.22)]`} title={visual.label}>
-                                                        <i className={`fa-solid ${visual.icon} text-lg`}></i>
-                                                    </div>
-                                                    <div className="rounded-full border border-white/12 bg-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-50">
-                                                        {pending ? 'Opening' : formatDollarLabel(crate.amount)}
-                                                    </div>
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="flex flex-wrap items-center gap-1.5">
-                                                        <span className="line-clamp-1 text-sm font-black leading-tight text-white">{label}</span>
-                                                        {earnsBadge ? <span className="rounded-full border border-amber-200/30 bg-amber-300/14 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-amber-100">TV</span> : null}
-                                                    </div>
-                                                    <div className="mt-1 text-lg font-black leading-none text-emerald-50">{formatPointsLabel(crate.points)}</div>
-                                                    <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-100/75">Everyone gets it{rateLabel ? ` - ${rateLabel}` : ''}</div>
-                                                    <div className="mt-1 line-clamp-2 text-[11px] leading-snug text-emerald-100/78">
-                                                        {earnsBadge ? `${MONEYBAGS_BADGE_LABEL} spotlight appears with the room burst.` : 'Room-wide points land after checkout clears.'}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            {hiddenRoomShopOfferCount > 0 ? (
-                                <div className="mt-2 rounded-xl border border-emerald-200/18 bg-black/18 px-3 py-2 text-[11px] font-semibold text-emerald-100/78" data-feature-id="audience-room-boost-hidden-count">
-                                    {hiddenRoomShopOfferCount} more room boost{hiddenRoomShopOfferCount === 1 ? '' : 's'} configured. The host storefront shows the simplest choices first.
-                                </div>
-                            ) : null}
-                        </>
-                    ) : (
-                        <div className="mt-3 rounded-2xl border border-white/10 bg-black/22 px-3 py-3 text-sm text-emerald-50/80">
-                            Room boosts are not configured for this room yet.
-                        </div>
-                    )}
-                </div>
+                </section>
 
-                <div className="rounded-[1.35rem] border border-pink-300/26 bg-[linear-gradient(145deg,rgba(76,29,149,0.58),rgba(131,24,67,0.48))] p-3" data-feature-id="audience-personal-pack-storefront">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-pink-100/80">Your stash</div>
-                            <div className="mt-1 text-xl font-black leading-none text-white">Grab more points</div>
-                            <div className="mt-1 text-xs text-pink-50/82">
-                                Personal packs refill reactions, votes, and power plays.
-                            </div>
+                {visibleRoomShopOffers.length > 0 ? (
+                    <section className="space-y-2" data-feature-id="audience-room-boost-storefront">
+                        <div className="flex items-center justify-between gap-3">
+                            <h3 className="text-xl font-black text-white">Boost the room</h3>
+                            <span className="text-xs font-black uppercase tracking-[0.18em] text-emerald-100/70">Everyone</span>
                         </div>
-                        {topPersonalPackOffer ? (
-                            <div className="shrink-0 rounded-2xl border border-pink-200/24 bg-black/28 px-3 py-2 text-right">
-                                <div className="text-[9px] font-black uppercase tracking-[0.18em] text-pink-100/70">Best</div>
-                                <div className="mt-1 text-sm font-black text-white">{formatPointsLabel(topPersonalPackOffer.points)}</div>
-                            </div>
-                        ) : null}
-                    </div>
-                    {visiblePersonalShopOffers.length > 0 ? (
-                        <>
-                            <div className="mt-3 grid grid-cols-3 gap-2">
-                                {visiblePersonalShopOffers.map((pack, idx) => {
-                                    const isRoomOffer = pack.offerType === 'tip_crate';
-                                    const isDonationOffer = pack.offerType === 'support_offer';
-                                    const checkoutKey = 'personal:' + String(pack?.id || pack?.label || 'pack');
-                                    const pending = pointsCheckoutPendingKey === checkoutKey;
-                                    const rateLabel = getOfferRateLabel(pack);
-                                    const visual = getPointOfferPackageVisual(pack, idx, 'personal');
-                                    return (
-                                        <button
-                                            key={pack.id || `${pack.label}-${idx}`}
-                                            onClick={() => (isRoomOffer ? startTipCrateCheckout(pack) : startPersonalPackCheckout(pack))}
-                                            disabled={!!pointsCheckoutPendingKey}
-                                            className={`relative min-h-[8.4rem] overflow-hidden rounded-[1.05rem] border px-2.5 py-3 text-left transition ${pending ? 'border-pink-100/70 bg-pink-300/18' : 'border-pink-200/22 bg-black/25 active:scale-[0.99]'}`}
-                                            data-feature-id="audience-personal-pack-card"
-                                        >
-                                            <div className="absolute -right-8 -top-10 h-24 w-24 rounded-full bg-pink-300/16 blur-2xl" />
-                                            <div className="relative flex h-full flex-col justify-between gap-2">
-                                                <div>
-                                                    <div className={`mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br ${visual.className} shadow-[0_10px_22px_rgba(0,0,0,0.22)]`} title={visual.label}>
-                                                        <i className={`fa-solid ${visual.icon} text-base`}></i>
-                                                    </div>
-                                                    <div className="line-clamp-2 text-xs font-black leading-tight text-white">{pack.label}</div>
-                                                    <div className="mt-1 text-lg font-black leading-none text-pink-100">{formatPointsLabel(pack.points)}</div>
-                                                    <div className="mt-1 line-clamp-2 text-[10px] leading-snug text-pink-50/76">
-                                                        {isDonationOffer ? 'After support clears.' : isRoomOffer ? 'Host buyer boost.' : rateLabel || 'Instant pack.'}
-                                                    </div>
-                                                </div>
-                                                <div className="inline-flex rounded-full border border-white/12 bg-white/10 px-2.5 py-1 text-xs font-black text-white">
-                                                    {pending ? 'Opening' : formatDollarLabel(pack.amount)}
-                                                </div>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            {hiddenPersonalShopOfferCount > 0 ? (
-                                <div className="mt-2 rounded-xl border border-pink-200/18 bg-black/18 px-3 py-2 text-[11px] font-semibold text-pink-100/78" data-feature-id="audience-personal-pack-hidden-count">
-                                    {hiddenPersonalShopOfferCount} more pack{hiddenPersonalShopOfferCount === 1 ? '' : 's'} configured. Showing the simplest purchase ladder first.
-                                </div>
-                            ) : null}
-                        </>
-                    ) : (
-                        <div className="mt-3 rounded-2xl border border-white/10 bg-black/22 px-3 py-3 text-sm text-pink-50/80">
-                            Personal point packs are not available in this room.
-                        </div>
-                    )}
-                </div>
-
-                <div className="rounded-[1.2rem] border border-amber-300/24 bg-black/30 p-3" data-feature-id="audience-points-earn-more">
-                    <div className="flex items-start justify-between gap-3">
-                        <div>
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-100/80">Free ways to earn</div>
-                            <div className="mt-1 text-lg font-black text-white">Play, react, and catch drops</div>
-                            <div className="mt-1 text-sm text-zinc-300">
-                                Earn from game moments, host bonus drops, room promos, and any automatic refills the host enabled for tonight.
-                            </div>
-                        </div>
-                        <i className="fa-solid fa-sparkles mt-1 text-xl text-amber-200" aria-hidden="true"></i>
-                    </div>
-                    <div className="mt-4 grid gap-2">
-                        {visibleQuestLogItems.length > 0 ? visibleQuestLogItems.map((item) => (
-                            <div key={item.id} className="rounded-2xl border border-amber-300/20 bg-amber-500/8 px-3 py-3">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2 text-sm font-bold text-white">
-                                            <i className={`fa-solid ${item.icon} text-amber-200`}></i>
-                                            <span>{item.label}</span>
+                        <div className="grid grid-cols-2 gap-2">
+                            {visibleRoomShopOffers.map((crate, idx) => {
+                                const label = crate.label || `Room Boost ${idx + 1}`;
+                                const checkoutKey = 'room:' + String(crate?.id || crate?.label || 'boost');
+                                const pending = pointsCheckoutPendingKey === checkoutKey;
+                                const visual = getPointOfferPackageVisual(crate, idx, 'room');
+                                return (
+                                    <button
+                                        key={crate.id || `${label}-${idx}`}
+                                        onClick={() => startTipCrateCheckout(crate)}
+                                        disabled={!!pointsCheckoutPendingKey}
+                                        className={`min-h-[7.75rem] rounded-[1.15rem] border p-3 text-left transition ${pending ? 'border-emerald-100/70 bg-emerald-300/18' : 'border-emerald-200/28 bg-emerald-400/10 active:scale-[0.99]'}`}
+                                        data-feature-id="audience-room-boost-card"
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className={`grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br ${visual.className}`}>
+                                                <i className={`fa-solid ${visual.icon}`} aria-hidden="true"></i>
+                                            </span>
+                                            <span className="rounded-full bg-white/12 px-2.5 py-1 text-xs font-black text-white">
+                                                {pending ? 'Opening' : formatDollarLabel(crate.amount)}
+                                            </span>
                                         </div>
-                                        <div className="mt-1 text-sm text-zinc-300">{item.detail}</div>
+                                        <div className="mt-3 line-clamp-1 text-sm font-black text-white">{label}</div>
+                                        <div className="mt-1 text-2xl font-black leading-none text-emerald-50">{formatPointsLabel(crate.points)}</div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
+                ) : null}
+
+                {visiblePersonalShopOffers.length > 0 ? (
+                    <section className="space-y-2" data-feature-id="audience-personal-pack-storefront">
+                        <div className="flex items-center justify-between gap-3">
+                            <h3 className="text-xl font-black text-white">Refill mine</h3>
+                            <span className="text-xs font-black uppercase tracking-[0.18em] text-pink-100/70">Personal</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            {visiblePersonalShopOffers.map((pack, idx) => {
+                                const isRoomOffer = pack.offerType === 'tip_crate';
+                                const checkoutKey = 'personal:' + String(pack?.id || pack?.label || 'pack');
+                                const pending = pointsCheckoutPendingKey === checkoutKey;
+                                const visual = getPointOfferPackageVisual(pack, idx, 'personal');
+                                return (
+                                    <button
+                                        key={pack.id || `${pack.label}-${idx}`}
+                                        onClick={() => (isRoomOffer ? startTipCrateCheckout(pack) : startPersonalPackCheckout(pack))}
+                                        disabled={!!pointsCheckoutPendingKey}
+                                        className={`min-h-[7.25rem] rounded-[1.05rem] border p-2.5 text-left transition ${pending ? 'border-pink-100/70 bg-pink-300/18' : 'border-pink-200/24 bg-pink-400/10 active:scale-[0.99]'}`}
+                                        data-feature-id="audience-personal-pack-card"
+                                    >
+                                        <span className={`grid h-9 w-9 place-items-center rounded-2xl bg-gradient-to-br ${visual.className}`}>
+                                            <i className={`fa-solid ${visual.icon} text-sm`} aria-hidden="true"></i>
+                                        </span>
+                                        <div className="mt-2 line-clamp-1 text-xs font-black text-white">{pack.label}</div>
+                                        <div className="mt-1 text-lg font-black leading-none text-pink-50">{formatPointsLabel(pack.points)}</div>
+                                        <div className="mt-2 inline-flex rounded-full bg-white/12 px-2 py-0.5 text-xs font-black text-white">
+                                            {pending ? 'Opening' : formatDollarLabel(pack.amount)}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
+                ) : null}
+
+                {(visibleQuestLogItems.length > 0 || eventPromoSummary.hasPromoClaims) ? (
+                    <section className="space-y-2" data-feature-id="audience-points-earn-more">
+                        <h3 className="text-xl font-black text-white">Earn more</h3>
+                        {visibleQuestLogItems.length > 0 ? (
+                            <div className="grid gap-2">
+                                {visibleQuestLogItems.map((item) => (
+                                    <div key={item.id} className="flex items-center justify-between gap-3 rounded-[1rem] bg-amber-300/10 px-3 py-3">
+                                        <div className="flex min-w-0 items-center gap-3">
+                                            <i className={`fa-solid ${item.icon} text-amber-200`} aria-hidden="true"></i>
+                                            <span className="truncate text-sm font-black text-white">{item.label}</span>
+                                        </div>
+                                        <span className="shrink-0 rounded-full bg-amber-300/18 px-2.5 py-1 text-xs font-black text-amber-50">
+                                            +{Math.max(0, Number(item.points || 0) || 0)}
+                                        </span>
                                     </div>
-                                    <span className="shrink-0 rounded-full border border-amber-300/30 bg-amber-500/14 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-amber-100">
-                                        +{Math.max(0, Number(item.points || 0) || 0)}
-                                    </span>
-                                </div>
-                            </div>
-                        )) : (
-                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-300">
-                                No bonus promos are posted yet. Watch the room for host drops, votes, and game moments.
-                            </div>
-                        )}
-                        {hiddenQuestLogItemCount > 0 ? (
-                            <div className="rounded-xl border border-amber-300/18 bg-amber-500/8 px-3 py-2 text-[11px] font-semibold text-amber-100/78">
-                                {hiddenQuestLogItemCount} more bonus path{hiddenQuestLogItemCount === 1 ? '' : 's'} may be active tonight.
+                                ))}
                             </div>
                         ) : null}
-                    </div>
-                    {eventCreditsSummary.showClaims && (
-                        <div className="mt-4 rounded-2xl border border-amber-300/20 bg-black/20 px-3 py-3">
-                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Redeem A Promo</div>
-                            <div className="mt-1 text-sm text-zinc-300">
-                                Room links and host-published codes can unlock bonuses. Only use a promo code here when the host or event explicitly shares one.
-                            </div>
-                            <div className="mt-3 grid gap-2">
-                                <label className="block">
-                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Event promo code</div>
-                                    <input
-                                        value={eventGrantCode}
-                                        onChange={(e) => setEventGrantCode(e.target.value)}
-                                        placeholder="Enter event promo code"
-                                        className="mt-2 w-full rounded-xl border border-amber-400/20 bg-black/25 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-300/45"
-                                    />
-                                </label>
+                        {eventPromoSummary.hasPromoClaims ? (
+                            <div className="grid gap-2">
+                                <input
+                                    value={eventGrantCode}
+                                    onChange={(e) => setEventGrantCode(e.target.value)}
+                                    placeholder="Promo code"
+                                    className="min-h-[48px] w-full rounded-[1rem] border border-amber-300/24 bg-black/30 px-4 text-base font-bold text-white outline-none transition focus:border-amber-300/55"
+                                />
                                 <button
                                     onClick={() => claimEventCredit({ claimCode: eventGrantCode })}
                                     disabled={eventGrantBusy || !String(eventGrantCode || '').trim()}
-                                    className={`w-full rounded-xl border border-amber-300/40 bg-amber-500/12 px-4 py-2.5 font-bold text-amber-100 ${eventGrantBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`min-h-[48px] rounded-[1rem] bg-amber-300 px-4 text-base font-black text-slate-950 ${eventGrantBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 >
-                                    {eventGrantBusy ? 'Applying promo...' : 'Apply promo code'}
+                                    {eventGrantBusy ? 'Applying...' : 'Apply Code'}
                                 </button>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        ) : null}
+                    </section>
+                ) : null}
 
                 {roomSupportOffer ? (
-                    <div className="rounded-[1.35rem] border border-white/10 bg-black/28 p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Support link</div>
-                        <div className="mt-1 text-base font-black text-white">{supportCtaLabel}</div>
-                        <div className="mt-1 text-sm text-zinc-300">
-                            {roomWideSupportRate > 0
-                                ? `Every $1 through ${supportProviderLabel} gives the room about ${roomWideSupportRate} points.`
-                                : roomSupportOffer?.supportPoints > 0
-                                    ? `Completing support can trigger +${roomSupportOffer.supportPoints} room points tonight.`
-                                    : `${supportTargetLabel} is available without leaving the karaoke flow.`}
-                        </div>
+                    <section className="space-y-2">
                         <button
                             onClick={() => {
                                 if (roomSupportOffer?.supportEmbedUrl) {
@@ -3829,12 +3642,13 @@ const SingerApp = ({ roomCode, uid }) => {
                                 }
                                 startGivebutterSupportCheckout(roomSupportOffer);
                             }}
-                            className="mt-3 w-full rounded-xl border border-emerald-300/36 bg-emerald-500/12 px-4 py-3 font-bold text-emerald-100"
+                            className="flex min-h-[56px] w-full items-center justify-between gap-3 rounded-[1.15rem] bg-emerald-300 px-4 text-left font-black text-slate-950"
                         >
-                            Open Support
+                            <span>{supportCtaLabel}</span>
+                            <span className="text-sm">{roomWideSupportRate > 0 ? `${roomWideSupportRate} pts / $1` : 'Open'}</span>
                         </button>
                         {supportEmbedOpen && roomSupportHasEmbed && (
-                            <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+                            <div className="overflow-hidden rounded-[1.15rem] border border-white/10 bg-black/40">
                                 <div className="flex items-center justify-between border-b border-white/10 bg-black/35 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-300">
                                     <span>{supportProviderLabel} checkout</span>
                                     <button
@@ -3857,27 +3671,19 @@ const SingerApp = ({ roomCode, uid }) => {
                                 )}
                             </div>
                         )}
-                    </div>
+                    </section>
                 ) : null}
-
-                {!festivalGuestJoinNoEmail && (
-                    <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/8 px-4 py-3 text-sm text-cyan-100">
-                        {allowsDonationAccess
-                            ? 'Room points power tonight\'s session. Supporter unlocks light up this room right away, and email access keeps your identity and future bonuses tied together.'
-                            : `Room points power tonight's session. Link email later to keep your identity, ${premiumPerksLabel}, and future bonuses tied together.`}
-                    </div>
-                )}
             </div>
-            <div className="flex flex-col gap-2 mt-4">
+            <div className="mt-5 flex flex-col gap-2">
                 {!festivalGuestJoinNoEmail && (
                     <button
                         onClick={() => openVipUpgrade(allowsDonationAccess ? 'email' : 'auto')}
-                        className="bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl font-bold text-base min-h-[44px]"
+                        className="min-h-[48px] rounded-[1rem] border border-cyan-300/36 bg-cyan-300/12 px-4 py-3 text-base font-black text-cyan-100"
                     >
                         {allowsDonationAccess ? 'Save progress with email' : 'Link Email'}
                     </button>
                 )}
-                <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 min-h-[44px]">Close</button>
+                <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }} className="min-h-[48px] rounded-[1rem] bg-white/10 px-4 py-3 text-base font-black text-zinc-100">Close</button>
             </div>
         </>
     );
@@ -11442,30 +11248,25 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         );
     }
     if (showPoints) return (
-        <div className="fixed inset-0 z-[110] flex flex-col items-center justify-start overflow-y-auto overscroll-contain touch-scroll-y bg-black/70 p-5 text-center font-saira text-white" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.5rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}>
-            <div className="w-full max-w-sm bg-gradient-to-br from-zinc-800 via-zinc-900 to-[#231426] border border-pink-400/30 rounded-3xl p-6 shadow-[0_0_60px_rgba(255,103,182,0.35)] text-left max-h-[85dvh] overflow-y-auto custom-scrollbar">
-                <div className="sticky top-0 z-20 -mx-6 -mt-6 mb-4 flex items-start justify-between gap-3 border-b border-white/10 bg-zinc-950/82 px-6 pb-4 pt-6 backdrop-blur-md">
+        <div className="fixed inset-0 z-[110] overflow-y-auto overscroll-contain touch-scroll-y bg-[#070a12] font-saira text-white" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}>
+            <div className="mx-auto flex min-h-full w-full max-w-md flex-col px-4 py-3 text-left">
+                <div className="mb-5 flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-300">{allowsDonationAccess ? 'Support + Points' : 'Points'}</div>
-                        <h2 className="mt-1 text-3xl font-black leading-none text-cyan-300">Fuel the show</h2>
+                        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/70">{allowsDonationAccess ? 'Support + Points' : 'Points'}</div>
+                        <h2 className="mt-1 text-4xl font-black leading-none text-white">Fuel the show</h2>
                     </div>
-                    <div className="flex shrink-0 items-center justify-end gap-2"><div className="max-w-[5.5rem] truncate rounded-full border border-cyan-500/30 bg-black/50 px-2.5 py-1.5 text-xs font-black text-cyan-300">
-                        {Math.max(0, getEffectivePoints())} PTS
-                    </div>
-                        <button
-                            onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }}
-                            className="grid min-h-[44px] min-w-[44px] place-items-center rounded-full border border-white/10 bg-black/45 text-zinc-100 hover:border-white/25 hover:text-white"
-                            aria-label="Close points sheet"
-                        >
-                            <i className="fa-solid fa-xmark" aria-hidden="true"></i>
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }}
+                        className="grid min-h-[48px] min-w-[48px] place-items-center rounded-full bg-white/10 text-zinc-100 active:scale-95"
+                        aria-label="Close points sheet"
+                    >
+                        <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
                 </div>
                 {pointsDrawerContent}
             </div>
         </div>
     );
-
     const fameLevelIcons = [
         EMOJI.musicNotes,
         EMOJI.mic,
