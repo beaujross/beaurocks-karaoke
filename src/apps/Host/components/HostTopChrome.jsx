@@ -99,7 +99,6 @@ const HostTopChrome = ({
     launchUrls = null,
     roomCode,
     queuePreviewSongs = [],
-    gamesMeta,
     tab,
     setTab,
     showLaunchMenu,
@@ -238,9 +237,9 @@ const HostTopChrome = ({
             return safePath;
         }
     };
-    const audiencePosterHref = buildPrintHref('/print/aahf-audience-guide.html');
-    const coHostPosterHref = buildPrintHref('/print/cohost-guide.html');
-    const hostWalkthroughHref = buildPrintHref('/print/aahf-host-walkthrough.html');
+    const audienceHelpHref = buildPrintHref(`/help/audience${roomCode ? `?room=${encodeURIComponent(roomCode)}` : ''}`);
+    const coHostHelpHref = buildPrintHref(`/help/cohost${roomCode ? `?room=${encodeURIComponent(roomCode)}` : ''}`);
+    const hostHelpHref = buildPrintHref(`/help/host${roomCode ? `?room=${encodeURIComponent(roomCode)}` : ''}`);
     const clampNumber = (value, min, max, fallback = min) => {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return fallback;
@@ -1304,46 +1303,32 @@ const HostTopChrome = ({
                                 <i className="fa-solid fa-up-right-from-square mr-2 text-yellow-300"></i> Open Helper Window
                             </button>
                             <div className="px-4 py-2 text-sm uppercase tracking-[0.3em] text-zinc-500 border-t border-zinc-800">
-                                Print Guides
+                                Help
                             </div>
                             <button
                                 type="button"
-                                data-feature-id="launch-audience-poster"
-                                onClick={() => openLaunchTarget(audiencePosterHref)}
+                                data-feature-id="launch-audience-help"
+                                onClick={() => openLaunchTarget(audienceHelpHref)}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
-                                <i className="fa-solid fa-signs-post mr-2 text-amber-300"></i> Audience Poster
+                                <i className="fa-solid fa-signs-post mr-2 text-amber-300"></i> Audience Help
                             </button>
                             <button
                                 type="button"
-                                data-feature-id="launch-cohost-poster"
-                                onClick={() => openLaunchTarget(coHostPosterHref)}
+                                data-feature-id="launch-cohost-help"
+                                onClick={() => openLaunchTarget(coHostHelpHref)}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
-                                <i className="fa-solid fa-user-group mr-2 text-amber-300"></i> Co-Host Poster
+                                <i className="fa-solid fa-user-group mr-2 text-amber-300"></i> Co-Host Help
                             </button>
                             <button
                                 type="button"
-                                data-feature-id="launch-host-walkthrough"
-                                onClick={() => openLaunchTarget(hostWalkthroughHref)}
+                                data-feature-id="launch-host-help"
+                                onClick={() => openLaunchTarget(hostHelpHref)}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
-                                <i className="fa-solid fa-clipboard-list mr-2 text-amber-300"></i> Host Walkthrough
+                                <i className="fa-solid fa-clipboard-list mr-2 text-amber-300"></i> Host Help
                             </button>
-                            <div className="px-4 py-2 text-sm uppercase tracking-[0.3em] text-zinc-500 border-t border-zinc-800">
-                                Game Displays
-                            </div>
-                            {gamesMeta.map((game, idx, arr) => (
-                                <button
-                                    key={game.id}
-                                    type="button"
-                                    onClick={() => openLaunchTarget(`${resolvedHostBase}?room=${roomCode}&mode=host&game=${game.id}`)}
-                                    className={`block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900 ${idx === arr.length - 1 ? 'rounded-b-xl' : ''}`}
-                                >
-                                    <i className="fa-solid fa-gamepad mr-2 text-cyan-300"></i>
-                                    {game.name}
-                                </button>
-                            ))}
                         </div>
                     )}
                 </div>

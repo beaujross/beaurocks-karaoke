@@ -15,6 +15,7 @@ const RecapView = lazy(() => import('./apps/Recap/RecapView'));
 const HostApp = lazy(() => import('./apps/Host/HostApp'));
 const HostRunOfShowQaHarness = lazy(() => import('./apps/Host/HostRunOfShowQaHarness'));
 const MarketingSite = lazy(() => import('./apps/Marketing/MarketingSite'));
+const HelpCenter = lazy(() => import('./apps/Help/HelpCenter'));
 
 const ViewLoader = () => (
     <div className="h-screen w-screen bg-black flex items-center justify-center text-white">
@@ -147,6 +148,12 @@ const getInitialRouteState = () => {
     }
     if (m === 'voice-games-qa') {
         return { view: 'voice_games_qa', roomCode: r ? r.toUpperCase() : '' };
+    }
+    if (pathname === '/help' || pathname.startsWith('/help/')) {
+        return { view: 'help', roomCode: r ? r.toUpperCase() : '' };
+    }
+    if (m === 'help') {
+        return { view: 'help', roomCode: r ? r.toUpperCase() : '' };
     }
     if (m === 'host') {
         return { view: 'host', roomCode: r ? r.toUpperCase() : '' };
@@ -447,6 +454,11 @@ const App = () => {
     if (isKaraokePrivacy) return <KaraokePrivacy />;
     if (isKaraokeDataDeletion) return <KaraokeDataDeletion />;
     if (view === 'landing') return <Landing hasBeauRocksAccount={hasBeauRocksAccount} onJoin={(c) => { setRoomCode(c); setView('mobile'); }} />;
+    if (view === 'help') return (
+        <Suspense fallback={<ViewLoader />}>
+            <HelpCenter />
+        </Suspense>
+    );
     if (view === 'tv') return (
         <Suspense fallback={<ViewLoader />}>
             <PublicTV roomCode={roomCode} />
