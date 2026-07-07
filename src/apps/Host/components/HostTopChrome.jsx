@@ -98,6 +98,7 @@ const HostTopChrome = ({
     tvBase,
     launchUrls = null,
     roomCode,
+    queuePreviewSongs = [],
     gamesMeta,
     tab,
     setTab,
@@ -452,6 +453,20 @@ const HostTopChrome = ({
         || moderationSeverity === 'stale'
         || moderationSeverity === 'critical';
     const queueAttentionVisible = normalizedQueueAttentionCount > 0 && tab !== 'stage';
+    const nextQueuePreview = React.useMemo(() => (
+        (Array.isArray(queuePreviewSongs) ? queuePreviewSongs : [])
+            .filter(Boolean)
+            .slice(0, 3)
+            .map((song, index) => ({
+                id: String(song?.id || `${index}`).trim() || `${index}`,
+                singerName: String(song?.singerName || song?.name || 'Guest').trim() || 'Guest',
+                songTitle: String(song?.songTitle || song?.title || 'Song').trim() || 'Song',
+                artist: String(song?.artist || song?.artistName || '').trim(),
+                avatar: String(song?.emoji || song?.avatar || '').trim(),
+                artworkUrl: String(song?.albumArtUrl || song?.artworkUrl100 || song?.artworkUrl || song?.art || '').trim()
+            }))
+    ), [queuePreviewSongs]);
+    const queuePreviewCount = nextQueuePreview.length;
     const queueAttentionBadgeClass = normalizedQueueAttentionNeedsHost
         ? 'border-pink-100/70 bg-[linear-gradient(135deg,rgba(236,72,153,0.96),rgba(190,24,93,0.92))] text-white shadow-[0_0_18px_rgba(236,72,153,0.42)]'
         : 'border-pink-300/35 bg-[linear-gradient(135deg,rgba(236,72,153,0.18),rgba(190,24,93,0.24))] text-pink-50 shadow-[0_0_14px_rgba(236,72,153,0.24)]';
@@ -1514,6 +1529,38 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
+        <button
+            type="button"
+            data-feature-id="host-next-queue-strip"
+            onClick={() => setTab?.('stage')}
+            className={`${runOfShowFocusMode ? 'hidden' : 'flex'} w-full min-w-0 items-center gap-2 rounded-2xl border border-white/10 bg-black/35 px-2.5 py-2 text-left shadow-[0_10px_26px_rgba(0,0,0,0.22)] transition hover:border-cyan-300/30 hover:bg-black/45`}
+            title="Open queue"
+        >
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                <i className="fa-solid fa-list-ol text-[10px]"></i>
+                Next
+            </span>
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+                {queuePreviewCount ? nextQueuePreview.map((song, index) => (
+                    <span key={`host-next-${song.id}-${index}`} className="inline-flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-2 py-1.5">
+                        {song.artworkUrl ? (
+                            <img src={song.artworkUrl} alt="" className="h-7 w-7 flex-none rounded-md border border-white/10 object-cover" />
+                        ) : (
+                            <span className="inline-flex h-7 w-7 flex-none items-center justify-center rounded-md border border-white/10 bg-black/30 text-xs text-cyan-100">
+                                {song.avatar || index + 1}
+                            </span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-black text-white">{song.singerName}</span>
+                            <span className="block truncate text-[11px] text-zinc-400">{song.songTitle}{song.artist ? ` - ${song.artist}` : ''}</span>
+                        </span>
+                    </span>
+                )) : (
+                    <span className="min-w-0 truncate rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-zinc-400">No one queued yet</span>
+                )}
+            </span>
+            <i className="fa-solid fa-chevron-right shrink-0 text-xs text-zinc-500"></i>
+        </button>
         <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode || minimalRuntimeChrome ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : minimalRuntimeChrome ? 'px-2 py-1.5' : adminWorkspaceChrome ? 'px-2.5 py-1.5' : denseChrome ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}>
                 <div className={`host-top-quick-strip flex min-w-0 ${minimalRuntimeChrome ? 'gap-1' : denseChrome ? 'gap-1.5' : 'gap-2'} custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
                 {!runOfShowFocusMode ? (

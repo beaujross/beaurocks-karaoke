@@ -20967,6 +20967,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     tvBase={tvBase}
                     launchUrls={activeRoomLaunchUrls}
                     roomCode={roomCode}
+                    queuePreviewSongs={queuedSongs.slice(0, 3)}
                     gamesMeta={GAMES_META}
                     tab={tab}
                     setTab={handleTopChromeTabChange}

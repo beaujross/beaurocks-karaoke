@@ -11827,6 +11827,25 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const audienceRequestCtaDetail = audienceSongLimitState.hardBlocked || audienceSongLimitState.softReviewPending
         ? audienceSongLimitState.detail
         : 'Open search, pick a song, and it goes straight to the queue.';
+    const audienceInlineSearchPlaceholder = audienceSongLimitState.hardBlocked
+        ? 'Song limit reached'
+        : preferredCatalogSearchMode === 'youtube'
+            ? (audienceYoutubeSearchMode === 'any' ? 'Search YouTube...' : 'Search YouTube karaoke...')
+            : 'Search songs...';
+    const openAudienceInlineSongSearch = () => {
+        pulseNativeUiFeedback();
+        if (audienceSongLimitState.hardBlocked) return;
+        openAudienceCatalogSearch();
+    };
+    const handleAudienceInlineSongSearchChange = (event) => {
+        const nextValue = event?.target?.value || '';
+        setSearchQ(nextValue);
+        if (audienceSongLimitState.hardBlocked) return;
+        setTab('request');
+        setSongsTab('browse');
+        setCatalogSearchMode(preferredCatalogSearchMode);
+        setCatalogSearchOpen(true);
+    };
     const queueWaitTimeSec = songs
         .filter(s => s.status === 'requested')
         .reduce((sum, s) => {
@@ -11993,8 +12012,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         { key: 'request', label: 'Songs', icon: 'fa-music' }
     ];
     const streamlinedSongsNavItems = [
-        { key: 'browse', label: 'Add Song', icon: 'fa-magnifying-glass' },
-        { key: 'queue', label: 'View Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
+        { key: 'queue', label: 'Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
         ...(bracketSignupActive ? [{ key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }] : [])
     ];
     const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
@@ -12165,12 +12183,26 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     })}
                 </div>
                 {activePrimaryStageTab === 'request' ? (
-                    <div
-                        role="tablist"
-                        aria-label="Song request sections"
-                        className="grid min-h-[42px] gap-1 rounded-2xl border border-white/10 bg-black/20 px-1 py-1"
-                        style={{ gridTemplateColumns: `repeat(${streamlinedSongsNavItems.length}, minmax(0, 1fr))` }}
-                    >
+                    <div className="flex min-h-[42px] items-center gap-1 rounded-2xl border border-white/10 bg-black/20 px-1 py-1">
+                        <label
+                            className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 py-2 transition-colors ${songsTab === 'browse' || catalogSearchOpen ? 'border-cyan-300/55 bg-cyan-500/14 text-white' : 'border-transparent bg-white/[0.04] text-zinc-100'}`}
+                            style={(songsTab === 'browse' || catalogSearchOpen) ? streamlinedSongsTabActiveStyle : undefined}
+                        >
+                            <i className="fa-solid fa-magnifying-glass text-[11px] text-cyan-100/90"></i>
+                            <input
+                                value={searchQ}
+                                onFocus={openAudienceInlineSongSearch}
+                                onClick={openAudienceInlineSongSearch}
+                                onChange={handleAudienceInlineSongSearchChange}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter') openAudienceInlineSongSearch();
+                                }}
+                                disabled={audienceSongLimitState.hardBlocked}
+                                className="min-h-[24px] min-w-0 flex-1 bg-transparent text-sm font-black text-white outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
+                                placeholder={audienceInlineSearchPlaceholder}
+                                aria-label="Search songs"
+                            />
+                        </label>
                         {streamlinedSongsNavItems.map((item) => {
                             const isActive = songsTab === item.key;
                             return (
@@ -12180,7 +12212,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     role="tab"
                                     aria-selected={isActive}
                                     onClick={() => openStreamlinedSongsStageTab(item.key)}
-                                    className={`relative inline-flex min-h-[34px] items-center justify-center gap-1.5 rounded-xl border px-2 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                                    className={`relative inline-flex min-h-[36px] shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
                                         isActive
                                             ? 'border-cyan-300/55 bg-cyan-500/14 text-white'
                                             : 'border-transparent bg-transparent text-zinc-400 hover:border-white/10 hover:bg-white/[0.05] hover:text-zinc-100'
@@ -12188,7 +12220,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     style={isActive ? streamlinedSongsTabActiveStyle : undefined}
                                 >
                                     <i className={`fa-solid ${item.icon} text-[10px]`}></i>
-                                    <span className="truncate">{item.label}</span>
+                                    <span className="hidden min-[390px]:inline">{item.label}</span>
                                     {typeof item.badge === 'number' ? (
                                         <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/12 text-cyan-50' : 'bg-white/8 text-zinc-300'}`}>
                                             {item.badge}
