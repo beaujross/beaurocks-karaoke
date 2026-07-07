@@ -1883,6 +1883,37 @@ const readAppleMusicResponseItems = (response, mode = '') => {
     if (Array.isArray(payload?.results?.playlists)) return payload.results.playlists;
     return [];
 };
+const normalizeAppleMusicApiPath = (path = '') => {
+    const raw = String(path || '').trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return `https://api.music.apple.com/${raw.replace(/^\/+/, '')}`;
+};
+
+const callAppleMusicApi = async (instance = null, apiPath = '', { developerToken = '' } = {}) => {
+    const path = String(apiPath || '').trim();
+    if (!path) throw new Error('Missing Apple Music API path');
+    if (typeof instance?.api?.music === 'function') {
+        return instance.api.music(path);
+    }
+    if (typeof instance?.api?.request === 'function') {
+        return instance.api.request(path);
+    }
+    const token = String(developerToken || instance?.developerToken || instance?.__beauRocksDeveloperToken || '').trim();
+    if (!token) throw new Error('Missing Apple Music developer token');
+    const headers = {
+        Authorization: `Bearer ${token}`
+    };
+    const userToken = String(instance?.musicUserToken || '').trim();
+    if (userToken) headers['Music-User-Token'] = userToken;
+    const response = await fetch(normalizeAppleMusicApiPath(path), { headers });
+    if (!response.ok) {
+        const error = new Error(`Apple Music API request failed (${response.status})`);
+        error.status = response.status;
+        throw error;
+    }
+    return response.json();
+};
 
 const resolveAppleMusicArtworkUrl = (artwork = null, size = 120) => {
     const template = String(artwork?.url || '').trim();
@@ -4732,6 +4763,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, []);
 
     const appleMusicRef = useRef(null);
+    const appleMusicDeveloperTokenRef = useRef('');
     const applePlaybackSyncKeyRef = useRef('');
     const syncApplePlaybackStateRef = useRef(async () => {});
     const accountMusicPrefsRef = useRef(DEFAULT_HOST_MUSIC_PREFS);
@@ -4817,11 +4849,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!MusicKit) throw new Error('MusicKit unavailable');
         const tokenPayload = await callFunction('createAppleMusicToken', { roomCode });
         if (!tokenPayload?.token) throw new Error('Missing Apple Music token');
+        appleMusicDeveloperTokenRef.current = String(tokenPayload.token || '').trim();
         MusicKit.configure({
             developerToken: tokenPayload.token,
             app: { name: 'Bross Karaoke Host', build: '1.0.0' }
         });
         const instance = MusicKit.getInstance();
+        instance.__beauRocksDeveloperToken = appleMusicDeveloperTokenRef.current;
         appleMusicRef.current = instance;
         setAppleMusicReady(true);
         setAppleMusicAuthorized(!!instance.isAuthorized);
@@ -4998,7 +5032,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ];
             for (const lookupPath of lookupPaths) {
                 try {
-                    const res = await instance.api.music(lookupPath);
+                    const res = await callAppleMusicApi(instance, lookupPath, { developerToken: appleMusicDeveloperTokenRef.current });
                     const first = readAppleMusicResponseItems(res)[0];
                     const name = first?.attributes?.name || first?.attributes?.title || '';
                     if (name) return name;
@@ -5215,7 +5249,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
                 apiPath = `v1/catalog/${storefront}/search?term=${encodeURIComponent(query)}&types=playlists&limit=20`;
             }
-            const response = await instance.api.music(apiPath);
+            const response = await callAppleMusicApi(instance, apiPath, { developerToken: appleMusicDeveloperTokenRef.current });
             const choices = readAppleMusicResponseItems(response, nextMode)
                 .map((item) => normalizeAppleMusicPlaylistChoice(item, nextMode))
                 .filter(Boolean);
