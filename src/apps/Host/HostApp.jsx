@@ -1883,21 +1883,30 @@ const readAppleMusicResponseItems = (response, mode = '') => {
     if (Array.isArray(payload?.results?.playlists)) return payload.results.playlists;
     return [];
 };
-const normalizeAppleMusicApiPath = (path = '') => {
+const normalizeAppleMusicApiPathSegment = (path = '') => {
     const raw = String(path || '').trim();
     if (!raw) return '';
-    if (/^https?:\/\//i.test(raw)) return raw;
-    return `https://api.music.apple.com/${raw.replace(/^\/+/, '')}`;
+    return raw
+        .replace(/^https?:\/\/api\.music\.apple\.com\/?/i, '')
+        .replace(/^\/+/, '')
+        .replace(/^v1\/+/, '');
 };
+
+const normalizeAppleMusicApiPath = (path = '') => {
+    const segment = normalizeAppleMusicApiPathSegment(path);
+    return segment ? `https://api.music.apple.com/v1/${segment}` : '';
+};
+
+const normalizeMusicKitApiPath = (path = '') => normalizeAppleMusicApiPathSegment(path);
 
 const callAppleMusicApi = async (instance = null, apiPath = '', { developerToken = '' } = {}) => {
     const path = String(apiPath || '').trim();
     if (!path) throw new Error('Missing Apple Music API path');
     if (typeof instance?.api?.music === 'function') {
-        return instance.api.music(path);
+        return instance.api.music(normalizeMusicKitApiPath(path));
     }
     if (typeof instance?.api?.request === 'function') {
-        return instance.api.request(path);
+        return instance.api.request(normalizeAppleMusicApiPath(path));
     }
     const token = String(developerToken || instance?.developerToken || instance?.__beauRocksDeveloperToken || '').trim();
     if (!token) throw new Error('Missing Apple Music developer token');
