@@ -149,6 +149,18 @@ const HostTopChrome = ({
     startStormSequence,
     stopStormSequence,
     appleMusicConnected = false,
+    appleMusicPickerModes = [],
+    appleMusicPickerMode = 'library',
+    setAppleMusicPickerMode,
+    appleMusicPickerQuery = '',
+    setAppleMusicPickerQuery,
+    appleMusicPickerItems = [],
+    appleMusicPickerLoading = false,
+    appleMusicPickerError = '',
+    loadAppleMusicPicker,
+    applyAppleMusicPlaylistForBg,
+    appleMusicAutoPlaylistId = '',
+    appleMusicAutoPlaylistTitle = '',
     aiToolsConnected = false,
     youtubeBudgetStatus = null,
     permissionLevel = 'unknown',
@@ -1527,7 +1539,7 @@ const HostTopChrome = ({
                             </button>
                         </div>
                         {audioPanelOpen ? (
-                            <div className={`${quickMenuPanelClass} left-0 w-[min(560px,96vw)] p-3.5`}>
+                            <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(560px,96vw)] max-h-[78vh] p-3.5`}>
                                 <div className={quickMenuSectionTitleClass}>Audio + Mix</div>
                                 <div className={quickMenuSectionHintClass}>
                                     Keep stage backing, room music, and the blend in one place.
@@ -1625,6 +1637,103 @@ const HostTopChrome = ({
                                             <i className="fa-solid fa-folder-music"></i>
                                             Manage BG Library
                                         </button>
+                                        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">Apple Music</div>
+                                                    <div className="truncate text-sm font-semibold text-white">{appleMusicAutoPlaylistTitle || appleMusicAutoPlaylistId || 'Browse playlists for BG'}</div>
+                                                </div>
+                                                {!appleMusicConnected ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openOpsSection('media')}
+                                                        className={`${styles.btnStd} ${styles.btnHighlight} px-3 py-1.5 text-xs`}
+                                                    >
+                                                        Connect
+                                                    </button>
+                                                ) : null}
+                                            </div>
+                                            {appleMusicConnected ? (
+                                                <div className="mt-2 space-y-2">
+                                                    <div className="grid grid-cols-3 gap-1.5">
+                                                        {appleMusicPickerModes.map((option) => (
+                                                            <button
+                                                                key={`top-apple-picker-${option.id}`}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setAppleMusicPickerMode?.(option.id);
+                                                                    if (option.id !== 'search') void loadAppleMusicPicker?.(option.id);
+                                                                }}
+                                                                className={`${styles.btnStd} ${appleMusicPickerMode === option.id ? styles.btnHighlight : styles.btnNeutral} min-w-0 px-2 py-1.5 text-xs normal-case tracking-[0.02em]`}
+                                                                title={option.label}
+                                                            >
+                                                                <span className="truncate">{option.label}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {appleMusicPickerMode === 'search' ? (
+                                                        <div className="flex min-w-0 gap-1.5">
+                                                            <input
+                                                                value={appleMusicPickerQuery}
+                                                                onChange={(event) => setAppleMusicPickerQuery?.(event.target.value)}
+                                                                onKeyDown={(event) => {
+                                                                    if (event.key === 'Enter') void loadAppleMusicPicker?.('search');
+                                                                }}
+                                                                className="min-h-[34px] min-w-0 flex-1 rounded-lg border border-cyan-300/25 bg-black/45 px-2.5 py-1.5 text-sm font-semibold text-white outline-none placeholder:text-zinc-500 focus:border-cyan-300"
+                                                                placeholder="Search playlists"
+                                                                title="Search Apple Music playlists"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => { void loadAppleMusicPicker?.('search'); }}
+                                                                disabled={appleMusicPickerLoading}
+                                                                className={`${styles.btnStd} ${styles.btnNeutral} px-2.5 py-1.5 text-xs`}
+                                                            >
+                                                                {appleMusicPickerLoading ? '...' : 'Go'}
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { void loadAppleMusicPicker?.(appleMusicPickerMode); }}
+                                                            disabled={appleMusicPickerLoading}
+                                                            className={`${styles.btnStd} ${styles.btnNeutral} w-full justify-center px-2.5 py-1.5 text-xs normal-case tracking-[0.02em]`}
+                                                        >
+                                                            {appleMusicPickerLoading ? 'Loading...' : 'Refresh playlists'}
+                                                        </button>
+                                                    )}
+                                                    {appleMusicPickerError ? (
+                                                        <div className="rounded-lg border border-amber-300/20 bg-amber-500/10 px-2.5 py-2 text-xs font-semibold leading-4 text-amber-100">{appleMusicPickerError}</div>
+                                                    ) : null}
+                                                    {appleMusicPickerItems.length ? (
+                                                        <div className="max-h-56 overflow-y-auto rounded-lg border border-cyan-300/15 bg-black/25 custom-scrollbar">
+                                                            {appleMusicPickerItems.map((choice) => (
+                                                                <div key={`top-${choice.sourceType}-${choice.id}`} className="flex items-center gap-2 border-b border-white/10 px-2.5 py-2 last:border-b-0">
+                                                                    {choice.artworkUrl ? (
+                                                                        <img src={choice.artworkUrl} alt="" className="h-10 w-10 flex-none rounded-md border border-white/10 object-cover" />
+                                                                    ) : (
+                                                                        <div className="flex h-10 w-10 flex-none items-center justify-center rounded-md border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
+                                                                            <i className="fa-solid fa-music"></i>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="truncate text-sm font-semibold text-white">{choice.title}</div>
+                                                                        <div className="truncate text-xs text-cyan-100/65">{choice.subtitle}</div>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { void applyAppleMusicPlaylistForBg?.(choice); }}
+                                                                        className={`${styles.btnStd} ${styles.btnHighlight} flex-none px-2.5 py-1.5 text-xs`}
+                                                                    >
+                                                                        Set BG
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            ) : null}
+                                        </div>
                                     </div>
                                     <div className={`${quickMenuCardClass} flex items-center gap-3`}>
                                         <div className="min-w-[72px] text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">Mix</div>
