@@ -2026,25 +2026,53 @@ const buildAppleMusicPlaylistQueueDescriptor = (playlistId = '', meta = {}) => {
         : { playlist: id };
 };
 
+const normalizeAppleMusicPlaylistQueueIds = (playlistId = '', meta = {}) => {
+    const ids = [
+        playlistId,
+        meta.playbackId,
+        meta.catalogId,
+        meta.playParamsId,
+        ...(Array.isArray(meta.alternatePlaylistIds) ? meta.alternatePlaylistIds : [])
+    ]
+        .map((id) => parseAppleMusicPlaylistId(String(id || '').trim()))
+        .filter(Boolean);
+    return Array.from(new Set(ids));
+};
+
+const buildAppleMusicPlaylistQueueAttempts = (playlistId = '', meta = {}) => {
+    const ids = normalizeAppleMusicPlaylistQueueIds(playlistId, meta);
+    const attempts = [];
+    ids.forEach((id) => {
+        const primary = buildAppleMusicPlaylistQueueDescriptor(id, meta);
+        if (primary) attempts.push(primary);
+        attempts.push(isAppleMusicLibraryPlaylistId(id, meta.sourceType)
+            ? { playlist: id }
+            : { libraryPlaylist: id });
+    });
+    const seen = new Set();
+    return attempts.filter((descriptor) => {
+        const key = JSON.stringify(descriptor || {});
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+};
+
 const setAppleMusicPlaylistQueue = async (instance = null, playlistId = '', meta = {}) => {
     if (!instance || typeof instance.setQueue !== 'function') throw new Error('Apple Music playback unavailable');
-    const primary = buildAppleMusicPlaylistQueueDescriptor(playlistId, meta);
-    if (!primary) throw new Error('Missing Apple Music playlist id');
-    const fallback = primary.libraryPlaylist
-        ? { playlist: String(playlistId) }
-        : { libraryPlaylist: String(playlistId) };
-    try {
-        await instance.setQueue(primary);
-        return primary;
-    } catch (primaryError) {
+    const attempts = buildAppleMusicPlaylistQueueAttempts(playlistId, meta);
+    if (!attempts.length) throw new Error('Missing Apple Music playlist id');
+    let firstError = null;
+    for (const descriptor of attempts) {
         try {
-            await instance.setQueue(fallback);
-            return fallback;
-        } catch (fallbackError) {
-            fallbackError.primaryError = primaryError;
-            throw fallbackError;
+            await instance.setQueue(descriptor);
+            return descriptor;
+        } catch (error) {
+            if (!firstError) firstError = error;
         }
     }
+    if (firstError) throw firstError;
+    throw new Error('Apple Music playlist could not be queued');
 };
 
 const callAppleMusicRestApi = async (instance = null, apiPath = '', { developerToken = '' } = {}) => {
@@ -2107,8 +2135,20 @@ const normalizeAppleMusicPlaylistChoice = (item = {}, mode = 'library') => {
         : 'catalog_playlist';
     const title = String(attributes.name || attributes.title || 'Apple Music playlist').trim();
     const curator = String(attributes.curatorName || attributes.artistName || attributes.description?.short || '').trim();
+    const playParams = attributes.playParams || {};
+    const catalogId = String(
+        playParams.catalogId
+        || playParams.globalId
+        || item?.relationships?.catalog?.data?.[0]?.id
+        || ''
+    ).trim();
+    const playParamsId = String(playParams.id || '').trim();
     return {
         id,
+        playbackId: catalogId || playParamsId || id,
+        catalogId,
+        playParamsId,
+        alternatePlaylistIds: [catalogId, playParamsId].filter(Boolean),
         title,
         subtitle: curator || (sourceType === 'library_playlist' ? 'Your library playlist' : 'Apple Music playlist'),
         artworkUrl: resolveAppleMusicArtworkUrl(attributes.artwork),
@@ -5450,11 +5490,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 setAppleMusicAuthorized(true);
             }
             const storefront = instance.storefrontId || 'us';
-            let apiPaths = ['v1/me/library/playlists?limit=25'];
+            let apiPaths = ['v1/me/library/playlists?limit=100', 'v1/me/library/recently-added?types=library-playlists&limit=50'];
             if (nextMode === 'forYou') {
                 apiPaths = [
                     'v1/me/recommendations?limit=10',
-                    'v1/me/library/playlists?limit=25',
+                    'v1/me/library/playlists?limit=100',
                     `v1/catalog/${storefront}/search?term=${encodeURIComponent('karaoke party')}&types=playlists&limit=12`,
                     `v1/catalog/${storefront}/search?term=${encodeURIComponent('party hits')}&types=playlists&limit=12`,
                     `v1/catalog/${storefront}/search?term=${encodeURIComponent('sing along')}&types=playlists&limit=12`
@@ -5468,20 +5508,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
                 apiPaths = [`v1/catalog/${storefront}/search?term=${encodeURIComponent(query)}&types=playlists&limit=20`];
             }
-            let choices = [];
+            const choicesById = new Map();
             let lastLoadError = null;
             for (const apiPath of apiPaths) {
                 try {
                     const response = await callAppleMusicApi(instance, apiPath, { developerToken: appleMusicDeveloperTokenRef.current });
-                    choices = readAppleMusicResponseItems(response, nextMode)
+                    readAppleMusicResponseItems(response, nextMode)
                         .map((item) => normalizeAppleMusicPlaylistChoice(item, nextMode))
-                        .filter(Boolean);
-                    if (choices.length) break;
+                        .filter(Boolean)
+                        .forEach((choice) => {
+                            const key = `${choice.sourceType || 'playlist'}:${choice.id}`;
+                            if (!choicesById.has(key)) choicesById.set(key, choice);
+                        });
                 } catch (loadError) {
                     lastLoadError = loadError;
                     reportAppleMusicDiagnostic('picker_path', loadError, { pickerMode: nextMode, apiPath });
                 }
             }
+            const choices = Array.from(choicesById.values());
             if (!choices.length && lastLoadError && nextMode !== 'forYou') throw lastLoadError;
             setAppleMusicPickerItems(choices);
             if (!choices.length) {
@@ -5504,19 +5548,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!playlistId) return;
         const title = String(choice.title || '').trim();
         const label = title || 'Apple Music playlist';
+        const playbackMeta = {
+            title,
+            sourceType: choice.sourceType || '',
+            playbackId: choice.playbackId || '',
+            catalogId: choice.catalogId || '',
+            playParamsId: choice.playParamsId || '',
+            alternatePlaylistIds: choice.alternatePlaylistIds || []
+        };
         setAppleMusicAutoPlaylistId(playlistId);
         setAppleMusicAutoPlaylistTitle(title);
         setAppleMusicPlaylistUrl(playlistId);
         setAppleMusicPlaylistStatus(`Starting ${label} as background...`);
         setPlayingBg(false);
         try {
-            await updateRoom({
-                bgMusicPlaying: false,
-                bgMusicUrl: '',
-                appleMusicAutoPlaylistId: playlistId,
-                appleMusicAutoPlaylistTitle: title
-            });
-            await playAppleMusicPlaylist(playlistId, { title, sourceType: choice.sourceType || '' });
+            if (bgAudio.current) {
+                bgAudio.current.pause();
+                bgAudio.current.removeAttribute('src');
+                bgAudio.current.load();
+            }
+            await playAppleMusicPlaylist(playlistId, playbackMeta);
             setAutoBgMusic(true);
             await updateRoom({
                 autoBgMusic: true,
@@ -5529,6 +5580,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } catch (error) {
             hostLogger.warn('Apple Music background playlist start failed', error);
             reportAppleMusicDiagnostic('background_playlist_start', error, { playlistId, sourceType: choice.sourceType || '' });
+            updateRoom({
+                bgMusicPlaying: false,
+                bgMusicUrl: '',
+                appleMusicAutoPlaylistId: playlistId,
+                appleMusicAutoPlaylistTitle: title
+            }).catch((persistError) => {
+                hostLogger.debug('Apple Music playlist selection persist failed after playback error', persistError);
+            });
             setAppleMusicPlaylistStatus(`${label} was saved, but Apple Music could not start it. Try Connect again or pick another playlist.`);
         }
     }, [playAppleMusicPlaylist, reportAppleMusicDiagnostic, updateRoom]);

@@ -32,7 +32,8 @@ test('Apple Music setup exposes a picker without adding separate runtime playbac
     assert.match(hostAppSource, /id: 'library', label: 'My Playlists'/);
     assert.match(hostAppSource, /id: 'forYou', label: 'For You'/);
     assert.match(hostAppSource, /id: 'search', label: 'Search'/);
-    assert.match(hostAppSource, /v1\/me\/library\/playlists\?limit=25/);
+    assert.match(hostAppSource, /v1\/me\/library\/playlists\?limit=100/);
+    assert.match(hostAppSource, /v1\/me\/library\/recently-added\?types=library-playlists&limit=50/);
     assert.match(hostAppSource, /v1\/me\/recommendations\?limit=10/);
     assert.match(hostAppSource, /relationships\?\.contents\?\.data/);
     assert.doesNotMatch(hostAppSource, /v1\/me\/history\/heavy-rotation/);
@@ -41,7 +42,8 @@ test('Apple Music setup exposes a picker without adding separate runtime playbac
     assert.match(hostAppSource, /Use & Start BG/);
     assert.match(hostTopChromeSource, /Use BG/);
     assert.match(hostAppSource, /autoBgMusic: true,[\s\S]*bgMusicPlaying: false,[\s\S]*bgMusicUrl: ''/);
-    assert.match(hostAppSource, /await playAppleMusicPlaylist\(playlistId, \{ title, sourceType: choice\.sourceType \|\| '' \}\);/);
+    assert.match(hostAppSource, /const playbackMeta = \{[\s\S]*alternatePlaylistIds: choice\.alternatePlaylistIds \|\| \[\][\s\S]*\}/);
+    assert.match(hostAppSource, /await playAppleMusicPlaylist\(playlistId, playbackMeta\);/);
     assert.match(hostAppSource, /audio\.removeAttribute\('src'\);[\s\S]*audio\.load\(\);/);
     assert.match(hostAppSource, /Paste playlist URL or ID/);
     assert.match(hostAppSource, /min-h-\[42px\][\s\S]*Connect/);
@@ -51,7 +53,9 @@ test('Apple Music setup exposes a picker without adding separate runtime playbac
     assert.match(hostAppSource, /const authorizeAppleMusicInstance = async[\s\S]*await instance\.authorize\(\)/);
     assert.match(hostAppSource, /__beauRocksMusicUserToken/);
     assert.match(hostAppSource, /headers\['Music-User-Token'\] = userToken/);
+    assert.match(hostAppSource, /const buildAppleMusicPlaylistQueueAttempts/);
     assert.match(hostAppSource, /\{ libraryPlaylist: id \}/);
+    assert.match(hostAppSource, /meta\.alternatePlaylistIds/);
     assert.match(hostAppSource, /if \(!roomCode \|\| !autoBgMusic\) return;[\s\S]*setBgMusicState\(true\)/);
     assert.doesNotMatch(hostAppSource, /Auto-DJ playlist fallback/);
     assert.doesNotMatch(hostAppSource, /The BG button remains the single start\/stop control once a playlist is active\./);
