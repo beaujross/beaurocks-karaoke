@@ -462,6 +462,42 @@ async function run() {
       assert.equal(snap.get("currentPerformanceSession.expectedDurationSec"), 30);
     }],
 
+
+    ["host can sync Apple Music playback dotted fields", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        "appleMusicPlayback.status": "playing",
+        "appleMusicPlayback.positionSec": 42.5,
+        "appleMusicPlayback.lastReportedAt": 1714411115000,
+        "appleMusicPlayback.lastHeartbeatAt": 1714411115000,
+        "appleMusicPlayback.durationSec": 210,
+        "currentPerformanceSession.playbackState": "playing",
+        "currentPerformanceSession.playerPositionSec": 42.5,
+        "currentPerformanceSession.lastReportedAtMs": 1714411115000,
+        "currentPerformanceSession.lastHeartbeatAtMs": 1714411115000,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(
+        new Set(result.updatedKeys),
+        new Set([
+          "appleMusicPlayback.status",
+          "appleMusicPlayback.positionSec",
+          "appleMusicPlayback.lastReportedAt",
+          "appleMusicPlayback.lastHeartbeatAt",
+          "appleMusicPlayback.durationSec",
+          "currentPerformanceSession.playbackState",
+          "currentPerformanceSession.playerPositionSec",
+          "currentPerformanceSession.lastReportedAtMs",
+          "currentPerformanceSession.lastHeartbeatAtMs",
+        ])
+      );
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("appleMusicPlayback.status"), "playing");
+      assert.equal(snap.get("appleMusicPlayback.positionSec"), 42.5);
+      assert.equal(snap.get("currentPerformanceSession.playbackState"), "playing");
+      assert.equal(snap.get("currentPerformanceSession.playerPositionSec"), 42.5);
+    }],
     ["approved-only backing mode coerces unknown policy to block unknown", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         audienceBackingMode: "canonical_plus_approved_backings",

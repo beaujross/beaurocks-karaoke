@@ -2782,6 +2782,28 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "wyrData",
 ]);
 const HOST_ROOM_SEARCH_SOURCE_KEYS = new Set(["local", "youtube", "itunes"]);
+const HOST_APPLE_PLAYBACK_STATUS_VALUES = new Set(["", "starting", "playing", "paused", "stopped", "ended", "error"]);
+const HOST_APPLE_PLAYBACK_STRING_FIELDS = new Set(["id", "title", "artist", "completionReason"]);
+const HOST_APPLE_PLAYBACK_NUMBER_FIELDS = new Set([
+  "durationSec",
+  "positionSec",
+  "startedAt",
+  "pausedAt",
+  "resumedAt",
+  "endedAt",
+  "lastReportedAt",
+  "lastHeartbeatAt",
+]);
+const HOST_PERFORMANCE_SESSION_STRING_FIELDS = new Set(["playbackState", "completionReason"]);
+const HOST_PERFORMANCE_SESSION_NUMBER_FIELDS = new Set([
+  "playerReportedDurationSec",
+  "playerPositionSec",
+  "lastHeartbeatAtMs",
+  "lastReportedAtMs",
+  "playbackStartedAtMs",
+  "pausedAtMs",
+  "endedAtMs",
+]);
 
 const HOST_ROOM_DOTTED_KEY_RULES = [
   {
@@ -2819,6 +2841,31 @@ const HOST_ROOM_DOTTED_KEY_RULES = [
     pattern: /^bingoSuggestions\.[A-Za-z0-9_-]+\.lastNote$/,
     label: "bingoSuggestions.<slot>.lastNote",
     validate: (value) => typeof value === "string" && value.length <= HOST_UPDATE_MAX_STRING_LENGTH,
+  },
+  {
+    pattern: /^appleMusicPlayback\.status$/,
+    label: "appleMusicPlayback.status",
+    validate: (value) => typeof value === "string" && HOST_APPLE_PLAYBACK_STATUS_VALUES.has(value),
+  },
+  {
+    pattern: /^appleMusicPlayback\.([A-Za-z0-9_-]+)$/,
+    label: "appleMusicPlayback.<field>",
+    validate: (value, match) => {
+      const field = match?.[1] || "";
+      if (HOST_APPLE_PLAYBACK_STRING_FIELDS.has(field)) return value === null || typeof value === "string";
+      if (HOST_APPLE_PLAYBACK_NUMBER_FIELDS.has(field)) return value === null || isFiniteNumber(value);
+      return false;
+    },
+  },
+  {
+    pattern: /^currentPerformanceSession\.([A-Za-z0-9_-]+)$/,
+    label: "currentPerformanceSession.<field>",
+    validate: (value, match) => {
+      const field = match?.[1] || "";
+      if (HOST_PERFORMANCE_SESSION_STRING_FIELDS.has(field)) return value === null || typeof value === "string";
+      if (HOST_PERFORMANCE_SESSION_NUMBER_FIELDS.has(field)) return value === null || isFiniteNumber(value);
+      return false;
+    },
   },
   {
     pattern: /^gameData\.hostAssist$/,
@@ -3380,7 +3427,8 @@ const normalizeHostRoomUpdates = (rawUpdates = {}) => {
       if (!dottedRule) {
         throw new HttpsError("invalid-argument", `Nested room update path "${key}" is not allowed.`);
       }
-      if (!dottedRule.validate(rawValue)) {
+      const dottedMatch = key.match(dottedRule.pattern);
+      if (!dottedRule.validate(rawValue, dottedMatch)) {
         throw new HttpsError("invalid-argument", `Nested room update path "${dottedRule.label}" has an invalid value.`);
       }
     } else {

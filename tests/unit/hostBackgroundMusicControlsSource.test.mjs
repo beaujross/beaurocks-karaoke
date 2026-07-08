@@ -44,6 +44,11 @@ test('Apple Music setup exposes a picker without adding separate runtime playbac
     assert.match(hostAppSource, /text-base font-semibold text-white truncate/);
     assert.match(hostAppSource, /canSkipBg=\{!appleMusicBackgroundActive\}/);
     assert.match(hostTopChromeSource, /disabled=\{!canSkipBg\}/);
+    assert.match(hostAppSource, /const authorizeAppleMusicInstance = async[\s\S]*await instance\.authorize\(\)/);
+    assert.match(hostAppSource, /__beauRocksMusicUserToken/);
+    assert.match(hostAppSource, /headers\['Music-User-Token'\] = userToken/);
+    assert.match(hostAppSource, /\{ libraryPlaylist: id \}/);
+    assert.match(hostAppSource, /if \(!roomCode \|\| !autoBgMusic\) return;[\s\S]*setBgMusicState\(true\)/);
     assert.doesNotMatch(hostAppSource, /Auto-DJ playlist fallback/);
     assert.doesNotMatch(hostAppSource, /The BG button remains the single start\/stop control once a playlist is active\./);
     assert.doesNotMatch(hostAppSource, /Apple Music background[\s\S]{0,3000}Pause/);
