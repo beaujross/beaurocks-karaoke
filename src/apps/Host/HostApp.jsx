@@ -1906,7 +1906,7 @@ const callAppleMusicApi = async (instance = null, apiPath = '', { developerToken
         return instance.api.music(normalizeMusicKitApiPath(path));
     }
     if (typeof instance?.api?.request === 'function') {
-        return instance.api.request(normalizeAppleMusicApiPath(path));
+        return instance.api.request(normalizeMusicKitApiPath(path));
     }
     const token = String(developerToken || instance?.developerToken || instance?.__beauRocksDeveloperToken || '').trim();
     if (!token) throw new Error('Missing Apple Music developer token');
