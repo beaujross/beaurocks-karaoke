@@ -65,7 +65,7 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /onOpenSceneLibrary=\{\(\) => setSceneLibraryOpen\(true\)\}/);
   assert.match(hostAppSource, /mediaLibraryOpenRequest: sceneLibraryOpenRequest/);
   assert.match(hostQueueTabSource, /mediaLibraryOpenRequest = null/);
-  assert.match(hostQueueTabSource, /setMediaLibraryTab\(\['scenes', 'sfx', 'bg'\]\.includes\(requestedTab\) \? requestedTab : 'scenes'\)/);
+  assert.match(hostQueueTabSource, /setMediaLibraryTab\(\['scenes', 'sfx', 'bg', 'apple'\]\.includes\(requestedTab\) \? requestedTab : 'scenes'\)/);
   assert.doesNotMatch(hostQueueTabSource, /data-feature-id="host-panel-layout-controls"/);
   assert.doesNotMatch(hostQueueTabSource, /data-feature-id="host-panel-expand-all"/);
   assert.doesNotMatch(hostQueueTabSource, /data-feature-id="host-panel-collapse-all"/);
@@ -172,6 +172,15 @@ test('host media library uses account-scoped collections with legacy room fallba
   assert.match(hostQueueTabSource, /Account Media Library/);
   assert.match(hostQueueTabSource, /All Account Media/);
   assert.match(hostQueueTabSource, /Folder for next uploads/);
+  assert.match(hostQueueTabSource, /label: 'Sound Effects'/);
+  assert.match(hostQueueTabSource, /label: 'Background'/);
+  assert.match(hostQueueTabSource, /label: 'Apple Music'/);
+  assert.match(hostQueueTabSource, /data-feature-id="host-media-library-apple-music"/);
+  assert.match(hostQueueTabSource, /Upload to Sound Effects/);
+  assert.match(hostQueueTabSource, /Upload to Background/);
+  assert.match(hostQueueTabSource, /Use as Background/);
+  assert.match(hostAppSource, /appleMusicPickerModes: APPLE_MUSIC_PICKER_MODES/);
+  assert.match(hostAppSource, /connectAppleMusic,[\s\S]*disconnectAppleMusic,/);
   assert.doesNotMatch(hostQueueTabSource, /No room audio uploads yet/);
   assert.doesNotMatch(hostQueueTabSource, /room-specific soundboard library/);
 });

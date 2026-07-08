@@ -549,7 +549,7 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -668,7 +668,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     useEffect(() => {
         if (!mediaLibraryOpenRequest?.token) return;
         const requestedTab = String(mediaLibraryOpenRequest?.tab || 'scenes').trim().toLowerCase();
-        setMediaLibraryTab(['scenes', 'sfx', 'bg'].includes(requestedTab) ? requestedTab : 'scenes');
+        setMediaLibraryTab(['scenes', 'sfx', 'bg', 'apple'].includes(requestedTab) ? requestedTab : 'scenes');
         setSceneLibraryOpen(true);
     }, [mediaLibraryOpenRequest?.tab, mediaLibraryOpenRequest?.token]);
     const SectionHeader = ({ label, open, onToggle, toneClass = '', featureId = '' }) => (
@@ -779,13 +779,18 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         { id: 'scenes', label: 'Scenes', helper: `${scenePresetCount} saved` },
         {
             id: 'sfx',
-            label: 'SFX',
-            helper: `${(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'sfx').length} routed`
+            label: 'Sound Effects',
+            helper: `${(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'sfx').length} ready`
         },
         {
             id: 'bg',
-            label: 'BG Music',
-            helper: `${(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg').length} routed`
+            label: 'Background',
+            helper: `${(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg').length} tracks`
+        },
+        {
+            id: 'apple',
+            label: 'Apple Music',
+            helper: appleMusicAuthorized ? (appleMusicAutoPlaylistTitle || appleMusicAutoPlaylistId || 'Connected') : 'Connect'
         },
     ];
     const getMediaLibraryFolderKey = useCallback((item = {}) => {
@@ -4431,6 +4436,124 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const activeMediaScene = room?.announcement?.active && String(room?.announcement?.type || '').trim().toLowerCase() === 'media_scene'
         ? room.announcement
         : null;
+    const appleMusicMediaLibrarySection = (
+        <div data-feature-id="host-media-library-apple-music" className="grid gap-4">
+            <div className="rounded-[24px] border border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
+                            <i className="fa-brands fa-apple text-lg"></i>
+                        </div>
+                        <div className="mt-4 text-xl font-black text-white">Apple Music background</div>
+                        <div className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+                            Pick a playlist here and it becomes the room background source immediately. It uses the same background control as uploaded tracks.
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] ${appleMusicAuthorized ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}>
+                            {appleMusicAuthorized ? 'Connected' : 'Not Connected'}
+                        </span>
+                        {appleMusicAuthorized ? (
+                            <button type="button" onClick={() => { void disconnectAppleMusic?.(); }} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
+                                Disconnect
+                            </button>
+                        ) : (
+                            <button type="button" onClick={() => { void connectAppleMusic?.(); }} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px]`}>
+                                Connect Apple Music
+                            </button>
+                        )}
+                    </div>
+                </div>
+                {appleMusicStatus ? (
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-300">{appleMusicStatus}</div>
+                ) : null}
+                {appleMusicAutoPlaylistId ? (
+                    <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100">Current Background Playlist</div>
+                        <div className="mt-1 truncate text-base font-black text-white">{appleMusicAutoPlaylistTitle || appleMusicAutoPlaylistId}</div>
+                    </div>
+                ) : null}
+            </div>
+            {appleMusicAuthorized ? (
+                <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-2">
+                            {(Array.isArray(appleMusicPickerModes) ? appleMusicPickerModes : []).map((option) => (
+                                <button
+                                    key={`media_apple_${option.id}`}
+                                    type="button"
+                                    onClick={() => {
+                                        setAppleMusicPickerMode?.(option.id);
+                                        if (option.id !== 'search') void loadAppleMusicPicker?.(option.id);
+                                    }}
+                                    className={`${STYLES.btnStd} ${appleMusicPickerMode === option.id ? STYLES.btnInfo : STYLES.btnNeutral} px-3 py-2 text-[10px]`}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                        {appleMusicPickerMode !== 'search' ? (
+                            <button type="button" disabled={appleMusicPickerLoading} onClick={() => { void loadAppleMusicPicker?.(appleMusicPickerMode); }} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] ${appleMusicPickerLoading ? 'cursor-not-allowed opacity-60' : ''}`}>
+                                {appleMusicPickerLoading ? 'Loading...' : 'Refresh'}
+                            </button>
+                        ) : null}
+                    </div>
+                    {appleMusicPickerMode === 'search' ? (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                            <input
+                                value={appleMusicPickerQuery}
+                                onChange={(event) => setAppleMusicPickerQuery?.(event.target.value)}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter') void loadAppleMusicPicker?.('search');
+                                }}
+                                className={`${STYLES.input} h-11 px-3 text-base`}
+                                placeholder="Search Apple Music playlists"
+                            />
+                            <button type="button" disabled={appleMusicPickerLoading} onClick={() => { void loadAppleMusicPicker?.('search'); }} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4 py-2 text-[10px] ${appleMusicPickerLoading ? 'cursor-not-allowed opacity-60' : ''}`}>
+                                {appleMusicPickerLoading ? 'Searching...' : 'Search'}
+                            </button>
+                        </div>
+                    ) : null}
+                    {appleMusicPickerError ? (
+                        <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-100">{appleMusicPickerError}</div>
+                    ) : null}
+                    {appleMusicPickerItems.length ? (
+                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                            {appleMusicPickerItems.map((choice) => (
+                                <div key={`media_apple_choice_${choice.sourceType}_${choice.id}`} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-950/55 p-3">
+                                    {choice.artworkUrl ? (
+                                        <img src={choice.artworkUrl} alt="" className="h-14 w-14 flex-none rounded-xl border border-white/10 object-cover" />
+                                    ) : (
+                                        <div className="flex h-14 w-14 flex-none items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
+                                            <i className="fa-solid fa-music"></i>
+                                        </div>
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate text-base font-black text-white">{choice.title}</div>
+                                        <div className="truncate text-sm text-zinc-400">{choice.subtitle}</div>
+                                    </div>
+                                    <button type="button" onClick={() => { void applyAppleMusicPlaylistForBg?.(choice); }} className={`${STYLES.btnStd} ${STYLES.btnHighlight} flex-none px-3 py-2 text-[10px]`}>
+                                        Use as Background
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-zinc-950/35 px-4 py-5 text-sm text-zinc-500">
+                            Browse your playlists, use For You, or search Apple Music playlists.
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="rounded-[24px] border border-dashed border-cyan-300/16 bg-zinc-950/35 px-5 py-8">
+                    <div className="max-w-2xl">
+                        <div className="text-xl font-black text-white">Connect Apple Music to browse playlists</div>
+                        <div className="mt-2 text-sm leading-6 text-zinc-400">After connecting, this tab can use saved playlists, recommendations, or playlist search as the room background source.</div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
     const scenePresetLibrarySection = (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-cyan-300/18 bg-[linear-gradient(145deg,rgba(9,16,28,0.96),rgba(18,12,27,0.94))] shadow-[0_24px_60px_rgba(0,0,0,0.42)]">
             <div className="sticky top-0 z-10 border-b border-white/10 bg-[linear-gradient(145deg,rgba(9,16,28,0.985),rgba(18,12,27,0.985))] px-4 py-3 backdrop-blur sm:px-5 sm:py-3.5">
@@ -4882,6 +5005,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     ) : null}
                     </div>
                 </>
+                ) : mediaLibraryTab === 'apple' ? (
+                    appleMusicMediaLibrarySection
                 ) : (
                     <div className="grid gap-4">
                         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
@@ -4892,12 +5017,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                             <i className={`fa-solid ${mediaLibraryTab === 'sfx' ? 'fa-wave-square' : 'fa-music'} text-lg`}></i>
                                         </div>
                                         <div className="mt-4 text-xl font-black text-white">
-                                            {mediaLibraryTab === 'sfx' ? 'Build the live soundboard lane' : 'Build the live background playlist'}
+                                            {mediaLibraryTab === 'sfx' ? 'Build Sound Effects' : 'Build Background Music'}
                                         </div>
                                         <div className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
                                             {mediaLibraryTab === 'sfx'
-                                                ? 'Upload crowd drops, stingers, donor hits, and cue-specific one-shots, then route them onto the host soundboard and into automatic room moments.'
-                                                : 'Upload walk-in beds, reset music, donor unders, and room loops, then decide which tracks are manual-only versus eligible for Auto BG rotation.'}
+                                                ? 'Upload crowd drops, stingers, and one-shots here. They appear in the host soundboard and moment cue controls.'
+                                                : 'Upload walk-in beds, reset music, and room loops here. They appear in Background choices and Auto BG rotation controls.'}
                                         </div>
                                     </div>
                                     <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} cursor-pointer justify-center px-3 py-2 text-[10px]`}>
@@ -4911,16 +5036,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                 event.target.value = '';
                                             }}
                                         />
-                                        {mediaLibraryTab === 'sfx' ? 'Upload SFX Audio' : 'Upload BG Audio'}
+                                        {mediaLibraryTab === 'sfx' ? 'Upload to Sound Effects' : 'Upload to Background'}
                                     </label>
                                 </div>
                             </div>
                             <div className="grid gap-3">
                                 <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4">
-                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Lane Status</div>
+                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Library Status</div>
                                     <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                                         <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
-                                            {activeAudioLaneItems.length} in this lane
+                                            {activeAudioLaneItems.length} in this tab
                                         </span>
                                         <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-zinc-300">
                                             {inactiveAudioLaneItems.length} elsewhere
@@ -4958,12 +5083,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div>
                                             <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">
-                                                {mediaLibraryTab === 'sfx' ? 'SFX Lane' : 'BG Music Lane'}
+                                                {mediaLibraryTab === 'sfx' ? 'Sound Effects' : 'Background Tracks'}
                                             </div>
                                             <div className="mt-1 text-xs text-zinc-500">
                                                 {mediaLibraryTab === 'sfx'
-                                                    ? 'Pads, cue routing, and fast preview for the account soundboard library.'
-                                                    : 'Manual start, Auto BG eligibility, and reusable walk-in / reset music.'}
+                                                    ? 'Preview, label, and route sounds into the host soundboard.'
+                                                    : 'Start tracks, mark Auto BG eligibility, and keep reusable room music organized.'}
                                             </div>
                                         </div>
                                     </div>
@@ -5090,14 +5215,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     ) : (
                                         <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-zinc-950/35 px-4 py-5 text-sm text-zinc-500">
                                             {mediaLibraryTab === 'sfx'
-                                                ? 'No uploads are routed into the SFX lane for this view yet. Upload audio above or move existing account audio into SFX below.'
-                                                : 'No uploads are routed into the BG lane for this view yet. Upload audio above or move existing account audio into BG below.'}
+                                                ? 'No sound effects in this view yet. Upload audio above or move an existing upload into Sound Effects below.'
+                                                : 'No background tracks in this view yet. Upload audio above or move an existing upload into Background below.'}
                                         </div>
                                     )}
                                 </div>
                                 <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
-                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-300">Other Audio Uploads</div>
-                                    <div className="mt-1 text-xs text-zinc-500">Move uncategorized account audio into this lane when you are ready to reuse it in live ops.</div>
+                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-300">Unassigned Audio</div>
+                                    <div className="mt-1 text-xs text-zinc-500">Move general audio into Sound Effects or Background when you know where it belongs.</div>
                                     <div className="mt-4 grid gap-3 xl:grid-cols-2">
                                         {inactiveAudioLaneItems.map((item) => {
                                             const draft = audioLibraryDrafts[item.id] || buildAudioLibraryDraft(item);
@@ -5135,7 +5260,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     </div>
                                     {!inactiveAudioLaneItems.length ? (
                                         <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-zinc-950/35 px-4 py-5 text-sm text-zinc-500">
-                                            Everything in the room audio library is already routed into the active lane.
+                                            Everything in this view is already assigned.
                                         </div>
                                     ) : null}
                                 </div>
