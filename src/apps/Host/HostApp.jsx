@@ -4915,7 +4915,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         applePlaybackSyncKeyRef.current = syncKey;
 
         try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), patch);
+            await updateRoom(patch);
             applePlaybackSyncMetaRef.current = {
                 fingerprint: writeDecision.fingerprint,
                 writtenAtMs: syncNowMs
@@ -4923,9 +4923,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } catch (error) {
             applePlaybackSyncKeyRef.current = '';
             hostLogger.debug('Apple playback sync failed', error);
-            reportAppleMusicDiagnostic('playback_sync', error, { detail: 'room_position_sync' });
         }
-    }, [reportAppleMusicDiagnostic, roomCode]);
+    }, [roomCode, updateRoom]);
     syncApplePlaybackStateRef.current = syncApplePlaybackState;
 
     const ensureAppleMusic = useCallback(async () => {

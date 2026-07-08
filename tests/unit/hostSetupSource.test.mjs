@@ -382,6 +382,18 @@ test('host app declares Apple playback refs before assigning the sync callback',
   );
 });
 
+test('host Apple playback sync uses the host update path without recursive diagnostics', () => {
+  const hostAppSource = readFileSync(hostAppPath, 'utf8');
+  const syncStart = hostAppSource.indexOf('const syncApplePlaybackState = useCallback(async ({ force = false } = {}) => {');
+  const syncEnd = hostAppSource.indexOf('syncApplePlaybackStateRef.current = syncApplePlaybackState;', syncStart);
+  const syncBlock = hostAppSource.slice(syncStart, syncEnd);
+
+  assert.notEqual(syncStart, -1, 'Host app should keep Apple playback sync callback');
+  assert.match(syncBlock, /await updateRoom\(patch\);/, 'Apple playback sync should use the host callable update path so production rules do not reject direct room writes');
+  assert.doesNotMatch(syncBlock, /updateDoc\(doc\(db, 'artifacts'/, 'Apple playback sync should not direct-write the room document from the browser');
+  assert.doesNotMatch(syncBlock, /reportAppleMusicDiagnostic\('playback_sync'/, 'Apple playback sync failures should not recursively write diagnostics through updateRoomAsHost');
+  assert.match(syncBlock, /\}, \[roomCode, updateRoom\]\);/, 'Apple playback sync should depend on the audited room update helper');
+});
 test('host app declares room state before Apple playback effects depend on it', () => {
   const hostAppSource = readFileSync(hostAppPath, 'utf8');
   const roomStateIndex = hostAppSource.indexOf('const [room, setRoom] = useState(null);');
