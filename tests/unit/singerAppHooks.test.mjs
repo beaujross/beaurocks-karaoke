@@ -115,12 +115,12 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
 
   assert.match(
     source,
-    /Room promos, QR drops, and host-published codes can add more when they are active\./,
+    /Official AAHF boosts can add/,
     "SingerApp should describe event bonuses as host-configured room mechanics instead of manual claims",
   );
   assert.match(
     source,
-    /Room links and host-published codes can unlock bonuses\. Only use a promo code here when the host or event explicitly shares one\./,
+    /Apply Code/,
     "SingerApp should steer guests toward host-published promo language in the event credits drawer",
   );
   assert.match(
@@ -140,22 +140,22 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
   );
   assert.match(
     source,
-    /Tonight&apos;s wallet/,
+    /Available now/,
     "SingerApp points modal should lead with a clear wallet summary",
   );
   assert.match(
     source,
-    /Buy points for everyone/,
+    /Boost the room/,
     "SingerApp points modal should merchandise room-wide boosts as the social purchase",
   );
   assert.match(
     source,
-    /Free ways to earn/,
+    /Earn more/,
     "SingerApp points modal should expose room bonus opportunities as a dedicated section",
   );
   assert.match(
     source,
-    /{supportCtaLabel}/,
+    /Fuel the show/,
     "SingerApp points modal should keep one primary host-configured support CTA instead of burying support across multiple cards",
   );
   assert.match(
@@ -170,13 +170,13 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
   );
   assert.match(
     source,
-    /Every \$1 through \$\{supportProviderLabel\} gives the room about/,
-    "SingerApp donation section should explain the room-wide points effect of the configured support provider",
+    /\{roomWideSupportRate > 0 \? `\$\{roomWideSupportRate\} pts \/ \$1` : 'Open'\}/,
+    "SingerApp donation section should show the room-wide point rate without adding another explanatory block",
   );
   assert.match(
     source,
-    /MONEYBAGS_BADGE_LABEL[\s\S]*spotlight appears with the room burst/,
-    "SingerApp room boost section should explain the Moneybags supporter spotlight",
+    /data-feature-id="audience-room-boost-storefront"[\s\S]*Everyone[\s\S]*data-feature-id="audience-room-boost-card"/,
+    "SingerApp room boost section should keep a compact room-wide boost storefront with individual offer cards",
   );
 });
 
@@ -200,8 +200,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /const streamlinedSongsNavItems = \[\s*\{ key: 'browse', label: 'Add Song', icon: 'fa-magnifying-glass' \},/,
-    "SingerApp should keep streamlined song tabs focused on Add Song and View Queue instead of drifting button language",
+    /const streamlinedSongsNavItems = \[\s*\{ key: 'queue', label: 'Queue', icon: 'fa-list', badge: queueSongsView\.length \|\| 0 \},/,
+    "SingerApp should keep streamlined song navigation focused on the inline search input and compact queue tab",
   );
   assert.match(
     source,
@@ -215,8 +215,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /className="grid gap-1 border-b border-white\/10 px-1 pt-1"\s+style=\{\{ gridTemplateColumns: `repeat\(\$\{streamlinedSongsNavItems\.length\}, minmax\(0, 1fr\)\)` \}\}/,
-    "SingerApp streamlined song tabs should use a flat tab strip that adapts to optional tabs",
+    /role="tablist"\s+aria-label="Song request sections"\s+className="flex min-h-\[42px\] items-center gap-1 rounded-2xl border border-white\/10 bg-black\/20 px-1 py-1"/,
+    "SingerApp streamlined song controls should keep search and queue in one compact row",
   );
   assert.match(
     source,
@@ -225,7 +225,7 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /relative inline-flex min-h-\[38px\] items-center justify-center gap-2 border-b-2 px-2 pb-2 pt-1 text-\[11px\]/,
+    /onFocus=\{openAudienceInlineSongSearch\}/,
     "SingerApp streamlined song tabs should look like tabs, not rounded action buttons",
   );
   assert.match(
@@ -618,8 +618,8 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
   );
   assert.match(
     source,
-    /const openAudienceCatalogSearch = useCallback\(\(\) => \{\s*setTab\('request'\);\s*setSongsTab\(isStreamlinedAudienceShell \? 'browse' : 'requests'\);\s*setCatalogSearchMode\(preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(true\);\s*\}, \[isStreamlinedAudienceShell, preferredCatalogSearchMode\]\);/,
-    "SingerApp should move broken empty-stage search entry points to the request tab and open in the preferred mode",
+    /const openAudienceCatalogSearch = useCallback\(\(\) => \{\s*setTab\('request'\);\s*setSongsTab\(isStreamlinedAudienceShell \? 'browse' : 'requests'\);\s*setCatalogSearchMode\(preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(!isStreamlinedAudienceShell\);[\s\S]*?audienceCatalogSearchInputRef\.current\?\.focus\?\.\(\{ preventScroll: true \}\);[\s\S]*?\}, \[isStreamlinedAudienceShell, preferredCatalogSearchMode\]\);/,
+    "SingerApp should move search entry points to the request tab while keeping streamlined search inline and focused",
   );
   assert.match(
     source,
@@ -673,13 +673,18 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
   );
   assert.match(
     source,
-    /const audienceInputShellClass = isStreamlinedAudienceShell\s*\?\s*'rounded-2xl border-2 border-cyan-200\/70 bg-white/,
-    "SingerApp streamlined request fields should use a visible light input surface instead of transparent black-on-black fields",
+    /const audienceInputShellClass = isStreamlinedAudienceShell\s*\?\s*'rounded-2xl border-2 border-cyan-200\/45 bg-zinc-950\/88/,
+    "SingerApp streamlined request fields should use a dark inline input surface that does not flash a white sheet",
   );
   assert.match(
     source,
-    /const audienceSearchInputClass = isStreamlinedAudienceShell\s*\?\s*'flex-1 min-w-0 bg-transparent text-base font-semibold text-zinc-950 placeholder:text-zinc-600/,
-    "SingerApp streamlined request fields should use dark input text and visible placeholder text",
+    /const audienceSearchInputClass = isStreamlinedAudienceShell\s*\?\s*'flex-1 min-w-0 bg-transparent text-base font-semibold text-white placeholder:text-zinc-400/,
+    "SingerApp streamlined request fields should keep high-contrast input text and placeholder text",
+  );
+  assert.match(
+    source,
+    /setCatalogSearchOpen\(false\);[\s\S]*setSongsTab\('browse'\);[\s\S]*Browse More/,
+    "SingerApp should give audiences a direct way back to browse after submitting a request",
   );
 });
 
@@ -953,7 +958,7 @@ test("SingerApp keeps audience stage collapse controls inside mobile viewport", 
   );
   assert.match(
     source,
-    /This room is locked to YouTube karaoke search for guest requests\./,
+    /This room is locked to YouTube search for guest requests\./,
     "SingerApp should explain when the host locked guest search to YouTube only",
   );
 });

@@ -40,6 +40,7 @@ const AppleLyricsRenderer = ({
     pausedAt,
     isPlaying,
     showAll = false,
+    scrollMode = 'auto',
     overlayMode = false,
     roomCode = '',
     joinUrlLabel = ''
@@ -63,6 +64,7 @@ const AppleLyricsRenderer = ({
     const currentLineRef = useRef(0);
     const [isUserScrolling, setIsUserScrolling] = useState(false);
     const userScrollTimeout = useRef(null);
+    const manualScroll = String(scrollMode || '').trim().toLowerCase() === 'manual';
 
     const handleInteraction = () => {
         if (!isPlaying) return;
@@ -111,7 +113,7 @@ const AppleLyricsRenderer = ({
                 setCurrentLine(nextLine);
             }
 
-            if (!showAll && !isUserScrolling && lineRefs.current[nextLine]) {
+            if (!showAll && !manualScroll && !isUserScrolling && lineRefs.current[nextLine]) {
                 const el = lineRefs.current[nextLine];
                 const container = containerRef.current;
                 const targetTop = el.offsetTop - container.clientHeight * 0.45;
@@ -129,7 +131,7 @@ const AppleLyricsRenderer = ({
 
         rafId = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(rafId);
-    }, [isActive, duration, startTime, pausedAt, isPlaying, showAll, isUserScrolling, lineTimeline]);
+    }, [isActive, duration, startTime, pausedAt, isPlaying, showAll, manualScroll, isUserScrolling, lineTimeline]);
 
     return (
         <div
@@ -237,7 +239,7 @@ const AppleLyricsRenderer = ({
                     <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></span>
                     {isPlaying ? 'SYNCED' : 'PAUSED'}
                 </div>
-                <div className="text-[10px] text-zinc-300 uppercase tracking-[0.3em]">{showAll ? 'Full View' : 'Auto Scroll'}</div>
+                <div className="text-[10px] text-zinc-300 uppercase tracking-[0.3em]">{showAll ? 'Full View' : manualScroll ? 'Manual Scroll' : 'Auto Scroll'}</div>
             </div>
         </div>
     );

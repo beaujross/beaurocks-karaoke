@@ -1057,6 +1057,10 @@ const HostTopChrome = ({
             await updateRoom({ showLyricsTv: false, showVisualizerTv: false });
         }
     };
+    const applyLyricsScrollMode = async (mode) => {
+        const nextMode = mode === 'manual' ? 'manual' : 'auto';
+        await updateRoom({ lyricsScrollMode: nextMode, showLyricsTv: true, lyricsMode: room?.lyricsMode || 'auto' });
+    };
     const applyAudienceDisplayMode = async (mode) => {
         if (typeof quickRoomControls?.onSetAudienceDisplayMode === 'function') {
             await quickRoomControls.onSetAudienceDisplayMode(mode);
@@ -2564,6 +2568,29 @@ const HostTopChrome = ({
                             </div>
                             <div className="mt-2.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
                                 Tip: Lyrics and visualizer can run together.
+                            </div>
+                            <div className="mt-2.5 rounded-lg border border-white/10 bg-black/25 p-2.5">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">Lyrics Scroll</div>
+                                        <div className="truncate text-xs text-zinc-500">Auto follows playback. Manual lets the host scroll.</div>
+                                    </div>
+                                    <div className="grid min-w-[9.5rem] grid-cols-2 gap-1">
+                                        {[
+                                            ['auto', 'Auto'],
+                                            ['manual', 'Manual']
+                                        ].map(([mode, label]) => (
+                                            <button
+                                                key={`lyrics-scroll-${mode}`}
+                                                type="button"
+                                                onClick={() => applyLyricsScrollMode(mode)}
+                                                className={`${styles.btnStd} ${(room?.lyricsScrollMode || 'auto') === mode ? styles.btnHighlight : styles.btnNeutral} h-9 px-2 text-xs normal-case tracking-[0.03em]`}
+                                            >
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
                             <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">Audience Layer</div>
                             <div className={`${quickMenuCardClass} mt-2`} data-feature-id="deck-tv-audience-layer">

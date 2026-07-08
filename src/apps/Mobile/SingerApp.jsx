@@ -1094,28 +1094,28 @@ const SingerApp = ({ roomCode, uid }) => {
         color: '#ECFEFF',
     }), [audienceBrandTheme]);
     const audienceInputShellClass = isStreamlinedAudienceShell
-        ? 'rounded-2xl border-2 border-cyan-200/70 bg-white px-4 py-3 shadow-[0_14px_34px_rgba(34,211,238,0.16)] focus-within:border-pink-300 focus-within:ring-2 focus-within:ring-pink-300/35'
+        ? 'rounded-2xl border-2 border-cyan-200/45 bg-zinc-950/88 px-4 py-3 shadow-[0_14px_34px_rgba(34,211,238,0.16)] focus-within:border-pink-300 focus-within:ring-2 focus-within:ring-pink-300/35'
         : 'rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3';
     const audienceSearchInputClass = isStreamlinedAudienceShell
-        ? 'flex-1 min-w-0 bg-transparent text-base font-semibold text-zinc-950 placeholder:text-zinc-600 outline-none'
+        ? 'flex-1 min-w-0 bg-transparent text-base font-semibold text-white placeholder:text-zinc-400 outline-none'
         : 'flex-1 min-w-0 bg-transparent text-base text-white placeholder:text-zinc-500 outline-none';
     const audienceSearchIconClass = isStreamlinedAudienceShell
-        ? 'fa-solid fa-magnifying-glass text-cyan-700'
+        ? 'fa-solid fa-magnifying-glass text-cyan-100'
         : 'fa-solid fa-magnifying-glass text-cyan-200/80';
     const audienceSearchModeActiveClass = isStreamlinedAudienceShell
-        ? 'border-cyan-300/70 bg-cyan-100 text-cyan-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]'
+        ? 'border-cyan-300/45 bg-cyan-500/16 text-cyan-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
         : 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100';
     const audienceSearchModeInactiveClass = isStreamlinedAudienceShell
-        ? 'border-cyan-200/65 bg-white text-zinc-700'
+        ? 'border-white/10 bg-black/35 text-zinc-300'
         : 'border-white/10 bg-black/20 text-zinc-300';
     const audienceSearchHelperTextClass = isStreamlinedAudienceShell
-        ? 'mt-2 text-xs uppercase tracking-[0.24em] text-zinc-500'
+        ? 'mt-2 text-xs uppercase tracking-[0.24em] text-zinc-400'
         : 'mt-2 text-xs uppercase tracking-[0.24em] text-zinc-400';
     const audienceSearchLegalTextClass = isStreamlinedAudienceShell
-        ? 'mt-2 text-[11px] leading-5 text-zinc-600'
+        ? 'mt-2 text-[11px] leading-5 text-zinc-400'
         : 'mt-2 text-[11px] leading-5 text-zinc-400';
     const audienceSearchLegalLinkClass = isStreamlinedAudienceShell
-        ? 'font-semibold text-cyan-800 underline underline-offset-4'
+        ? 'font-semibold text-cyan-100 underline underline-offset-4'
         : 'text-cyan-200 underline underline-offset-4';
     const audienceFormInputClass = isStreamlinedAudienceShell
         ? 'w-full rounded-2xl border-2 border-cyan-200/70 bg-white p-4 text-base font-semibold text-zinc-950 placeholder:text-zinc-600 outline-none shadow-[0_14px_34px_rgba(34,211,238,0.16)] focus:border-pink-300 focus:ring-2 focus:ring-pink-300/35'
@@ -7860,7 +7860,16 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         setTab('request');
         setSongsTab(isStreamlinedAudienceShell ? 'browse' : 'requests');
         setCatalogSearchMode(preferredCatalogSearchMode);
-        setCatalogSearchOpen(true);
+        setCatalogSearchOpen(!isStreamlinedAudienceShell);
+        if (isStreamlinedAudienceShell && typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => {
+                try {
+                    audienceCatalogSearchInputRef.current?.focus?.({ preventScroll: true });
+                } catch {
+                    audienceCatalogSearchInputRef.current?.focus?.();
+                }
+            });
+        }
     }, [isStreamlinedAudienceShell, preferredCatalogSearchMode]);
 
     const handleAudienceCatalogResultSelect = (result, requestOptions = null) => {
@@ -11088,6 +11097,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     pausedAt={room.pausedAt}
                     isPlaying={room.videoPlaying}
                     showAll={showAllLyrics}
+                    scrollMode={room?.lyricsScrollMode || 'auto'}
                 />
                 <div className="absolute top-8 left-8 flex bg-black/50 border border-white/10 rounded-full p-1 gap-1 z-50">
                     <button onClick={()=>setShowAllLyrics(true)} className={"px-3 py-1 rounded-full text-xs font-bold " + (showAllLyrics ? 'bg-[#00C4D9] text-black' : 'text-white')} >FULL</button>
@@ -11636,7 +11646,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const openAudienceInlineSongSearch = () => {
         pulseNativeUiFeedback();
         if (audienceSongLimitState.hardBlocked) return;
-        openAudienceCatalogSearch();
+        setTab('request');
+        setSongsTab('browse');
+        setCatalogSearchMode(preferredCatalogSearchMode);
+        setCatalogSearchOpen(false);
     };
     const handleAudienceInlineSongSearchChange = (event) => {
         const nextValue = event?.target?.value || '';
@@ -11645,7 +11658,169 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         setTab('request');
         setSongsTab('browse');
         setCatalogSearchMode(preferredCatalogSearchMode);
-        setCatalogSearchOpen(true);
+        setCatalogSearchOpen(!isStreamlinedAudienceShell);
+    };
+    const renderStreamlinedInlineSearchResults = () => {
+        const trimmedSearch = searchQ.trim();
+        if (!isStreamlinedAudienceShell || songsTab !== 'browse' || trimmedSearch.length < 3) return null;
+        const compactSongResults = enrichedCatalogResults.slice(0, catalogSearchMode === 'youtube' ? 4 : 8);
+        return (
+            <div className="rounded-[1.5rem] border border-cyan-300/20 bg-[linear-gradient(145deg,rgba(8,16,30,0.98),rgba(12,10,22,0.96))] p-3.5 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-200/80">Search Results</div>
+                        <div className="truncate text-sm font-semibold text-white">{trimmedSearch}</div>
+                    </div>
+                    {audienceManualBackingAllowed && !audienceYouTubeOnlySearch ? (
+                        <div className="inline-flex rounded-full border border-white/10 bg-black/25 p-0.5">
+                            {[
+                                ['catalog', 'Songs'],
+                                ['youtube', 'YouTube']
+                            ].map(([mode, label]) => (
+                                <button
+                                    key={`inline-mode-${mode}`}
+                                    type="button"
+                                    onClick={() => setCatalogSearchMode(mode)}
+                                    className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] ${catalogSearchMode === mode ? audienceSearchModeActiveClass : audienceSearchModeInactiveClass}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
+                {catalogSearchMode === 'youtube' ? (
+                    <div className="mt-3 space-y-2">
+                        {audienceManualBackingAllowed ? (
+                            <div className="inline-flex overflow-hidden rounded-full border border-white/10 bg-black/25 p-0.5">
+                                {[
+                                    ['karaoke', 'Karaoke'],
+                                    ['any', 'Any YouTube']
+                                ].map(([mode, label]) => (
+                                    <button
+                                        key={`inline-youtube-${mode}`}
+                                        type="button"
+                                        onClick={() => setAudienceYoutubeSearchMode(mode)}
+                                        className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] ${audienceYoutubeSearchMode === mode ? audienceSearchModeActiveClass : audienceSearchModeInactiveClass}`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+                        {youtubeResultsLoading ? (
+                            <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">Searching YouTube...</div>
+                        ) : youtubeResultsError ? (
+                            <div className="rounded-2xl border border-amber-300/25 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">{youtubeResultsError}</div>
+                        ) : youtubeResults.length ? (
+                            youtubeResults.slice(0, 6).map((result, index) => {
+                                const statusMeta = getAudienceYouTubeResultMeta(result);
+                                return (
+                                    <button
+                                        key={`inline-youtube-result-${result.videoId || index}`}
+                                        type="button"
+                                        onClick={() => handleAudienceYouTubeResultSelect(result)}
+                                        className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-black/24 px-3 py-2.5 text-left transition hover:border-cyan-300/35"
+                                    >
+                                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-black/35">
+                                            {result.artworkUrl100 ? <img src={result.artworkUrl100} className="h-full w-full object-cover" alt="" /> : null}
+                                            <div className="absolute left-1 top-1 rounded-full border border-white/15 bg-black/55 px-1.5 py-0.5 text-[9px] font-black text-white">#{index + 1}</div>
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="line-clamp-2 text-sm font-black leading-tight text-white">{result.trackName}</div>
+                                            <div className="truncate text-xs text-zinc-300">{result.artistName}</div>
+                                            <div className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${statusMeta.className}`}>{statusMeta.label}</div>
+                                        </div>
+                                        <i className="fa-solid fa-plus text-cyan-100"></i>
+                                    </button>
+                                );
+                            })
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">No embeddable YouTube matches yet. Try song plus artist.</div>
+                        )}
+                        {compactSongResults.length ? (
+                            <div className="space-y-2 border-t border-white/10 pt-3">
+                                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-400">Song matches</div>
+                                {compactSongResults.map((result, index) => (
+                                    <button
+                                        key={`inline-song-fallback-${result.resultKey || index}`}
+                                        type="button"
+                                        disabled={requestSubmitPending}
+                                        onClick={() => handleAudienceCatalogPrimaryAction(result)}
+                                        className={`flex w-full items-center gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-left ${requestSubmitPending ? 'cursor-not-allowed opacity-70' : 'hover:border-cyan-300/30'}`}
+                                    >
+                                        {result.artworkUrl100 ? <img src={result.artworkUrl100} className="h-11 w-11 rounded-xl object-cover" alt="" /> : <div className="h-11 w-11 rounded-xl bg-cyan-500/10" />}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="truncate text-sm font-black text-white">{result.trackName}</div>
+                                            <div className="truncate text-xs text-zinc-300">{result.artistName}</div>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                ) : (
+                    <div className="mt-3 space-y-2">
+                        {catalogResultsLoading ? (
+                            <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">Searching songs...</div>
+                        ) : compactSongResults.length ? (
+                            compactSongResults.map((result, index) => (
+                                <button
+                                    key={`inline-catalog-result-${result.resultKey || index}`}
+                                    type="button"
+                                    disabled={requestSubmitPending}
+                                    onClick={() => handleAudienceCatalogPrimaryAction(result)}
+                                    className={`flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-black/24 px-3 py-2.5 text-left ${requestSubmitPending ? 'cursor-not-allowed opacity-70' : 'hover:border-cyan-300/35'}`}
+                                >
+                                    {result.artworkUrl100 ? <img src={result.artworkUrl100} className="h-12 w-12 rounded-xl object-cover" alt="" /> : <div className="h-12 w-12 rounded-xl bg-cyan-500/10" />}
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate text-sm font-black text-white">{result.trackName}</div>
+                                        <div className="truncate text-xs text-zinc-300">{result.artistName}</div>
+                                        <div className="mt-1 text-[11px] text-zinc-400">{result.knownBackingCount ? `${result.knownBackingCount} ready version${result.knownBackingCount === 1 ? '' : 's'}` : 'Tap to request'}</div>
+                                    </div>
+                                    <i className="fa-solid fa-plus text-cyan-100"></i>
+                                </button>
+                            ))
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">No song matches yet. Try song plus artist.</div>
+                        )}
+                        {backingChoiceState.open ? (
+                            <div className="rounded-2xl border border-cyan-300/20 bg-cyan-500/8 px-3 py-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Pick version</div>
+                                        <div className="truncate text-sm font-semibold text-white">{backingChoiceState.title}</div>
+                                    </div>
+                                    <button type="button" onClick={() => setBackingChoiceState({ open: false, resultKey: '', title: '', artist: '', artworkUrl: '', options: [] })} className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">Close</button>
+                                </div>
+                                <div className="mt-2 space-y-2">
+                                    {backingChoiceState.options.map((option, optionIndex) => {
+                                        const badge = getAudienceBackingBadgeMeta(option);
+                                        return (
+                                            <button
+                                                key={`inline-backing-option-${option.mediaUrl || optionIndex}`}
+                                                type="button"
+                                                disabled={requestSubmitPending}
+                                                onClick={() => handleAudienceCatalogResultSelect(enrichedCatalogResults.find((item) => item.resultKey === backingChoiceState.resultKey) || { trackName: backingChoiceState.title, artistName: backingChoiceState.artist, artworkUrl100: backingChoiceState.artworkUrl }, buildAudienceBackingRequestOptions(option))}
+                                                className="w-full rounded-2xl border border-white/10 bg-black/24 px-3 py-2 text-left"
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <div className="truncate text-sm font-black text-white">{option.label || badge.label}</div>
+                                                        <div className="truncate text-xs text-zinc-400">{badge.detail || badge.label}</div>
+                                                    </div>
+                                                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${badge.className}`}>{badge.label}</span>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
+                )}
+            </div>
+        );
     };
     const queueWaitTimeSec = songs
         .filter(s => s.status === 'requested')
@@ -11984,7 +12159,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     })}
                 </div>
                 {activePrimaryStageTab === 'request' ? (
-                    <div className="flex min-h-[42px] items-center gap-1 rounded-2xl border border-white/10 bg-black/20 px-1 py-1">
+                    <div role="tablist" aria-label="Song request sections" className="flex min-h-[42px] items-center gap-1 rounded-2xl border border-white/10 bg-black/20 px-1 py-1">
                         <label
                             className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 py-2 transition-colors ${songsTab === 'browse' || catalogSearchOpen ? 'border-cyan-300/55 bg-cyan-500/14 text-white' : 'border-transparent bg-white/[0.04] text-zinc-100'}`}
                             style={(songsTab === 'browse' || catalogSearchOpen) ? streamlinedSongsTabActiveStyle : undefined}
@@ -15044,6 +15219,17 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                         className="rounded-full bg-[#00C4D9] px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-black"
                                                     >
                                                         Open Queue
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSearchQ('');
+                                                            setCatalogSearchOpen(false);
+                                                            setSongsTab('browse');
+                                                        }}
+                                                        className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-cyan-100"
+                                                    >
+                                                        Browse More
                                                     </button>
                                                     {latestMyRequest?.collabOpen && (
                                                         <div className="rounded-full border border-pink-300/30 bg-pink-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-pink-100">

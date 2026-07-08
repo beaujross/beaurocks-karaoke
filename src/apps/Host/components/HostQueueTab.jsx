@@ -5745,9 +5745,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             )}
         </div>
     );
-    const showQueueWorkspaceHeader = queueSurface.isCompactQueueSurface
-        ? queueSurface.activeCompactTab === 'queue'
-        : desktopQueueSurfaceTab === 'queue';
+    const showQueueWorkspaceHeader = false;
     const queueWorkspaceHeader = showQueueWorkspaceHeader ? (
         <div data-feature-id="queue-workspace-top-chrome" className={`border-b border-white/10 px-3 py-3 ${activeQueueWorkspaceTone.headerClass}`}>
             <HostLiveOpsPanel

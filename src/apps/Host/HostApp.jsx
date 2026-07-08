@@ -1888,7 +1888,7 @@ const readAppleMusicRelationshipItems = (items = []) => (
 
 const readAppleMusicResponseItems = (response, mode = '') => {
     const payload = response?.data || response || {};
-    if (mode === 'search' && Array.isArray(payload?.results?.playlists?.data)) {
+    if (Array.isArray(payload?.results?.playlists?.data)) {
         return payload.results.playlists.data;
     }
     if (Array.isArray(payload?.results?.playlists)) return payload.results.playlists;
@@ -5332,7 +5332,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (nextMode === 'forYou') {
                 apiPaths = [
                     'v1/me/recommendations?limit=10',
-                    'v1/me/library/playlists?limit=25'
+                    'v1/me/library/playlists?limit=25',
+                    `v1/catalog/${storefront}/search?term=${encodeURIComponent('karaoke party')}&types=playlists&limit=12`,
+                    `v1/catalog/${storefront}/search?term=${encodeURIComponent('party hits')}&types=playlists&limit=12`,
+                    `v1/catalog/${storefront}/search?term=${encodeURIComponent('sing along')}&types=playlists&limit=12`
                 ];
             } else if (nextMode === 'search') {
                 const query = String(appleMusicPickerQuery || '').trim();
@@ -5361,8 +5364,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAppleMusicPickerItems(choices);
             if (!choices.length) {
                 setAppleMusicPickerError(nextMode === 'forYou'
-                    ? 'No playlist-style recommendations were returned yet.'
-                    : 'No Apple Music playlists found.');
+                    ? 'No Apple Music playlist matches yet. Try Search.'
+                    : 'No saved Apple Music playlists found. Try For You or Search.');
             }
         } catch (error) {
             hostLogger.warn('Apple Music picker load failed', error);

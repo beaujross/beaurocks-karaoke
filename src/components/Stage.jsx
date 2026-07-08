@@ -545,6 +545,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                         pausedAt={room.pausedAt}
                         isPlaying={room.videoPlaying}
                         showAll={room?.lyricsMode === 'full'}
+                        scrollMode={room?.lyricsScrollMode || 'auto'}
                         overlayMode={showVisualizerTv}
                         roomCode={roomCode}
                         joinUrlLabel={joinUrlLabel}
