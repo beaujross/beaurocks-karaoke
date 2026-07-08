@@ -1874,13 +1874,27 @@ const APPLE_MUSIC_PICKER_MODES = Object.freeze([
     { id: 'search', label: 'Search' }
 ]);
 
+const readAppleMusicRelationshipItems = (items = []) => (
+    (Array.isArray(items) ? items : []).flatMap((item) => {
+        const relationships = item?.relationships || {};
+        return [
+            ...(Array.isArray(relationships?.contents?.data) ? relationships.contents.data : []),
+            ...(Array.isArray(relationships?.playlists?.data) ? relationships.playlists.data : []),
+            ...(Array.isArray(relationships?.library?.data) ? relationships.library.data : [])
+        ];
+    })
+);
+
 const readAppleMusicResponseItems = (response, mode = '') => {
     const payload = response?.data || response || {};
-    if (Array.isArray(payload?.data)) return payload.data;
     if (mode === 'search' && Array.isArray(payload?.results?.playlists?.data)) {
         return payload.results.playlists.data;
     }
     if (Array.isArray(payload?.results?.playlists)) return payload.results.playlists;
+    if (Array.isArray(payload?.data)) {
+        const nested = readAppleMusicRelationshipItems(payload.data);
+        return nested.length ? [...payload.data, ...nested] : payload.data;
+    }
     return [];
 };
 const normalizeAppleMusicApiPathSegment = (path = '') => {
@@ -5246,9 +5260,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 setAppleMusicAuthorized(true);
             }
             const storefront = instance.storefrontId || 'us';
-            let apiPath = 'v1/me/library/playlists?limit=25';
+            let apiPaths = ['v1/me/library/playlists?limit=25'];
             if (nextMode === 'heavy') {
-                apiPath = 'v1/me/history/heavy-rotation?limit=25';
+                apiPaths = [
+                    'v1/me/recommendations?limit=10',
+                    'v1/me/library/playlists?limit=25'
+                ];
             } else if (nextMode === 'search') {
                 const query = String(appleMusicPickerQuery || '').trim();
                 if (!query) {
@@ -5256,12 +5273,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     setAppleMusicPickerError('Search for a playlist name first.');
                     return;
                 }
-                apiPath = `v1/catalog/${storefront}/search?term=${encodeURIComponent(query)}&types=playlists&limit=20`;
+                apiPaths = [`v1/catalog/${storefront}/search?term=${encodeURIComponent(query)}&types=playlists&limit=20`];
             }
-            const response = await callAppleMusicApi(instance, apiPath, { developerToken: appleMusicDeveloperTokenRef.current });
-            const choices = readAppleMusicResponseItems(response, nextMode)
-                .map((item) => normalizeAppleMusicPlaylistChoice(item, nextMode))
-                .filter(Boolean);
+            let choices = [];
+            let lastLoadError = null;
+            for (const apiPath of apiPaths) {
+                try {
+                    const response = await callAppleMusicApi(instance, apiPath, { developerToken: appleMusicDeveloperTokenRef.current });
+                    choices = readAppleMusicResponseItems(response, nextMode)
+                        .map((item) => normalizeAppleMusicPlaylistChoice(item, nextMode))
+                        .filter(Boolean);
+                    if (choices.length) break;
+                } catch (loadError) {
+                    lastLoadError = loadError;
+                }
+            }
+            if (!choices.length && lastLoadError && nextMode !== 'heavy') throw lastLoadError;
             setAppleMusicPickerItems(choices);
             if (!choices.length) {
                 setAppleMusicPickerError(nextMode === 'heavy'
