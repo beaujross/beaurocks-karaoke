@@ -419,14 +419,60 @@ const normalizeHostSearchSources = (value = {}, fallback = DEFAULT_SEARCH_SOURCE
     itunes: value?.itunes !== undefined ? value.itunes !== false : fallback.itunes !== false,
 });
 
-const HostQueueTab = React.lazy(() => import('./components/HostQueueTab'));
-const HostLogoManager = React.lazy(() => import('./components/HostLogoManager'));
-const HostOrbSkinManager = React.lazy(() => import('./components/HostOrbSkinManager'));
-const ChatSettingsPanel = React.lazy(() => import('./components/ChatSettingsPanel'));
-const HostQaDebugPanel = React.lazy(() => import('./components/HostQaDebugPanel'));
-const RunOfShowDirectorPanel = React.lazy(() => import('./components/RunOfShowDirectorPanel'));
-const HostRoomLaunchPad = React.lazy(() => import('./components/HostRoomLaunchPad'));
-const EventCreditsConfigPanel = React.lazy(() => import('./components/EventCreditsConfigPanel'));
+const HOST_STALE_CHUNK_RELOAD_KEY = 'beaurocks:host-stale-chunk-reload-at';
+
+const isHostStaleChunkLoadError = (error = null) => {
+    const message = String(error?.message || error || '').toLowerCase();
+    return message.includes('failed to fetch dynamically imported module')
+        || message.includes('expected a javascript-or-wasm module script')
+        || message.includes('mime type of "text/html"')
+        || message.includes('loading chunk')
+        || message.includes('importing a module script failed');
+};
+
+const requestHostReloadForStaleChunk = () => {
+    if (typeof window === 'undefined') return false;
+    const now = Date.now();
+    try {
+        const previous = Number(window.sessionStorage?.getItem(HOST_STALE_CHUNK_RELOAD_KEY) || 0);
+        if (previous && now - previous < 15000) return false;
+        window.sessionStorage?.setItem(HOST_STALE_CHUNK_RELOAD_KEY, String(now));
+    } catch (_error) {
+        // Session storage can be blocked; a one-time reload is still the right recovery.
+    }
+    window.location.reload();
+    return true;
+};
+
+const DeferredHostChunkLoadRecovery = ({ label = 'Host tools updated' }) => (
+    <div className="rounded-2xl border border-amber-300/25 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">
+        <div className="font-black uppercase tracking-[0.16em]">{label}</div>
+        <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-3 rounded-lg border border-amber-200/30 bg-black/30 px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-amber-50"
+        >
+            Reload Host
+        </button>
+    </div>
+);
+
+const lazyHostSurface = (loader, label = 'Host tools updated') => React.lazy(() => (
+    loader().catch((error) => {
+        if (!isHostStaleChunkLoadError(error)) throw error;
+        if (requestHostReloadForStaleChunk()) return new Promise(() => {});
+        return { default: () => <DeferredHostChunkLoadRecovery label={label} /> };
+    })
+));
+
+const HostQueueTab = lazyHostSurface(() => import('./components/HostQueueTab'), 'Live queue updated');
+const HostLogoManager = lazyHostSurface(() => import('./components/HostLogoManager'), 'Branding tools updated');
+const HostOrbSkinManager = lazyHostSurface(() => import('./components/HostOrbSkinManager'), 'Orb tools updated');
+const ChatSettingsPanel = lazyHostSurface(() => import('./components/ChatSettingsPanel'), 'Chat settings updated');
+const HostQaDebugPanel = lazyHostSurface(() => import('./components/HostQaDebugPanel'), 'QA tools updated');
+const RunOfShowDirectorPanel = lazyHostSurface(() => import('./components/RunOfShowDirectorPanel'), 'Show conveyor updated');
+const HostRoomLaunchPad = lazyHostSurface(() => import('./components/HostRoomLaunchPad'), 'Room manager updated');
+const EventCreditsConfigPanel = lazyHostSurface(() => import('./components/EventCreditsConfigPanel'), 'Audience store settings updated');
 
 const DeferredHostSurfaceFallback = ({ label = 'Loading host tools...' }) => (
     <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-400">
