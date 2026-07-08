@@ -39,9 +39,11 @@ const useQueueSurfaceController = ({
     const activateCompactTab = useCallback((tab) => {
         const nextTab = tab === 'add'
             ? 'add'
-            : tab === 'inbox'
-                ? 'inbox'
-                : 'queue';
+            : tab === 'catalog'
+                ? 'catalog'
+                : tab === 'inbox'
+                    ? 'inbox'
+                    : 'queue';
         setActiveCompactTab(nextTab);
         if (nextTab === 'add') {
             setShowAddForm(true);
@@ -49,7 +51,7 @@ const useQueueSurfaceController = ({
             setTouchReorderMode(false);
             return;
         }
-        if (nextTab === 'inbox') {
+        if (nextTab === 'inbox' || nextTab === 'catalog') {
             setShowAddForm(false);
             setShowQueueList(false);
             setTouchReorderMode(false);
@@ -72,7 +74,7 @@ const useQueueSurfaceController = ({
             return;
         }
         if (!showAddForm && !showQueueList) {
-            if (activeCompactTab === 'inbox') return;
+            if (activeCompactTab === 'inbox' || activeCompactTab === 'catalog') return;
             setShowQueueList(true);
             setActiveCompactTab('queue');
             return;
@@ -85,7 +87,7 @@ const useQueueSurfaceController = ({
             setActiveCompactTab('queue');
             return;
         }
-        setActiveCompactTab((previous) => ((previous === 'add' || previous === 'inbox') ? previous : 'queue'));
+        setActiveCompactTab((previous) => ((previous === 'add' || previous === 'inbox' || previous === 'catalog') ? previous : 'queue'));
     }, [activeCompactTab, isCompactQueueSurface, setShowQueueList, showAddForm, showQueueList]);
 
     useEffect(() => {

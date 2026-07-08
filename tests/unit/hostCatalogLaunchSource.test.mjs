@@ -15,6 +15,11 @@ test('host catalogue launch preserves the requested catalog surface through auth
     'Host launch menu should present the helper catalog as an in-session tool first',
   );
   assert.match(
+    hostAppSource,
+    /catalogPanel: browsePanel,/,
+    'Host queue workspace should reuse the existing helper/catalog browse panel for its Catalog tab',
+  );
+  assert.match(
     hostTopChromeSource,
     /onOpenCatalogueHelper\(\);/,
     'Primary helper catalog launch should stay inside the current authenticated host session',

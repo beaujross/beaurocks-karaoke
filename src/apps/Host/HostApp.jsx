@@ -20900,6 +20900,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostBase,
         tvBase,
         tvLaunchUrl: activeRoomLaunchUrls.tvUrl,
+        catalogPanel: browsePanel,
         updateRoom,
         logActivity,
         localLibrary,
