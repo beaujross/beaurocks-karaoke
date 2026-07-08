@@ -625,16 +625,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [sceneLibraryOpen, setSceneLibraryOpen] = useState(false);
     const [mediaLibraryTab, setMediaLibraryTab] = useState('scenes');
     const [mediaLibraryFolderFilter, setMediaLibraryFolderFilter] = useState('all');
-    const [mediaLibraryFolderNameDraft, setMediaLibraryFolderNameDraft] = useState('');
     const [sceneLibraryView, setSceneLibraryView] = useState('grid');
     const [scenePresetDrafts, setScenePresetDrafts] = useState({});
     const [scenePresetSavingId, setScenePresetSavingId] = useState('');
     const [audioLibraryDrafts, setAudioLibraryDrafts] = useState({});
     const [audioLibrarySavingId, setAudioLibrarySavingId] = useState('');
-    const [sceneLibraryChromeOffset, setSceneLibraryChromeOffset] = useState(112);
     const sceneLibraryScrollRef = useRef(null);
-    const sceneLibraryViewportInsetTop = `max(env(safe-area-inset-top), ${sceneLibraryChromeOffset}px)`;
-    const sceneLibraryViewportInsetBottom = 'max(env(safe-area-inset-bottom), 0.75rem)';
+    const sceneLibraryViewportInsetTop = 'max(env(safe-area-inset-top), 0px)';
+    const sceneLibraryViewportInsetBottom = 'max(env(safe-area-inset-bottom), 0px)';
     const sceneLibraryViewportHeight = `calc(100dvh - ${sceneLibraryViewportInsetTop} - ${sceneLibraryViewportInsetBottom})`;
     useEffect(() => {
         onSceneLibraryModalChange?.(sceneLibraryOpen);
@@ -644,24 +642,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [onSceneLibraryModalChange, sceneLibraryOpen]);
     useEffect(() => {
         if (!sceneLibraryOpen || typeof window === 'undefined') return undefined;
-        const hostTopChrome = document.querySelector('[data-host-top-chrome="true"]');
-        const updateSceneLibraryInsets = () => {
-            const chromeHeight = hostTopChrome?.getBoundingClientRect?.().height || 0;
-            setSceneLibraryChromeOffset(Math.max(112, Math.ceil(chromeHeight + 20)));
-        };
-        updateSceneLibraryInsets();
         const scrollResetFrame = window.requestAnimationFrame(() => {
             sceneLibraryScrollRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
         });
-        const resizeObserver = typeof ResizeObserver !== 'undefined' && hostTopChrome
-            ? new ResizeObserver(() => updateSceneLibraryInsets())
-            : null;
-        resizeObserver?.observe(hostTopChrome);
-        window.addEventListener('resize', updateSceneLibraryInsets);
         return () => {
             window.cancelAnimationFrame(scrollResetFrame);
-            window.removeEventListener('resize', updateSceneLibraryInsets);
-            resizeObserver?.disconnect();
         };
     }, [sceneLibraryOpen]);
 
@@ -776,20 +761,23 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const scenePresetCount = Array.isArray(scenePresets) ? scenePresets.length : 0;
     const hasSceneLibrarySeedPack = !!sceneLibrarySeedPack?.label && Number(sceneLibrarySeedPack?.assetCount || 0) > 0;
     const mediaLibraryTabs = [
-        { id: 'scenes', label: 'Scenes', helper: `${scenePresetCount} saved` },
+        { id: 'scenes', label: 'Scenes', icon: 'fa-images', helper: `${scenePresetCount} saved` },
         {
             id: 'sfx',
             label: 'Sound Effects',
+            icon: 'fa-drum',
             helper: `${(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'sfx').length} ready`
         },
         {
             id: 'bg',
             label: 'Background',
+            icon: 'fa-wave-square',
             helper: `${(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg').length} tracks`
         },
         {
             id: 'apple',
             label: 'Apple Music',
+            icon: 'fa-music',
             helper: appleMusicAuthorized ? (appleMusicAutoPlaylistTitle || appleMusicAutoPlaylistId || 'Connected') : 'Connect'
         },
     ];
@@ -820,18 +808,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [audioLibraryItems, getMediaLibraryFolderKey, scenePresets]);
     const activeMediaLibraryFolder = mediaLibraryFolderOptions.find((folder) => folder.key === mediaLibraryFolderFilter) || null;
     const mediaLibraryUploadFolder = useMemo(() => {
-        const draftName = String(mediaLibraryFolderNameDraft || '').trim();
-        if (draftName) {
-            return {
-                folderId: `custom:${draftName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'folder'}`,
-                folderName: draftName,
-            };
-        }
         if (activeMediaLibraryFolder) {
             return { folderId: activeMediaLibraryFolder.folderId, folderName: activeMediaLibraryFolder.folderName };
         }
         return { folderId: '', folderName: '' };
-    }, [activeMediaLibraryFolder, mediaLibraryFolderNameDraft]);
+    }, [activeMediaLibraryFolder]);
+    const mediaLibraryUploadDestinationLabel = mediaLibraryUploadFolder.folderName || 'Unfiled';
     const mediaLibraryFolderMatches = useCallback((item = {}) => {
         if (mediaLibraryFolderFilter === 'all') return true;
         return getMediaLibraryFolderKey(item) === mediaLibraryFolderFilter;
@@ -4555,7 +4537,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </div>
     );
     const scenePresetLibrarySection = (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-cyan-300/18 bg-[linear-gradient(145deg,rgba(9,16,28,0.96),rgba(18,12,27,0.94))] shadow-[0_24px_60px_rgba(0,0,0,0.42)]">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(145deg,rgba(9,16,28,0.98),rgba(18,12,27,0.96))]">
             <div className="sticky top-0 z-10 border-b border-white/10 bg-[linear-gradient(145deg,rgba(9,16,28,0.985),rgba(18,12,27,0.985))] px-4 py-3 backdrop-blur sm:px-5 sm:py-3.5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -4580,63 +4562,62 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         </button>
                     </div>
                 </div>
-                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <div
+                    role="tablist"
+                    aria-label="Account media library sections"
+                    className="mt-3 flex min-h-[46px] items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/22 p-1 custom-scrollbar"
+                    data-feature-id="host-media-library-tabs"
+                >
                     {mediaLibraryTabs.map((tabItem) => {
                         const active = mediaLibraryTab === tabItem.id;
                         return (
                             <button
                                 key={tabItem.id}
                                 type="button"
+                                role="tab"
+                                aria-selected={active}
                                 onClick={() => setMediaLibraryTab(tabItem.id)}
-                                className={`rounded-2xl border px-3 py-3 text-left transition ${active ? 'border-cyan-300/35 bg-cyan-500/12 shadow-[0_12px_30px_rgba(34,211,238,0.12)]' : 'border-white/10 bg-black/20 hover:border-cyan-300/20'}`}
+                                className={`inline-flex min-h-[38px] min-w-max items-center gap-2 rounded-xl px-3 py-2 text-sm font-black transition ${active ? 'bg-cyan-400 text-zinc-950 shadow-[0_10px_24px_rgba(34,211,238,0.22)]' : 'text-zinc-300 hover:bg-white/8 hover:text-white'}`}
                             >
-                                <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${active ? 'text-cyan-100' : 'text-zinc-300'}`}>{tabItem.label}</div>
-                                <div className="mt-1 text-xs text-zinc-500">{tabItem.helper}</div>
+                                <i className={`fa-solid ${tabItem.icon}`}></i>
+                                <span>{tabItem.label}</span>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] ${active ? 'bg-zinc-950/12 text-zinc-900' : 'bg-white/8 text-zinc-400'}`}>{tabItem.helper}</span>
                             </button>
                         );
                     })}
                 </div>
                 <div className="mt-3 rounded-2xl border border-white/10 bg-black/18 px-3 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setMediaLibraryFolderFilter('all')}
-                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${mediaLibraryFolderFilter === 'all' ? 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/20'}`}
-                        >
-                            All Account Media
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setMediaLibraryFolderFilter('unfiled')}
-                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${mediaLibraryFolderFilter === 'unfiled' ? 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/20'}`}
-                        >
-                            Unfiled
-                        </button>
-                        {mediaLibraryFolderOptions.map((folder) => (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <button
-                                key={folder.key}
                                 type="button"
-                                onClick={() => setMediaLibraryFolderFilter(folder.key)}
-                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${mediaLibraryFolderFilter === folder.key ? 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/20'}`}
+                                onClick={() => setMediaLibraryFolderFilter('all')}
+                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${mediaLibraryFolderFilter === 'all' ? 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/20'}`}
                             >
-                                {folder.folderName} <span className="text-zinc-500">{folder.count}</span>
+                                All Account Media
                             </button>
-                        ))}
-                    </div>
-                    <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(14rem,0.45fr)]">
-                        <div className="text-xs text-zinc-300">
-                            {mediaLibraryTab === 'scenes'
-                                ? 'Scenes cover flyers, sponsor cards, loops, donation beats, and Public TV takeovers.'
-                                : mediaLibraryTab === 'sfx'
-                                    ? 'SFX uploads become reusable host soundboard pads and automatic moment cues.'
-                                    : 'BG uploads become reusable walk-in beds, reset tracks, and Auto BG candidates.'}
+                            <button
+                                type="button"
+                                onClick={() => setMediaLibraryFolderFilter('unfiled')}
+                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${mediaLibraryFolderFilter === 'unfiled' ? 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/20'}`}
+                            >
+                                Unfiled
+                            </button>
+                            {mediaLibraryFolderOptions.map((folder) => (
+                                <button
+                                    key={folder.key}
+                                    type="button"
+                                    onClick={() => setMediaLibraryFolderFilter(folder.key)}
+                                    className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${mediaLibraryFolderFilter === folder.key ? 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/20'}`}
+                                >
+                                    {folder.folderName} <span className="text-zinc-500">{folder.count}</span>
+                                </button>
+                            ))}
                         </div>
-                        <input
-                            value={mediaLibraryFolderNameDraft}
-                            onChange={(event) => setMediaLibraryFolderNameDraft(event.target.value)}
-                            className={`${STYLES.input} h-10 px-3 text-sm`}
-                            placeholder={activeMediaLibraryFolder ? `Uploading to ${activeMediaLibraryFolder.folderName}` : 'Folder for next uploads'}
-                        />
+                        <div className="inline-flex min-h-[32px] items-center gap-2 rounded-full border border-white/10 bg-zinc-950/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
+                            <i className="fa-solid fa-upload text-cyan-200"></i>
+                            Uploads: <span className="text-white">{mediaLibraryUploadDestinationLabel}</span>
+                        </div>
                     </div>
                 </div>
                 {mediaLibraryTab === 'scenes' ? (
@@ -6130,7 +6111,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             {sceneLibraryOpen ? (
                 <div
                     data-feature-id="tv-moments-library-modal"
-                    className="fixed inset-0 z-[360] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/78 p-2 backdrop-blur-sm sm:p-4 md:p-5"
+                    className="fixed inset-0 z-[360] flex items-stretch justify-stretch overflow-hidden overscroll-contain bg-black/88 p-0 backdrop-blur-sm"
                     style={{
                         paddingTop: sceneLibraryViewportInsetTop,
                         paddingBottom: sceneLibraryViewportInsetBottom,
@@ -6142,12 +6123,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         aria-label="Close Media Library"
                         onClick={() => setSceneLibraryOpen(false)}
                         className="fixed right-3 z-[365] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white shadow-[0_12px_28px_rgba(0,0,0,0.38)] backdrop-blur-sm transition hover:border-cyan-300/35 hover:text-cyan-100 sm:right-4"
-                        style={{ top: `calc(${sceneLibraryViewportInsetTop} - 0.5rem)` }}
+                        style={{ top: `calc(${sceneLibraryViewportInsetTop} + 0.75rem)` }}
                     >
                         <i className="fa-solid fa-xmark text-sm"></i>
                     </button>
                     <div
-                        className="flex w-full max-w-6xl min-h-0 min-w-0 flex-col self-start overflow-hidden"
+                        className="flex h-full w-full min-h-0 min-w-0 flex-col overflow-hidden"
                         style={{
                             height: sceneLibraryViewportHeight,
                             maxHeight: sceneLibraryViewportHeight,

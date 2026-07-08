@@ -220,8 +220,8 @@ test('HostQueueTab renders the extracted queue runtime shell with a TV library l
   assert.doesNotMatch(markup, /Expand All/);
   assert.doesNotMatch(markup, /Collapse All/);
   assert.doesNotMatch(markup, /Reset/);
-  assert.match(markup, /data-feature-id="queue-workspace-top-chrome"/);
-  assert.match(markup, /data-feature-id="host-live-ops-panel"/);
+  assert.match(markup, /data-feature-id="queue-surface-tab-queue-desktop"/);
+  assert.match(markup, /data-feature-id="queue-surface-tab-add-desktop"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.doesNotMatch(markup, /data-feature-id="panel-tv-moments"/);
   assert.doesNotMatch(markup, /data-feature-id="panel-tv-moments-toggle"/);
@@ -237,7 +237,7 @@ test('HostQueueTab still renders the runtime shell when its UI is hidden', async
   });
 
   assert.doesNotMatch(markup, /data-feature-id="host-panel-layout-controls"/);
-  assert.match(markup, /data-feature-id="host-live-ops-panel"/);
+  assert.match(markup, /data-feature-id="queue-surface-tab-queue-desktop"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.doesNotMatch(markup, /data-feature-id="panel-tv-moments"/);
 });
