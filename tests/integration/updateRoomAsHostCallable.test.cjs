@@ -88,7 +88,13 @@ async function run() {
           youtube: true,
           itunes: false,
         },
-        hostNightPresetConfig: {
+        hostDiagnostics: {
+          appleMusic: {
+            stage: "picker_path",
+            status: 400,
+            message: "Apple Music picker test diagnostic",
+          },
+        },        hostNightPresetConfig: {
           id: "festival_custom",
           label: "Festival Custom",
           basePresetId: "competition",
@@ -166,6 +172,7 @@ async function run() {
           "audienceShellVariant",
           "audienceFeatureAccess",
           "searchSources",
+          "hostDiagnostics",
           "hostNightPresetConfig",
           "lobbyOrbSkinUrl",
           "eventCredits",
@@ -189,6 +196,8 @@ async function run() {
         itunes: false,
       });
       assert.equal(snap.get("audienceShellVariant"), "streamlined");
+      assert.equal(snap.get("hostDiagnostics.appleMusic.stage"), "picker_path");
+      assert.equal(snap.get("hostDiagnostics.appleMusic.status"), 400);
       assert.equal(snap.get("audienceFeatureAccess.features.customEmoji"), "account_required");
       assert.equal(snap.get("hostNightPresetConfig.id"), "festival_custom");
       assert.equal(snap.get("lobbyOrbSkinUrl"), "https://example.com/orb.png");

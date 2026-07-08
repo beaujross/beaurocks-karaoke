@@ -3,7 +3,8 @@ import { test } from 'vitest';
 
 import {
     buildApplePlaybackSyncPatch,
-    getApplePlaybackSnapshot
+    getApplePlaybackSnapshot,
+    shouldWriteApplePlaybackSyncPatch
 } from '../../src/apps/Host/applePlaybackSession.js';
 
 test('applePlaybackSession reads authoritative position and duration from MusicKit instance', () => {
@@ -106,4 +107,68 @@ test('applePlaybackSession does not mutate a mismatched non-apple session', () =
 
     assert.equal(patch['appleMusicPlayback.status'], 'playing');
     assert.equal('currentPerformanceSession.playbackState' in patch, false);
+});
+test('applePlaybackSession throttles repeated heartbeat-only sync writes', () => {
+    const patch = {
+        'appleMusicPlayback.status': 'playing',
+        'appleMusicPlayback.positionSec': 42,
+        'appleMusicPlayback.lastReportedAt': 10000,
+        'appleMusicPlayback.lastHeartbeatAt': 10000,
+        'currentPerformanceSession.playbackState': 'playing',
+        'currentPerformanceSession.playerPositionSec': 42,
+        'currentPerformanceSession.lastReportedAtMs': 10000,
+        'currentPerformanceSession.lastHeartbeatAtMs': 10000
+    };
+    const first = shouldWriteApplePlaybackSyncPatch({ patch, previousSync: null, now: 10000 });
+    assert.equal(first.shouldWrite, true);
+
+    const repeated = shouldWriteApplePlaybackSyncPatch({
+        patch: {
+            ...patch,
+            'appleMusicPlayback.positionSec': 44,
+            'appleMusicPlayback.lastReportedAt': 12000,
+            'appleMusicPlayback.lastHeartbeatAt': 12000,
+            'currentPerformanceSession.playerPositionSec': 44,
+            'currentPerformanceSession.lastReportedAtMs': 12000,
+            'currentPerformanceSession.lastHeartbeatAtMs': 12000
+        },
+        previousSync: { fingerprint: first.fingerprint, writtenAtMs: 10000 },
+        now: 12000
+    });
+    assert.equal(repeated.shouldWrite, false);
+
+    const later = shouldWriteApplePlaybackSyncPatch({
+        patch: {
+            ...patch,
+            'appleMusicPlayback.positionSec': 52,
+            'appleMusicPlayback.lastReportedAt': 21000,
+            'appleMusicPlayback.lastHeartbeatAt': 21000,
+            'currentPerformanceSession.playerPositionSec': 52,
+            'currentPerformanceSession.lastReportedAtMs': 21000,
+            'currentPerformanceSession.lastHeartbeatAtMs': 21000
+        },
+        previousSync: { fingerprint: first.fingerprint, writtenAtMs: 10000 },
+        now: 21000
+    });
+    assert.equal(later.shouldWrite, true);
+});
+
+test('applePlaybackSession writes immediately when playback status changes', () => {
+    const previousPatch = {
+        'appleMusicPlayback.status': 'playing',
+        'appleMusicPlayback.positionSec': 30,
+        'currentPerformanceSession.playbackState': 'playing',
+        'currentPerformanceSession.playerPositionSec': 30
+    };
+    const previous = shouldWriteApplePlaybackSyncPatch({ patch: previousPatch, previousSync: null, now: 30000 });
+    const paused = shouldWriteApplePlaybackSyncPatch({
+        patch: {
+            ...previousPatch,
+            'appleMusicPlayback.status': 'paused',
+            'currentPerformanceSession.playbackState': 'paused'
+        },
+        previousSync: { fingerprint: previous.fingerprint, writtenAtMs: 30000 },
+        now: 31000
+    });
+    assert.equal(paused.shouldWrite, true);
 });

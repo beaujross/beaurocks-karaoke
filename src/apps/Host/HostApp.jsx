@@ -310,7 +310,8 @@ import {
 } from './autoDjStateMachine';
 import {
     buildApplePlaybackSyncPatch,
-    getApplePlaybackSnapshot
+    getApplePlaybackSnapshot,
+    shouldWriteApplePlaybackSyncPatch
 } from './applePlaybackSession';
 import { normalizeHostPermissionLevel } from './launchAccess';
 import {
@@ -1914,15 +1915,20 @@ const normalizeAppleMusicApiPath = (path = '') => {
 
 const normalizeMusicKitApiPath = (path = '') => normalizeAppleMusicApiPathSegment(path);
 
-const callAppleMusicApi = async (instance = null, apiPath = '', { developerToken = '' } = {}) => {
-    const path = String(apiPath || '').trim();
-    if (!path) throw new Error('Missing Apple Music API path');
-    if (typeof instance?.api?.music === 'function') {
-        return instance.api.music(normalizeMusicKitApiPath(path));
+const buildAppleMusicApiError = async (response) => {
+    let body = '';
+    try {
+        body = await response.text();
+    } catch (_error) {
+        body = '';
     }
-    if (typeof instance?.api?.request === 'function') {
-        return instance.api.request(normalizeMusicKitApiPath(path));
-    }
+    const error = new Error(`Apple Music API request failed (${response.status})`);
+    error.status = response.status;
+    error.body = body.slice(0, 500);
+    return error;
+};
+
+const callAppleMusicRestApi = async (instance = null, apiPath = '', { developerToken = '' } = {}) => {
     const token = String(developerToken || instance?.developerToken || instance?.__beauRocksDeveloperToken || '').trim();
     if (!token) throw new Error('Missing Apple Music developer token');
     const headers = {
@@ -1930,14 +1936,39 @@ const callAppleMusicApi = async (instance = null, apiPath = '', { developerToken
     };
     const userToken = String(instance?.musicUserToken || '').trim();
     if (userToken) headers['Music-User-Token'] = userToken;
-    const response = await fetch(normalizeAppleMusicApiPath(path), { headers });
-    if (!response.ok) {
-        const error = new Error(`Apple Music API request failed (${response.status})`);
-        error.status = response.status;
-        throw error;
-    }
+    const response = await fetch(normalizeAppleMusicApiPath(apiPath), { headers });
+    if (!response.ok) throw await buildAppleMusicApiError(response);
     return response.json();
 };
+
+const callAppleMusicApi = async (instance = null, apiPath = '', { developerToken = '' } = {}) => {
+    const path = String(apiPath || '').trim();
+    if (!path) throw new Error('Missing Apple Music API path');
+    const token = String(developerToken || instance?.developerToken || instance?.__beauRocksDeveloperToken || '').trim();
+    if (token) {
+        try {
+            return await callAppleMusicRestApi(instance, path, { developerToken: token });
+        } catch (error) {
+            if (error?.status) throw error;
+            if (typeof instance?.api?.music !== 'function' && typeof instance?.api?.request !== 'function') throw error;
+        }
+    }
+    if (typeof instance?.api?.music === 'function') {
+        return instance.api.music(normalizeMusicKitApiPath(path));
+    }
+    if (typeof instance?.api?.request === 'function') {
+        return instance.api.request(normalizeMusicKitApiPath(path));
+    }
+    throw new Error('Apple Music API unavailable');
+};
+
+const summarizeAppleMusicError = (error = {}) => ({
+    name: String(error?.name || 'Error').slice(0, 80),
+    code: String(error?.code || '').slice(0, 80),
+    status: Number.isFinite(Number(error?.status)) ? Number(error.status) : null,
+    message: String(error?.message || error || 'Apple Music error').slice(0, 240),
+    body: String(error?.body || '').slice(0, 360)
+});
 
 const resolveAppleMusicArtworkUrl = (artwork = null, size = 120) => {
     const template = String(artwork?.url || '').trim();
@@ -4789,6 +4820,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const appleMusicRef = useRef(null);
     const appleMusicDeveloperTokenRef = useRef('');
     const applePlaybackSyncKeyRef = useRef('');
+    const applePlaybackSyncMetaRef = useRef({ fingerprint: '', writtenAtMs: 0 });
     const syncApplePlaybackStateRef = useRef(async () => {});
     const accountMusicPrefsRef = useRef(DEFAULT_HOST_MUSIC_PREFS);
 
@@ -4820,6 +4852,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     }, [uid]);
 
+    const reportAppleMusicDiagnostic = useCallback(async (stage = '', error = null, detail = {}) => {
+        if (!roomCode) return;
+        const appleMusic = {
+            stage: String(stage || 'unknown').slice(0, 80),
+            detail: String(detail?.detail || '').slice(0, 160),
+            pickerMode: String(detail?.pickerMode || '').slice(0, 40),
+            apiPath: String(detail?.apiPath || '').slice(0, 180),
+            atMs: nowMs(),
+            error: summarizeAppleMusicError(error || {})
+        };
+        try {
+            await updateRoom({
+                hostDiagnostics: {
+                    ...((room?.hostDiagnostics && typeof room.hostDiagnostics === 'object') ? room.hostDiagnostics : {}),
+                    appleMusic
+                }
+            });
+        } catch (diagnosticError) {
+            hostLogger.debug('Apple Music diagnostic write failed', diagnosticError);
+        }
+    }, [room?.hostDiagnostics, roomCode, updateRoom]);
+
+
     const syncApplePlaybackState = useCallback(async ({ force = false } = {}) => {
         if (!roomCode) return;
         const liveRoom = roomRef.current || {};
@@ -4840,25 +4895,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         if (!snapshot) return;
 
+        const syncNowMs = nowMs();
         const patch = buildApplePlaybackSyncPatch({
             session,
             applePlayback,
             snapshot,
-            now: nowMs()
+            now: syncNowMs
         });
         if (!patch || Object.keys(patch).length === 0) return;
 
+        const writeDecision = shouldWriteApplePlaybackSyncPatch({
+            patch,
+            previousSync: applePlaybackSyncMetaRef.current,
+            now: syncNowMs
+        });
+        if (!writeDecision.shouldWrite) return;
         const syncKey = JSON.stringify(patch);
         if (!force && applePlaybackSyncKeyRef.current === syncKey) return;
         applePlaybackSyncKeyRef.current = syncKey;
 
         try {
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), patch);
+            applePlaybackSyncMetaRef.current = {
+                fingerprint: writeDecision.fingerprint,
+                writtenAtMs: syncNowMs
+            };
         } catch (error) {
             applePlaybackSyncKeyRef.current = '';
             hostLogger.debug('Apple playback sync failed', error);
+            reportAppleMusicDiagnostic('playback_sync', error, { detail: 'room_position_sync' });
         }
-    }, [roomCode]);
+    }, [reportAppleMusicDiagnostic, roomCode]);
     syncApplePlaybackStateRef.current = syncApplePlaybackState;
 
     const ensureAppleMusic = useCallback(async () => {
@@ -4904,9 +4971,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         } catch (e) {
             hostLogger.error(e);
+            reportAppleMusicDiagnostic('connect', e);
             setAppleMusicStatus('Apple Music login failed.');
         }
-    }, [ensureAppleMusic, persistAccountMusicPrefs]);
+    }, [ensureAppleMusic, persistAccountMusicPrefs, reportAppleMusicDiagnostic]);
 
     const disconnectAppleMusic = async () => {
         try {
@@ -5013,6 +5081,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     useEffect(() => {
         applePlaybackSyncKeyRef.current = '';
+        applePlaybackSyncMetaRef.current = { fingerprint: '', writtenAtMs: 0 };
     }, [room?.currentPerformanceSession?.sessionId, room?.appleMusicPlayback?.id]);
 
     useEffect(() => {
@@ -5034,8 +5103,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => clearInterval(timer);
     }, [
         roomCode,
-        room?.appleMusicPlayback,
-        room?.currentPerformanceSession,
         room?.currentPerformanceSession?.sessionId,
         room?.currentPerformanceSession?.sourceType,
         room?.currentPerformanceSession?.appleMusicId,
@@ -5287,6 +5354,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     if (choices.length) break;
                 } catch (loadError) {
                     lastLoadError = loadError;
+                    reportAppleMusicDiagnostic('picker_path', loadError, { pickerMode: nextMode, apiPath });
                 }
             }
             if (!choices.length && lastLoadError && nextMode !== 'forYou') throw lastLoadError;
@@ -5298,12 +5366,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         } catch (error) {
             hostLogger.warn('Apple Music picker load failed', error);
+            reportAppleMusicDiagnostic('picker', error, { pickerMode: nextMode });
             setAppleMusicPickerItems([]);
             setAppleMusicPickerError('Could not load Apple Music playlists.');
         } finally {
             setAppleMusicPickerLoading(false);
         }
-    }, [appleMusicPickerMode, appleMusicPickerQuery, ensureAppleMusic]);
+    }, [appleMusicPickerMode, appleMusicPickerQuery, ensureAppleMusic, reportAppleMusicDiagnostic]);
 
     const applyAppleMusicPlaylistForBg = useCallback(async (choice = {}) => {
         const playlistId = parseAppleMusicPlaylistId(choice.id || '');

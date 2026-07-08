@@ -1,4 +1,6 @@
 const APPLE_COMPLETION_GRACE_SEC = 3;
+const APPLE_PLAYBACK_SYNC_POSITION_BUCKET_SEC = 10;
+const APPLE_PLAYBACK_SYNC_MIN_INTERVAL_MS = 10000;
 
 const normalizeText = (value = '') => String(value || '').trim();
 const normalizeKey = (value = '') => normalizeText(value).toLowerCase();
@@ -69,6 +71,45 @@ export const getApplePlaybackSnapshot = (instance = null, {
     };
 };
 
+
+export const buildApplePlaybackSyncFingerprint = (patch = {}) => {
+    if (!patch || typeof patch !== 'object') return '';
+    const stable = {};
+    Object.keys(patch).sort().forEach((key) => {
+        if (key.includes('lastHeartbeat') || key.includes('lastReported')) return;
+        if (key === 'appleMusicPlayback.positionSec' || key === 'currentPerformanceSession.playerPositionSec') return;
+        if (key.endsWith('At') || key.endsWith('AtMs')) return;
+        stable[key] = patch[key];
+    });
+    const positionSec = Math.max(
+        0,
+        toFiniteNumber(patch['appleMusicPlayback.positionSec'], toFiniteNumber(patch['currentPerformanceSession.playerPositionSec'], 0))
+    );
+    stable.positionBucket = Math.floor(positionSec / APPLE_PLAYBACK_SYNC_POSITION_BUCKET_SEC);
+    return JSON.stringify(stable);
+};
+
+export const shouldWriteApplePlaybackSyncPatch = ({
+    patch = null,
+    previousSync = null,
+    now = Date.now(),
+    minIntervalMs = APPLE_PLAYBACK_SYNC_MIN_INTERVAL_MS
+} = {}) => {
+    if (!patch || typeof patch !== 'object' || Object.keys(patch).length === 0) {
+        return { shouldWrite: false, fingerprint: '' };
+    }
+    const fingerprint = buildApplePlaybackSyncFingerprint(patch);
+    const previousFingerprint = normalizeText(previousSync?.fingerprint);
+    const previousWrittenAtMs = toFiniteNumber(previousSync?.writtenAtMs, 0);
+    const nowMs = Math.max(0, Math.floor(Number(now || Date.now()) || Date.now()));
+    if (!previousWrittenAtMs || fingerprint !== previousFingerprint) {
+        return { shouldWrite: true, fingerprint };
+    }
+    return {
+        shouldWrite: nowMs - previousWrittenAtMs >= Math.max(1000, Number(minIntervalMs) || APPLE_PLAYBACK_SYNC_MIN_INTERVAL_MS),
+        fingerprint
+    };
+};
 export const buildApplePlaybackSyncPatch = ({
     session = null,
     applePlayback = null,
