@@ -5503,30 +5503,35 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const playlistId = parseAppleMusicPlaylistId(choice.id || '');
         if (!playlistId) return;
         const title = String(choice.title || '').trim();
+        const label = title || 'Apple Music playlist';
         setAppleMusicAutoPlaylistId(playlistId);
         setAppleMusicAutoPlaylistTitle(title);
         setAppleMusicPlaylistUrl(playlistId);
-        await updateRoom({
-            appleMusicAutoPlaylistId: playlistId,
-            appleMusicAutoPlaylistTitle: title
-        });
-        const shouldSwitchBackgroundNow = autoBgMusic
-            || playingBg
-            || String(room?.appleMusicPlayback?.type || '').toLowerCase() === 'playlist';
-        setAppleMusicPlaylistStatus(shouldSwitchBackgroundNow
-            ? `${title || 'Apple Music playlist'} set for BG. Switching background...`
-            : `${title || 'Apple Music playlist'} set for BG. Use the BG button to start.`);
-    }, [autoBgMusic, playingBg, room?.appleMusicPlayback?.type, updateRoom]);
-
-    const playAppleMusicPlaylistChoiceNow = useCallback(async (choice = {}) => {
-        const playlistId = parseAppleMusicPlaylistId(choice.id || '');
-        if (!playlistId) return;
-        const title = String(choice.title || '').trim();
-        setAppleMusicPlaylistStatus('Starting playlist...');
-        await playAppleMusicPlaylist(playlistId, { title, sourceType: choice.sourceType || '' });
-        setAppleMusicPlaylistUrl(playlistId);
-        setAppleMusicPlaylistStatus(`${title || 'Apple Music playlist'} playing.`);
-    }, [playAppleMusicPlaylist]);
+        setAppleMusicPlaylistStatus(`Starting ${label} as background...`);
+        setPlayingBg(false);
+        try {
+            await updateRoom({
+                bgMusicPlaying: false,
+                bgMusicUrl: '',
+                appleMusicAutoPlaylistId: playlistId,
+                appleMusicAutoPlaylistTitle: title
+            });
+            await playAppleMusicPlaylist(playlistId, { title, sourceType: choice.sourceType || '' });
+            setAutoBgMusic(true);
+            await updateRoom({
+                autoBgMusic: true,
+                bgMusicPlaying: false,
+                bgMusicUrl: '',
+                appleMusicAutoPlaylistId: playlistId,
+                appleMusicAutoPlaylistTitle: title
+            });
+            setAppleMusicPlaylistStatus(`${label} is now the background playlist.`);
+        } catch (error) {
+            hostLogger.warn('Apple Music background playlist start failed', error);
+            reportAppleMusicDiagnostic('background_playlist_start', error, { playlistId, sourceType: choice.sourceType || '' });
+            setAppleMusicPlaylistStatus(`${label} was saved, but Apple Music could not start it. Try Connect again or pick another playlist.`);
+        }
+    }, [playAppleMusicPlaylist, reportAppleMusicDiagnostic, updateRoom]);
     const [pendingLocalFile, setPendingLocalFile] = useState(null);
     const [uploadingLocal, setUploadingLocal] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -11784,9 +11789,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [missionControlEnabled, missionAdvancedOverrides]);
 
     useEffect(() => {
-        if (!bgAudio.current || playingBgRef.current || !activeBgTrack?.url) return;
+        const playback = room?.appleMusicPlayback || {};
+        const applePlaylistActive = String(playback?.type || '').trim().toLowerCase() === 'playlist'
+            && ['playing', 'paused'].includes(String(playback?.status || '').trim().toLowerCase());
+        if (!bgAudio.current || playingBgRef.current || !activeBgTrack?.url || applePlaylistActive) return;
         bgAudio.current.src = activeBgTrack.url;
-    }, [activeBgTrack?.url]);
+    }, [activeBgTrack?.url, room?.appleMusicPlayback]);
     const getAppleBackgroundPlaylistConfig = useCallback(() => {
         const liveRoom = roomRef.current || room || {};
         const playlistId = parseAppleMusicPlaylistId(appleMusicAutoPlaylistId || liveRoom?.appleMusicAutoPlaylistId || '');
@@ -11805,6 +11813,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const backgroundMusicSourceLabel = appleMusicBackgroundActive
         ? (room?.appleMusicPlayback?.title || appleMusicAutoPlaylistTitle || 'Apple Music background')
         : (activeBgTrack?.name || 'BG Track');
+    useEffect(() => {
+        if (!appleMusicBackgroundActive) return;
+        playingBgRef.current = false;
+        setPlayingBg(false);
+        const audio = bgAudio.current;
+        if (!audio) return;
+        try {
+            audio.pause();
+            audio.removeAttribute('src');
+            audio.load();
+        } catch (error) {
+            hostLogger.debug('Failed to clear local BG audio after Apple Music takeover', error);
+        }
+    }, [appleMusicBackgroundActive]);
     const setBgMusicState = useCallback(async (next) => {
         const { playlistId, title } = getAppleBackgroundPlaylistConfig();
         const livePlayback = roomRef.current?.appleMusicPlayback || room?.appleMusicPlayback || {};
@@ -11815,11 +11837,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             && (!playlistId || String(livePlayback?.id || '').trim() === playlistId);
 
         if (next && playlistId) {
-            if (bgAudio.current && playingBgRef.current) {
+            if (bgAudio.current) {
                 bgAudio.current.pause();
-                playingBgRef.current = false;
-                setPlayingBg(false);
+                bgAudio.current.removeAttribute('src');
+                bgAudio.current.load();
             }
+            playingBgRef.current = false;
+            setPlayingBg(false);
             await updateRoom({ bgMusicPlaying: false, bgMusicUrl: '' });
             if (configuredApplePlaylistIsActive && livePlaybackStatus === 'playing') return;
             await playAppleMusicPlaylist(playlistId, { title });
@@ -25791,15 +25815,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             onClick={() => { void applyAppleMusicPlaylistForBg(choice); }}
                                                             className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[40px] px-4 py-2 text-sm`}
                                                         >
-                                                            Use for BG
+                                                            Use & Start BG
                                                         </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => { void playAppleMusicPlaylistChoiceNow(choice); }}
-                                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[40px] px-4 py-2 text-sm border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
-                                                        >
-                                                            Play Now
-                                                        </button>
+
                                                     </div>
                                                 </div>
                                             ))}
@@ -25832,25 +25850,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         }}
                                         className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[42px] px-5 py-2 text-sm flex-shrink-0`}
                                     >
-                                        Use for BG
+                                        Use & Start BG
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            const playlistId = parseAppleMusicPlaylistId(appleMusicPlaylistUrl);
-                                            if (!playlistId) {
-                                                setAppleMusicPlaylistStatus('Paste a valid playlist ID or URL.');
-                                                return;
-                                            }
-                                            setAppleMusicPlaylistStatus('Starting playlist...');
-                                            const title = await fetchAppleMusicPlaylistTitle(playlistId);
-                                            await playAppleMusicPlaylist(playlistId, { title: title || 'Playlist' });
-                                            setAppleMusicPlaylistStatus('Playing playlist.');
-                                        }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[42px] px-5 py-2 text-sm flex-shrink-0 border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
-                                    >
-                                        Play Now
-                                    </button>
+
                                 </div>
                             </details>
                             {appleMusicPlaylistStatus ? (

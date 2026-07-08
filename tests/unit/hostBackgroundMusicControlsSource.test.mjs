@@ -38,7 +38,11 @@ test('Apple Music setup exposes a picker without adding separate runtime playbac
     assert.doesNotMatch(hostAppSource, /v1\/me\/history\/heavy-rotation/);
     assert.match(hostAppSource, /types=playlists&limit=20/);
     assert.match(hostAppSource, /Apple Music background/);
-    assert.match(hostAppSource, /Use for BG/);
+    assert.match(hostAppSource, /Use & Start BG/);
+    assert.match(hostTopChromeSource, /Use BG/);
+    assert.match(hostAppSource, /autoBgMusic: true,[\s\S]*bgMusicPlaying: false,[\s\S]*bgMusicUrl: ''/);
+    assert.match(hostAppSource, /await playAppleMusicPlaylist\(playlistId, \{ title, sourceType: choice\.sourceType \|\| '' \}\);/);
+    assert.match(hostAppSource, /audio\.removeAttribute\('src'\);[\s\S]*audio\.load\(\);/);
     assert.match(hostAppSource, /Paste playlist URL or ID/);
     assert.match(hostAppSource, /min-h-\[42px\][\s\S]*Connect/);
     assert.match(hostAppSource, /text-base font-semibold text-white truncate/);

@@ -1761,7 +1761,7 @@ const HostTopChrome = ({
                                                                         onClick={() => { void applyAppleMusicPlaylistForBg?.(choice); }}
                                                                         className={`${styles.btnStd} ${styles.btnHighlight} flex-none px-2.5 py-1.5 text-xs`}
                                                                     >
-                                                                        Set BG
+                                                                        Use BG
                                                                     </button>
                                                                 </div>
                                                             ))}
