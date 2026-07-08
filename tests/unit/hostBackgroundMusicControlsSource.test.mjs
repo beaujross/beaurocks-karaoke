@@ -30,10 +30,12 @@ test('Host setup Auto BG buttons delegate to the shared quick toggle', () => {
 test('Apple Music setup exposes a picker without adding separate runtime playback controls', () => {
     assert.match(hostAppSource, /const APPLE_MUSIC_PICKER_MODES = Object\.freeze\(\[/);
     assert.match(hostAppSource, /id: 'library', label: 'My Playlists'/);
-    assert.match(hostAppSource, /id: 'heavy', label: 'From Your Music'/);
+    assert.match(hostAppSource, /id: 'forYou', label: 'For You'/);
     assert.match(hostAppSource, /id: 'search', label: 'Search'/);
     assert.match(hostAppSource, /v1\/me\/library\/playlists\?limit=25/);
-    assert.match(hostAppSource, /v1\/me\/history\/heavy-rotation\?limit=25/);
+    assert.match(hostAppSource, /v1\/me\/recommendations\?limit=10/);
+    assert.match(hostAppSource, /relationships\?\.contents\?\.data/);
+    assert.doesNotMatch(hostAppSource, /v1\/me\/history\/heavy-rotation/);
     assert.match(hostAppSource, /types=playlists&limit=20/);
     assert.match(hostAppSource, /Apple Music background/);
     assert.match(hostAppSource, /Use for BG/);

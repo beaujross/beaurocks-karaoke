@@ -1870,7 +1870,7 @@ const parseAppleMusicPlaylistId = (value = '') => {
 
 const APPLE_MUSIC_PICKER_MODES = Object.freeze([
     { id: 'library', label: 'My Playlists' },
-    { id: 'heavy', label: 'From Your Music' },
+    { id: 'forYou', label: 'For You' },
     { id: 'search', label: 'Search' }
 ]);
 
@@ -1897,6 +1897,7 @@ const readAppleMusicResponseItems = (response, mode = '') => {
     }
     return [];
 };
+
 const normalizeAppleMusicApiPathSegment = (path = '') => {
     const raw = String(path || '').trim();
     if (!raw) return '';
@@ -5261,7 +5262,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             const storefront = instance.storefrontId || 'us';
             let apiPaths = ['v1/me/library/playlists?limit=25'];
-            if (nextMode === 'heavy') {
+            if (nextMode === 'forYou') {
                 apiPaths = [
                     'v1/me/recommendations?limit=10',
                     'v1/me/library/playlists?limit=25'
@@ -5288,10 +5289,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     lastLoadError = loadError;
                 }
             }
-            if (!choices.length && lastLoadError && nextMode !== 'heavy') throw lastLoadError;
+            if (!choices.length && lastLoadError && nextMode !== 'forYou') throw lastLoadError;
             setAppleMusicPickerItems(choices);
             if (!choices.length) {
-                setAppleMusicPickerError(nextMode === 'heavy'
+                setAppleMusicPickerError(nextMode === 'forYou'
                     ? 'No playlist-style recommendations were returned yet.'
                     : 'No Apple Music playlists found.');
             }
