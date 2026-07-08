@@ -15146,57 +15146,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 {renderCoHostQueueAssistCard(isStreamlinedAudienceShell ? 'compact' : 'full')}
                                 {isStreamlinedAudienceShell ? (
                                     <div className="space-y-3">
-                                        <div className="rounded-[1.75rem] border border-cyan-300/24 bg-[linear-gradient(145deg,rgba(8,16,30,0.96),rgba(10,10,18,0.94))] px-4 py-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="min-w-0">
-                                                    <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200/84">
-                                                        {hasActiveSongRequest ? 'Keep the queue moving' : 'You are in'}
-                                                    </div>
-                                                    <div className="mt-1 text-[1.5rem] font-black leading-tight text-white">
-                                                        {hasActiveSongRequest ? 'Add another song or track the line' : 'Search for your first song'}
-                                                    </div>
-                                            <div className="mt-2 text-sm leading-6 text-zinc-300">
-                                                {hasActiveSongRequest
-                                                    ? 'Search if you know it, or tap a category below to browse fast.'
-                                                    : 'Start with search if you know it, or tap a category below to browse fast. Once you add one, the queue and Party views take over.'}
-                                            </div>
-                                                </div>
-                                                <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
-                                                    <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Queue</div>
-                                                    <div className="font-bebas text-2xl tracking-[0.18em] text-cyan-200">{queueSongsView.length || 0}</div>
-                                                </div>
-                                            </div>
-                                            <div className="mt-4">
-                                                <button
-                                                    type="button"
-                                                    onClick={openAudienceCatalogSearch}
-                                                    disabled={audienceSongLimitState.hardBlocked}
-                                                    className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_16px_36px_rgba(0,0,0,0.2)] ${audienceSongLimitState.hardBlocked ? 'cursor-not-allowed opacity-70' : ''}`}
-                                                    style={audienceBrandPalette.primaryPillStyle}
-                                                >
-                                                    <i className="fa-solid fa-magnifying-glass"></i>
-                                                    {audienceRequestCtaLabel}
-                                                </button>
-                                            </div>
-                                            <div className="mt-3 flex flex-wrap gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setManualRequestComposerOpen(true)}
-                                                    disabled={audienceSongLimitState.hardBlocked}
-                                                    className={`inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/25 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-100 ${audienceSongLimitState.hardBlocked ? 'cursor-not-allowed opacity-60' : ''}`}
-                                                >
-                                                    <i className="fa-solid fa-keyboard"></i>
-                                                    Type it manually
-                                                </button>
-                                                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                                                    <i className="fa-solid fa-clock"></i>
-                                                    {formatWaitTime(queueWaitTimeSec)} estimated wait
-                                                </span>
-                                            </div>
-                                            <div className="mt-3 text-sm text-zinc-300">
-                                                {audienceRequestCtaDetail}
-                                            </div>
-                                        </div>
+                                        {renderStreamlinedInlineSearchResults()}
                                         {latestMyRequest ? (
                                             <div className="rounded-2xl border border-white/10 bg-black/25 p-3.5 text-left">
                                                 <div className="flex items-start justify-between gap-3">

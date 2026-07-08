@@ -397,8 +397,8 @@ test("SingerApp gives streamlined join and first-song flows clearer onboarding c
   );
   assert.match(
     source,
-    /Search for your first song/,
-    "SingerApp streamlined browse should celebrate entry and guide first-time singers toward their first request",
+    /const openAudienceInlineSongSearch = \(\) => \{\s*pulseNativeUiFeedback\(\);\s*if \(audienceSongLimitState\.hardBlocked\) return;\s*setTab\('request'\);\s*setSongsTab\('browse'\);\s*setCatalogSearchMode\(preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(false\);\s*\};/,
+    "SingerApp streamlined browse should use the persistent top search instead of a duplicate first-song callout",
   );
   assert.doesNotMatch(
     source,
@@ -680,6 +680,16 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
     source,
     /const audienceSearchInputClass = isStreamlinedAudienceShell\s*\?\s*'flex-1 min-w-0 bg-transparent text-base font-semibold text-white placeholder:text-zinc-400/,
     "SingerApp streamlined request fields should keep high-contrast input text and placeholder text",
+  );
+  assert.match(
+    source,
+    /isStreamlinedAudienceShell \? \(\s*<div className="space-y-3">\s*\{renderStreamlinedInlineSearchResults\(\)\}/,
+    "SingerApp should mount typed top-bar search results directly inside the streamlined Browse tab",
+  );
+  assert.doesNotMatch(
+    source,
+    /Add another song or track the line/,
+    "SingerApp should not keep the duplicate streamlined Browse add-song callout",
   );
   assert.match(
     source,
