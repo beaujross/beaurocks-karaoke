@@ -288,6 +288,52 @@ const parseYouTubeVideoId = (input = '') => {
   return input.trim().length >= 6 ? input.trim() : '';
 };
 
+const formatReviewCandidateDuration = (durationSec = 0) => {
+  const safeSec = normalizeDurationSec(durationSec);
+  if (!safeSec) return '';
+  const minutes = Math.floor(safeSec / 60);
+  const seconds = safeSec % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
+const getReviewCandidateDurationSec = (candidate = {}) => {
+  const values = [
+    candidate?.durationSec,
+    candidate?.duration,
+    candidate?.trackDurationSec,
+    candidate?.backingDurationSec,
+    candidate?.mediaDurationSec,
+  ];
+  for (const value of values) {
+    const durationSec = normalizeDurationSec(value);
+    if (durationSec > 0) return durationSec;
+  }
+  return 0;
+};
+
+const getReviewCandidateArtworkUrl = (candidate = {}) => {
+  const explicit = String(candidate?.artworkUrl100 || candidate?.artworkUrl || candidate?.albumArtUrl || '').trim();
+  if (explicit) return explicit;
+  const videoId = parseYouTubeVideoId(candidate?.mediaUrl || candidate?.url || candidate?.trackId || '');
+  return videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : '';
+};
+
+const getReviewCandidateSourceMeta = (candidate = {}) => {
+  const source = String(candidate?.source || '').trim().toLowerCase();
+  if (source === 'apple' || source === 'itunes') {
+    return { label: 'Apple', iconClass: 'fa-brands fa-apple', className: 'border-pink-300/35 bg-pink-500/10 text-pink-100' };
+  }
+  if (source === 'youtube' || parseYouTubeVideoId(candidate?.mediaUrl || candidate?.url || '')) {
+    return { label: 'YouTube', iconClass: 'fa-brands fa-youtube', className: 'border-red-300/35 bg-red-500/10 text-red-100' };
+  }
+  return { label: 'Known', iconClass: 'fa-solid fa-hard-drive', className: 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100' };
+};
+
+const getReviewCandidateBeauScore = (candidate = {}) => {
+  const rawScore = Number(candidate?.score || candidate?.rankingScore || candidate?.qualityScore || 0);
+  if (!Number.isFinite(rawScore) || rawScore <= 0) return 0;
+  return Math.max(1, Math.min(99, Math.round((rawScore / 360) * 100)));
+};
 const buildQueueReviewSearchQuery = (song = {}) => (
   [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' ')
 );
@@ -333,6 +379,10 @@ const normalizeResolvedReviewCandidates = (resolved = null, song = {}) => {
         successCount: Number(candidate?.successCount || 0),
         usageCount: Number(candidate?.usageCount || 0),
         failureCount: Number(candidate?.failureCount || 0),
+        artworkUrl100: String(candidate?.artworkUrl100 || candidate?.artworkUrl || '').trim(),
+        artworkUrl: String(candidate?.artworkUrl || candidate?.artworkUrl100 || '').trim(),
+        durationSec: normalizeDurationSec(candidate?.durationSec || candidate?.duration),
+        duration: normalizeDurationSec(candidate?.duration || candidate?.durationSec),
         approvalState: String(candidate?.approvalState || 'approved').trim().toLowerCase(),
         reason: layer === 'canonical_backing'
           ? 'Ranked from host feedback for this song.'
@@ -5771,52 +5821,81 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                             const diagnostics = diagnosticsEntry?.diagnostics || null;
                                             const diagnosticsTone = getTrackDiagnosticsTone(diagnostics);
                                             const diagnosticsSupport = getTrackDiagnosticsSupport(diagnostics);
+                                            const candidateSourceMeta = getReviewCandidateSourceMeta(candidate);
+                                            const candidateArtworkUrl = getReviewCandidateArtworkUrl(candidate);
+                                            const candidateDurationLabel = formatReviewCandidateDuration(getReviewCandidateDurationSec(candidate));
+                                            const candidateBeauScore = getReviewCandidateBeauScore(candidate);
+                                            const candidateLayerLabel = String(candidate.label || candidate.layer || 'candidate').replace(/_/g, ' ');
+                                            const successCount = Number(diagnostics?.successCount ?? candidate.successCount ?? 0) || 0;
+                                            const failureCount = Number(diagnostics?.failureCount ?? candidate.failureCount ?? 0) || 0;
                                             return (
-                                            <div key={candidate.id} className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-zinc-950/55 px-3 py-2">
-                                                <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
-                                                    <div className="min-w-0 overflow-hidden">
-                                                        <div className="break-words text-sm font-bold leading-snug text-white">
-                                                            {candidate.title || song.songTitle}
-                                                            {candidate.artist ? ` • ${candidate.artist}` : ''}
-                                                        </div>
-                                                        <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">
-                                                            {(candidate.label || String(candidate.layer || 'candidate').replace(/_/g, ' '))} • {candidate.source || 'track'}
-                                                        </div>
-                                                        {candidate.reason && (
-                                                            <div className="mt-1 text-xs text-zinc-400">{candidate.reason}</div>
-                                                        )}
-                                                        {diagnostics ? (
-                                                            <div className="mt-2 flex flex-wrap gap-1.5">
-                                                                {diagnosticsTone ? (
-                                                                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${diagnosticsTone.className}`}>
-                                                                        {diagnosticsTone.label}
-                                                                    </span>
-                                                                ) : null}
-                                                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
-                                                                    {Number(diagnostics.successCount || 0)} good shows
-                                                                </span>
-                                                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
-                                                                    {Number(diagnostics.failureCount || 0)} bad calls
-                                                                </span>
-                                                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
-                                                                    {Number(diagnostics.globalAvoidRoomCount || 0)} rooms skipped
-                                                                </span>
+                                            <div key={candidate.id} className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-zinc-950/55 p-2.5">
+                                                <div className="grid min-w-0 gap-3 sm:grid-cols-[92px_minmax(0,1fr)] xl:grid-cols-[96px_minmax(0,1fr)_150px]">
+                                                    <div className="relative h-[86px] overflow-hidden rounded-xl border border-white/10 bg-black/45 sm:h-full sm:min-h-[92px]">
+                                                        {candidateArtworkUrl ? (
+                                                            <img src={candidateArtworkUrl} alt="" className="h-full w-full object-cover" />
+                                                        ) : (
+                                                            <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.22),transparent_55%),linear-gradient(180deg,rgba(12,17,31,1),rgba(8,12,24,1))] text-xl text-cyan-200">
+                                                                <i className={candidateSourceMeta.iconClass}></i>
                                                             </div>
-                                                        ) : diagnosticsEntry?.error ? (
+                                                        )}
+                                                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent px-2 py-1.5">
+                                                            <div className="flex items-end justify-between gap-2">
+                                                                <span className="text-[9px] font-black uppercase tracking-[0.14em] text-white/85">BeauScore</span>
+                                                                <span className="text-lg font-black leading-none text-white">{candidateBeauScore || '-'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="min-w-0 overflow-hidden">
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${candidateSourceMeta.className}`}>
+                                                                <i className={`${candidateSourceMeta.iconClass} mr-1`}></i>
+                                                                {candidateSourceMeta.label}
+                                                            </span>
+                                                            {candidateDurationLabel ? (
+                                                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-200">
+                                                                    {candidateDurationLabel}
+                                                                </span>
+                                                            ) : null}
+                                                            <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100">
+                                                                {candidateLayerLabel}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-1.5 line-clamp-2 text-sm font-black leading-snug text-white">
+                                                            {candidate.title || song.songTitle}
+                                                        </div>
+                                                        <div className="mt-0.5 truncate text-xs text-zinc-400">{candidate.artist || song.artist || 'Unknown artist'}</div>
+                                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                                            {diagnosticsTone ? (
+                                                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${diagnosticsTone.className}`}>
+                                                                    {diagnosticsTone.label}
+                                                                </span>
+                                                            ) : null}
+                                                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
+                                                                {successCount} good
+                                                            </span>
+                                                            {failureCount > 0 ? (
+                                                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
+                                                                    {failureCount} bad
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                        {diagnosticsEntry?.error ? (
                                                             <div className="mt-2 text-xs text-rose-200">{diagnosticsEntry.error}</div>
-                                                        ) : null}
-                                                        {diagnosticsSupport ? (
-                                                            <div className="mt-2 text-xs text-zinc-400">{diagnosticsSupport}</div>
+                                                        ) : diagnosticsSupport ? (
+                                                            <div className="mt-2 line-clamp-2 text-xs text-zinc-400">{diagnosticsSupport}</div>
+                                                        ) : candidate.reason ? (
+                                                            <div className="mt-2 line-clamp-2 text-xs text-zinc-500">{candidate.reason}</div>
                                                         ) : null}
                                                     </div>
-                                                    <div className="grid min-w-[150px] gap-2 sm:grid-cols-3 xl:grid-cols-1">
+                                                    <div className="grid min-w-[140px] gap-2 sm:col-span-2 sm:grid-cols-3 xl:col-span-1 xl:grid-cols-1">
                                                         <button
                                                             type="button"
                                                             disabled={busy}
                                                             onClick={() => resolveReviewRequest(song, candidate)}
                                                             className={`${STYLES.btnStd} ${STYLES.btnPrimary} justify-center px-2 py-1.5 text-[10px]`}
                                                         >
-                                                            Queue This
+                                                            Use Track
                                                         </button>
                                                         <button
                                                             type="button"

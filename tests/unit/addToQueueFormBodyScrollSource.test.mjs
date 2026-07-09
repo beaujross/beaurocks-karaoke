@@ -23,6 +23,11 @@ test('AddToQueueFormBody keeps YouTube/autocomplete results inside a dedicated s
   );
   assert.match(
     source,
+    /mt-2 pr-1 \$\{dockResults \? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''\}/,
+    'Docked add workspace should clip the shell and hand scrolling to the active content lane',
+  );
+  assert.match(
+    source,
     /host-autocomplete-results absolute left-1\/2 top-full mt-2 z-50 flex w-\[min\(42rem,calc\(100vw-2rem\)\)\] -translate-x-1\/2 max-h-\[clamp\(18rem,calc\(100dvh-8rem\),82dvh\)\] flex-col overflow-hidden/,
     'Floating autocomplete results should use viewport-aware width and height while still clipping into an internal scroller',
   );
@@ -30,6 +35,11 @@ test('AddToQueueFormBody keeps YouTube/autocomplete results inside a dedicated s
     source,
     /mt-2 flex min-h-\[16rem\] flex-1 basis-0 flex-col overflow-hidden/,
     'Docked add-tab results should fill the available add workspace and keep an internal scroll lane',
+  );
+  assert.match(
+    source,
+    /mt-3 grid min-h-0 flex-1 basis-0 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar pr-1/,
+    'Docked moment cards should scroll independently so game and announcement controls stay reachable',
   );
 });
 

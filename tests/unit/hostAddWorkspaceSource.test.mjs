@@ -60,3 +60,11 @@ test("host room setup keeps quick actions compact instead of repeating the Night
     "HostApp Night Setup should not spend a top quick-action button restating the current tab",
   );
 });
+
+test("host add workspace uses Queue versus Planner language for moment placement", () => {
+  assert.match(addWorkspaceSource, /Add to Queue/);
+  assert.match(addWorkspaceSource, /Save to Planner/);
+  assert.match(addWorkspaceSource, /Send a ready moment to the Queue, or save it to Planner for later\./);
+  assert.match(addWorkspaceSource, /Karaoke Only/);
+  assert.doesNotMatch(addWorkspaceSource, /Queue Later/);
+});

@@ -168,6 +168,29 @@ it('prefers canonical backing candidates over generic catalog matches before liv
   expect(ranked[0]?.backingCandidateId).toBe('flowers__youtube__canonical_liked_pick');
 });
 
+it('preserves candidate artwork and duration metadata for host track-check cards', () => {
+  const ranked = rankSongRequestCandidates({
+    request: {
+      songId: 'flowers__miley cyrus',
+      songTitle: 'Flowers',
+      artist: 'Miley Cyrus'
+    },
+    ytIndex: [
+      {
+        videoId: 'yt_visual_pick',
+        trackName: 'Flowers Karaoke',
+        artistName: 'Miley Cyrus',
+        url: 'https://youtube.com/watch?v=yt_visual_pick',
+        artworkUrl100: 'https://img.example/flowers.jpg',
+        durationSec: 212,
+        playable: true
+      }
+    ]
+  });
+
+  expect(ranked[0]?.artworkUrl100).toBe('https://img.example/flowers.jpg');
+  expect(ranked[0]?.durationSec).toBe(212);
+});
 it('penalizes failure-heavy candidates in ranking', () => {
   const ranked = rankSongRequestCandidates({
     request: {

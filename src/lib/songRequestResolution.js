@@ -62,7 +62,11 @@ const buildTrustedCandidate = ({
   usageCount = 0,
   failureCount = 0,
   approvalState = '',
-  reason = ''
+  reason = '',
+  artworkUrl100 = '',
+  artworkUrl = '',
+  durationSec = 0,
+  duration = 0
 } = {}) => ({
   id: buildCatalogCandidateId({ trackId, mediaUrl, appleMusicId }, `${songId}:${layer}`),
   songId: String(songId || '').trim(),
@@ -83,7 +87,11 @@ const buildTrustedCandidate = ({
   usageCount: Number(usageCount || 0),
   failureCount: Number(failureCount || 0),
   approvalState: String(approvalState || '').trim().toLowerCase(),
-  reason: String(reason || '').trim()
+  reason: String(reason || '').trim(),
+  artworkUrl100: String(artworkUrl100 || artworkUrl || '').trim(),
+  artworkUrl: String(artworkUrl || artworkUrl100 || '').trim(),
+  durationSec: Number(durationSec || duration || 0),
+  duration: Number(duration || durationSec || 0)
 });
 
 const buildYouTubeIndexCandidate = (entry = {}) => ({
@@ -106,7 +114,11 @@ const buildYouTubeIndexCandidate = (entry = {}) => ({
   usageCount: Number(entry.usageCount || 0),
   failureCount: Number(entry.failureCount || 0),
   approvalState: entry.playable === true ? 'approved' : 'candidate',
-  reason: 'Matches the host-curated room library.'
+  reason: 'Matches the host-curated room library.',
+  artworkUrl100: String(entry.artworkUrl100 || entry.artworkUrl || '').trim(),
+  artworkUrl: String(entry.artworkUrl || entry.artworkUrl100 || '').trim(),
+  durationSec: Number(entry.durationSec || entry.duration || 0),
+  duration: Number(entry.duration || entry.durationSec || 0)
 });
 
 const rankSongRequestCandidates = ({
