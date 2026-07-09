@@ -33,7 +33,7 @@ test('Apple Music setup exposes a picker without adding separate runtime playbac
     assert.match(hostAppSource, /id: 'forYou', label: 'For You'/);
     assert.match(hostAppSource, /id: 'search', label: 'Search'/);
     assert.match(hostAppSource, /v1\/me\/library\/playlists\?limit=100/);
-    assert.match(hostAppSource, /v1\/me\/library\/recently-added\?types=library-playlists&limit=50/);
+    assert.doesNotMatch(hostAppSource, /v1\/me\/library\/recently-added\?types=library-playlists&limit=50/);
     assert.match(hostAppSource, /v1\/me\/recommendations\?limit=10/);
     assert.match(hostAppSource, /relationships\?\.contents\?\.data/);
     assert.doesNotMatch(hostAppSource, /v1\/me\/history\/heavy-rotation/);

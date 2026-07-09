@@ -5490,7 +5490,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 setAppleMusicAuthorized(true);
             }
             const storefront = instance.storefrontId || 'us';
-            let apiPaths = ['v1/me/library/playlists?limit=100', 'v1/me/library/recently-added?types=library-playlists&limit=50'];
+            let apiPaths = ['v1/me/library/playlists?limit=100'];
             if (nextMode === 'forYou') {
                 apiPaths = [
                     'v1/me/recommendations?limit=10',
