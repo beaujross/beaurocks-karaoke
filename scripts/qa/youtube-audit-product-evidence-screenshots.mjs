@@ -142,13 +142,15 @@ const main = async () => {
       url: `/?mode=host&room=${ROOM_CODE}&mkDemoEmbed=1&qaHostFixture=run-of-show-console&hostUiVersion=v2&view=ops&section=ops.room_setup&tab=admin`,
       setup: async (page) => {
         await waitForText(page, "Admin Workspace");
+        await page.getByText("Audio + Mix", { exact: true }).waitFor({ state: "detached", timeout: TIMEOUT_MS });
         const mediaButton = page.getByRole("button", { name: /Screens \+ Playback/i }).first();
         await mediaButton.waitFor({ state: "visible", timeout: TIMEOUT_MS });
         await mediaButton.click({ force: true });
         await waitForText(page, "Apple Music background");
-        const curatorButton = page.getByRole("button", { name: /Open Curator/i }).first();
+        const curatorButton = page.locator('[data-feature-id="open-youtube-curator"]').first();
         await curatorButton.waitFor({ state: "visible", timeout: TIMEOUT_MS });
-        await curatorButton.click({ force: true });
+        await curatorButton.evaluate((button) => button.click());
+        await page.locator('[data-feature-id="youtube-event-readiness"]').first().waitFor({ state: "visible", timeout: TIMEOUT_MS });
         await waitForText(page, "Room Library Curator");
       },
       requiredText: [
@@ -157,6 +159,8 @@ const main = async () => {
         "YouTube Terms of Service",
         "Google Privacy Policy",
         "searches left",
+        "Tonight's media preflight",
+        "Google Cloud Quotas is the source of truth",
       ],
     }));
 

@@ -93,3 +93,17 @@ export const buildRoomBgTrackOptions = (items = []) => {
         .filter(Boolean);
     return [...BG_TRACK_OPTIONS, ...customTracks];
 };
+
+export const isHostAudioUploadActive = ({ item = {}, track = {}, playback = {} } = {}) => {
+    const itemId = String(item?.id || '').trim();
+    const itemUrl = String(item?.url || item?.mediaUrl || '').trim();
+    const trackId = buildHostAudioUploadTrackId(item);
+    const playbackType = String(playback?.type || '').trim().toLowerCase();
+    const localPlayback = ['local_upload', 'local', 'upload'].includes(playbackType);
+    return Boolean(
+        (itemId && String(track?.sourceUploadId || '').trim() === itemId)
+        || (trackId && String(track?.id || '').trim() === trackId)
+        || (localPlayback && trackId && String(playback?.id || '').trim() === trackId)
+        || (localPlayback && itemUrl && String(playback?.url || '').trim() === itemUrl)
+    );
+};

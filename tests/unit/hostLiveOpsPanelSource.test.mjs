@@ -56,6 +56,9 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /catalogPanel = null/, 'HostQueueTab should accept the shared host catalog panel as a prop');
   assert.match(hostQueueTabSource, /featureId: 'queue-surface-tab-catalog-desktop'/, 'Desktop queue workspace should expose Catalog as a first-class tab');
   assert.match(hostQueueTabSource, /featureId: 'queue-surface-tab-catalog'/, 'Compact queue workspace should expose Catalog as a first-class tab');
+  assert.match(hostQueueTabSource, /featureId: 'queue-surface-tab-show'/, 'Compact queue workspace should expose Planner as a first-class tab');
+  assert.match(hostQueueTabSource, /const plannerWorkspaceSection = runOfShowQueueHudSection \|\|/, 'Planner tab should remain available even before a run-of-show plan exists');
+  assert.doesNotMatch(hostQueueTabSource, /!hasRunOfShowQueueHud && desktopQueueSurfaceTab === 'show'/, 'Planner tab should not redirect back to Queue just because the plan is empty');
   assert.match(hostQueueTabSource, /data-feature-id="panel-catalog"/, 'Catalog tab should render a dedicated workspace panel');
   assert.match(hostQueueTabSource, /desktopQueueSurfaceTab === 'catalog'[\s\S]*\? catalogWorkspaceSection/, 'Desktop Catalog tab should route to the shared catalog panel');
   assert.match(hostQueueTabSource, /queueSurface\.activeCompactTab === 'catalog'[\s\S]*catalogWorkspaceSection/, 'Compact Catalog tab should route to the shared catalog panel');
@@ -172,6 +175,10 @@ test('host media library uses account-scoped collections with legacy room fallba
   assert.match(hostQueueTabSource, /Account Media Library/);
   assert.match(hostQueueTabSource, /All Account Media/);
   assert.match(hostQueueTabSource, /data-feature-id="host-media-library-tabs"/);
+  assert.match(hostQueueTabSource, /data-feature-id="host-media-library-back-to-host"/);
+  assert.match(hostQueueTabSource, /data-feature-id="host-media-library-bottom-close"/);
+  assert.match(hostQueueTabSource, /event\.key === 'Escape'[\s\S]*closeSceneLibrary\(\)/);
+  assert.match(hostQueueTabSource, /pb-24 pt-4/);
   assert.match(hostQueueTabSource, /role="tablist"[\s\S]*aria-label="Account media library sections"/);
   assert.match(hostQueueTabSource, /Uploads: <span className="text-white">\{mediaLibraryUploadDestinationLabel\}<\/span>/);
   assert.doesNotMatch(hostQueueTabSource, /Folder for next uploads/);
@@ -180,7 +187,9 @@ test('host media library uses account-scoped collections with legacy room fallba
   assert.match(hostQueueTabSource, /data-feature-id="host-media-library-apple-music"/);
   assert.match(hostQueueTabSource, /Upload to Sound Effects/);
   assert.match(hostQueueTabSource, /Upload to Background/);
-  assert.match(hostQueueTabSource, /Use as Background/);
+  assert.match(hostQueueTabSource, /Start BG/);
+  assert.match(hostQueueTabSource, /appleMusicBgPendingId = ''/);
+  assert.match(hostQueueTabSource, /choiceIsPending \? 'Starting\.\.\.' : \(choiceIsActive \? 'Active' : 'Start BG'\)/);
   assert.match(hostAppSource, /appleMusicPickerModes: APPLE_MUSIC_PICKER_MODES/);
   assert.match(hostAppSource, /connectAppleMusic,[\s\S]*disconnectAppleMusic,/);
   assert.doesNotMatch(hostQueueTabSource, /No room audio uploads yet/);

@@ -137,16 +137,12 @@ test("Host chrome keeps launch utilities but strips dead runtime redirects", () 
   assert.doesNotMatch(chromeSource, /onClick=\{onOpenAccessSettings\}/);
   assert.match(chromeSource, /Launch TV/);
   assert.match(chromeSource, /Launch Mobile/);
-  assert.match(chromeSource, /Print Guides/);
-  assert.match(chromeSource, /data-feature-id="launch-audience-poster"/);
-  assert.match(chromeSource, /data-feature-id="launch-cohost-poster"/);
-  assert.match(chromeSource, /data-feature-id="launch-host-walkthrough"/);
-  assert.match(chromeSource, /Audience Poster/);
-  assert.match(chromeSource, /Co-Host Poster/);
-  assert.match(chromeSource, /Host Walkthrough/);
-  assert.match(chromeSource, /\/print\/aahf-audience-guide\.html/);
-  assert.match(chromeSource, /\/print\/cohost-guide\.html/);
-  assert.match(chromeSource, /\/print\/aahf-host-walkthrough\.html/);
+  assert.match(chromeSource, /Audience Help/);
+  assert.match(chromeSource, /Co-Host Help/);
+  assert.match(chromeSource, /Host Help/);
+  assert.match(chromeSource, /\/help\/audience/);
+  assert.match(chromeSource, /\/help\/cohost/);
+  assert.match(chromeSource, /\/help\/host/);
   assert.doesNotMatch(chromeSource, /roomReadinessLaunchBusy \? 'Launching\.\.\.' : 'Launch'/);
   assert.match(chromeSource, /data-feature-id="deck-automation-menu-toggle"/);
   assert.match(chromeSource, /Automation/);
@@ -392,9 +388,9 @@ test("Host queue review candidate cards stay inside narrow panels", () => {
 
   assert.match(source, /min-w-0 overflow-hidden rounded-2xl border border-white\/10 bg-black\/30 p-3/);
   assert.match(source, /mt-3 grid min-w-0 gap-2 overflow-hidden/);
-  assert.match(source, /grid min-w-0 gap-3 xl:grid-cols-\[minmax\(0,1fr\)_auto\]/);
-  assert.match(source, /break-words text-sm font-bold leading-snug text-white/);
-  assert.match(source, /grid min-w-\[150px\] gap-2 sm:grid-cols-3 xl:grid-cols-1/);
+  assert.match(source, /grid min-w-0 gap-3 sm:grid-cols-\[92px_minmax\(0,1fr\)\] xl:grid-cols-\[96px_minmax\(0,1fr\)_150px\]/);
+  assert.match(source, /line-clamp-2 text-sm font-black leading-snug text-white/);
+  assert.match(source, /grid min-w-\[140px\] gap-2 sm:col-span-2 sm:grid-cols-3 xl:col-span-1 xl:grid-cols-1/);
 });
 
 test("Host top chrome keeps the dropdown strip lean", () => {

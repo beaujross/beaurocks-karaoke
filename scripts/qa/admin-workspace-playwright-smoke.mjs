@@ -427,6 +427,13 @@ const openHostAndAdmin = async (page, { hostUrl, timeoutMs }) => {
   await page.goto(hostUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await page.waitForTimeout(3500);
 
+  if (toBool(process.env.QA_PERMANENT_DELETE_ONLY, false)) {
+    const roomManagerSearch = page.getByPlaceholder("Search by room name, code, preset, or status").first();
+    if (await roomManagerSearch.isVisible().catch(() => false)) {
+      return "room-manager";
+    }
+  }
+
   const advancedDetails = page.locator("details", {
     hasText: /Advanced Launch \(QA \/ Returning Hosts\)/i,
   }).first();
@@ -475,7 +482,10 @@ const openHostAndAdmin = async (page, { hostUrl, timeoutMs }) => {
     return "";
   }
 
-  if (await quickStart.isVisible().catch(() => false)) {
+  if (
+    (await quickStart.isVisible().catch(() => false)) &&
+    (await quickStart.isEnabled().catch(() => false))
+  ) {
     await quickStart.click();
     await waitForPostCreateControls({
       page,
@@ -557,7 +567,22 @@ const openHostAndAdmin = async (page, { hostUrl, timeoutMs }) => {
 const runDesktopScenario = async ({ browser, baseUrl, hostUrl, email, password, timeoutMs, checks }) => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   await applyQaAppCheckDebugInitScript(context);
+  const controlledYouTubeCooldown = toBool(process.env.QA_YOUTUBE_COOLDOWN_EVIDENCE, false);
+  const controlledYouTubeCooldownEvidencePath = String(
+    process.env.QA_YOUTUBE_COOLDOWN_EVIDENCE_PATH
+      || "docs/compliance/evidence/2026-07-06-youtube-live-evidence/quota-exhaustion-fallback.png"
+  ).trim();
+  if (controlledYouTubeCooldown) {
+    await context.addInitScript(({ storageKey, durationMs }) => {
+      window.localStorage.setItem(storageKey, String(Date.now() + durationMs));
+    }, {
+      storageKey: "bross_youtube_quota_block_until_ms_v1",
+      durationMs: 15 * 60 * 1000,
+    });
+  }
   const page = await context.newPage();
+  const permanentDeleteOnly = toBool(process.env.QA_PERMANENT_DELETE_ONLY, false);
+  const beauBucksOnly = permanentDeleteOnly || toBool(process.env.QA_BEAUBUCKS_ONLY, false);
 
   try {
     await gotoHostAccessAndLogin({ page, baseUrl, email, password, timeoutMs });
@@ -570,6 +595,7 @@ const runDesktopScenario = async ({ browser, baseUrl, hostUrl, email, password, 
     }
 
     await runCheck(checks, "desktop_admin_workspace_loaded", async () => {
+      if (permanentDeleteOnly) return "Room Manager loaded for guarded permanent-delete evidence.";
       const adminWorkspaceVisible = await page.getByText("Admin Workspace", { exact: false }).isVisible().catch(() => false);
       if (!adminWorkspaceVisible) {
         throw new Error("Admin Workspace shell is not visible (still in setup overlay).");
@@ -579,6 +605,7 @@ const runDesktopScenario = async ({ browser, baseUrl, hostUrl, email, password, 
     });
 
     await runCheck(checks, "desktop_single_left_sections_rail", async () => {
+      if (permanentDeleteOnly) return "Skipped Admin rail assertion in permanent-delete-only mode.";
       const hasHook = (await page.locator("[data-admin-sections-rail]").count()) > 0;
       if (hasHook) {
         const railsVisible = await visibleCount(page, "[data-admin-sections-rail]");
@@ -595,6 +622,7 @@ const runDesktopScenario = async ({ browser, baseUrl, hostUrl, email, password, 
     });
 
     await runCheck(checks, "desktop_no_admin_areas_rail", async () => {
+      if (permanentDeleteOnly) return "Skipped legacy Admin rail assertion in permanent-delete-only mode.";
       const legacyRailVisible = await visibleCount(page, "text=Admin Areas");
       if (legacyRailVisible > 0) {
         throw new Error("Legacy Admin Areas rail is still visible.");
@@ -618,14 +646,61 @@ const runDesktopScenario = async ({ browser, baseUrl, hostUrl, email, password, 
       }
     };
 
-    await runCheck(checks, "desktop_section_switch_media", async () =>
-      navigateToSection("media", /(playback|media)/i));
-    await runCheck(checks, "desktop_section_switch_chat", async () =>
-      navigateToSection("chat", /chat/i));
-    await runCheck(checks, "desktop_section_switch_moderation", async () =>
-      navigateToSection("moderation", /(approvals|moderation)/i));
+    if (!beauBucksOnly) {
+      await runCheck(checks, "desktop_section_switch_media", async () =>
+        navigateToSection("media", /(playback|media)/i));
+      await runCheck(checks, "desktop_youtube_event_preflight", async () => {
+        const audioPanel = page.getByText("Audio + Mix", { exact: true });
+        if (await audioPanel.isVisible().catch(() => false)) {
+          throw new Error("Audio popover obscures the Admin media workspace.");
+        }
+        const curatorButton = page.locator('[data-feature-id="open-youtube-curator"]').first();
+        await curatorButton.waitFor({ state: "visible", timeout: timeoutMs });
+        await curatorButton.click();
+        const preflight = page.locator('[data-feature-id="youtube-event-readiness"]').first();
+        await preflight.waitFor({ state: "visible", timeout: timeoutMs });
+        const preflightText = String(await preflight.innerText()).replace(/\s+/g, " ").trim();
+        if (!/Tonight's media preflight/i.test(preflightText)) {
+          throw new Error(`YouTube event preflight copy missing: ${preflightText}`);
+        }
+        if (!/Google Cloud Quotas is the source of truth/i.test(preflightText)) {
+          throw new Error(`YouTube quota source-of-truth disclosure missing: ${preflightText}`);
+        }
+        if (controlledYouTubeCooldown) {
+          if (!/Fallback Ready/i.test(preflightText) || !/YouTube search cooldown/i.test(preflightText)) {
+            throw new Error(`Controlled cooldown did not expose the compliant fallback state: ${preflightText}`);
+          }
+          await fs.mkdir("docs/compliance/evidence/2026-07-06-youtube-live-evidence", { recursive: true });
+          await page.screenshot({ path: controlledYouTubeCooldownEvidencePath, fullPage: true });
+        }
+        await page.locator("button").filter({ hasText: /\bBack\s*$/i }).first().click();
+        await preflight.waitFor({ state: "detached", timeout: timeoutMs });
+        return preflightText;
+      });
+      await runCheck(checks, "desktop_section_switch_chat", async () =>
+        navigateToSection("chat", /chat/i));
+      await runCheck(checks, "desktop_section_switch_moderation", async () =>
+        navigateToSection("moderation", /(approvals|moderation)/i));
+    }
 
-    await runCheck(checks, "desktop_quick_action_live_effects", async () => {
+    if (toBool(process.env.QA_BEAUBUCKS_RECONCILIATION, false)) {
+      await runCheck(checks, "desktop_beaubucks_reconciliation_read_only", async () => {
+        await navigateToSection("qa", /diagnostics/i);
+        const panel = page.locator('[data-beaubucks-reconciliation="read-only"]').first();
+        await panel.waitFor({ state: "visible", timeout: timeoutMs });
+        const runButton = panel.getByRole("button", { name: /Run read-only report|Refresh report/i }).first();
+        await runButton.click({ force: true });
+        await panel.getByText("Legacy balance", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+        await panel.getByText("Shadow is not live money", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+        const panelText = await panel.innerText();
+        if (!/Accounts/i.test(panelText) || !/(Exact|Needs explanation)/i.test(panelText)) {
+          throw new Error(`BeauBucks reconciliation summary did not render. Snippet="${panelText.slice(0, 320)}"`);
+        }
+        return "Read-only report rendered with legacy authority and shadow disclaimer.";
+      });
+    }
+
+    if (!beauBucksOnly) await runCheck(checks, "desktop_quick_action_live_effects", async () => {
       const quickAction = page.locator('[data-feature-id="quick-open-live-effects"]').first();
       if (!(await quickAction.count())) {
         return "Skipped quick action check (live-effects quick action hook not present in this build).";
@@ -640,6 +715,114 @@ const runDesktopScenario = async ({ browser, baseUrl, hostUrl, email, password, 
       }
       return text;
     });
+
+    const permanentDeleteRoomCode = String(process.env.QA_PERMANENT_DELETE_ROOM_CODE || "")
+      .trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+    if (permanentDeleteRoomCode) {
+      await runCheck(checks, "desktop_disposable_room_permanent_delete", async () => {
+        if (String(process.env.QA_PERMANENT_DELETE_CONFIRM || "") !== "DELETE_DISPOSABLE_QA_ROOM") {
+          throw new Error("Permanent delete evidence requires QA_PERMANENT_DELETE_CONFIRM=DELETE_DISPOSABLE_QA_ROOM.");
+        }
+        if (!/^[A-Z0-9]{4,8}$/.test(permanentDeleteRoomCode)
+          || /^(?:AAHF|DEMO|BEAUROCKS)/i.test(permanentDeleteRoomCode)) {
+          throw new Error(`Refusing unsafe permanent-delete room code "${permanentDeleteRoomCode}".`);
+        }
+        const evidenceDir = String(process.env.QA_PERMANENT_DELETE_EVIDENCE_DIR
+          || "docs/compliance/evidence/2026-07-06-youtube-live-evidence").trim();
+        await fs.mkdir(evidenceDir, { recursive: true });
+
+        const roomManagerSearch = page.getByPlaceholder("Search by room name, code, preset, or status").first();
+        if (!(await roomManagerSearch.isVisible().catch(() => false))) {
+          const roomManagerButton = page.getByRole("button", { name: "Room Manager", exact: true }).first();
+          await roomManagerButton.waitFor({ state: "visible", timeout: timeoutMs });
+          await roomManagerButton.click();
+        }
+        await roomManagerSearch.waitFor({ state: "visible", timeout: timeoutMs });
+        const archivedRoomsBucket = page.locator('[data-room-browser-bucket="past"]:visible').first();
+        await archivedRoomsBucket.waitFor({ state: "visible", timeout: timeoutMs });
+        await archivedRoomsBucket.click();
+        const roomSearch = page.locator('input[placeholder="Search by room name, code, preset, or status"]:visible').first();
+        await roomSearch.waitFor({ state: "visible", timeout: timeoutMs });
+        await roomSearch.fill(permanentDeleteRoomCode);
+        const roomCodeLabel = page.getByText(permanentDeleteRoomCode, { exact: true }).first();
+        await roomCodeLabel.waitFor({ state: "visible", timeout: timeoutMs });
+        const resultRow = roomCodeLabel.locator("xpath=ancestor::div[contains(@class, 'cursor-pointer')][1]");
+        await resultRow.click();
+
+        const actions = page.locator("details").filter({ hasText: /More room actions/i }).last();
+        await actions.waitFor({ state: "visible", timeout: timeoutMs });
+        if (!(await actions.evaluate((node) => Boolean(node.open)).catch(() => false))) {
+          await actions.locator("summary").click();
+        }
+        const archiveButton = actions.getByRole("button", { name: "Archive Room", exact: true });
+        if (await archiveButton.isVisible().catch(() => false)) {
+          page.once("dialog", async (dialog) => {
+            if (dialog.type() !== "confirm" || !dialog.message().includes(permanentDeleteRoomCode)) {
+              await dialog.dismiss();
+              return;
+            }
+            await dialog.accept();
+          });
+          await archiveButton.click();
+          await actions.getByRole("button", { name: "Restore Room", exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+        }
+
+        const deleteButton = actions.getByRole("button", { name: "Delete Forever", exact: true });
+        await deleteButton.waitFor({ state: "visible", timeout: timeoutMs });
+        const selectedPanel = actions.locator(`xpath=ancestor::div[.//*[normalize-space(text())="${permanentDeleteRoomCode}"]][1]`);
+        await selectedPanel.screenshot({ path: `${evidenceDir}/room-permanent-delete-confirmation.png` });
+
+        const dialogEvents = [];
+        const dialogHandler = async (dialog) => {
+          const type = dialog.type();
+          const message = String(dialog.message() || "");
+          dialogEvents.push(`${type}: ${message}`);
+          if (dialog.type() === "confirm" && message.includes("permanently delete") && message.includes(permanentDeleteRoomCode)) {
+            await dialog.accept();
+            return;
+          }
+          if (dialog.type() === "prompt" && message.includes(permanentDeleteRoomCode)) {
+            await dialog.accept(permanentDeleteRoomCode);
+            return;
+          }
+          await dialog.dismiss();
+        };
+        const consoleDiagnostics = [];
+        const consoleHandler = (message) => {
+          if (["warning", "error"].includes(message.type())) {
+            consoleDiagnostics.push(redactQaArtifactText(message.text()));
+          }
+        };
+        page.on("dialog", dialogHandler);
+        page.on("console", consoleHandler);
+        await deleteButton.click();
+        const successToast = page.getByText(`Room ${permanentDeleteRoomCode} permanently deleted.`, { exact: true });
+        const failureToast = page.getByText("Permanent delete failed.", { exact: true });
+        const mismatchToast = page.getByText("Confirmation code mismatch. Action canceled.", { exact: true });
+        const outcome = await Promise.race([
+          successToast.waitFor({ state: "visible", timeout: 30_000 }).then(() => "success").catch(() => null),
+          failureToast.waitFor({ state: "visible", timeout: 30_000 }).then(() => "failure").catch(() => null),
+          mismatchToast.waitFor({ state: "visible", timeout: 30_000 }).then(() => "mismatch").catch(() => null),
+          page.waitForTimeout(30_000).then(() => "timeout"),
+        ]).then((value) => value || "timeout");
+        page.off("dialog", dialogHandler);
+        page.off("console", consoleHandler);
+        await page.screenshot({ path: `${evidenceDir}/room-permanent-delete-${outcome}.png`, fullPage: true });
+        if (outcome !== "success") {
+          throw new Error(`Permanent delete ended as ${outcome}; dialogs=${JSON.stringify(dialogEvents)}; console=${JSON.stringify(consoleDiagnostics.slice(-8))}.`);
+        }
+        await page.screenshot({ path: `${evidenceDir}/room-permanent-delete-success.png`, fullPage: true });
+        const postDeleteSearch = page.locator('input[placeholder="Search by room name, code, preset, or status"]:visible').first();
+        if (await postDeleteSearch.isVisible().catch(() => false)) {
+          await postDeleteSearch.fill(permanentDeleteRoomCode);
+        }
+        await page.waitForTimeout(800);
+        if (await page.getByText(permanentDeleteRoomCode, { exact: true }).first().isVisible().catch(() => false)) {
+          throw new Error(`Deleted room ${permanentDeleteRoomCode} is still visible in the filtered room browser.`);
+        }
+        return `Archived and permanently deleted disposable room ${permanentDeleteRoomCode}; confirmation and success evidence captured.`;
+      });
+    }
   } catch (error) {
     await captureScenarioFailureArtifact(page, "desktop").catch(() => null);
     throw error;

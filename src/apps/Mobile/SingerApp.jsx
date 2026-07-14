@@ -16,6 +16,7 @@ import {
     mergeAnonymousAccountData,
     joinRoomAudience,
     updateAudienceIdentity,
+    spendAudienceRoomCredits,
     uploadAudienceRoomPhoto,
     submitAudienceQueueSong,
     castRunOfShowReleaseWindowVote,
@@ -66,6 +67,10 @@ import {
     normalizePurchaseCelebration,
     normalizeReactionTapCooldownMs,
 } from '../../lib/roomMonetization';
+import { getRoomCurrencyPresentation } from '../../lib/roomCurrencyPresentation';
+import { getRoomSpendIntentGuide } from '../../lib/roomSpendIntent';
+import { formatRoomActionDisclosure } from '../../lib/roomActionDisclosure';
+import { getCheckoutLaunchFeedback, getReactionFeedback } from '../../lib/roomActionFeedback';
 import {
     decorateBrowseSongs
 } from '../../lib/browseCatalog';
@@ -85,6 +90,9 @@ import {
     normalizeRoomRequestMode
 } from '../../lib/requestModes';
 import GameContainer from '../../components/GameContainer';
+import GameLifecycleStatusCard from '../../components/GameLifecycleStatusCard';
+import { getGameLifecyclePresentation } from '../../lib/gameLifecyclePresentation';
+import { getAudienceGameMembershipGate } from '../../lib/audienceGameMembershipGate';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
 import { FameLevelProgressBar } from '../../components/FameLevelBadge';
 import UserMetaCard from '../../components/UserMetaCard';
@@ -335,6 +343,37 @@ const AudienceBrowseSongRow = ({
 );
 
 const DEFAULT_EMOJI = emoji(0x1F600);
+const createAudienceSpendOperationId = (kind = 'spend') => {
+    const safeKind = String(kind || 'spend').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 32) || 'spend';
+    const randomToken = typeof globalThis?.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    return `${safeKind}:${randomToken}`;
+};
+const getAudienceSpendAuthorityStorageKey = (roomCode = '') => (
+    `beaurocks_spend_authority_${String(roomCode || '').trim().toUpperCase()}`
+);
+const readAudienceSpendAuthority = (roomCode = '') => {
+    if (typeof window === 'undefined') return 'legacy';
+    try {
+        return window.sessionStorage.getItem(getAudienceSpendAuthorityStorageKey(roomCode)) === 'server_canary'
+            ? 'server_canary'
+            : 'legacy';
+    } catch {
+        return 'legacy';
+    }
+};
+const writeAudienceSpendAuthority = (roomCode = '', authority = 'legacy') => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.sessionStorage.setItem(
+            getAudienceSpendAuthorityStorageKey(roomCode),
+            authority === 'server_canary' ? 'server_canary' : 'legacy',
+        );
+    } catch {
+        // Session storage is only a routing hint; the callable remains the authority.
+    }
+};
 const EXPECTED_CAMERA_ERROR_NAMES = new Set(['NotReadableError', 'NotAllowedError', 'SecurityError', 'AbortError', 'OverconstrainedError']);
 
 const isExpectedCameraError = (error) => {
@@ -1023,9 +1062,12 @@ const SingerApp = ({ roomCode, uid }) => {
     })();
     const isQaAudienceFixture = !!initialAudienceDemoFixture;
     const [user, setUser] = useState(initialAudienceDemoFixture?.user || null);
+    const [spendAuthority, setSpendAuthority] = useState(() => readAudienceSpendAuthority(roomCode));
+    const [roomUserMembershipResolved, setRoomUserMembershipResolved] = useState(!!initialAudienceDemoFixture);
     const [profile, setProfile] = useState(initialAudienceDemoFixture?.profile || null);
     const [allUsers, setAllUsers] = useState(Array.isArray(initialAudienceDemoFixture?.allUsers) ? initialAudienceDemoFixture.allUsers : []); // For Leaderboard
     const [room, setRoom] = useState(initialAudienceDemoFixture?.room || null);
+    const gameLifecyclePresentation = useMemo(() => getGameLifecyclePresentation(room || {}), [room]);
     const [songs, setSongs] = useState(Array.isArray(initialAudienceDemoFixture?.songs) ? initialAudienceDemoFixture.songs : []);
     const [tab, setTab] = useState(initialAudienceDemoFixture?.tab || 'home');
     const currentSinger = useMemo(() => songs.find(s => s.status === 'performing'), [songs]);
@@ -1497,6 +1539,14 @@ const SingerApp = ({ roomCode, uid }) => {
     const [demoFixture, setDemoFixture] = useState(initialAudienceDemoFixture || (isMarketingDemoEmbed ? {} : null));
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const isAudienceFixtureMode = (isMarketingDemoEmbed || isQaAudienceFixture) && !!demoFixture;
+    const audienceGameMembershipGate = useMemo(() => getAudienceGameMembershipGate({
+        hasRoomUser: !!user,
+        membershipResolved: roomUserMembershipResolved,
+        isDemoFixture: isMarketingDemoFixture,
+        takeoverKind,
+        activeMode: room?.activeMode,
+        lightMode: room?.lightMode,
+    }), [isMarketingDemoFixture, room?.activeMode, room?.lightMode, roomUserMembershipResolved, takeoverKind, user]);
     useEffect(() => {
         if (!initialAudienceDemoFixture) return;
         const fixture = initialAudienceDemoFixture;
@@ -2920,6 +2970,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const pendingStormLayerCount = useRef(0);
     const lastStormLayerAt = useRef(0);
     const pendingPointDelta = useRef(0);
+    const pendingSpendOperationIdsRef = useRef(new Map());
     const pendingRewardToastPointsRef = useRef(0);
     const rewardToastTimerRef = useRef(null);
     const pointsRewardPulseTimerRef = useRef(null);
@@ -3070,6 +3121,34 @@ const SingerApp = ({ roomCode, uid }) => {
         const pendingSpendOffset = Math.min(0, Number(localPointOffset || 0) || 0);
         return Math.max(0, confirmedPoints + pendingSpendOffset);
     }, [localPointOffset, user?.points]);
+    const requestServerSpend = useCallback(async ({ kind, payload = {}, clientOperationId = '', retryKey = '' } = {}) => {
+        if (spendAuthority !== 'server_canary') {
+            return { ok: true, outcome: 'legacy_fallback', authority: 'legacy' };
+        }
+        const safeRetryKey = String(retryKey || kind || 'spend');
+        const pendingOperationId = pendingSpendOperationIdsRef.current.get(safeRetryKey) || '';
+        const resolvedOperationId = clientOperationId || pendingOperationId || createAudienceSpendOperationId(kind);
+        pendingSpendOperationIdsRef.current.set(safeRetryKey, resolvedOperationId);
+        const result = await spendAudienceRoomCredits({
+            roomCode,
+            kind,
+            clientOperationId: resolvedOperationId,
+            payload,
+        });
+        const definitiveOutcome = ['accepted', 'insufficient_balance', 'legacy_fallback'].includes(String(result?.outcome || ''));
+        if (definitiveOutcome) pendingSpendOperationIdsRef.current.delete(safeRetryKey);
+        if (result?.outcome === 'legacy_fallback') {
+            setSpendAuthority('legacy');
+            writeAudienceSpendAuthority(roomCode, 'legacy');
+            return result;
+        }
+        if ((result?.outcome === 'accepted' || result?.duplicate === true) && Number.isFinite(Number(result?.balanceAfter))) {
+            const confirmedBalance = Math.max(0, Number(result.balanceAfter) || 0);
+            setUser((previous) => previous ? { ...previous, points: confirmedBalance } : previous);
+            lastObservedPointsRef.current = confirmedBalance;
+        }
+        return result || { ok: false, outcome: 'unknown' };
+    }, [roomCode, spendAuthority]);
     const effectivePoints = Math.max(0, getEffectivePoints());
     const activeEventCredits = useMemo(() => {
         const source = room?.eventCredits && typeof room.eventCredits === 'object' ? room.eventCredits : {};
@@ -3134,6 +3213,8 @@ const SingerApp = ({ roomCode, uid }) => {
                 : [],
         };
     }, [room?.eventCredits]);
+    const roomCurrencyPresentation = useMemo(() => getRoomCurrencyPresentation(activeEventCredits), [activeEventCredits]);
+    const roomSpendIntentGuide = useMemo(() => getRoomSpendIntentGuide(activeEventCredits), [activeEventCredits]);
     const isRunOfShowCoHost = runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host';
     const audienceQueueActorUid = useMemo(
         () => String(activeUid || user?.uid || '').trim(),
@@ -3380,7 +3461,7 @@ const SingerApp = ({ roomCode, uid }) => {
                 const result = await claimTimedLobbyCredits({ roomCode });
                 const granted = Math.max(0, Number(result?.pointsGranted || 0) || 0);
                 if (granted > 0) {
-                    showRewardToast(`Lobby refill +${granted} PTS`, granted, { durationMs: 2600 });
+                    showRewardToast(`Lobby refill +${granted} ${roomCurrencyPresentation.shortLabel}`, granted, { durationMs: 2600 });
                 }
             } catch (error) {
                 console.debug('timed lobby credit claim skipped', error);
@@ -3403,7 +3484,7 @@ const SingerApp = ({ roomCode, uid }) => {
         activeEventCredits.timedLobbyPoints,
         activeUid,
         roomCode,
-        showRewardToast,
+        showRewardToast, roomCurrencyPresentation.shortLabel,
         user,
     ]);
     const openVipUpgrade = useCallback((preferredPath = 'auto') => {
@@ -3418,7 +3499,7 @@ const SingerApp = ({ roomCode, uid }) => {
         }
         openEmailAccessModal();
     }, [allowsDonationAccess, openEmailAccessModal, roomSupportHasEmbed, roomSupportOffer, simplifyFestivalSupportAccess]);
-    const formatPointsLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} pts`;
+    const formatPointsLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} ${roomCurrencyPresentation.shortLabel}`;
     const formatDollarLabel = (value = 0) => {
         const amount = Math.max(0, Number(value) || 0);
         return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`;
@@ -3504,7 +3585,7 @@ const SingerApp = ({ roomCode, uid }) => {
         <>
             <div className="space-y-5" data-feature-id="audience-points-storefront">
                 <section className="relative overflow-hidden rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(34,211,238,0.22),rgba(236,72,153,0.15)_42%,rgba(12,18,32,0.98))] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.34)]">
-                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/78">Available now</div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/78">{roomCurrencyPresentation.balanceLabel}</div>
                     <div className="mt-2 text-[clamp(3rem,15vw,5rem)] font-black leading-none text-white">
                         {formatPointsLabel(getEffectivePoints())}
                     </div>
@@ -3519,6 +3600,24 @@ const SingerApp = ({ roomCode, uid }) => {
                                 +{formatPointsLabel(activeEventCredits.timedLobbyPoints)} {timedLobbyIntervalLabel.toLowerCase()}
                             </span>
                         ) : null}
+                    </div>
+                </section>
+
+                <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4" data-feature-id="audience-spend-intent-guide">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/65">What each action means</div>
+                            <div className="mt-1 text-sm text-zinc-300">Digital value and real-money support stay separate.</div>
+                        </div>
+                        <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">Clear intent</span>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {roomSpendIntentGuide.items.map((item) => (
+                            <div key={item.id} className={`rounded-xl border px-3 py-3 ${item.financial ? 'border-emerald-300/25 bg-emerald-400/8' : 'border-white/10 bg-black/20'}`}>
+                                <div className="flex items-center gap-2 text-sm font-black text-white"><i className={`fa-solid ${item.icon}`} aria-hidden="true"></i>{item.label}</div>
+                                <div className="mt-1 text-xs leading-5 text-zinc-400">{item.detail}</div>
+                            </div>
+                        ))}
                     </div>
                 </section>
 
@@ -3645,7 +3744,7 @@ const SingerApp = ({ roomCode, uid }) => {
                             className="flex min-h-[56px] w-full items-center justify-between gap-3 rounded-[1.15rem] bg-emerald-300 px-4 text-left font-black text-slate-950"
                         >
                             <span>{supportCtaLabel}</span>
-                            <span className="text-sm">{roomWideSupportRate > 0 ? `${roomWideSupportRate} pts / $1` : 'Open'}</span>
+                            <span className="text-right text-xs"><span className="block">{formatRoomActionDisclosure({ intent: 'support', externalCheckout: true })}</span>{roomWideSupportRate > 0 ? <span className="mt-0.5 block opacity-75">{roomWideSupportRate} {roomCurrencyPresentation.shortLabel} / $1</span> : null}</span>
                         </button>
                         {supportEmbedOpen && roomSupportHasEmbed && (
                             <div className="overflow-hidden rounded-[1.15rem] border border-white/10 bg-black/40">
@@ -4558,6 +4657,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     useEffect(() => {
         if (isAudienceFixtureMode) return () => {};
         setUser(null);
+        setRoomUserMembershipResolved(false);
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
 
         // Subscribe to ALL users for Leaderboard
@@ -4617,6 +4717,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 lastObservedPointsRef.current = null;
                 setUser(null);
             }
+            setRoomUserMembershipResolved(true);
+        }, () => {
+            setUser(null);
+            setRoomUserMembershipResolved(true);
         });
         
         return () => { unsubRoom(); unsubUser(); unsubAllUsers(); unsubSongs(); };
@@ -4747,6 +4851,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         });
     }, [currentSinger, popTriviaNow, popTriviaQuestionRevealSec, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
     const popTriviaQuestion = popTriviaState?.question || null;
+    const popTriviaLifecyclePresentation = getGameLifecyclePresentation({ ...(room || {}), activeMode: 'pop_trivia_companion', gameData: { status: popTriviaQuestion ? 'asking' : 'reveal', autoReveal: true } });
     const popTriviaQuestionId = popTriviaQuestion?.id || '';
     const popTriviaRevealQuestionFromState = popTriviaState?.status === 'reveal'
         ? (popTriviaState?.revealQuestion || null)
@@ -5387,10 +5492,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (!safeCost || coHostUnlimitedCredits) return;
         queuePointDelta(-safeCost);
     }, [coHostUnlimitedCredits, queuePointDelta]);
-    const reactionCostLabel = useCallback((cost = 0) => {
-        if (coHostFreeReactions) return 'FREE';
-        return `${Math.max(0, Number(cost || 0) || 0)} PTS`;
-    }, [coHostFreeReactions]);
+    const reactionCostLabel = useCallback((cost = 0) => formatRoomActionDisclosure({
+        intent: 'performer',
+        cost,
+        currencyLabel: roomCurrencyPresentation.shortLabel,
+        free: coHostFreeReactions,
+    }), [coHostFreeReactions, roomCurrencyPresentation.shortLabel]);
     const renderReactionCooldownFill = useCallback((
         reactionKey = '',
         fillClass = 'bg-white/20',
@@ -6325,6 +6432,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     setAuthReadyUid(joinedUid);
                     activeUid = joinedUid;
                 }
+                const nextSpendAuthority = joinResult?.spendAuthority === 'server_canary' ? 'server_canary' : 'legacy';
+                setSpendAuthority(nextSpendAuthority);
+                writeAudienceSpendAuthority(roomCode, nextSpendAuthority);
             } catch (error) {
                 const retryable = (
                     isQueuePermissionDeniedError(error)
@@ -6352,6 +6462,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     setAuthReadyUid(joinedUid);
                     activeUid = joinedUid;
                 }
+                const nextSpendAuthority = retryJoinResult?.spendAuthority === 'server_canary' ? 'server_canary' : 'legacy';
+                setSpendAuthority(nextSpendAuthority);
+                writeAudienceSpendAuthority(roomCode, nextSpendAuthority);
             }
 
             if (typeof window !== 'undefined') {
@@ -6532,6 +6645,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             return;
         }
         const opened = window.open(launchUrl, '_blank', 'noopener,noreferrer');
+        toast(getCheckoutLaunchFeedback('Givebutter'));
         if (!opened) {
             window.location.href = launchUrl;
         }
@@ -7425,30 +7539,64 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (takeoverClapVotingActive && safeType === 'clap') nextCost = 0;
         if (coHostFreeReactions) nextCost = 0;
         if (!currentSinger && !applauseModeActive && !takeoverClapVotingActive) return toast('Reactions wake up once someone is on stage or a scene goes live.');
-        if(!user || !canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} pts!`); 
+        if(!user || !canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} ${roomCurrencyPresentation.shortLabel}!`);
         const now = Date.now();
         const cooldownUntil = Number(reactionCooldownByType?.[safeType] || 0);
         if (reactionTapCooldownMs > 0 && cooldownUntil > now) {
             triggerCooldownFlash(safeType);
             return;
         }
-        if (reactionTapCooldownMs > 0) {
-            setReactionCooldownByType((prev) => applyReactionCooldown(prev, safeType, now, reactionTapCooldownMs));
-        }
-        markActive();
-        if (((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') || takeoverClapVotingActive) && safeType === 'clap') {
-            setApplauseTapCount(prev => prev + 1);
-            setApplauseTapPulseAt(now);
-        }
-        
-        const id = Date.now(); 
-        setLocalReactions(prev => [...prev, { id, type: safeType, left: Math.random() * 80 + 10 }]); 
-        setTimeout(() => setLocalReactions(prev => prev.filter(r => r.id !== id)), 4000);
-
         try {
-            queueReactionWrite(safeType, nextCost);
-            spendRoomPoints(nextCost);
-        } catch (error) { console.error(error); }
+            let chargedCost = nextCost;
+            if (nextCost > 0 && spendAuthority === 'server_canary' && !coHostUnlimitedCredits) {
+                const spendResult = await requestServerSpend({
+                    kind: 'reaction',
+                    retryKey: `reaction:${safeType}:${currentSinger?.id || 'scene'}`,
+                    payload: {
+                        reactionType: safeType,
+                        performanceId: currentSinger?.id || '',
+                        canonicalSongId: currentSinger?.canonicalSongId || '',
+                        backingTrackId: currentSinger?.backingTrackId || currentSinger?.trackId || '',
+                        performerUid: currentSinger?.singerUid || '',
+                    },
+                });
+                if (spendResult?.outcome === 'insufficient_balance') {
+                    toast(`Need ${nextCost} ${roomCurrencyPresentation.shortLabel}!`);
+                    return;
+                }
+                if (spendResult?.outcome === 'legacy_fallback') {
+                    spendRoomPoints(nextCost);
+                } else if (spendResult?.outcome !== 'accepted') {
+                    toast('Could not confirm the charge. Try that reaction again.');
+                    return;
+                } else {
+                    chargedCost = Math.max(0, Number(spendResult.chargedAmount || nextCost) || 0);
+                }
+            } else {
+                spendRoomPoints(nextCost);
+            }
+            queueReactionWrite(safeType, chargedCost);
+            if (reactionTapCooldownMs > 0) {
+                setReactionCooldownByType((prev) => applyReactionCooldown(prev, safeType, now, reactionTapCooldownMs));
+            }
+            markActive();
+            if (((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') || takeoverClapVotingActive) && safeType === 'clap') {
+                setApplauseTapCount(prev => prev + 1);
+                setApplauseTapPulseAt(now);
+            }
+            const id = Date.now();
+            setLocalReactions(prev => [...prev, { id, type: safeType, left: Math.random() * 80 + 10 }]);
+            setTimeout(() => setLocalReactions(prev => prev.filter(r => r.id !== id)), 4000);
+            toast(getReactionFeedback({
+                cost: chargedCost,
+                currencyLabel: roomCurrencyPresentation.shortLabel,
+                performerName: takeoverClapVotingActive ? '' : currentSinger?.singerName,
+                roomInfluence: takeoverClapVotingActive,
+            }));
+        } catch (error) {
+            console.error(error);
+            toast('Could not confirm the charge. Try that reaction again.');
+        }
     };
 
     const submitPopTriviaVote = async (optionIndex) => {
@@ -8002,17 +8150,49 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             smsOptIn: normalizedVipForm.smsOptIn,
             tosAccepted: nextVipTosAccepted
         } : null;
-        const identityResult = await updateAudienceIdentity({
-            roomCode,
-            name: safeName,
-            avatar: nextAvatar,
-            vipProfile: vipProfilePayload
-        });
+        let identityResult = null;
+        let serverHandledCharge = false;
+        if (nameEmojiChanged && spendAuthority === 'server_canary' && !coHostUnlimitedCredits) {
+            try {
+                const spendResult = await requestServerSpend({
+                    kind: 'profile_change',
+                    retryKey: `profile_change:${safeName}:${nextAvatar}`,
+                    payload: {
+                        name: safeName,
+                        avatar: nextAvatar,
+                        vipProfile: vipProfilePayload,
+                    },
+                });
+                if (spendResult?.outcome === 'insufficient_balance') {
+                    toast(`Need ${changeCost} ${roomCurrencyPresentation.shortLabel} to update your profile.`);
+                    return;
+                }
+                if (spendResult?.outcome === 'accepted') {
+                    identityResult = spendResult;
+                    serverHandledCharge = true;
+                } else if (spendResult?.outcome !== 'legacy_fallback') {
+                    toast('Could not confirm the profile change. Try again.');
+                    return;
+                }
+            } catch (error) {
+                console.error(error);
+                toast('Could not confirm the profile change. Try again.');
+                return;
+            }
+        }
+        if (!identityResult) {
+            identityResult = await updateAudienceIdentity({
+                roomCode,
+                name: safeName,
+                avatar: nextAvatar,
+                vipProfile: vipProfilePayload
+            });
+        }
         const resolvedAvatar = resolveAllowedAvatarEmoji(identityResult?.avatar || nextAvatar, user.avatar);
         if (resolvedAvatar !== form.emoji) {
             setForm(prev => ({ ...prev, emoji: resolvedAvatar }));
         }
-        if (nameEmojiChanged && changeCost > 0) {
+        if (nameEmojiChanged && changeCost > 0 && !serverHandledCharge) {
             spendRoomPoints(changeCost);
             syncPoints(true);
         }
@@ -9340,6 +9520,146 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         ) : null
     );
 
+    const persistAudienceGameRulesAcceptance = () => {
+        setTermsAccepted(true);
+        if (typeof window === 'undefined') return;
+        const key = `beaurocks_rules_${uid || 'guest'}`;
+        try {
+            localStorage.setItem(key, 'accepted');
+        } catch {
+            // Ignore storage failures.
+        }
+    };
+
+    const startAudienceGameMembershipJoin = async () => {
+        if (isJoining || !joinReadyName) return;
+        if (roomJoinRequiresAccount && isAnon) {
+            openVipUpgrade('email');
+            return;
+        }
+        if (!termsAccepted) {
+            setPendingJoin({ type: 'join', payload: null });
+            setShowRulesModal(true);
+            return;
+        }
+        setRoomUserMembershipResolved(false);
+        const joined = await join();
+        if (!joined) setRoomUserMembershipResolved(true);
+    };
+
+    const confirmAudienceGameMembershipRules = async () => {
+        if (!termsAccepted || isJoining) return;
+        persistAudienceGameRulesAcceptance();
+        setPendingJoin(null);
+        setRoomUserMembershipResolved(false);
+        const joined = await join();
+        if (joined) {
+            setShowRulesModal(false);
+        } else {
+            setRoomUserMembershipResolved(true);
+        }
+    };
+
+    const audienceGameMembershipGateScreen = (
+        <div
+            data-singer-view="game-membership-gate"
+            data-audience-game-membership-state={audienceGameMembershipGate.state}
+            data-audience-game-membership-mode={String(room?.activeMode || room?.lightMode || '').trim().toLowerCase()}
+            className="min-h-[100dvh] w-full overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.2),transparent_42%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.2),transparent_44%),#05070d] px-4 py-[calc(env(safe-area-inset-top)+2rem)] pb-[calc(env(safe-area-inset-bottom)+2rem)] text-white font-saira"
+            style={audienceBrandPalette.rootStyle}
+        >
+            <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md items-center justify-center">
+                <div className="w-full rounded-[30px] border border-cyan-200/25 bg-zinc-950/94 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.55)]">
+                    <div className="flex items-center gap-3">
+                        <img src={audienceBrandLogoUrl} className="h-12 w-12 rounded-2xl object-contain" alt={audienceBrandTitle} />
+                        <div className="min-w-0 text-left">
+                            <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200">Live now</div>
+                            <div className="mt-1 text-2xl font-black text-white">{audienceGameMembershipGate.modeLabel}</div>
+                        </div>
+                    </div>
+
+                    {audienceGameMembershipGate.state === 'connecting' ? (
+                        <div className="mt-6 text-center" data-feature-id="audience-game-membership-connecting">
+                            <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-white/15 border-t-cyan-300"></div>
+                            <div className="mt-4 text-lg font-black text-white">{audienceGameMembershipGate.headline}</div>
+                            <div className="mt-2 text-sm leading-6 text-zinc-300">{audienceGameMembershipGate.detail}</div>
+                        </div>
+                    ) : showRulesModal ? (
+                        <div className="mt-5" data-feature-id="audience-game-membership-rules">
+                            <div className="text-xl font-black text-white">Quick room rules</div>
+                            <div className="mt-2 text-sm leading-6 text-zinc-300">Be kind, request only content you can share, and follow the Host&apos;s lead.</div>
+                            <label className="mt-4 flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-zinc-100">
+                                <input
+                                    data-singer-rules-checkbox
+                                    type="checkbox"
+                                    checked={termsAccepted}
+                                    onChange={(event) => setTermsAccepted(event.target.checked)}
+                                    className="mt-0.5 h-5 w-5 accent-pink-500"
+                                />
+                                <span>I agree to the Terms of Service and Privacy Policy.</span>
+                            </label>
+                            <div className="mt-3 flex flex-wrap gap-4 text-xs text-cyan-200">
+                                <button type="button" onClick={() => window.open(`${window.location.origin}${import.meta.env.BASE_URL || '/'}karaoke/terms`, '_blank')} className="underline underline-offset-4">Terms</button>
+                                <button type="button" onClick={() => window.open(`${window.location.origin}${import.meta.env.BASE_URL || '/'}karaoke/privacy`, '_blank')} className="underline underline-offset-4">Privacy</button>
+                            </div>
+                            <button
+                                type="button"
+                                data-singer-rules-confirm
+                                disabled={!termsAccepted || isJoining}
+                                onClick={() => { void confirmAudienceGameMembershipRules(); }}
+                                className={`mt-5 w-full rounded-2xl px-4 py-3.5 text-base font-black ${termsAccepted && !isJoining ? 'bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white' : 'cursor-not-allowed bg-zinc-700 text-zinc-300'}`}
+                            >
+                                {isJoining ? 'Joining...' : `Agree and join ${audienceGameMembershipGate.modeLabel}`}
+                            </button>
+                            <button type="button" onClick={() => setShowRulesModal(false)} className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-200">Back</button>
+                        </div>
+                    ) : (
+                        <div className="mt-5" data-feature-id="audience-game-membership-join">
+                            <div className="text-xl font-black text-white">{audienceGameMembershipGate.headline}</div>
+                            <div className="mt-2 text-sm leading-6 text-zinc-300">{audienceGameMembershipGate.detail}</div>
+                            {returningProfile ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setForm((current) => ({ ...current, name: returningProfile.name || current.name, emoji: returningProfile.emoji || current.emoji }))}
+                                    className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-pink-300/25 bg-pink-500/10 px-4 py-3 text-left"
+                                >
+                                    <span className="text-2xl">{returningProfile.emoji || DEFAULT_EMOJI}</span>
+                                    <span><span className="block text-xs uppercase tracking-[0.18em] text-pink-200">Welcome back</span><span className="block font-black text-white">Use {returningProfile.name}</span></span>
+                                </button>
+                            ) : null}
+                            <input
+                                ref={joinNameInputRef}
+                                data-singer-join-name
+                                value={form.name}
+                                maxLength={NAME_LIMIT}
+                                onChange={(event) => setForm({ ...form, name: clampName(event.target.value) })}
+                                onKeyDown={(event) => {
+                                    if (event.key !== 'Enter') return;
+                                    event.preventDefault();
+                                    void startAudienceGameMembershipJoin();
+                                }}
+                                placeholder="Your name"
+                                className="mt-4 w-full rounded-2xl border border-cyan-200/30 bg-white/95 px-4 py-3.5 text-center text-lg font-bold text-zinc-950 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-400/30"
+                            />
+                            <button
+                                type="button"
+                                data-singer-join-button
+                                disabled={!joinCanSubmit || isJoining}
+                                onClick={() => { void startAudienceGameMembershipJoin(); }}
+                                className={`mt-3 w-full rounded-2xl px-4 py-3.5 text-base font-black ${joinCanSubmit && !isJoining ? 'bg-gradient-to-r from-cyan-300 to-pink-400 text-black' : 'cursor-not-allowed bg-zinc-700 text-zinc-300'}`}
+                            >
+                                {isJoining ? 'Joining...' : !activeUid ? 'Connecting...' : `Join and play ${audienceGameMembershipGate.modeLabel}`}
+                            </button>
+                            <div className="mt-3 text-center text-xs leading-5 text-zinc-400">Your name creates room membership so votes, points, and recap credit stay attached to you.</div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+
+    if (audienceGameMembershipGate.visible) return audienceGameMembershipGateScreen;
+
     // --- VIBE SYNC OVERLAYS ---
     if (room?.lightMode === 'storm' && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         const phaseLabel = {
@@ -9641,6 +9961,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 className="min-h-[100dvh] w-full bg-zinc-950 text-white font-saira flex flex-col items-center justify-start px-4 py-5 overflow-y-auto overflow-x-hidden overscroll-contain touch-scroll-y custom-scrollbar"
                 style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
             >
+                <GameLifecycleStatusCard presentation={gameLifecyclePresentation} surface="audience" />
                 {renderStreamlinedTakeoverChrome('Doodle-oke')}
                 <div className="w-full max-w-3xl text-center space-y-2">
                     <div className="text-[10px] uppercase tracking-[0.5em] text-zinc-500">Doodle-oke</div>
@@ -9838,6 +10159,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 className="min-h-[100dvh] bg-black flex flex-col relative overflow-y-auto overflow-x-hidden overscroll-contain touch-scroll-y text-white font-saira"
                 style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
             >
+                <GameLifecycleStatusCard presentation={gameLifecyclePresentation} surface="audience" />
                 {renderStreamlinedTakeoverChrome('Selfie Challenge')}
                 <div className="relative z-20 px-5 pt-6 pb-3 text-center">
                     <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">Selfie Challenge</div>
@@ -10321,6 +10643,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (!hideBingoOverlay && !hideAudienceRoomMicVoiceOverlay) {
             return (
             <div className="absolute inset-0">
+                <GameLifecycleStatusCard presentation={gameLifecyclePresentation} surface="audience" />
                 <GameContainer
                     activeMode={room.activeMode}
                     roomCode={roomCode}
@@ -10948,16 +11271,38 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             <button
                                 onClick={async () => {
                                     try {
-                                        spendRoomPoints(pointsCost);
-                                        if (!accountProfileUid) throw new Error('Missing account UID');
-                                        await updateDoc(doc(db, 'users', accountProfileUid), { unlockedEmojis: arrayUnion(lockedAvatar.id) });
+                                        let serverHandledCharge = false;
+                                        if (spendAuthority === 'server_canary' && !coHostUnlimitedCredits) {
+                                            const spendResult = await requestServerSpend({
+                                                kind: 'avatar_unlock',
+                                                retryKey: `avatar_unlock:${lockedAvatar.id}`,
+                                                payload: { avatarId: lockedAvatar.id },
+                                            });
+                                            if (spendResult?.outcome === 'insufficient_balance') {
+                                                toast(`Need ${pointsCost} ${roomCurrencyPresentation.shortLabel} to unlock this avatar.`);
+                                                return;
+                                            }
+                                            if (spendResult?.outcome === 'accepted') {
+                                                serverHandledCharge = true;
+                                            } else if (spendResult?.outcome !== 'legacy_fallback') {
+                                                toast('Could not confirm the unlock. Try again.');
+                                                return;
+                                            }
+                                        }
+                                        if (!serverHandledCharge) {
+                                            spendRoomPoints(pointsCost);
+                                            if (!accountProfileUid) throw new Error('Missing account UID');
+                                            await updateDoc(doc(db, 'users', accountProfileUid), { unlockedEmojis: arrayUnion(lockedAvatar.id) });
+                                            syncPoints(true);
+                                        }
                                         setForm(prev => ({ ...prev, emoji: lockedAvatar.emoji || prev.emoji }));
                                         setAvatarUnlockModal(null);
-                                        syncPoints(true);
                                         toast(`Unlocked ${lockedAvatar.label}!`);
                                     } catch (error) {
                                         console.error(error);
-                                        toast('Unlock failed. Try again.');
+                                        toast(spendAuthority === 'server_canary'
+                                            ? 'Could not confirm the unlock. Try again.'
+                                            : 'Unlock failed. Try again.');
                                     }
                                 }}
                                 className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-black"
@@ -11623,7 +11968,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     ).length;
     const latestMyRequest = myRequestSongs[0] || null;
     const latestMyRequestStateMeta = latestMyRequest ? getAudienceRequestStateMeta(latestMyRequest) : null;
-    const hasActiveSongRequest = activeRequestCount > 0 || !!latestMyRequest;
     const audienceSongLimitState = getAudienceSongLimitState({
         queueSettings: queueSettingsView,
         songs,
@@ -11937,7 +12281,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const noSingerOnStage = !currentSinger;
     const applauseModeActive = ['applause', 'applause_countdown', 'applause_result'].includes(String(room?.activeMode || '').trim().toLowerCase());
     const performanceReactionsReady = !!currentSinger || applauseModeActive || takeoverClapVotingActive;
-    const hideOmnipresentStageAreaForStreamlinedIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;
+    const keepStreamlinedStageAreaMountedForIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;
     const showHomeIdlePartyCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && !isStreamlinedAudienceShell;
     const showStreamlinedIdleRequestCard = shouldShowStreamlinedIdleRequestCard({
         tab,
@@ -12002,7 +12346,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             : karaokePerformanceVotingOpen
                 ? 'voting'
                 : '';
-    const shouldOfferCompactHomeStageCard = tab === 'home' && !!currentSinger && !!homeStageInteractionState;
+    const shouldOfferCompactHomeStageCard = isStreamlinedAudienceShell
+        ? (primaryStageTabs.includes(tab) && !!currentSinger)
+        : (tab === 'home' && !!currentSinger && !!homeStageInteractionState);
     const autoCompactHomeStageCard = shouldOfferCompactHomeStageCard && !forceExpandedHomeStageCard && !stageHomePanelExpanded;
     const showCompactHomeStageCard = !!currentSinger && !forceExpandedHomeStageCard && (stagePanelCollapsed || autoCompactHomeStageCard);
     const shouldOfferCompactEmptyStageCard = tab === 'home' && !currentSinger;
@@ -12103,11 +12449,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const canCollapseStagePanel = primaryStageTabs.includes(tab) && !forceExpandedHomeStageCard;
     const showStreamlinedStageNav = isStreamlinedAudienceShell && ['home', 'request', 'social'].includes(tab);
     const showOmnipresentStageArea = (tab === 'home' || tab === 'request' || tab === 'social')
-        && (!showHomeIdlePartyCard || bracketSignupActive)
-        && !(hideOmnipresentStageAreaForStreamlinedIdle && !bracketSignupActive);
+        && (keepStreamlinedStageAreaMountedForIdle || !showHomeIdlePartyCard || bracketSignupActive);
     const streamlinedStageNav = showStreamlinedStageNav ? (
         <div
-            className="relative z-10 border-b border-white/10 bg-black/35 px-4 py-3"
+            className="relative z-10 min-h-[112px] border-b border-white/10 bg-black/35 px-4 py-3"
             style={{
                 paddingLeft: 'max(16px, env(safe-area-inset-left))',
                 paddingRight: 'max(16px, env(safe-area-inset-right))'
@@ -12481,7 +12826,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                               rewardDelta={pointsRewardPulse.delta}
                               rewardPulseKey={pointsRewardPulse.key}
                               displayValue={coHostUnlimitedCredits ? 'âˆž' : null}
-                              caption={coHostUnlimitedCredits ? 'FREE' : 'PTS'}
+                              caption={coHostUnlimitedCredits ? 'FREE' : roomCurrencyPresentation.shortLabel}
                               className="h-10 w-[118px] sm:w-[132px]"
                           />
                       </div>
@@ -12995,9 +13340,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             {/* Omnipresent Stage Area */}
             {showOmnipresentStageArea && (
                 <div
-                    className={`bg-black/40 border-b-4 z-10 relative max-h-[min(72dvh,42rem)] overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar ${isNativeMobileLayout ? 'mobile-native-stage-shell' : ''}`}
+                    className={`bg-black/40 border-b-4 z-10 relative ${isStreamlinedAudienceShell ? 'overflow-visible' : 'overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar'} ${isNativeMobileLayout ? 'mobile-native-stage-shell' : ''}`}
                     style={{
                         ...audienceBrandPalette.stageShellStyle,
+                        maxHeight: isStreamlinedAudienceShell ? undefined : 'min(72dvh, 42rem)',
                         paddingLeft: 'max(16px, env(safe-area-inset-left))',
                         paddingRight: 'max(16px, env(safe-area-inset-right))',
                         paddingTop: '16px',
@@ -13395,6 +13741,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 )}
                                 {showPopTriviaCard && !showPopTriviaStandaloneSheet && (
                                     <div data-feature-id="pop-trivia-card" className="mt-3 overflow-hidden rounded-3xl border-2 border-yellow-300/70 bg-gradient-to-br from-[#070b1a]/98 via-[#11162b]/98 to-[#180a1f]/98 shadow-[0_18px_54px_rgba(250,204,21,0.28)] backdrop-blur p-4">
+                                        <GameLifecycleStatusCard presentation={popTriviaLifecyclePresentation} surface="audience" />
                                         <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.22em] text-cyan-100">
                                             <span>{popTriviaQuestion ? 'Answer pop-up trivia now' : 'Answer Revealed'}</span>
                                             <div className="flex items-center gap-2">
@@ -13491,7 +13838,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                                 rewardDelta={popTriviaConfirmedAwardDelta}
                                                                 rewardPulseKey={popTriviaAwardPulseKey}
                                                                 displayValue={coHostUnlimitedCredits ? 'âˆž' : null}
-                                                                caption={coHostUnlimitedCredits ? 'FREE' : 'PTS'}
+                                                                caption={coHostUnlimitedCredits ? 'FREE' : roomCurrencyPresentation.shortLabel}
                                                                 className="h-10 w-[132px] shrink-0"
                                                             />
                                                         </div>
@@ -13808,22 +14155,18 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="mt-4 grid grid-cols-2 gap-2">
+                                    <div className="mt-4 grid grid-cols-2 gap-2" data-feature-id="singer-idle-disabled-reaction-buttons">
                                         {[
                                             { key: 'fire', label: 'Hype', tone: 'border-orange-400/40 bg-orange-500/12 text-orange-100' },
                                             { key: 'heart', label: 'Love', tone: 'border-pink-400/40 bg-pink-500/12 text-pink-100' },
                                             { key: 'clap', label: 'Clap', tone: 'border-cyan-400/40 bg-cyan-500/12 text-cyan-100' },
                                             { key: 'drink', label: 'Cheers', tone: 'border-blue-400/40 bg-blue-500/12 text-blue-100' }
                                         ].map((reaction) => (
-                                            <div key={reaction.key} className={`rounded-2xl border px-3 py-3 opacity-72 ${reaction.tone}`}>
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <span className="text-3xl leading-none">{getEmojiChar(reaction.key)}</span>
-                                                    <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/85">
-                                                        {reactionCostLabel(REACTION_COSTS[reaction.key])}
-                                                    </span>
-                                                </div>
-                                                <div className="mt-2 text-sm font-black uppercase tracking-[0.16em]">{reaction.label}</div>
-                                            </div>
+                                            <button key={reaction.key} type="button" disabled data-feature-id={`idle-reaction-${reaction.key}-button`} className={`relative overflow-hidden rounded-2xl border-2 px-3 py-3 opacity-55 ${reaction.tone} cursor-not-allowed`}>
+                                                <span className="block text-3xl leading-none grayscale">{getEmojiChar(reaction.key)}</span>
+                                                <span className="mt-2 block text-sm font-black uppercase tracking-[0.16em]">{reaction.label}</span>
+                                                <span className="mt-1 inline-flex rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/70">Standby</span>
+                                            </button>
                                         ))}
                                     </div>
                                     <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-200">
@@ -13920,7 +14263,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             {renderReactionCooldownFill('clap', 'bg-cyan-200/25', 'border-cyan-200/35 bg-black/55 text-cyan-50')}
                                             <span className={`${getReactionOptionIconClass('clap')} mb-2`}>{getEmojiChar('clap')}</span>
                                             <span className="font-bold text-cyan-200 text-lg">CLAP VOTE</span>
-                                            <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold border border-white/10 bg-black/35 text-white">FREE</div>
+                                            <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold border border-white/10 bg-black/35 text-white">{formatRoomActionDisclosure({ intent: 'influence', free: true })}</div>
                                         </button>
                                     </>
                                 ) : (
@@ -15889,7 +16232,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                 rewardDelta={popTriviaConfirmedAwardDelta}
                                                 rewardPulseKey={popTriviaAwardPulseKey}
                                                 displayValue={coHostUnlimitedCredits ? 'âˆž' : null}
-                                                caption={coHostUnlimitedCredits ? 'FREE' : 'PTS'}
+                                                caption={coHostUnlimitedCredits ? 'FREE' : roomCurrencyPresentation.shortLabel}
                                                 className="h-10 w-[132px] shrink-0"
                                             />
                                         </div>

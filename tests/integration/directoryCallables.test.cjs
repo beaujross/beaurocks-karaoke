@@ -431,6 +431,38 @@ async function run() {
       assert.equal(result.items[0].songId, song.songId);
       assert.equal(result.items[0].trackId, track.trackId);
     }],
+    ["canonical song resolution follows aliases and merge redirects", async () => {
+      await db.doc(`directory_profiles/${USER_UID}`).set({ uid: USER_UID, roles: ["host"], status: "approved" });
+      const canonical = await ensureSong.run(requestFor(USER_UID, {
+        title: "Don't Stop Believin'", artist: "Journey", aliases: ["Dont Stop Believing"],
+      }));
+      const aliasResult = await resolveCanonicalTrackIdentity.run(requestFor(USER_UID, {
+        title: "Dont Stop Believing", artist: "Journey",
+      }));
+      assert.equal(aliasResult.songId, canonical.songId);
+      assert.match(aliasResult.matchedBy, /alias$/);
+      const duplicate = await ensureSong.run(requestFor(USER_UID, {
+        title: "Don't Stop Believin' Remastered", artist: "Journey",
+      }));
+      await db.doc(`songs/${duplicate.songId}`).set({
+        mergedIntoSongId: canonical.songId, mergeReason: "same_composition_remaster",
+      }, { merge: true });
+      const redirected = await resolveCanonicalTrackIdentity.run(requestFor(USER_UID, { songId: duplicate.songId }));
+      assert.equal(redirected.songId, canonical.songId);
+      assert.match(redirected.matchedBy, /redirect$/);
+      const conflict = await ensureSong.run(requestFor(USER_UID, {
+        title: "Different Song", artist: "Journey", aliases: ["Dont Stop Believing"],
+      }));
+      const aliasAfterConflict = await resolveCanonicalTrackIdentity.run(requestFor(USER_UID, {
+        title: "Dont Stop Believing", artist: "Journey",
+      }));
+      assert.equal(aliasAfterConflict.songId, canonical.songId);
+      const conflictSnap = await db.doc(`songs/${conflict.songId}`).get();
+      assert.equal(
+        (conflictSnap.get("aliasConflicts") || []).some((value) => String(value).includes(canonical.songId)),
+        true,
+      );
+    }],
 
     ["logPerformance collapses youtube-backed scores onto canonical song ids", async () => {
       await db.doc(`directory_profiles/${USER_UID}`).set({
@@ -458,16 +490,26 @@ async function run() {
           singerName: "Beau",
           mediaUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
           trackSource: "youtube",
+          canonicalSongId: song.songId,
+          backingCandidateId: `${song.songId}__youtube__dQw4w9WgXcQ`,
+          providerTrackId: "dQw4w9WgXcQ",
           applauseScore: 88,
           hypeScore: 22,
           hostBonus: 10,
         })
       );
       assert.equal(result.songId, song.songId);
+      assert.equal(result.canonicalSongId, song.songId);
       assert.equal(result.trackId, track.trackId);
+
+      const performanceSnap = await db.collection("performances").where("canonicalSongId", "==", song.songId).get();
+      assert.equal(performanceSnap.empty, false);
+      assert.equal(performanceSnap.docs[0].get("backingCandidateId"), `${song.songId}__youtube__dQw4w9WgXcQ`);
+      assert.equal(performanceSnap.docs[0].get("providerTrackId"), "dQw4w9WgXcQ");
 
       const hallOfFameSnap = await db.doc(`song_hall_of_fame/${song.songId}`).get();
       assert.equal(hallOfFameSnap.exists, true);
+      assert.equal(hallOfFameSnap.get("canonicalSongId"), song.songId);
       assert.equal(hallOfFameSnap.get("songTitle"), "Don't Stop Believin'");
       assert.equal(hallOfFameSnap.get("artist"), "Journey");
     }],

@@ -1,6 +1,6 @@
 # Game Mode Cost Sheet
 
-Last updated: 2026-04-03
+Last updated: 2026-07-14
 Owner: Product / Ops
 
 ## Purpose
@@ -160,7 +160,7 @@ All figures below are rough marginal costs if usage is billable. In many real pe
 | Feature | Unit | Direct marginal cost | Main driver | Quota / abuse risk | Suggested pricing treatment |
 |---|---|---:|---|---|---|
 | Audience request search | per search | `$0.000001` to `$0.00001` | 1 `itunesSearch` callable | Low | Include in base plan |
-| Host YouTube karaoke search | per uncached search | about `$0.000003` infra | callable + tiny function/runtime cost | High: ~101 YouTube quota units if uncached | Include only in host plans with quota caps |
+| Host YouTube karaoke search | per uncached search | about `$0.000003` infra | callable + tiny function/runtime cost | High: 1 Search Queries call plus 1 general unit if uncached | Include only in host plans with quota caps |
 | AI lyrics | per song | `$0.0008` to `$0.0012` | Gemini output tokens plus resolver work | Medium | Include in paid host plan with monthly allowance and hard cap |
 | Pop Trivia overlay | per song | `$0.0006` to `$0.0010` | 1 Gemini generation | Medium | Include in paid host plan; soft-cap if needed |
 | Trivia runtime | per round | `$0.00001` to `$0.0001` | vote reads / writes | Low | Include in base plan |
@@ -233,24 +233,28 @@ Important implementation detail:
 - In the current callable, an uncached `youtubeSearch` performs:
   - one `search.list`
   - one `videos.list`
-- That is effectively about `101` YouTube quota units per uncached search.
+- Under the June 2026 granular quota model, that consumes:
+  - one call from the separate Search Queries daily bucket
+  - one unit from the general YouTube Data API daily bucket for `videos.list`
+- The assigned live-project defaults are currently `100` Search Queries calls/day and `10,000` general data units/day. Google Cloud Console remains the source of truth.
 
-| Scenario | Audience | Show shape | Direct provider cost | Approx. live YouTube searches | Approx. YouTube quota burn |
-|---|---:|---|---:|---:|---:|
-| Low engagement | 150 | light request volume, low churn, modest host search behavior | about `$4.04` to `$4.11` | about `120` | about `12,120` units |
-| Medium engagement | 150 | active room, regular queue turnover, frequent host search behavior | about `$7.04` to `$7.11` | about `300` | about `30,300` units |
-| High engagement | 150 | aggressive queue turnover, high search churn, repeated fallback search | about `$10.89` to `$11.00` | about `750` | about `75,750` units |
+| Scenario | Audience | Show shape | Direct provider cost | Approx. live YouTube searches | Search Queries bucket | General units from paired validation |
+|---|---:|---|---:|---:|---:|---:|
+| Low engagement | 150 | light request volume, low churn, modest host search behavior | about `$4.04` to `$4.11` | about `120` | `120` calls | about `120` units |
+| Medium engagement | 150 | active room, regular queue turnover, frequent host search behavior | about `$7.04` to `$7.11` | about `300` | `300` calls | about `300` units |
+| High engagement | 150 | aggressive queue turnover, high search churn, repeated fallback search | about `$10.89` to `$11.00` | about `750` | `750` calls | about `750` units |
 
 Interpretation:
 
 - The direct cloud-dollar cost is still not extreme.
 - YouTube quota becomes the operational bottleneck much faster than GCP/Firebase billing.
-- With the default `10,000 units/day` YouTube quota, even the low-engagement 5-hour scenario is already over budget if uncached searches dominate.
+- With the assigned `100 Search Queries/day` bucket, even the low-engagement 5-hour scenario exceeds the search-call allocation if uncached searches dominate. The general-data bucket is not the limiting bucket in these scenarios.
 
 Practical planning answer:
 
 - If you run a 5-hour show with YouTube-first live search, budget about `$4` low, `$7` medium, and `$11` high in direct provider cost.
 - Separately, plan for YouTube quota controls, caching, or approved quota increases.
+- The current quota-extension packet proposes `1,000 Search Queries/day`, covering the high envelope with roughly 33% contingency while indexed/canonical/cache reuse continues to lower live demand.
 
 Internal reserve view:
 

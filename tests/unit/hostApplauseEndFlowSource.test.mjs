@@ -38,7 +38,7 @@ test('host end flow separates early backing corrections from normal applause fin
   );
   assert.match(
     source,
-    /await updateRoom\(\{\s*activeMode: 'applause_countdown',\s*activeScreen: 'stage',\s*applausePeak: 0,\s*currentApplauseLevel: 0,\s*applauseSubject,\s*announcement: null,\s*tvPreviewOverlay: null,\s*roundWinnersMoment: null,\s*howToPlay: \{ active: false, id: nowMs\(\) \},\s*'readyCheck\.active': false\s*\}\);/s,
+    /await updateRoom\(\{\s*activeMode: 'applause_countdown',[\s\S]*announcement: null,[\s\S]*tvPreviewOverlay: null,[\s\S]*roundWinnersMoment: null,[\s\S]*bonusDrop: null,[\s\S]*selfieMoment: null,[\s\S]*photoOverlay: null,[\s\S]*howToPlay: \{ active: false, id: nowMs\(\) \},\s*'readyCheck\.active': false\s*\}\);/s,
     'Starting applause should still clear the transient TV blockers that previously prevented the meter from mounting.',
   );
 });

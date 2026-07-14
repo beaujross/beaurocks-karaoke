@@ -18,7 +18,7 @@ test('host top chrome keeps the vibe meter but drops the redundant ops strip', (
   assert.doesNotMatch(source, /<NavStatusLight[\s\S]*label="Apple"/);
   assert.doesNotMatch(source, /data-feature-id="top-chrome-youtube-budget"/);
   assert.match(source, /const crowdPulseLabel = crowdPulseMeta\?\.alignmentLabel/);
-  assert.match(source, /const crowdPulseDirective = crowdPulseMeta\?\.hostDirective/);
+  assert.match(source, /const crowdPulseSummary = crowdPulseMeta\?\.alignmentSummary/);
   assert.match(source, /<div className="hidden xl:flex items-center gap-2">[\s\S]*\[\s*\{ key: 'stage', label: 'Queue' \},[\s\S]*\{ key: 'lobby', label: 'Audience' \}\s*\]\.map/);
   assert.match(source, /\[\s*\{ key: 'stage', label: 'Queue' \},[\s\S]*\{ key: 'admin', label: 'Admin' \}\s*\]\.map/);
   assert.match(source, /title="Open Admin"/);

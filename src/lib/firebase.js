@@ -678,6 +678,12 @@ const updateAudienceIdentity = async (payload = {}) => {
   return data || null;
 };
 
+const spendAudienceRoomCredits = async (payload = {}) => {
+  await requireAppCheckToken("spendAudienceRoomCredits");
+  const data = await callFunction("spendAudienceRoomCredits", payload || {});
+  return data || null;
+};
+
 const uploadAudienceRoomPhoto = async (payload = {}) => {
   await requireAppCheckToken("uploadAudienceRoomPhoto");
   const data = await callFunction("uploadAudienceRoomPhoto", payload || {});
@@ -864,6 +870,11 @@ const publishPublicRoomRecap = async (payload = {}) => {
   return data || null;
 };
 
+const permanentlyDeleteHostRoom = async (payload = {}) => {
+  await requireAppCheckToken("permanentlyDeleteHostRoom");
+  const data = await callFunction("permanentlyDeleteHostRoom", payload || {});
+  return data || null;
+};
 const removeHostRoomDiscoveryListing = async (roomCode = "") => {
   await requireAppCheckToken("removeHostRoomDiscoveryListing");
   const data = await callFunction("removeHostRoomDiscoveryListing", { roomCode });
@@ -1256,6 +1267,7 @@ export {
   claimTimedLobbyCredits,
   submitAudienceEmailCapture,
   updateAudienceIdentity,
+  spendAudienceRoomCredits,
   uploadAudienceRoomPhoto,
   createMediaUploadSession,
   uploadHostSceneMedia,
@@ -1291,6 +1303,7 @@ export {
   listHostSettingsAuditEntries,
   assertRoomHostAccess,
   publishPublicRoomRecap,
+  permanentlyDeleteHostRoom,
   removeHostRoomDiscoveryListing,
   provisionHostRoom,
   updateRoomAsHost,

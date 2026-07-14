@@ -1,0 +1,13 @@
+{
+  "capturedAt": "2026-07-12T19:10:18.000Z",
+  "source": "deterministic production build fixture",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "files": [
+    "host-room-setup.png",
+    "host-catalog-browse.png",
+    "host-game-bundles.png"
+  ]
+}

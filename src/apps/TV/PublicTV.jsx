@@ -13,6 +13,9 @@ import CrowdMicInputVisualizer from '../../games/shared/CrowdMicInputVisualizer'
 import AudioVisualizer from '../../components/AudioVisualizer';
 import Stage from '../../components/Stage';
 import GameContainer from '../../components/GameContainer';
+import GameLifecycleStatusCard from '../../components/GameLifecycleStatusCard';
+import { getGameLifecyclePresentation } from '../../lib/gameLifecyclePresentation';
+import { buildBackgroundAudioQaSnapshot, deriveBackgroundAudioState } from '../../lib/backgroundAudioState';
 import { emoji, EMOJI, getReactionEmoji } from '../../lib/emoji';
 import { HOW_TO_PLAY } from '../../lib/howToPlay';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
@@ -171,7 +174,6 @@ import {
     normalizeAudienceDisplay,
 } from '../../lib/audienceDisplay';
 
-const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
 const BONUS_DROP_TV_VISIBILITY_MS = 9000;
 const PHOTO_OVERLAY_TV_VISIBILITY_MS = 9000;
@@ -2783,6 +2785,19 @@ const PublicTV = ({ roomCode }) => {
     const [demoFixture, setDemoFixture] = useState(() => (isMarketingDemoEmbed ? {} : null));
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const [room, setRoom] = useState(null);
+    const gameLifecyclePresentation = useMemo(() => getGameLifecyclePresentation(room || {}), [room]);
+    const tvBackgroundAudioState = useMemo(() => deriveBackgroundAudioState({
+        room: room || {},
+        appleAuthorized: true,
+    }), [room]);
+    useEffect(() => {
+        const snapshot = buildBackgroundAudioQaSnapshot(tvBackgroundAudioState);
+        if (typeof window !== 'undefined') window.__qaBackgroundAudioState = { ...snapshot, surface: 'tv_observer' };
+        if (typeof document !== 'undefined') document.documentElement.dataset.backgroundAudioState = snapshot.key;
+        return () => {
+            if (typeof document !== 'undefined') delete document.documentElement.dataset.backgroundAudioState;
+        };
+    }, [tvBackgroundAudioState]);
     const [songs, setSongs] = useState([]);
     const [reactions, setReactions] = useState([]);
     const [lobbyPlayBursts, setLobbyPlayBursts] = useState([]);
@@ -5554,10 +5569,6 @@ const PublicTV = ({ roomCode }) => {
         8,
         Number(room?.popTriviaRoundSec || room?.gameDefaults?.triviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC)
     );
-    const popTriviaRevealHoldMs = Math.max(
-        6000,
-        Number(room?.gameDefaults?.popTriviaRevealHoldSec || DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC) * 1000
-    );
     const popTriviaQuestionRevealSec = Math.max(
         3,
         Number(room?.gameDefaults?.popTriviaQuestionRevealSec || DEFAULT_POP_TRIVIA_REVEAL_SEC)
@@ -5578,6 +5589,7 @@ const PublicTV = ({ roomCode }) => {
         });
     }, [current, popTriviaNow, popTriviaQuestionRevealSec, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
     const popTriviaQuestion = popTriviaState?.question || null;
+    const popTriviaLifecyclePresentation = getGameLifecyclePresentation({ ...(room || {}), activeMode: 'pop_trivia_companion', gameData: { status: popTriviaQuestion ? 'asking' : 'reveal', autoReveal: true } });
     const popTriviaQuestionId = popTriviaQuestion?.id || '';
     const popTriviaRevealQuestionFromState = popTriviaState?.status === 'reveal'
         ? (popTriviaState?.revealQuestion || null)
@@ -7437,6 +7449,7 @@ const PublicTV = ({ roomCode }) => {
 
         return withPurchaseCelebrationOverlay(
             <div data-feature-id="tv-doodle-oke" className="fixed inset-0 z-[200] bg-zinc-950 flex flex-col items-center justify-center p-4 md:p-6 2xl:p-10 text-white">
+                <GameLifecycleStatusCard presentation={gameLifecyclePresentation} surface="tv" />
                 <div className="w-full max-w-6xl">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4 md:mb-6">
                         <div>
@@ -7575,6 +7588,7 @@ const PublicTV = ({ roomCode }) => {
         return withPurchaseCelebrationOverlay(
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
+                <GameLifecycleStatusCard presentation={gameLifecyclePresentation} surface="tv" />
                 <GameContainer
                     activeMode={room.activeMode}
                     roomCode={roomCode}
@@ -8829,6 +8843,7 @@ const PublicTV = ({ roomCode }) => {
                                 : 'border-emerald-300/35 bg-gradient-to-br from-[#07141a]/96 via-[#08151f]/96 to-[#102115]/96'
                         }`}
                     >
+                        <GameLifecycleStatusCard presentation={popTriviaLifecyclePresentation} surface="tv" />
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.22),transparent_36%),radial-gradient(circle_at_bottom_left,rgba(236,72,153,0.18),transparent_34%)] pointer-events-none"></div>
                         <div className={`relative h-full flex flex-col ${popTriviaQuestionFlashVisible ? 'animate-pulse' : ''}`}>
                             <div className={`px-5 py-4 md:px-7 md:py-6 border-b text-[11px] md:text-xs uppercase tracking-[0.22em] flex items-start justify-between gap-4 ${
@@ -9592,6 +9607,7 @@ const PublicTV = ({ roomCode }) => {
 
             {selfieChallengeTvVisible && (
                 <div data-feature-id="tv-selfie-challenge" className="absolute inset-0 z-[120] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.22),rgba(0,0,0,0)_34%),radial-gradient(circle_at_20%_0%,rgba(236,72,153,0.24),rgba(0,0,0,0)_30%),linear-gradient(180deg,rgba(2,6,23,0.82),rgba(1,3,10,0.94))] backdrop-blur-sm flex flex-col p-4 md:p-6 2xl:p-10">
+                    <GameLifecycleStatusCard presentation={gameLifecyclePresentation} surface="tv" />
                     <div className="absolute inset-0 pointer-events-none opacity-75" aria-hidden="true">
                         <div className="selfie-grid-sheen absolute inset-x-0 top-0 h-[45%]" />
                         <div className="absolute left-[8%] top-[16%] h-56 w-56 rounded-full bg-fuchsia-500/18 blur-3xl" />

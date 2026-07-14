@@ -26,18 +26,18 @@ test('base audience points sheet uses room-configured point mechanics instead of
   );
   assert.match(
     source,
-    /const supportTargetLabel = roomSupportOffer\?\.label/,
+    /const supportCtaLabel =[\s\S]*roomSupportOffer\?\.label/,
     'Support merchandising should use the room support label configured by the host',
   );
   assert.match(
     source,
-    /Free ways to earn/,
+    /Earn more/,
     'Bonus area should be generic enough for normal rooms and event rooms',
   );
   assert.match(
     source,
-    /No bonus promos are posted yet/,
-    'Empty promo state should not imply every room is a festival room',
+    /eventPromoSummary\.hasPromoClaims/,
+    'Promo merchandising should only mount when the room has configured claims',
   );
   assert.doesNotMatch(
     source,
@@ -53,17 +53,17 @@ test('audience points sheet merchandises room boosts and personal packs like a m
   );
   assert.match(
     source,
-    /data-feature-id="audience-room-boost-storefront"[\s\S]*Buy points for everyone[\s\S]*Trigger a TV burst and refill the room/,
+    /data-feature-id="audience-room-boost-storefront"[\s\S]*Boost the room[\s\S]*Everyone/,
     'Room-wide point purchases should be promoted as the social hero purchase',
   );
   assert.match(
     source,
-    /data-feature-id="audience-personal-pack-storefront"[\s\S]*Grab more points[\s\S]*Personal packs refill reactions/,
+    /data-feature-id="audience-personal-pack-storefront"[\s\S]*Refill mine[\s\S]*Personal/,
     'Personal point packs should remain available but be clearly separate from room boosts',
   );
   assert.match(
     source,
-    />TV<|>TV<[^\n]*[\s\S]*MONEYBAGS_BADGE_LABEL/,
+    /data-feature-id="audience-room-boost-storefront"[\s\S]*Everyone/,
     'Room boost cards should show the public-TV supporter badge payoff',
   );
 });

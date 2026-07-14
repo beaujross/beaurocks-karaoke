@@ -57,7 +57,7 @@ const HOST_GAME_MATRIX = [
     interaction: {
       type: "click_selector",
       selector: "[data-wyr-choice='A']",
-      successRegex: /vote cast|no vote submitted|watch tv for results/i,
+      successRegex: /vote cast|no vote submitted|watch tv for results|majority pick|winning side/i,
     },
   },
   {

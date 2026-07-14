@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import UnifiedGameLauncher from '../../components/UnifiedGameLauncher';
 import { GAMES_META } from '../../lib/gameRegistry';
+import { getRoomGameLaunchPreflight, getRunOfShowGameMode } from '../../lib/gameLaunchCompatibility';
 import HostChatPanel from './components/HostChatPanel';
 import HostTopChrome from './components/HostTopChrome';
 import SelfServeModeLauncher from './components/SelfServeModeLauncher';
@@ -44,6 +45,7 @@ import {
     ensureAppCheckToken,
     assertRoomHostAccess,
     upsertHostRoomDiscoveryListing,
+    permanentlyDeleteHostRoom,
     removeHostRoomDiscoveryListing,
     ensureOrganization,
     bootstrapOnboardingWorkspace,
@@ -68,6 +70,7 @@ import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
 import { EMOJI } from '../../lib/emoji';
 import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
 import { buildBrowseCuratedYouTubeIndex } from '../../lib/curatedKaraokeIndex';
+import { buildYouTubeEventReadiness } from '../../lib/youtubeEventReadiness';
 import {
     getYouTubeSearchTelemetrySnapshot,
     getYouTubeQuotaBlockedUntilMs,
@@ -130,6 +133,7 @@ import {
     buildHostAudioUploadTrackId,
     buildRoomBgTrackOptions,
     getHostAudioLibraryItemLabel,
+    isHostAudioUploadActive,
     normalizeHostAudioLibraryCategory,
     normalizeHostAudioLibraryItemMetadata,
 } from '../../lib/hostAudioLibrary';
@@ -161,6 +165,8 @@ import {
     decorateBrowseSongs,
     isApprovedPlayableBrowseSong
 } from '../../lib/browseCatalog';
+import { isBrowseCollectionReadyForTonight, sortBrowseCollectionsByReadiness, summarizeBrowseCoverage } from '../../lib/browseCoverage';
+import { HOST_MOMENT_COLLECTIONS } from '../../lib/hostMomentCollections';
 import {
     COHOST_SIGNAL_WINDOW_MS,
     getCoHostSignalMeta,
@@ -267,6 +273,7 @@ import {
     mergePayloadWithOverrides,
     getRecommendedHostAction
 } from './missionControl';
+import { resolveRoomSetupEffectiveBehavior } from './roomSetupEffectiveBehavior';
 import {
     normalizeMissionParty,
     recordCompletedPerformance,
@@ -317,6 +324,10 @@ import { normalizeHostPermissionLevel } from './launchAccess';
 import {
     getTrackDurationSecFromSearchResult
 } from './hostPlaybackAutomation';
+import {
+    buildLocalBackgroundPlayback,
+    startBackgroundAudioElement,
+} from '../../lib/backgroundAudioRuntime';
 import {
     buildRoomMediaIdentity,
     hasRoomMediaIdentity,
@@ -1365,7 +1376,7 @@ const buildRunOfShowQueueAssignmentPatch = (song = {}, item = {}) => {
         : youtubeId
             ? 'youtube'
             : (mediaUrl || trackId ? 'canonical_default' : String(item?.backingPlan?.sourceType || 'canonical_default').trim().toLowerCase() || 'canonical_default');
-    const label = [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' · ') || 'Queued performance';
+    const label = [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' Ã‚Â· ') || 'Queued performance';
     const durationSec = getAssociatedBackingDurationSec(song) || normalizeDurationSec(song?.duration);
     const shouldSyncPlannedDuration = durationSec > 0 && String(item?.plannedDurationSource || '').trim().toLowerCase() !== 'manual';
     return {
@@ -1932,8 +1943,12 @@ const readAppleMusicRelationshipItems = (items = []) => (
     })
 );
 
-const readAppleMusicResponseItems = (response, mode = '') => {
+const readAppleMusicResponseItems = (response) => {
     const payload = response?.data || response || {};
+    if (Array.isArray(payload)) {
+        const nested = readAppleMusicRelationshipItems(payload);
+        return nested.length ? [...payload, ...nested] : payload;
+    }
     if (Array.isArray(payload?.results?.playlists?.data)) {
         return payload.results.playlists.data;
     }
@@ -1992,6 +2007,68 @@ const readAppleMusicUserToken = (instance = null) => String(
     || instance?.__beauRocksMusicUserToken
     || ''
 ).trim();
+
+const clearMediaElementSource = (audio = null) => {
+    if (!audio) return;
+    let currentSrc = '';
+    try {
+        currentSrc = String(audio.currentSrc || audio.src || '').trim();
+        audio.pause?.();
+    } catch (_error) {
+        currentSrc = '';
+    }
+    try {
+        audio.removeAttribute?.('src');
+        if (currentSrc && !currentSrc.startsWith('blob:')) audio.load?.();
+    } catch (_error) {
+        // Revoked blob URLs can throw while the browser tears down the old source.
+    }
+};
+
+const applyAppleMusicOutputVolume = (instance = null, value = 0.3) => {
+    if (!instance) return normalizeUnitVolume(value, 0.3);
+    const volume = normalizeUnitVolume(value, 0.3);
+    const currentVolume = Number(instance?.volume ?? instance?.player?.volume ?? NaN);
+    const musicKitVolume = Number.isFinite(currentVolume) && currentVolume > 1 ? Math.round(volume * 100) : volume;
+    try { instance.volume = musicKitVolume; } catch (_error) {
+        // MusicKit output volume is best-effort across browser implementations.
+    }
+    try {
+        if (instance.player && typeof instance.player === 'object') instance.player.volume = musicKitVolume;
+    } catch (_error) {
+        // Some MusicKit versions expose a readonly nested player volume.
+    }
+    try {
+        if (instance.audioElement && typeof instance.audioElement === 'object') instance.audioElement.volume = volume;
+    } catch (_error) {
+        // The backing audio element is not available in every MusicKit runtime.
+    }
+    return volume;
+};
+
+const waitForAppleMusicPlaybackStart = async (instance = null, { timeoutMs = 3200, intervalMs = 180 } = {}) => {
+    if (!instance) throw new Error('Apple Music playback unavailable');
+    const startedAt = Date.now();
+    while (Date.now() - startedAt <= timeoutMs) {
+        const snapshot = getApplePlaybackSnapshot(instance, { fallbackStatus: '' });
+        const rawState = String(instance?.playbackState || instance?.playerState || snapshot?.rawPlaybackState || '').toLowerCase();
+        const hasLoadedItem = !!(instance?.nowPlayingItem || instance?.queue?.currentItem || snapshot?.trackId || snapshot?.durationSec > 0);
+        const isPlaying = instance?.isPlaying === true || snapshot?.status === 'playing' || rawState.includes('play');
+        if (isPlaying && hasLoadedItem) return snapshot || { status: 'playing' };
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    throw new Error('Apple Music did not load an audible playlist item');
+};
+
+const stopAppleMusicForQueueRetry = async (instance = null) => {
+    if (!instance) return;
+    try {
+        if (typeof instance.pause === 'function') await instance.pause();
+        else if (typeof instance.stop === 'function') await instance.stop();
+    } catch (_error) {
+        // Playback may already be stopped while rotating queue descriptors.
+    }
+};
 
 const rememberAppleMusicUserToken = (instance = null, tokenPayload = '') => {
     if (!instance) return '';
@@ -2058,7 +2135,7 @@ const buildAppleMusicPlaylistQueueAttempts = (playlistId = '', meta = {}) => {
     });
 };
 
-const setAppleMusicPlaylistQueue = async (instance = null, playlistId = '', meta = {}) => {
+const playAppleMusicPlaylistQueueWithFallback = async (instance = null, playlistId = '', meta = {}) => {
     if (!instance || typeof instance.setQueue !== 'function') throw new Error('Apple Music playback unavailable');
     const attempts = buildAppleMusicPlaylistQueueAttempts(playlistId, meta);
     if (!attempts.length) throw new Error('Missing Apple Music playlist id');
@@ -2066,13 +2143,16 @@ const setAppleMusicPlaylistQueue = async (instance = null, playlistId = '', meta
     for (const descriptor of attempts) {
         try {
             await instance.setQueue(descriptor);
-            return descriptor;
+            await instance.play();
+            const snapshot = await waitForAppleMusicPlaybackStart(instance);
+            return { descriptor, snapshot };
         } catch (error) {
             if (!firstError) firstError = error;
+            await stopAppleMusicForQueueRetry(instance);
         }
     }
     if (firstError) throw firstError;
-    throw new Error('Apple Music playlist could not be queued');
+    throw new Error('Apple Music playlist did not start playback');
 };
 
 const callAppleMusicRestApi = async (instance = null, apiPath = '', { developerToken = '' } = {}) => {
@@ -4981,6 +5061,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const appleMusicRef = useRef(null);
     const appleMusicDeveloperTokenRef = useRef('');
+    const appleMusicVolumeRef = useRef(0.3);
     const applePlaybackSyncKeyRef = useRef('');
     const applePlaybackSyncMetaRef = useRef({ fingerprint: '', writtenAtMs: 0 });
     const syncApplePlaybackStateRef = useRef(async () => {});
@@ -5107,6 +5188,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             app: { name: 'Bross Karaoke Host', build: '1.0.0' }
         });
         const instance = MusicKit.getInstance();
+        applyAppleMusicOutputVolume(instance, appleMusicVolumeRef.current);
         instance.__beauRocksDeveloperToken = appleMusicDeveloperTokenRef.current;
         rememberAppleMusicUserToken(instance);
         appleMusicRef.current = instance;
@@ -5160,8 +5242,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await authorizeAppleMusicInstance(instance);
             setAppleMusicAuthorized(true);
         }
+        applyAppleMusicOutputVolume(instance, appleMusicVolumeRef.current);
         await instance.setQueue({ song: String(trackId) });
         await instance.play();
+        await waitForAppleMusicPlaybackStart(instance);
         setAppleMusicPlaying(true);
         const nowPlayingDurationMs = Number(
             instance?.nowPlayingItem?.attributes?.durationInMillis
@@ -5230,13 +5314,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const instance = appleMusicRef.current;
         if (!instance) return;
         try {
-            if (typeof instance.stop === 'function') {
-                await instance.stop();
-            } else {
+            if (typeof instance.pause === 'function') {
                 await instance.pause();
+            } else if (typeof instance.stop === 'function') {
+                await instance.stop();
             }
         } catch (e) {
-            hostLogger.warn('Apple Music stop failed', e);
+            hostLogger.warn('Apple Music pause failed', e);
         }
         setAppleMusicPlaying(false);
     }, []);
@@ -5307,8 +5391,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAppleMusicAuthorized(true);
         }
         const resolvedTitle = meta.title || await fetchAppleMusicPlaylistTitle(playlistId) || '';
-        await setAppleMusicPlaylistQueue(instance, playlistId, meta);
-        await instance.play();
+        applyAppleMusicOutputVolume(instance, appleMusicVolumeRef.current);
+        await playAppleMusicPlaylistQueueWithFallback(instance, playlistId, meta);
         setAppleMusicPlaying(true);
         if (roomCode) {
             await updateRoom({
@@ -5432,6 +5516,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [catalogueSearchQ, setCatalogueSearchQ] = useState('');
     const [catalogueResults, setCatalogueResults] = useState([]);
     const [activeBrowseList, setActiveBrowseList] = useState(null);
+    const [browseBackingFilter, setBrowseBackingFilter] = useState('ready');
     const [showTop100, setShowTop100] = useState(false);
     const [showYtIndex, setShowYtIndex] = useState(false);
     const [ytIndexFilter, setYtIndexFilter] = useState('');
@@ -5461,6 +5546,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [appleMusicPickerItems, setAppleMusicPickerItems] = useState([]);
     const [appleMusicPickerLoading, setAppleMusicPickerLoading] = useState(false);
     const [appleMusicPickerError, setAppleMusicPickerError] = useState('');
+    const [appleMusicBgPendingId, setAppleMusicBgPendingId] = useState('');
     const [ytPlaylistStatus, setYtPlaylistStatus] = useState('');
     const [ytAddTitle, setYtAddTitle] = useState('');
     const [ytAddArtist, setYtAddArtist] = useState('');
@@ -5544,8 +5630,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [appleMusicPickerMode, appleMusicPickerQuery, ensureAppleMusic, reportAppleMusicDiagnostic]);
 
     const applyAppleMusicPlaylistForBg = useCallback(async (choice = {}) => {
+        if (appleMusicBgPendingId) return;
         const playlistId = parseAppleMusicPlaylistId(choice.id || '');
-        if (!playlistId) return;
+        if (!playlistId) {
+            setAppleMusicPlaylistStatus('Pick a valid Apple Music playlist.');
+            return;
+        }
         const title = String(choice.title || '').trim();
         const label = title || 'Apple Music playlist';
         const playbackMeta = {
@@ -5556,25 +5646,46 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             playParamsId: choice.playParamsId || '',
             alternatePlaylistIds: choice.alternatePlaylistIds || []
         };
+        setAppleMusicBgPendingId(playlistId);
         setAppleMusicAutoPlaylistId(playlistId);
         setAppleMusicAutoPlaylistTitle(title);
         setAppleMusicPlaylistUrl(playlistId);
         setAppleMusicPlaylistStatus(`Starting ${label} as background...`);
+        const performanceActive = (Array.isArray(songsRef.current) ? songsRef.current : []).some((entry) => entry?.status === 'performing');
+        const shouldRestoreBgVolume = appleMusicVolumeRef.current <= 0.01;
+        if (shouldRestoreBgVolume) {
+            appleMusicVolumeRef.current = 0.3;
+            setBgVolume(0.3);
+        }
         setPlayingBg(false);
+        playingBgRef.current = false;
+        bgPlaybackOperationRef.current += 1;
         try {
-            if (bgAudio.current) {
-                bgAudio.current.pause();
-                bgAudio.current.removeAttribute('src');
-                bgAudio.current.load();
+            clearMediaElementSource(bgAudio.current);
+            setAutoBgMusic(true);
+            if (performanceActive) {
+                await updateRoom({
+                    autoBgMusic: true,
+                    bgMusicPlaying: false,
+                    bgMusicUrl: '',
+                    ...(shouldRestoreBgVolume ? { bgMusicVolume: 0.3 } : {}),
+                    appleMusicAutoPlaylistId: playlistId,
+                    appleMusicAutoPlaylistTitle: title,
+                    appleMusicPlayback: null,
+                    backgroundAudioPlayback: null
+                });
+                setAppleMusicPlaylistStatus(`${label} is ready. BG will start after the current performance.`);
+                return;
             }
             await playAppleMusicPlaylist(playlistId, playbackMeta);
-            setAutoBgMusic(true);
             await updateRoom({
                 autoBgMusic: true,
                 bgMusicPlaying: false,
                 bgMusicUrl: '',
+                ...(shouldRestoreBgVolume ? { bgMusicVolume: 0.3 } : {}),
                 appleMusicAutoPlaylistId: playlistId,
-                appleMusicAutoPlaylistTitle: title
+                appleMusicAutoPlaylistTitle: title,
+                backgroundAudioPlayback: null
             });
             setAppleMusicPlaylistStatus(`${label} is now the background playlist.`);
         } catch (error) {
@@ -5584,13 +5695,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 bgMusicPlaying: false,
                 bgMusicUrl: '',
                 appleMusicAutoPlaylistId: playlistId,
-                appleMusicAutoPlaylistTitle: title
+                appleMusicAutoPlaylistTitle: title,
+                backgroundAudioPlayback: null
             }).catch((persistError) => {
                 hostLogger.debug('Apple Music playlist selection persist failed after playback error', persistError);
             });
             setAppleMusicPlaylistStatus(`${label} was saved, but Apple Music could not start it. Try Connect again or pick another playlist.`);
+        } finally {
+            setAppleMusicBgPendingId('');
         }
-    }, [playAppleMusicPlaylist, reportAppleMusicDiagnostic, updateRoom]);
+    }, [appleMusicBgPendingId, playAppleMusicPlaylist, reportAppleMusicDiagnostic, updateRoom]);
     const [pendingLocalFile, setPendingLocalFile] = useState(null);
     const [uploadingLocal, setUploadingLocal] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -5723,8 +5837,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 trackName: String(item?.title || 'Room Media').trim() || 'Room Media',
                 artistName: String(item?.artist || (item?._local ? 'Offline Backup' : 'Room Upload')).trim() || (item?._local ? 'Offline Backup' : 'Room Upload'),
                 artworkUrl100: '',
-                url: String(item?.url || '').trim(),
-                mediaType: String(item?.mediaType || (isAudioUrl(item?.url || '') ? 'audio' : 'video')).trim() || 'video',
+                url: String(item?.url || item?.mediaUrl || '').trim(),
+                mediaUrl: String(item?.mediaUrl || item?.url || '').trim(),
+                mediaType: String(item?.mediaType || (isAudioUrl(item?.url || item?.mediaUrl || '') ? 'audio' : 'video')).trim() || 'video',
                 offlineReady: item?._local === true || item?.offlineReady === true,
                 playable: true,
                 curatedAtMs: Math.max(0, Number(item?.createdAtMs || item?.createdAt?.seconds * 1000 || 0)),
@@ -5807,6 +5922,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         uploads: roomLibraryItems.filter((entry) => entry.source === 'local' && entry._cloud).length,
         offline: roomLibraryItems.filter((entry) => entry.source === 'local' && entry.offlineReady).length,
     }), [roomLibraryItems]);
+    const curatedYouTubeEventIndex = useMemo(() => buildBrowseCuratedYouTubeIndex(), []);
+    const youtubeEventReadiness = useMemo(() => {
+        const knownVideoIds = new Set([
+            ...(Array.isArray(curatedYouTubeEventIndex) ? curatedYouTubeEventIndex : []),
+            ...(Array.isArray(ytIndex) ? ytIndex : []),
+        ]
+            .filter((entry) => entry?.playable !== false && entry?.embeddable !== false)
+            .map((entry) => String(entry?.videoId || entry?.id || '').trim())
+            .filter(Boolean));
+        return buildYouTubeEventReadiness({
+            telemetry: youtubeSearchTelemetry,
+            knownEmbeddableCount: knownVideoIds.size,
+            freshRoomIndexCount: ytIndexHealthSummary.fresh,
+            provenRoomIndexCount: ytIndexHealthSummary.proven,
+            localFallbackCount: roomLibraryStats.uploads + roomLibraryStats.offline,
+        });
+    }, [curatedYouTubeEventIndex, roomLibraryStats.offline, roomLibraryStats.uploads, youtubeSearchTelemetry, ytIndex, ytIndexHealthSummary.fresh, ytIndexHealthSummary.proven]);
+    const youtubeEventReadinessToneClass = {
+        success: 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100',
+        warning: 'border-amber-300/35 bg-amber-500/10 text-amber-100',
+        danger: 'border-rose-300/35 bg-rose-500/10 text-rose-100',
+        info: 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100',
+    }[youtubeEventReadiness.tone] || 'border-zinc-600 bg-zinc-900/70 text-zinc-200';
     const activeBgTrack = roomBgTrackOptions[currentTrackIdx] || roomBgTrackOptions[0] || null;
     const activeBgTrackUploadId = String(activeBgTrack?.sourceUploadId || '').trim();
     const getYtDiagnosticsKey = useCallback((entry = {}) => (
@@ -5939,7 +6077,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAudioPanelOpen(false);
     }, [hostStageLayoutMode]);
     useEffect(() => {
-        if (tab !== 'run_of_show') return;
+        if (tab !== 'run_of_show' && tab !== 'admin') return;
         setAudioPanelOpen(false);
     }, [tab]);
     useEffect(() => {
@@ -7023,6 +7161,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [catalogueSearchQ, localLibrary, ytIndex, accountYtIndex, globalYtIndex, searchSources, appleMusicAuthorized, roomCode, hideNonEmbeddableYouTube]);
 
     const bgAudio = useRef(null);
+    const bgPlaybackOperationRef = useRef(0);
     const bgCtxRef = useRef(null);
     const bgAnalyserRef = useRef(null);
     const bgSourceRef = useRef(null);
@@ -7485,7 +7624,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 headline: item.presentationPlan?.headline || item.title || getRunOfShowItemLabel(item.type),
                 subhead: item.presentationPlan?.subhead || item.notes || '',
                 summary: item.type === 'performance'
-                    ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' · ')
+                    ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' Ã‚Â· ')
                     : '',
                 modeKey: item?.modeLaunchPlan?.modeKey || '',
                 takeoverScene: item.presentationPlan?.takeoverScene || item.type,
@@ -7669,7 +7808,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 type: 'performance',
                 title: item?.title || queueSong.songTitle || 'Performance Slot',
                 headline: queueSong.singerName || 'Next Performer',
-                subhead: [queueSong.songTitle, queueSong.artist].filter(Boolean).join(' · ') || 'Mic change in progress',
+                subhead: [queueSong.songTitle, queueSong.artist].filter(Boolean).join(' Ã‚Â· ') || 'Mic change in progress',
                 summary: 'Mic transition in progress',
                 performerName: queueSong.singerName || item?.assignedPerformerName || 'Next Performer',
                 performerAvatar,
@@ -7827,7 +7966,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         headline: item?.presentationPlan?.headline || item?.title || getRunOfShowItemLabel(item?.type || ''),
         subhead: item?.presentationPlan?.subhead || item?.modeLaunchPlan?.launchConfig?.question || item?.notes || '',
         summary: item?.type === 'performance'
-            ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' · ')
+            ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' Ã‚Â· ')
             : '',
         modeKey: item?.modeLaunchPlan?.modeKey || '',
         options: parseRunOfShowOptions(item?.modeLaunchPlan?.launchConfig || {}),
@@ -8027,6 +8166,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const startRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const requestedItem = currentDirector.items.find((item) => item.id === itemId) || null;
+        const requestedGameMode = getRunOfShowGameMode(requestedItem);
+        if (requestedGameMode) {
+            const compatibility = getRoomGameLaunchPreflight({
+                requestedMode: requestedGameMode,
+                room: roomRef.current || {},
+                performanceActive: Boolean(roomRef.current?.currentPerformanceMeta || roomRef.current?.currentPerformanceSession || (songsRef.current || []).some((song) => String(song?.status || '').trim().toLowerCase() === 'performing')),
+            });
+            if (!compatibility.allowed) {
+                toast(compatibility.message || 'Finish the current room moment before starting this game.');
+                return currentDirector;
+            }
+        }
         if (!isMarketingDemoFixture) {
             let result;
             let preparedDirector = currentDirector;
@@ -8131,7 +8282,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await fireRunOfShowItemCueIfNeeded(targetItem, 'start');
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, closeRunOfShowReleaseWindow, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, markScenePresetPresented, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, updateRoom]);
+    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, closeRunOfShowReleaseWindow, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, markScenePresetPresented, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, toast, updateRoom]);
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
@@ -8973,7 +9124,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 ].filter(Boolean);
                 return {
                     id: item.id,
-                    label: parts.join(' · '),
+                    label: parts.join(' Ã‚Â· '),
                     status: String(item?.status || '').trim().toLowerCase(),
                     queueLinkState: String(item?.queueLinkState || '').trim().toLowerCase(),
                     assignedPerformerName: String(item?.assignedPerformerName || '').trim(),
@@ -8993,7 +9144,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 ].filter(Boolean);
                 return {
                     id: item.id,
-                    label: parts.join(' · '),
+                    label: parts.join(' Ã‚Â· '),
                     sequence: safeSequence
                 };
             }),
@@ -10139,7 +10290,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         ? `${formatElapsedClock(entry.latestPerformanceElapsedSec)} in`
                         : '',
                     formatRelativeShortAge(entry.latestAtMs)
-                ].filter(Boolean).join(' • ');
+                ].filter(Boolean).join(' Ã¢â‚¬Â¢ ');
                 return {
                     id: entry.id,
                     label: entry.label,
@@ -10415,6 +10566,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const duckPct = Math.max(8, Math.min(HOST_ROOM_MIC_BG_DUCK_LEVEL_PCT, configuredPerformanceDuckPct || HOST_ROOM_MIC_BG_DUCK_LEVEL_PCT));
         return Math.max(0, Math.min(baseVolume, baseVolume * (duckPct / 100)));
     }, [autoBgMixDuringSong, bgVolume, hostRoomMicBgDuckActive]);
+    useEffect(() => {
+        const nextAppleVolume = normalizeUnitVolume(hostRoomMicBgDuckVolume, 0.3);
+        appleMusicVolumeRef.current = nextAppleVolume;
+        applyAppleMusicOutputVolume(appleMusicRef.current, nextAppleVolume);
+    }, [hostRoomMicBgDuckVolume]);
     useEffect(() => {
         const audio = bgAudio.current;
         if (!audio) return undefined;
@@ -11878,14 +12034,57 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setPlayingBg(false);
         const audio = bgAudio.current;
         if (!audio) return;
-        try {
-            audio.pause();
-            audio.removeAttribute('src');
-            audio.load();
-        } catch (error) {
-            hostLogger.debug('Failed to clear local BG audio after Apple Music takeover', error);
-        }
+        clearMediaElementSource(audio);
     }, [appleMusicBackgroundActive]);
+    const startLocalBackgroundTrack = useCallback(async (track = {}) => {
+        const audio = bgAudio.current;
+        const url = String(track?.url || track?.mediaUrl || '').trim();
+        if (!audio || !url) {
+            return { ok: false, status: 'blocked', reason: 'Choose a playable room upload before starting background audio.' };
+        }
+
+        const operationId = bgPlaybackOperationRef.current + 1;
+        bgPlaybackOperationRef.current = operationId;
+        setAppleMusicAutoPlaylistId('');
+        setAppleMusicAutoPlaylistTitle('');
+        setAppleMusicPlaylistUrl('');
+        setAppleMusicPlaylistStatus('');
+        roomRef.current = {
+            ...(roomRef.current || {}),
+            appleMusicAutoPlaylistId: '',
+            appleMusicAutoPlaylistTitle: '',
+            appleMusicPlayback: null,
+        };
+        if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
+            void bgCtxRef.current.resume().catch(() => {});
+        }
+
+        const stopApplePromise = Promise.resolve(stopAppleMusic?.()).catch((error) => {
+            hostLogger.warn('Apple Music did not stop cleanly before local background playback', error);
+        });
+        const result = await startBackgroundAudioElement(audio, { url });
+        await stopApplePromise;
+        if (bgPlaybackOperationRef.current !== operationId) return result;
+
+        playingBgRef.current = result.ok;
+        setPlayingBg(result.ok);
+        const observation = buildLocalBackgroundPlayback({
+            track: { ...track, url },
+            status: result.status,
+            reason: result.reason,
+        });
+        await updateRoom({
+            appleMusicPlayback: null,
+            appleMusicAutoPlaylistId: '',
+            appleMusicAutoPlaylistTitle: '',
+            bgMusicPlaying: result.ok,
+            bgMusicUrl: url,
+            backgroundAudioPlayback: observation,
+        });
+        if (!result.ok) hostLogger.warn('Local background playback was not confirmed', observation);
+        return result;
+    }, [stopAppleMusic, updateRoom]);
+
     const setBgMusicState = useCallback(async (next) => {
         const { playlistId, title } = getAppleBackgroundPlaylistConfig();
         const livePlayback = roomRef.current?.appleMusicPlayback || room?.appleMusicPlayback || {};
@@ -11896,14 +12095,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             && (!playlistId || String(livePlayback?.id || '').trim() === playlistId);
 
         if (next && playlistId) {
-            if (bgAudio.current) {
-                bgAudio.current.pause();
-                bgAudio.current.removeAttribute('src');
-                bgAudio.current.load();
-            }
+            bgPlaybackOperationRef.current += 1;
+            clearMediaElementSource(bgAudio.current);
             playingBgRef.current = false;
             setPlayingBg(false);
-            await updateRoom({ bgMusicPlaying: false, bgMusicUrl: '' });
+            await updateRoom({ bgMusicPlaying: false, bgMusicUrl: '', backgroundAudioPlayback: null });
             if (configuredApplePlaylistIsActive && livePlaybackStatus === 'playing') return;
             await playAppleMusicPlaylist(playlistId, { title });
             return;
@@ -11915,24 +12111,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
 
         if (!bgAudio.current) return;
-        if (playingBgRef.current === next) {
-            if (!next) await updateRoom({ bgMusicPlaying: false, bgMusicUrl: '' });
+        if (next) {
+            if (playingBgRef.current) return;
+            await startLocalBackgroundTrack(activeBgTrack || {});
             return;
         }
-        playingBgRef.current = next;
-        setPlayingBg(next);
-        if (next) {
-            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
-                bgCtxRef.current.resume().catch(() => {});
-            }
-            await stopAppleMusic?.();
-            await updateRoom({ appleMusicPlayback: null });
-            bgAudio.current.play().catch(() => {});
-        } else {
-            bgAudio.current.pause();
-        }
-        await updateRoom({ bgMusicPlaying: next, bgMusicUrl: next ? (activeBgTrack?.url || '') : '' });
-    }, [activeBgTrack?.url, getAppleBackgroundPlaylistConfig, playAppleMusicPlaylist, room?.appleMusicPlayback, stopAppleMusic, updateRoom]);
+
+        bgPlaybackOperationRef.current += 1;
+        bgAudio.current.pause();
+        playingBgRef.current = false;
+        setPlayingBg(false);
+        await updateRoom({
+            bgMusicPlaying: false,
+            bgMusicUrl: activeBgTrack?.url || '',
+            backgroundAudioPlayback: activeBgTrack?.url
+                ? buildLocalBackgroundPlayback({ track: activeBgTrack, status: 'paused' })
+                : null,
+        });
+    }, [activeBgTrack, getAppleBackgroundPlaylistConfig, playAppleMusicPlaylist, room?.appleMusicPlayback, startLocalBackgroundTrack, stopAppleMusic, updateRoom]);
 
     useEffect(() => {
         if (!roomCode || !autoBgMusic) return;
@@ -11975,54 +12171,58 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
         currentTrackIdxRef.current = nextIdx;
         setCurrentTrackIdx(nextIdx);
-        bgAudio.current.src = nextTrack.url;
-
         if (shouldPlay) {
-            playingBgRef.current = true;
-            setPlayingBg(true);
-            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
-                bgCtxRef.current.resume().catch(() => {});
+            await startLocalBackgroundTrack(nextTrack);
+        } else {
+            bgPlaybackOperationRef.current += 1;
+            bgAudio.current.pause();
+            bgAudio.current.src = nextTrack.url;
+            playingBgRef.current = false;
+            setPlayingBg(false);
+            if (syncRoom) {
+                await updateRoom({
+                    bgMusicPlaying: false,
+                    bgMusicUrl: nextTrack.url,
+                    backgroundAudioPlayback: buildLocalBackgroundPlayback({ track: nextTrack, status: 'paused' }),
+                });
             }
-            bgAudio.current.play().catch(() => {});
-        }
-
-        if (syncRoom) {
-            await updateRoom({
-                bgMusicPlaying: shouldPlay ? true : playingBgRef.current,
-                bgMusicUrl: nextTrack.url
-            });
         }
         return nextTrack;
-    }, [roomBgTrackOptions, updateRoom]);
-    const advanceBgTrack = useCallback(({ shouldPlay = playingBgRef.current, syncRoom = shouldPlay } = {}) => {
-        if (!bgAudio.current || !roomBgTrackOptions.length) return;
+    }, [roomBgTrackOptions, startLocalBackgroundTrack, updateRoom]);
+    const advanceBgTrack = useCallback(async ({ shouldPlay = playingBgRef.current, syncRoom = shouldPlay } = {}) => {
+        if (!bgAudio.current || !roomBgTrackOptions.length) return null;
 
         const nextIdx = getNextBgTrackIndex(currentTrackIdxRef.current, roomBgTrackOptions.length);
         const nextTrack = roomBgTrackOptions[nextIdx];
-        if (!nextTrack?.url) return;
+        if (!nextTrack?.url) return null;
 
         currentTrackIdxRef.current = nextIdx;
         setCurrentTrackIdx(nextIdx);
-        bgAudio.current.src = nextTrack.url;
-
         if (shouldPlay) {
-            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
-                bgCtxRef.current.resume().catch(() => {});
+            await startLocalBackgroundTrack(nextTrack);
+        } else {
+            bgPlaybackOperationRef.current += 1;
+            bgAudio.current.pause();
+            bgAudio.current.src = nextTrack.url;
+            playingBgRef.current = false;
+            setPlayingBg(false);
+            if (syncRoom) {
+                await updateRoom({
+                    bgMusicPlaying: false,
+                    bgMusicUrl: nextTrack.url,
+                    backgroundAudioPlayback: buildLocalBackgroundPlayback({ track: nextTrack, status: 'paused' }),
+                });
             }
-            bgAudio.current.play().catch(() => {});
         }
-
-        if (syncRoom) {
-            updateRoom({ bgMusicPlaying: shouldPlay, bgMusicUrl: nextTrack.url });
-        }
-    }, [roomBgTrackOptions, updateRoom]);
+        return nextTrack;
+    }, [roomBgTrackOptions, startLocalBackgroundTrack, updateRoom]);
     useEffect(() => {
         const audio = bgAudio.current;
         if (!audio) return;
 
         const handleEnded = () => {
             if (!playingBgRef.current) return;
-            advanceBgTrack({ shouldPlay: true, syncRoom: true });
+            void advanceBgTrack({ shouldPlay: true, syncRoom: true });
         };
 
         audio.addEventListener('ended', handleEnded);
@@ -12585,8 +12785,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 () => assertRoomHostAccess(normalizedCode),
                 { scope: 'assertRoomHostAccess' }
             );
-            await purgeRoomArtifactsForCode(normalizedCode, { deleteHostLibrary: true });
-            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', normalizedCode));
+            await runWithAppCheckWarmup(
+                () => permanentlyDeleteHostRoom({
+                    roomCode: normalizedCode,
+                    confirmationCode: normalizedCode
+                }),
+                { scope: 'permanentlyDeleteHostRoom' }
+            );
             toast(`Room ${normalizedCode} permanently deleted.`);
         } catch (error) {
             hostLogger.warn('Permanent room delete failed', { roomCode: normalizedCode, error });
@@ -15085,8 +15290,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return queuedSong;
     }, [hostName, room?.hostName, roomCode]);
     const addLocalItemToQueue = async (item, singerOverride) => {
-        if (!item?.title || !item?.url) return;
-        if (!canQueueRoomMedia(item)) {
+        const mediaUrl = getRoomMediaUrl(item);
+        const mediaTitle = String(item?.title || item?.trackName || item?.fileName || '').trim();
+        if (!mediaTitle || !mediaUrl) return;
+        if (!canQueueRoomMedia({ ...item, title: mediaTitle, mediaUrl })) {
             toast('Images can be used for TV scenes or Run Of Show, not the karaoke queue.');
             return;
         }
@@ -15095,34 +15302,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const singerName = singerIdentity.singerName || room?.hostName || hostName || 'Host';
             if (isMarketingDemoFixture) {
                 appendQaHelperQueueSong({
-                    songTitle: item.title,
+                    songTitle: mediaTitle,
                     artist: item.artist || 'Local Upload',
                     singerUid: singerIdentity.singerUid || null,
                     singerName,
-                    mediaUrl: item.url,
+                    mediaUrl,
                     albumArtUrl: item.artworkUrl100 || '',
                     trackSource: 'custom',
-                    backingAudioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url),
-                    audioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url)
+                    backingAudioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl),
+                    audioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl)
                 }, { source: 'local_library' });
                 toast('Added local upload to queue');
                 return;
             }
             const songRecord = await ensureSong({
-                title: item.title,
+                title: mediaTitle,
                 artist: item.artist || 'Local Upload',
                 artworkUrl: '',
                 verifyMeta: false,
                 verifiedBy: hostName || 'host'
             });
-            const songId = songRecord?.songId || buildSongKey(item.title, item.artist || 'Local Upload');
+            const songId = songRecord?.songId || buildSongKey(mediaTitle, item.artist || 'Local Upload');
             const trackRecord = await ensureTrack({
                 songId,
                 source: 'custom',
-                mediaUrl: item.url,
+                mediaUrl,
                 duration: null,
-                audioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url),
-                backingOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url),
+                audioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl),
+                backingOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl),
                 addedBy: hostName || 'Host'
             });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
@@ -15130,19 +15337,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 songId,
                 trackId: trackRecord?.trackId || null,
                 trackSource: 'custom',
-                songTitle: item.title,
+                songTitle: mediaTitle,
                 artist: item.artist || 'Local Upload',
                 singerUid: singerIdentity.singerUid || null,
                 singerName,
-                mediaUrl: item.url,
+                mediaUrl,
                 albumArtUrl: item.artworkUrl100 || '',
                 lyrics: '',
                 status: 'requested',
                 timestamp: serverTimestamp(),
                 priorityScore: nowMs(),
                 emoji: EMOJI.mic,
-                backingAudioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url),
-                audioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url)
+                backingAudioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl),
+                audioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl)
             });
             toast('Added local upload to queue');
         } catch (e) {
@@ -15155,6 +15362,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const confirmed = window.confirm(`Delete "${item.title}" from the room library?`);
         if (!confirmed) return;
         try {
+            const liveBackgroundPlayback = roomRef.current?.backgroundAudioPlayback
+                || room?.backgroundAudioPlayback
+                || {};
+            const deletingActiveBackground = isHostAudioUploadActive({
+                item,
+                track: activeBgTrack || {},
+                playback: liveBackgroundPlayback,
+            });
+            if (deletingActiveBackground) {
+                bgPlaybackOperationRef.current += 1;
+                if (bgAudio.current) {
+                    bgAudio.current.pause();
+                    clearMediaElementSource(bgAudio.current);
+                }
+                playingBgRef.current = false;
+                setPlayingBg(false);
+                currentTrackIdxRef.current = 0;
+                setCurrentTrackIdx(0);
+                await updateRoom({
+                    bgMusicPlaying: false,
+                    bgMusicUrl: '',
+                    backgroundAudioPlayback: null,
+                });
+            }
             const linkedScenePresets = (Array.isArray(scenePresets) ? scenePresets : []).filter((preset) => (
                 String(preset?.sourceUploadId || '').trim() === String(item.id || '').trim()
                 || (String(item?.storagePath || '').trim() && String(preset?.storagePath || '').trim() === String(item.storagePath || '').trim())
@@ -16169,7 +16400,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ? 'Finish TV and guest entry before launch.'
             : waiting > 0
                 ? 'Open TV and share the join link from the Queue menu.'
-                : `${roomReadinessQueueSummary} · ${roomReadinessAutomationLabel}`;
+                : `${roomReadinessQueueSummary} Ã‚Â· ${roomReadinessAutomationLabel}`;
         return {
             blockers,
             waiting,
@@ -17680,12 +17911,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }));
         return {
             ...list,
-            samples: songs.slice(0, 3),
+            samples: songs.filter((song) => song.hasApprovedBacking).slice(0, 3).length ? songs.filter((song) => song.hasApprovedBacking).slice(0, 3) : songs.slice(0, 3),
+            coverage: summarizeBrowseCoverage(songs),
             songs
         };
     };
+    const hostMomentCollections = HOST_MOMENT_COLLECTIONS.map((list, idx) => buildBrowseList(list, idx + BROWSE_CATEGORIES.length + TOPIC_HITS.length));
     const browseCategories = BROWSE_CATEGORIES.map((list, idx) => buildBrowseList(list, idx));
     const topicHits = TOPIC_HITS.map((list, idx) => buildBrowseList(list, idx + BROWSE_CATEGORIES.length));
+    const browseReadyOnly = browseBackingFilter === 'ready';
+    const visibleBrowseCategories = browseReadyOnly ? sortBrowseCollectionsByReadiness(browseCategories.filter(isBrowseCollectionReadyForTonight)) : browseCategories;
+    const visibleTopicHits = browseReadyOnly ? sortBrowseCollectionsByReadiness(topicHits.filter(isBrowseCollectionReadyForTonight)) : topicHits;
+    const activeBrowseSongs = activeBrowseList ? (browseReadyOnly ? activeBrowseList.songs.filter((song) => song.hasApprovedBacking) : activeBrowseList.songs) : [];
     const exportToCSV = (data, filename) => { const csvContent = "data:text/csv;charset=utf-8," + [Object.keys(data[0]||{}).join(",")].concat(data.map(r => Object.values(r).join(","))).join("\n"); const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", filename); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
 
     const resolveQueueSingerIdentity = (singerOverride) => {
@@ -17793,7 +18030,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const catalogueHelperSingerAssigned = !!catalogueHelperSingerName;
     const catalogueHelperSingerBadge = catalogueUserId ? 'Joined guest' : 'Typed name';
     const catalogueHelperSingerLabel = catalogueHelperSingerAssigned
-        ? (catalogueHelperSingerName.length > 20 ? `${catalogueHelperSingerName.slice(0, 19)}…` : catalogueHelperSingerName)
+        ? (catalogueHelperSingerName.length > 20 ? `${catalogueHelperSingerName.slice(0, 19)}Ã¢â‚¬Â¦` : catalogueHelperSingerName)
         : '';
     const catalogueAddButtonLabel = catalogueOnly
         ? (catalogueHelperSingerAssigned ? `Add For ${catalogueHelperSingerLabel}` : 'Choose Singer')
@@ -17931,6 +18168,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </div>
                         ) : null}
+                        <div data-feature-id="host-catalog-source-filter" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                            <div>
+                                <div className="text-xs font-black uppercase tracking-[0.18em] text-zinc-300">Backing confidence</div>
+                                <div className="mt-1 text-xs text-zinc-500">Browse verified TV-ready backings first; reveal ideas only when you need them.</div>
+                            </div>
+                            <div className="flex rounded-xl border border-white/10 bg-black/25 p-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setBrowseBackingFilter('ready')}
+                                    className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${browseReadyOnly ? 'bg-emerald-500/18 text-emerald-100' : 'text-zinc-500 hover:text-white'}`}
+                                >
+                                    <i className="fa-solid fa-tv mr-2"></i>TV Ready
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setBrowseBackingFilter('all')}
+                                    className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${!browseReadyOnly ? 'bg-amber-500/16 text-amber-100' : 'text-zinc-500 hover:text-white'}`}
+                                >
+                                    All Ideas
+                                </button>
+                            </div>
+                        </div>
                         {catalogueOnly && (
                             <div className="rounded-[28px] border border-yellow-300/20 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.24),transparent_34%),linear-gradient(145deg,rgba(24,24,27,0.96),rgba(10,10,16,0.92))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -18092,8 +18351,39 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </div>
                         )}
+                        {!activeBrowseList && (<>
+                        <section data-feature-id="host-moment-playbooks">
+                            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                                <div>
+                                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-violet-200">Host Moment Playbooks</div>
+                                    <div className="mt-1 text-xl font-black text-white">What does the room need right now?</div>
+                                </div>
+                                <div className="text-xs text-zinc-500">All songs verified TV-ready</div>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                {hostMomentCollections.map((collection) => (
+                                    <button
+                                        key={collection.id}
+                                        type="button"
+                                        onClick={() => setActiveBrowseList(collection)}
+                                        className="group relative min-h-40 overflow-hidden rounded-2xl border border-violet-300/15 bg-zinc-950 text-left hover:border-violet-300/40"
+                                    >
+                                        {collection.samples?.[0]?.art ? <img src={collection.samples[0].art} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" /> : null}
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-violet-950/20"></div>
+                                        <div className="relative flex min-h-40 flex-col justify-end p-4">
+                                            <div className="mb-2 inline-flex w-fit rounded-full border border-emerald-300/25 bg-black/55 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-100">
+                                                {collection.coverage.readyCount} TV ready
+                                            </div>
+                                            <div className="font-black text-white">{collection.title}</div>
+                                            <div className="mt-1 text-xs text-zinc-300">{collection.subtitle}</div>
+                                            <div className="mt-2 text-[11px] leading-4 text-violet-100/75">{collection.hostIntent}</div>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </section>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {browseCategories.map((c) => (
+                            {visibleBrowseCategories.map((c) => (
                                 <div
                                     key={c.title}
                                     onClick={() => { setActiveBrowseList(c); }}
@@ -18103,6 +18393,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <img src={c.samples[0].art} alt={c.title} className="absolute inset-0 w-full h-full object-cover" />
                                     )}
                                     <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/70 to-black/90"></div>
+                                    <div className="absolute right-3 top-3 z-10 rounded-full border border-emerald-300/25 bg-black/65 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-100 backdrop-blur">
+                                        {c.coverage.readyCount} TV ready
+                                    </div>
                                     <div className="relative z-10 p-4 flex flex-col h-full justify-end">
                                         <div className={`text-sm font-bold ${catalogueOnly ? 'text-yellow-200' : 'text-cyan-300'}`}>{c.title}</div>
                                         <div className="text-sm text-zinc-400 mt-1">{c.subtitle}</div>
@@ -18129,7 +18422,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="text-sm text-zinc-500">Fast browse lists</div>
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                                {topicHits.map((hit) => (
+                                {visibleTopicHits.map((hit) => (
                                     <div
                                         key={hit.title}
                                         onClick={() => { setActiveBrowseList(hit); }}
@@ -18139,6 +18432,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <img src={hit.samples[0].art} alt={hit.title} className="absolute inset-0 w-full h-full object-cover" />
                                         )}
                                         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/60 to-black/90"></div>
+                                        <div className="absolute right-2 top-2 z-10 rounded-full border border-emerald-300/20 bg-black/65 px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] text-emerald-100">
+                                            {hit.coverage.readyCount} ready
+                                        </div>
                                         <div className="relative z-10 p-3 flex flex-col h-full justify-end">
                                             <div className="text-sm font-bold text-white">{hit.title}</div>
                                             <div className="mt-2 flex items-center gap-1.5">
@@ -18214,25 +18510,44 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </div>
                         )}
+                        </>)}
                         {activeBrowseList && (
-                            <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
-                                    <div className={`flex flex-wrap items-center justify-between gap-2 px-6 py-4 border-b ${catalogueOnly ? 'border-yellow-300/16 bg-[linear-gradient(145deg,rgba(120,53,15,0.14),rgba(8,13,24,0.96))]' : 'border-zinc-800'}`}>
-                                        <button onClick={() => setActiveBrowseList(null)} className="text-zinc-400 text-sm">&larr; Back</button>
-                                        <div className="text-lg font-bold">{activeBrowseList.title}</div>
+                            <section data-feature-id="host-catalog-category-detail" className={`overflow-hidden rounded-3xl border text-white ${catalogueOnly ? 'border-yellow-300/18 bg-[linear-gradient(155deg,rgba(120,53,15,0.10),rgba(8,13,24,0.96))]' : 'border-cyan-400/15 bg-[#0b0b10]'}`}>
+                                    <div className={`sticky top-0 z-10 border-b px-4 py-4 sm:px-6 ${catalogueOnly ? 'border-yellow-300/16 bg-[#0b0b10]/95' : 'border-zinc-800 bg-[#0b0b10]/95'} backdrop-blur-xl`}>
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <button data-feature-id="host-catalog-back-to-discover" onClick={() => setActiveBrowseList(null)} className="mb-2 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-200 hover:text-white">
+                                                    <i className="fa-solid fa-grid-2"></i> All collections
+                                                </button>
+                                                <div className="text-xl font-black text-white sm:text-2xl">{activeBrowseList.title}</div>
+                                                <div className="mt-1 text-sm text-zinc-400">{activeBrowseList.subtitle || 'Browse list'}</div>
+                                            </div>
                                         <div className="flex flex-wrap items-center gap-3">
                                             {catalogueOnly && (
                                                 <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${catalogueHelperSingerAssigned ? 'border-yellow-300/24 bg-yellow-500/10 text-yellow-100' : 'border-white/10 bg-white/5 text-zinc-300'}`}>
                                                     {catalogueHelperSingerAssigned ? `Adding For ${catalogueHelperSingerName}` : 'Choose singer to add faster'}
                                                 </div>
                                             )}
-                                            <div className="text-sm text-zinc-500">{activeBrowseList.subtitle || 'Browse list'}</div>
+                                            <div className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">
+                                                {activeBrowseList.songs.filter(song => song.hasApprovedBacking).length} ready backings
+                                            </div>
+                                        </div>
+                                        </div>
+                                        <div data-feature-id="host-catalog-category-rail" className="mt-4 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                                            {[...hostMomentCollections, ...visibleBrowseCategories, ...visibleTopicHits].map((list) => (
+                                                <button
+                                                    key={`rail_${list.title}`}
+                                                    onClick={() => setActiveBrowseList(list)}
+                                                    className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${list.title === activeBrowseList.title ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/5 text-zinc-400 hover:border-white/25 hover:text-white'}`}
+                                                >
+                                                    {list.title}
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
-                                <div className="px-6 py-4">
-                                </div>
-                                <div className="flex-1 min-h-0 px-6 pb-6 custom-scrollbar touch-scroll-y">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {activeBrowseList.songs.map((song, idx) => (
+                                <div className="p-4 sm:p-6">
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                                        {activeBrowseSongs.map((song, idx) => (
                                                 <div
                                                     key={`${song.title}-${song.artist}`}
                                                     className={`flex items-center gap-3 rounded-xl p-3 ${catalogueOnly ? 'bg-[linear-gradient(155deg,rgba(24,24,27,0.96),rgba(10,10,16,0.96))] border border-yellow-300/14 hover:border-yellow-300/32' : 'bg-zinc-800/60 border border-zinc-700 hover:border-[#00C4D9]/40'}`}
@@ -18261,8 +18576,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 </div>
                                             ))}
                                     </div>
+                                    {activeBrowseSongs.length === 0 && (
+                                        <div className="rounded-2xl border border-dashed border-amber-300/20 bg-amber-500/5 p-6 text-center text-sm text-amber-100/80">
+                                            No verified TV-ready backing is published in this collection yet. Choose another collection or switch to All Ideas for host review.
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
+                            </section>
                         )}
                         <div className={`${STYLES.panel} p-4 border border-zinc-700`}>
                             <div className="flex items-center justify-between mb-3">
@@ -18289,7 +18609,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-lg font-bold">Top 100 Karaoke</div>
                                     <div className="text-sm text-zinc-500">Full list</div>
                                 </div>
-                                <div className="flex-1 min-h-0 px-6 pb-6 custom-scrollbar touch-scroll-y">
+                                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-6 custom-scrollbar touch-scroll-y">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {top100Songs.map((song, idx) => (
                                                 <div
@@ -18297,8 +18617,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     className={`flex items-center gap-3 rounded-xl p-3 ${catalogueOnly ? 'bg-[linear-gradient(155deg,rgba(24,24,27,0.96),rgba(10,10,16,0.96))] border border-yellow-300/14 hover:border-yellow-300/32' : 'bg-zinc-800/60 border border-zinc-700 hover:border-[#00C4D9]/40'}`}
                                                 >
                                                     <div className="text-sm text-zinc-500 font-mono w-6 text-center">{idx + 1}</div>
-                                                    <div className="relative">
-                                                        <img src={song.art} alt={song.title} className="w-14 h-14 rounded-xl object-cover shadow-lg" />
+                                                    <div className="relative shrink-0">
+                                                        <img src={song.art} alt={song.title} className="w-20 h-20 rounded-xl object-cover shadow-lg sm:w-24 sm:h-24" />
                                                         {top100ArtLoading[song.artKey] && (
                                                             <div className="absolute inset-0 bg-black/60 rounded-lg flex items-center justify-center text-sm text-zinc-200">Loading</div>
                                                         )}
@@ -18308,7 +18628,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         <div className="text-sm text-zinc-400 truncate">{song.artist}</div>
                                                         <div className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${song.hasApprovedBacking ? 'border border-emerald-400/25 bg-emerald-500/12 text-emerald-200' : 'border border-amber-400/20 bg-amber-500/10 text-amber-100'}`}>
                                                             <i className={`fa-solid ${song.hasApprovedBacking ? 'fa-circle-check' : 'fa-triangle-exclamation'}`}></i>
-                                                            {song.hasApprovedBacking ? 'Ready' : 'Needs review'}
+                                                            {song.hasApprovedBacking ? 'Ready on TV' : 'Needs backing review'}
                                                         </div>
                                                     </div>
                                                     <button
@@ -18582,7 +18902,47 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 ? NIGHT_SETUP_PRIMARY_MODES
                 : NIGHT_SETUP_PRIMARY_MODES.filter((mode) => featuredSpotlightModeIds.includes(mode.id) || mode.id === missionDraft?.spotlightMode);
             const canToggleSpotlightList = NIGHT_SETUP_PRIMARY_MODES.length > missionVisibleSpotlightModes.length || missionShowAllSpotlightModes;
+            const missionBasePayloadPreview = compileMissionPayloadWithAssist(missionDraft || {}, {});
             const missionPayloadPreview = compileMissionPayloadWithAssist(missionDraft || {}, missionAdvancedOverrides || {});
+            const missionEffectiveBehavior = resolveRoomSetupEffectiveBehavior({
+                layers: [
+                    {
+                        id: room?.eventProfileId ? 'event_profile_room' : 'provisioned_room',
+                        label: room?.eventProfileLabel ? `${room.eventProfileLabel} live room` : 'Provisioned room',
+                        type: room?.eventProfileId ? 'event_profile' : 'provisioning',
+                        values: room || {},
+                    },
+                    {
+                        id: 'mission_plan',
+                        label: `${missionPreset.label} + ${assistLevel.label}`,
+                        type: 'mission',
+                        values: {
+                            ...missionBasePayloadPreview,
+                            missionControl: {
+                                setupDraft: {
+                                    archetype: missionDraft?.archetype || 'casual',
+                                    flowRule: missionDraft?.flowRule || 'balanced',
+                                    spotlightMode: missionDraft?.spotlightMode || 'karaoke',
+                                    assistLevel: missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL,
+                                },
+                            },
+                        },
+                    },
+                    ...(missionOverrideCount > 0 ? [{
+                        id: 'tonight_exceptions',
+                        label: 'Tonight exceptions',
+                        type: 'direct_edit',
+                        values: mergePayloadWithOverrides({
+                            missionControl: { party: missionPartyPreview },
+                        }, missionAdvancedOverrides || {}),
+                    }] : []),
+                ],
+                exceptionCount: missionOverrideCount,
+                context: {
+                    eventProfileLabel: room?.eventProfileLabel || '',
+                    spotlightMode: missionDraft?.spotlightMode || 'karaoke',
+                },
+            });
             const previewQueue = missionPayloadPreview?.queueSettings || {};
             const previewQueueSummary = formatQueueSummary(
                 previewQueue?.limitMode || 'none',
@@ -18788,6 +19148,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             readinessMissing={readinessMissing}
                             overrideCount={missionOverrideCount}
                             planImpactItems={missionImpactItems}
+                            effectiveBehaviorDomains={missionEffectiveBehavior.domains}
                         />
                     )}
                     footer={(
@@ -21055,6 +21416,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         appleMusicPickerItems,
         appleMusicPickerLoading,
         appleMusicPickerError,
+        appleMusicBgPendingId,
         loadAppleMusicPicker,
         applyAppleMusicPlaylistForBg,
         appleMusicAutoPlaylistId,
@@ -21320,6 +21682,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             >
                 {/* Header */}
                 <HostTopChrome
+                    modalOverlayActive={sceneLibraryModalOpen}
                     room={room}
                     appBase={hostBase}
                     hostBase={hostBase}
@@ -21402,6 +21765,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     appleMusicPickerItems={appleMusicPickerItems}
                     appleMusicPickerLoading={appleMusicPickerLoading}
                     appleMusicPickerError={appleMusicPickerError}
+                    appleMusicBgPendingId={appleMusicBgPendingId}
                     loadAppleMusicPicker={loadAppleMusicPicker}
                     applyAppleMusicPlaylistForBg={applyAppleMusicPlaylistForBg}
                     appleMusicAutoPlaylistId={appleMusicAutoPlaylistId}
@@ -21703,6 +22067,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         )}
                         <div className={`${hostHasLiveGameModeForDrawer && !liveGameLauncherDrawerOpen ? 'hidden' : 'min-h-0 custom-scrollbar pr-1'}`} data-host-game-launcher-drawer={hostHasLiveGameModeForDrawer ? 'content' : 'standard'}>
                             <UnifiedGameLauncher
+                                compactLiveSwitcher={hostHasLiveGameModeForDrawer}
                                 room={room}
                                 roomCode={roomCode}
                                 updateRoom={updateRoom}
@@ -22741,7 +23106,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
             {(showSettings || inAdminWorkspace) && (
-                <div className={inAdminWorkspace ? 'fixed inset-0 z-[80]' : 'fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4'}>
+                <div className={inAdminWorkspace ? 'fixed inset-0 z-[200]' : 'fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4'}>
                     <div
                         data-admin-workspace={inAdminWorkspace ? 'true' : 'modal'}
                         className={`host-admin-workspace bg-zinc-950/95 border border-zinc-700/80 w-full overflow-hidden flex flex-col ${inAdminWorkspace ? 'h-[100dvh] rounded-none border-0 shadow-none' : 'rounded-none sm:rounded-2xl max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh]'}`}
@@ -23768,7 +24133,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                           Clear Round Winners Podium
                                       </button>
                                       <div className="host-form-helper">
-                                          Public TV is currently showing: {(activeRoundWinnersMoment.winners || []).map((winner) => winner?.name).filter(Boolean).join(' • ') || 'Round winners'}
+                                          Public TV is currently showing: {(activeRoundWinnersMoment.winners || []).map((winner) => winner?.name).filter(Boolean).join(' Ã¢â‚¬Â¢ ') || 'Round winners'}
                                       </div>
                                   </>
                               )}
@@ -25261,7 +25626,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {(youtubeUsageBreakdowns.topSurfaces || []).length > 0 ? (youtubeUsageBreakdowns.topSurfaces || []).map((entry) => (
                                                             <span key={`youtube-surface-${entry.key}`} className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2 py-1 text-cyan-100">
-                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                                {formatUsageBreakdownItemLabel(entry)} Ã‚Â· {Number(entry.used || 0).toLocaleString()}
                                                             </span>
                                                         )) : <span className="text-zinc-500">No surface attribution yet.</span>}
                                                     </div>
@@ -25271,7 +25636,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {(youtubeUsageBreakdowns.topSources || []).length > 0 ? (youtubeUsageBreakdowns.topSources || []).map((entry) => (
                                                             <span key={`youtube-source-${entry.key}`} className="rounded-full border border-fuchsia-400/25 bg-fuchsia-500/10 px-2 py-1 text-fuchsia-100">
-                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                                {formatUsageBreakdownItemLabel(entry)} Ã‚Â· {Number(entry.used || 0).toLocaleString()}
                                                             </span>
                                                         )) : <span className="text-zinc-500">No source attribution yet.</span>}
                                                     </div>
@@ -25303,7 +25668,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                     <div className="flex flex-wrap gap-1.5">
                                                                         {(breakdowns.topSurfaces || []).length > 0 ? (breakdowns.topSurfaces || []).map((entry) => (
                                                                             <span key={`${meter.meterId}-surface-${entry.key}`} className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2 py-1 text-cyan-100">
-                                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                                                {formatUsageBreakdownItemLabel(entry)} Ã‚Â· {Number(entry.used || 0).toLocaleString()}
                                                                             </span>
                                                                         )) : <span className="text-zinc-500">No surface breakdown yet.</span>}
                                                                     </div>
@@ -25313,7 +25678,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                     <div className="flex flex-wrap gap-1.5">
                                                                         {(breakdowns.topSources || []).length > 0 ? (breakdowns.topSources || []).map((entry) => (
                                                                             <span key={`${meter.meterId}-source-${entry.key}`} className="rounded-full border border-fuchsia-400/25 bg-fuchsia-500/10 px-2 py-1 text-fuchsia-100">
-                                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                                                {formatUsageBreakdownItemLabel(entry)} Ã‚Â· {Number(entry.used || 0).toLocaleString()}
                                                                             </span>
                                                                         )) : <span className="text-zinc-500">No source breakdown yet.</span>}
                                                                     </div>
@@ -25323,7 +25688,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                     <div className="flex flex-wrap gap-1.5">
                                                                         {(breakdowns.topActors || []).length > 0 ? (breakdowns.topActors || []).map((entry) => (
                                                                             <span key={`${meter.meterId}-actor-${entry.key}`} className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-1 text-emerald-100">
-                                                                                {formatUsageBreakdownItemLabel(entry, 'actor')} · {Number(entry.used || 0).toLocaleString()}
+                                                                                {formatUsageBreakdownItemLabel(entry, 'actor')} Ã‚Â· {Number(entry.used || 0).toLocaleString()}
                                                                             </span>
                                                                         )) : <span className="text-zinc-500">Tracked for host/admin workspace activity.</span>}
                                                                     </div>
@@ -25333,7 +25698,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                     <div className="flex flex-wrap gap-1.5">
                                                                         {(breakdowns.topRooms || []).length > 0 ? (breakdowns.topRooms || []).map((entry) => (
                                                                             <span key={`${meter.meterId}-room-${entry.key}`} className="rounded-full border border-amber-400/25 bg-amber-500/10 px-2 py-1 text-amber-100">
-                                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                                                {formatUsageBreakdownItemLabel(entry)} Ã‚Â· {Number(entry.used || 0).toLocaleString()}
                                                                             </span>
                                                                         )) : <span className="text-zinc-500">No room attribution yet.</span>}
                                                                     </div>
@@ -25869,7 +26234,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     ) : null}
                                     {appleMusicPickerItems.length ? (
                                         <div className="max-h-80 overflow-y-auto rounded-xl border border-cyan-300/15 bg-black/20 divide-y divide-cyan-300/10">
-                                            {appleMusicPickerItems.map((choice) => (
+                                            {appleMusicPickerItems.map((choice) => {
+                                                const choicePlaylistId = parseAppleMusicPlaylistId(choice.id || '');
+                                                const choiceIsPending = !!choicePlaylistId && appleMusicBgPendingId === choicePlaylistId;
+                                                const choiceIsActive = !!choicePlaylistId && !choiceIsPending && choicePlaylistId === parseAppleMusicPlaylistId(appleMusicAutoPlaylistId || room?.appleMusicAutoPlaylistId || '');
+                                                return (
                                                 <div key={`${choice.sourceType}-${choice.id}`} className="flex flex-wrap items-center gap-3 px-4 py-3">
                                                     {choice.artworkUrl ? (
                                                         <img src={choice.artworkUrl} alt="" className="h-12 w-12 rounded-md object-cover border border-white/10" />
@@ -25886,14 +26255,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         <button
                                                             type="button"
                                                             onClick={() => { void applyAppleMusicPlaylistForBg(choice); }}
-                                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[40px] px-4 py-2 text-sm`}
+                                                            disabled={choiceIsPending || choiceIsActive}
+                                                            className={`${STYLES.btnStd} ${choiceIsActive ? STYLES.btnSecondary : STYLES.btnPrimary} min-h-[40px] px-4 py-2 text-sm ${choiceIsPending || choiceIsActive ? 'cursor-not-allowed opacity-75' : ''}`}
                                                         >
-                                                            Use & Start BG
+                                                            {choiceIsPending ? 'Starting...' : (choiceIsActive ? 'Active' : 'Use & Start BG')}
                                                         </button>
 
                                                     </div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     ) : null}
                                 </div>
@@ -25970,6 +26341,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     {ytAddLoading ? EMOJI.refresh : 'Add to search'}
                                 </button>
                                 <button
+                                    data-feature-id="open-youtube-curator"
                                     onClick={() => { setShowYtIndex(true); setYtCurateQuery(''); setYtCurateResults([]); }}
                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                 >
@@ -26334,7 +26706,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                         <div className="mt-2 text-xs text-zinc-400">
                                             Current cooldown: {Math.max(120, Number(room?.lobbyPlaygroundPerUserCooldownMs || 220))}ms per tap
-                                            {' • '}
+                                            {' Ã¢â‚¬Â¢ '}
                                             Cap: {Math.max(1, Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || 12)))}/min
                                         </div>
                                     </div>
@@ -26385,9 +26757,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
                                     <button onClick={() => { setShowYtIndex(false); setYtIndexFilter(''); setYtCurateQuery(''); setYtCurateResults([]); setYtCurateStatus(''); }} className="text-zinc-400 text-sm">&larr; Back</button>
                                     <div className="text-lg font-bold">Room Library Curator</div>
-                                    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-black ${ytIndexHealthSummary.toneClass}`}>
-                                        <i className={`fa-solid ${ytIndexHealthSummary.icon}`}></i>
-                                        {ytIndexHealthSummary.state}
+                                    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-black ${youtubeEventReadinessToneClass}`}>
+                                        <i className={`fa-solid ${youtubeEventReadiness.icon}`}></i>
+                                        {youtubeEventReadiness.label}
                                     </div>
                                 </div>
                                 <div className="flex-1 min-h-0 px-6 pb-6 pt-4 custom-scrollbar touch-scroll-y">
@@ -26451,6 +26823,49 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1">{ytIndexHealthSummary.todayFreshSearchesLeft} searches left</span>
                                                         </div>
                                                     </div>
+                                                </div>
+                                                <div data-feature-id="youtube-event-readiness" className={`mt-3 rounded-2xl border px-4 py-4 ${youtubeEventReadinessToneClass}`}>
+                                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="text-xs font-black uppercase tracking-[0.22em] opacity-75">Tonight's media preflight</div>
+                                                            <div className="mt-1 flex items-center gap-2 text-lg font-black text-white">
+                                                                <i className={`fa-solid ${youtubeEventReadiness.icon}`}></i>
+                                                                {youtubeEventReadiness.label}
+                                                            </div>
+                                                            <div className="mt-1 text-sm leading-5 opacity-90">{youtubeEventReadiness.summary}</div>
+                                                        </div>
+                                                        <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1 text-xs font-black uppercase tracking-[0.14em]">
+                                                            {youtubeEventReadiness.estimatedSearchReserve} estimated searches left
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                        {youtubeEventReadiness.checks.map((check) => (
+                                                            <div key={check.key} className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <span className="text-xs font-black uppercase tracking-[0.12em]">{check.label}</span>
+                                                                    <span className={`text-sm font-black ${check.pass ? 'text-emerald-200' : 'text-amber-100'}`}>
+                                                                        <i className={`fa-solid ${check.pass ? 'fa-circle-check' : 'fa-circle-exclamation'} mr-1`}></i>
+                                                                        {check.value}/{check.target}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="mt-1 text-xs leading-5 opacity-75">{check.detail}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    {youtubeEventReadiness.actions.length > 0 ? (
+                                                        <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                                                            <div className="text-xs font-black uppercase tracking-[0.14em]">Next moves</div>
+                                                            <div className="mt-2 space-y-1 text-sm">
+                                                                {youtubeEventReadiness.actions.map((action) => (
+                                                                    <div key={action} className="flex items-start gap-2">
+                                                                        <i className="fa-solid fa-arrow-right mt-1 text-[10px]"></i>
+                                                                        <span>{action}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
+                                                    <div className="mt-3 text-[11px] leading-5 opacity-70">{youtubeEventReadiness.caveat}</div>
                                                 </div>
                                                 {ytCurateStatus && (
                                                     <div className="mt-3 text-xs text-zinc-400">{ytCurateStatus}</div>
@@ -27086,4 +27501,3 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 };
 
 export default HostApp;
-

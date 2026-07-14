@@ -140,7 +140,7 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
   );
   assert.match(
     source,
-    /Available now/,
+    /roomCurrencyPresentation\.balanceLabel/,
     "SingerApp points modal should lead with a clear wallet summary",
   );
   assert.match(
@@ -170,8 +170,8 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
   );
   assert.match(
     source,
-    /\{roomWideSupportRate > 0 \? `\$\{roomWideSupportRate\} pts \/ \$1` : 'Open'\}/,
-    "SingerApp donation section should show the room-wide point rate without adding another explanatory block",
+    /roomWideSupportRate\} \{roomCurrencyPresentation\.shortLabel\} \/ \$1/,
+    "SingerApp donation section should show the room-wide reward rate with the active room currency",
   );
   assert.match(
     source,
@@ -190,8 +190,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /const hideOmnipresentStageAreaForStreamlinedIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;/,
-    "SingerApp should hide the omnipresent stage chrome in streamlined mode while the stage is empty",
+    /const keepStreamlinedStageAreaMountedForIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;/,
+    "SingerApp should keep the streamlined stage chrome mounted while the stage is empty",
   );
   assert.match(
     source,
@@ -207,6 +207,26 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     source,
     /const streamlinedSongsTabActiveStyle = useMemo\(\(\) => \(\{/,
     "SingerApp should give streamlined song subtabs a dedicated tab style instead of reusing action pill styling",
+  );
+  assert.match(
+    source,
+    /className="relative z-10 min-h-\[112px\] border-b border-white\/10 bg-black\/35 px-4 py-3"/,
+    "SingerApp should reserve stable vertical space for the Party and Songs nav rows",
+  );
+  assert.match(
+    source,
+    /const shouldOfferCompactHomeStageCard = isStreamlinedAudienceShell[\s\S]*primaryStageTabs\.includes\(tab\) && !!currentSinger/,
+    "SingerApp should default live streamlined stage cards to compact on Party and Songs",
+  );
+  assert.match(
+    source,
+    /isStreamlinedAudienceShell \? 'overflow-visible' : 'overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar'/,
+    "SingerApp should avoid nested stage scrolling in the streamlined audience shell",
+  );
+  assert.match(
+    source,
+    /maxHeight: isStreamlinedAudienceShell \? undefined : 'min\(72dvh, 42rem\)'/,
+    "SingerApp should keep the legacy stage height cap outside the streamlined shell",
   );
   assert.match(
     source,
@@ -312,6 +332,16 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     source,
     /NOW PERFORMING[\s\S]*Vote Now[\s\S]*setTab\('home'\)/,
     "SingerApp should surface a compact vote tag inside the now-performing stage card",
+  );
+  assert.match(
+    source,
+    /data-feature-id="singer-idle-disabled-reaction-buttons"/,
+    "SingerApp should show idle reactions as disabled versions of the live controls",
+  );
+  assert.match(
+    source,
+    /data-feature-id=\{`idle-reaction-\$\{reaction\.key\}-button`\}/,
+    "SingerApp should keep idle reaction button affordances aligned with live reaction buttons",
   );
   const streamlinedStageNavRenderIndex = source.indexOf("{streamlinedStageNav}");
   const omnipresentStageAreaIndex = source.indexOf("/* Omnipresent Stage Area */");
@@ -858,7 +888,7 @@ test("SingerApp applies host-configured reaction cooldowns and co-host credit po
   );
   assert.match(
     source,
-    /caption=\{coHostUnlimitedCredits \? 'FREE' : 'PTS'\}/,
+    /caption=\{coHostUnlimitedCredits \? 'FREE' : roomCurrencyPresentation\.shortLabel\}/,
     "SingerApp should label the audience points pill as free for unlimited co-host credits",
   );
 });
@@ -1178,8 +1208,13 @@ test("SingerApp lets high-zoom audiences scroll past the expanded stage", () => 
   );
   assert.match(
     source,
-    /max-h-\[min\(72dvh,42rem\)\] overflow-y-auto overscroll-contain touch-scroll-y/,
-    "Expanded stage area should have its own scroll cap so it cannot consume the whole phone viewport",
+    /maxHeight: isStreamlinedAudienceShell \? undefined : 'min\(72dvh, 42rem\)'/,
+    "Expanded legacy stage area should keep a scroll cap so it cannot consume the whole phone viewport",
+  );
+  assert.match(
+    source,
+    /isStreamlinedAudienceShell \? 'overflow-visible' : 'overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar'/,
+    "Streamlined stage area should avoid nested scrolling while the legacy shell keeps internal stage scroll",
   );
   assert.match(
     source,

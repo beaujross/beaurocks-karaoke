@@ -283,8 +283,23 @@ test('room formats are optional while room creation centers on defaults', () => 
   );
   assert.match(
     launchPadBrowserSource,
-    /Standard Points[\s\S]*Event Credits[\s\S]*Fundraiser Room[\s\S]*Custom Economy/,
-    'Room creation should expose concrete economy choices without opening the full credits editor.',
+    /Just for Fun[\s\S]*BeauBucks[\s\S]*Ticket Value[\s\S]*Fundraiser[\s\S]*Custom Rules/,
+    'Room creation should expose plain-language participation, premium, ticket, fundraiser, and advanced economy choices.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /if \(mode === 'beaubucks'\)[\s\S]*presetId: 'beaubucks',[\s\S]*eventId: 'beaubucks',[\s\S]*eventLabel: 'BeauBucks',[\s\S]*generalAdmissionPoints: 100/,
+    'The BeauBucks outcome should compile to a stable premium-currency launch payload.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /LAUNCH_ECONOMY_OPTIONS\.filter\(\(option\) => showAdvancedSetup \|\| option\.id !== 'custom'\)/,
+    'Custom economy rules should stay behind Advanced Setup.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /eventCreditsEventId === 'beaubucks'[\s\S]*\? 'beaubucks'/,
+    'Saved BeauBucks configuration should resolve back to the BeauBucks choice.',
   );
   assert.match(
     launchPadBrowserSource,

@@ -13,3 +13,6 @@ test('admin general settings keep host panel layout controls attached to the aud
   assert.match(source, /data-feature-id="admin-host-panel-mode-toggle"/);
   assert.match(source, /Change the audience app flow and the host panel shell from one place/);
 });
+test('full-screen Admin workspace owns the foreground above persistent Host chrome', () => {
+  assert.match(source, /inAdminWorkspace \? 'fixed inset-0 z-\[200\]'/);
+});

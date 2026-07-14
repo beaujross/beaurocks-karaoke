@@ -21,7 +21,7 @@ const useHostWorkspaceState = ({
     });
     const [entryError, setEntryError] = useState('');
     const [landingLaunchMode, setLandingLaunchMode] = useState('start');
-    const [rawLaunchRoomName, setLaunchRoomName] = useState('');
+    const [rawLaunchRoomName, setLaunchRoomName] = useState(null);
     const [launchCoHostUids, setLaunchCoHostUids] = useState([]);
     const [showLaunchCoHosts, setShowLaunchCoHostsState] = useState(false);
     const [launchCoHostSearch, setLaunchCoHostSearch] = useState('');
@@ -30,7 +30,7 @@ const useHostWorkspaceState = ({
     const [workspaceOperatorError, setWorkspaceOperatorError] = useState('');
 
     const launchRoomName = useMemo(() => {
-        if (String(rawLaunchRoomName || '').trim()) return rawLaunchRoomName;
+        if (rawLaunchRoomName !== null) return rawLaunchRoomName;
         const seededHost = String(hostName || '').trim();
         if (!seededHost) return '';
         return `${seededHost} Room`;

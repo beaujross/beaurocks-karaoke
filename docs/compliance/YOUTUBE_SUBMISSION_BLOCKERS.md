@@ -1,6 +1,6 @@
 # YouTube Submission Blockers
 
-Last updated: 2026-07-06
+Last updated: 2026-07-14
 
 ## Purpose
 
@@ -28,7 +28,7 @@ The repo now has the core YouTube compliance hardening in place:
 - desktop and mobile legal-page screenshots were captured under `docs/compliance/evidence/2026-07-06-youtube-audit/`
 - QA product-surface screenshots were captured under `docs/compliance/evidence/2026-07-06-youtube-product-audit/`
 
-The remaining blockers are now live Google Cloud quota evidence, quota-exhaustion/cooldown evidence, room permanent-delete evidence, final business/contact confirmation, and final submission assembly. No known code blocker remains for the quota-mitigation story.
+The controlled quota-exhaustion/cooldown evidence and live room permanent-delete evidence are complete. Authenticated Quotas API evidence confirms the live project assignment. The remaining blockers are the Google Cloud Console presentation screenshot, final business/contact confirmation, and final submission assembly. No known code blocker remains for the quota-mitigation story.
 
 ## Resolved: Public Legal Pages Are Deployed And Verified
 
@@ -68,7 +68,7 @@ Minimum acceptance criteria:
 - confirm `hello@beaurocks.app` is the correct audit/legal contact
 - confirm the business/product naming on Terms, Privacy, and deletion pages is final
 
-## Blocker 3: Live-Only Audit Evidence Still Needs To Be Captured
+## Resolved: Controlled Cooldown And Permanent Delete Evidence
 
 Current repo state:
 
@@ -77,25 +77,22 @@ Current repo state:
 - QA product-surface screenshots are captured for host YouTube search/add, Room Library Curator, audience YouTube search, audience URL paste, TV YouTube performance, and TV Apple Music background playback
 - [YOUTUBE_AUDIT_PACKET_CHECKLIST.md](</C:/Users/beauj/Desktop/beaurocks-karaoke/docs/compliance/YOUTUBE_AUDIT_PACKET_CHECKLIST.md>) and [YOUTUBE_AUDIT_SUBMISSION_DRAFT.md](</C:/Users/beauj/Desktop/beaurocks-karaoke/docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md>) describe the evidence packet
 
-Why this still blocks submission:
+Verification result:
 
-- reviewers will understand the product much faster with concrete screenshots that match your narrative
-- a few screenshots require live project state or a live test room rather than deterministic QA fixtures
-
-Minimum acceptance criteria:
-
-- capture screenshots for:
-  - quota exhaustion fallback state from a real exhausted/cooldown condition or controlled production test
-  - room permanent-delete path from a live test room
-  - authenticated production host session for the live audit room, if reviewers request live-room evidence beyond the QA product-surface packet
+- `quota-exhaustion-fallback.png` proves the controlled production cooldown state and compliant known-catalog/content-agnostic fallback guidance
+- `room-permanent-delete-confirmation.png` and `room-permanent-delete-success.png` prove the disposable-room Host flow
+- the room-delete evidence note independently verifies absence of the room, Host library, room session, and 11 room-scoped artifact collections
+- an authenticated production host screenshot remains optional only if reviewers ask for evidence beyond the existing product packet
 
 Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capture steps and filenames.
 
-## Blocker 4: Google Cloud Quota Evidence Still Needs To Be Captured
+## Blocker 4: Google Cloud Console Presentation Screenshot
 
 Current repo state:
 
 - [functions/lib/entitlementsUsage.js](</C:/Users/beauj/Desktop/beaurocks-karaoke/functions/lib/entitlementsUsage.js:94>) now makes clear that the app meter is request count, not Google quota units
+- authenticated Quotas API evidence confirms `100` Search Queries calls/day and `10,000` general data units/day, with no project override and increase eligibility enabled
+- the API response and redacted interpretation are captured under `docs/compliance/evidence/2026-07-06-youtube-live-evidence/`
 
 Why this still blocks submission:
 
@@ -103,7 +100,7 @@ Why this still blocks submission:
 
 Minimum acceptance criteria:
 
-- capture a Google Cloud Console screenshot for the live YouTube Data API quota page
+- capture the Google Cloud Console YouTube Data API quota page showing the same assigned limits
 - be ready to explain that the in-app counter is an operational request counter, not the official quota ledger
 
 ## Blocker 5: Final Submission Narrative Should Be Checked Against Live Behavior
@@ -129,6 +126,7 @@ Minimum acceptance criteria:
   - nightly cleanup
   - bounded canonical candidate backfill for verified embeddable indexed tracks
   - permanent room deletion removes the room host library
+- confirm the proposed `1,000 Search Queries/day` request against the observed production baseline and the documented 150-person event envelope
 
 ## Resolved In Repo
 
@@ -147,7 +145,7 @@ These are no longer the main blockers in the codebase:
 
 ## Recommended Submission Sequence
 
-1. Capture live Google Cloud quota screenshots, quota exhaustion/cooldown evidence, and room permanent-delete evidence.
+1. Capture the Google Cloud Console quota presentation screenshot; retain the completed API, cooldown, and permanent-delete evidence.
 2. Confirm final business/contact details.
-3. Review `docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md` and the submission draft against the live product once.
+3. Confirm the proposed `1,000 Search Queries/day` allocation and review `docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md` and the submission draft against the live product once.
 4. Only then submit the audit/quota-extension request.

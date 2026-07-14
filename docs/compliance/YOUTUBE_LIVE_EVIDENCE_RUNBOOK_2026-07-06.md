@@ -135,8 +135,8 @@ Room code, if applicable:
 ## Submission Gate
 
 Do not submit the YouTube audit/quota-extension request until:
-- the Google Cloud quota screenshot is captured
-- quota-exhaustion/cooldown evidence is captured or explicitly marked as unavailable until the next quota event
-- room permanent-delete evidence is captured from a disposable test room
-- `hello@beaurocks.app` and product/business naming are confirmed as final
-- `docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md` is checked one last time against deployed behavior
+- [ ] Google Cloud Console quota presentation screenshot is captured
+- [x] controlled production cooldown evidence is captured
+- [x] permanent-delete evidence is captured from disposable room `26V3`
+- [ ] `hello@beaurocks.app` and product/business naming are confirmed as final
+- [ ] `docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md` is checked one last time against deployed behavior and measured request sizing

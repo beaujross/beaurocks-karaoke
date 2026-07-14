@@ -20,6 +20,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete global.window;
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -60,7 +61,9 @@ test('searchYouTubeCatalog caches successful client searches', async () => {
   assert.equal(telemetry.todayLiveCalls, 1);
   assert.equal(telemetry.todayClientCacheHits, 1);
   assert.equal(telemetry.dailySearchListCallLimit, 100);
+  assert.equal(telemetry.dailySearchListCallLimitSource, 'official_default');
   assert.equal(telemetry.dailyGeneralDataUnitLimit, 10000);
+  assert.equal(telemetry.dailyGeneralDataUnitLimitSource, 'official_default');
   assert.equal(telemetry.estimatedSearchListCallsPerLiveSearch, 1);
   assert.equal(telemetry.estimatedGeneralUnitsPerLiveSearch, 1);
   assert.equal(telemetry.todaySearchListCallsUsed, 1);
@@ -182,4 +185,19 @@ test('searchYouTubeCatalog reuses client cache for semantically equivalent karao
   assert.equal(telemetry.recentSearches, 2);
   assert.equal(telemetry.liveCalls, 1);
   assert.equal(telemetry.clientCacheHits, 1);
+});
+test('YouTube quota telemetry accepts an approved granular quota allocation without a code change', async () => {
+  vi.stubEnv('VITE_YOUTUBE_DAILY_SEARCH_LIST_CALL_LIMIT', '250');
+  vi.stubEnv('VITE_YOUTUBE_DAILY_GENERAL_DATA_UNIT_LIMIT', '20000');
+  vi.resetModules();
+  vi.doMock('../../src/lib/firebase.js', () => ({ callFunction: vi.fn() }));
+
+  const { getYouTubeSearchTelemetrySnapshot } = await import('../../src/lib/youtubeSearchClient.js');
+  const telemetry = getYouTubeSearchTelemetrySnapshot();
+
+  assert.equal(telemetry.dailySearchListCallLimit, 250);
+  assert.equal(telemetry.dailySearchListCallLimitSource, 'configured');
+  assert.equal(telemetry.todaySearchListCallsRemaining, 250);
+  assert.equal(telemetry.dailyGeneralDataUnitLimit, 20000);
+  assert.equal(telemetry.dailyGeneralDataUnitLimitSource, 'configured');
 });

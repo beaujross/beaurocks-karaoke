@@ -16,6 +16,9 @@ import {
     normalizeReactionTapCooldownMs,
     normalizeSupportCelebrationStyle,
 } from '../../../lib/roomMonetization';
+import { getRoomCurrencyPresentation } from '../../../lib/roomCurrencyPresentation';
+import { getRoomEconomySummary } from '../../../lib/roomEconomySummary';
+import { getRoomSpendIntentGuide } from '../../../lib/roomSpendIntent';
 
 const cardClass = 'rounded-2xl border border-white/10 bg-black/18 p-4';
 const inputClass = 'mt-2 w-full rounded-xl border border-cyan-400/20 bg-black/25 px-3 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45';
@@ -136,6 +139,9 @@ const EventCreditsConfigPanel = ({
     const celebrationStyle = normalizeSupportCelebrationStyle(eventCreditsConfig?.supportCelebrationStyle || '');
     const coHostCreditPolicy = normalizeCoHostCreditPolicy(eventCreditsConfig?.coHostCreditPolicy || '');
     const reactionTapCooldownMs = normalizeReactionTapCooldownMs(eventCreditsConfig?.reactionTapCooldownMs ?? DEFAULT_REACTION_TAP_COOLDOWN_MS);
+    const currencyPresentation = getRoomCurrencyPresentation(eventCreditsConfig);
+    const economySummary = getRoomEconomySummary(eventCreditsConfig);
+    const spendIntentGuide = getRoomSpendIntentGuide(eventCreditsConfig);
     const presetLabel = (
         EVENT_CREDITS_PRESET_OPTIONS.find((preset) => preset.id === (eventCreditsConfig?.presetId || ''))
         || EVENT_CREDITS_PRESET_OPTIONS.find((preset) => preset.id === 'custom_event_credits')
@@ -151,6 +157,7 @@ const EventCreditsConfigPanel = ({
         supportProvider === 'givebutter' ? 'Givebutter live' : 'No donation flow',
         creditModeMeta.label,
         coHostCreditPolicyMeta.label,
+        currencyPresentation.balanceLabel,
         celebrationMeta.label,
     ];
 
@@ -160,9 +167,9 @@ const EventCreditsConfigPanel = ({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="max-w-3xl">
                         <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/70">Room experience</div>
-                        <div className="mt-1 text-lg font-black text-white">Fundraiser skin, guest unlock, and donor celebration</div>
+                        <div className="mt-1 text-lg font-black text-white">{currencyPresentation.premium ? 'BeauBucks, guest value, and support' : 'Participation points and guest rewards'}</div>
                         <div className="mt-1 text-sm text-cyan-100/68">
-                            This keeps BeauRocks underneath, but lets this room feel like the event. Use it to choose how guests unlock perks, where support goes, and how donation wins hit the room.
+                            {currencyPresentation.explanation} Configure how guests receive value, where support goes, and how rewards appear in the room.
                         </div>
                     </div>
                     <label className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-500/8 px-3 py-2 text-sm text-cyan-100">
@@ -183,6 +190,23 @@ const EventCreditsConfigPanel = ({
                     ))}
                 </div>
 
+                <div className={`mt-4 grid gap-3 ${compact ? 'lg:grid-cols-1' : 'lg:grid-cols-3'}`} data-room-economy-guest-loop="true">
+                    {economySummary.cards.map((card) => (
+                        <div key={card.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/60">{card.eyebrow}</div>
+                            <div className="mt-2 text-base font-black text-white">{card.value}</div>
+                            <div className="mt-1 text-xs leading-5 text-zinc-400">{card.note}</div>
+                        </div>
+                    ))}
+                </div>
+                {economySummary.warnings.length ? (
+                    <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-500/8 px-4 py-3" data-room-economy-guidance="true">
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-amber-100/70">Check before guests join</div>
+                        <ul className="mt-2 space-y-1 text-xs text-amber-50/85">
+                            {economySummary.warnings.map((warning) => <li key={warning}>• {warning}</li>)}
+                        </ul>
+                    </div>
+                ) : null}
                 <div className={`mt-4 grid gap-3 ${compact ? 'lg:grid-cols-1' : 'lg:grid-cols-2'}`}>
                     <label className="block">
                         <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Preset</div>
@@ -211,7 +235,27 @@ const EventCreditsConfigPanel = ({
                     </label>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-500/6 p-4">
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4" data-room-spend-intent-guide="true">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">What guest actions mean</div>
+                    <div className="mt-1 text-sm text-zinc-300">Confirm which interactions are digital play and which one opens a real-money checkout.</div>
+                    <div className={`mt-3 grid gap-2 ${compact ? 'lg:grid-cols-1' : 'lg:grid-cols-4'}`}>
+                        {spendIntentGuide.items.map((item) => (
+                            <div key={item.id} className={`rounded-xl border px-3 py-3 ${item.financial ? 'border-emerald-300/25 bg-emerald-400/8' : 'border-white/10 bg-black/20'}`}>
+                                <div className="text-sm font-black text-white">{item.label}</div>
+                                <div className="mt-1 text-xs leading-5 text-zinc-400">{item.detail}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <details className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-500/6 p-4">
+                    <summary className="cursor-pointer list-none">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div><div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Balance pacing</div><div className="mt-1 text-sm font-semibold text-white">Adjust grants and automatic refills</div></div>
+                            <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">Advanced</span>
+                        </div>
+                    </summary>
+                    <div className="mt-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Credit earning mode</div>
@@ -236,7 +280,7 @@ const EventCreditsConfigPanel = ({
                     <div className="mt-2 text-xs text-zinc-400">{creditModeMeta.note}</div>
                     <div className={`mt-4 grid gap-3 ${compact ? 'lg:grid-cols-1' : 'lg:grid-cols-4'}`}>
                         <label className="block">
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Join credits</div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Starting {currencyPresentation.plural}</div>
                             <input
                                 type="number"
                                 min="0"
@@ -246,7 +290,7 @@ const EventCreditsConfigPanel = ({
                             />
                         </label>
                         <label className="block">
-                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Lobby refill</div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Lobby refill {currencyPresentation.plural}</div>
                             <input
                                 type="number"
                                 min="0"
@@ -283,9 +327,10 @@ const EventCreditsConfigPanel = ({
                             checked={eventCreditsConfig?.timedLobbyEnabled === true}
                             onChange={(e) => updateConfig({ timedLobbyEnabled: e.target.checked, creditEarningMode: CREDIT_EARNING_MODES.custom })}
                         />
-                        Award capped lobby refill credits while guests stay active
+                        Award capped {currencyPresentation.plural} while guests stay active
                     </label>
-                </div>
+                    </div>
+                </details>
 
                 <div className={`mt-4 grid gap-3 ${compact ? 'lg:grid-cols-1' : 'lg:grid-cols-2'}`}>
                     <label className="block">

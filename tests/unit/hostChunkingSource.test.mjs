@@ -6,12 +6,8 @@ const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
 const hostQueueTabSource = readFileSync('src/apps/Host/components/HostQueueTab.jsx', 'utf8');
 
 test('host app lazy-loads heavy host surfaces behind React.lazy boundaries', () => {
-  assert.match(hostAppSource, /const HostQueueTab = React\.lazy\(\(\) => import\('\.\/components\/HostQueueTab'\)\);/);
-  assert.match(hostAppSource, /const HostRoomLaunchPad = React\.lazy\(\(\) => import\('\.\/components\/HostRoomLaunchPad'\)\);/);
-  assert.match(hostAppSource, /const RunOfShowDirectorPanel = React\.lazy\(\(\) => import\('\.\/components\/RunOfShowDirectorPanel'\)\);/);
-  assert.match(hostAppSource, /const EventCreditsConfigPanel = React\.lazy\(\(\) => import\('\.\/components\/EventCreditsConfigPanel'\)\);/);
-  assert.match(hostAppSource, /const ChatSettingsPanel = React\.lazy\(\(\) => import\('\.\/components\/ChatSettingsPanel'\)\);/);
-  assert.match(hostAppSource, /const HostQaDebugPanel = React\.lazy\(\(\) => import\('\.\/components\/HostQaDebugPanel'\)\);/);
+  assert.match(hostAppSource, /const lazyHostSurface = \(loader,[\s\S]*=> React\.lazy/);
+  for (const component of ['HostQueueTab', 'HostRoomLaunchPad', 'RunOfShowDirectorPanel', 'EventCreditsConfigPanel', 'ChatSettingsPanel', 'HostQaDebugPanel']) assert.match(hostAppSource, new RegExp(`const ${component} = lazyHostSurface\\(\\(\\) => import\\('\\.\\/components\\/${component}'\\)`));
   assert.match(hostAppSource, /const DeferredHostSurfaceFallback = \(\{ label = 'Loading host tools\.\.\.' \}\) => \(/);
   assert.doesNotMatch(hostAppSource, /const ModerationInboxDrawer = React\.lazy\(\(\) => import\('\.\/components\/ModerationInboxDrawer'\)\);/);
   assert.doesNotMatch(hostAppSource, /const QueueTab = \(/);

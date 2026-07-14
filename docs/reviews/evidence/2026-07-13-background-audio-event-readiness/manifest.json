@@ -1,0 +1,47 @@
+{
+  "capturedAt": "2026-07-13T21:30:43.785Z",
+  "productionProject": "beaurocks-karaoke-v2",
+  "hostingRelease": "7aad694505045973",
+  "qa": {
+    "backgroundAudioDrill": "passed",
+    "hostState": "playing/host_playback",
+    "tvState": "playing/host_playback",
+    "pauseState": "ready",
+    "recoveredState": "playing/host_playback",
+    "appleState": "connection_required",
+    "clearedHostState": "off",
+    "clearedTvState": "off"
+  },
+  "files": [
+    {
+      "name": "host-upload-playing.png",
+      "role": "acceptance",
+      "bytes": 354569,
+      "sha256": "d375a6e8a81645fff8b7b82560cdb7eb3f830118841338a1f8c314c091c93f05"
+    },
+    {
+      "name": "tv-upload-playing.png",
+      "role": "acceptance",
+      "bytes": 672821,
+      "sha256": "02913488214a020613cc4b5c3dbe69a681e309a1acbd269b161683c6213d3ee9"
+    },
+    {
+      "name": "host-upload-recovered.png",
+      "role": "acceptance",
+      "bytes": 391487,
+      "sha256": "156fc241c9b9c8c389e63b72f75ddf4825da58ec710fa467c4150121d01a179b"
+    },
+    {
+      "name": "host-apple-capability.png",
+      "role": "acceptance",
+      "bytes": 390897,
+      "sha256": "df9ee58ccd4a5f0170a6a9658b2c6322918ec2f3c5214c1e63cc96934dcce4fe"
+    },
+    {
+      "name": "host-apple-tab-transition.png",
+      "role": "superseded_diagnostic",
+      "bytes": 341610,
+      "sha256": "e2f9c5f528e6ad5690a49cffdffd774765fe01dfcd25f439a5ce90d04bb01e65"
+    }
+  ]
+}

@@ -23,7 +23,7 @@ test('AddToQueueFormBody keeps YouTube/autocomplete results inside a dedicated s
   );
   assert.match(
     source,
-    /mt-2 pr-1 \$\{dockResults \? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''\}/,
+    /mt-2 pr-1 \$\{dockResults \? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden' : ''\}/,
     'Docked add workspace should clip the shell and hand scrolling to the active content lane',
   );
   assert.match(
@@ -40,6 +40,16 @@ test('AddToQueueFormBody keeps YouTube/autocomplete results inside a dedicated s
     source,
     /mt-3 grid min-h-0 flex-1 basis-0 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar pr-1/,
     'Docked moment cards should scroll independently so game and announcement controls stay reachable',
+  );
+  assert.match(
+    source,
+    /aria-label="Open YouTube search"/,
+    'The secondary YouTube search action should collapse to an icon control so the Add row does not wrap',
+  );
+  assert.doesNotMatch(
+    source,
+    /sm:min-w-\[8\.5rem\]/,
+    'The secondary YouTube search action should not reserve a wide text-button column in the Add row',
   );
 });
 

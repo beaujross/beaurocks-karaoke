@@ -12,8 +12,19 @@ test('AAHF launch flow defaults the requested room code and exposes join poster 
 
   assert.match(
     source,
-    /if \(resolvedLaunchPresetId !== 'aahf'\) return;\s*if \(String\(launchRequestedRoomCode \|\| ''\)\.trim\(\)\) return;\s*setLaunchRequestedRoomCode\('AAHF'\);/s,
+    /if \(resolvedLaunchPresetId !== 'aahf'\) return;\s*setLaunchRequestedRoomCode\(\(current\) => String\(current \|\| ''\)\.trim\(\) \? current : 'AAHF'\);/s,
     'AAHF preset should prefill the stable AAHF room code when the field is empty',
+  );
+  assert.match(
+    source,
+    /\}, \[resolvedLaunchPresetId, setLaunchRequestedRoomCode\]\);/,
+    'Clearing the AAHF room code should not immediately retrigger the preset default',
+  );
+  const workspaceStateSource = readFileSync('src/apps/Host/hooks/useHostWorkspaceState.js', 'utf8');
+  assert.match(
+    workspaceStateSource,
+    /const \[rawLaunchRoomName, setLaunchRoomName\] = useState\(null\);[\s\S]*if \(rawLaunchRoomName !== null\) return rawLaunchRoomName;/,
+    'Room name drafts should distinguish untouched defaults from an intentionally empty input',
   );
   assert.match(
     source,
@@ -106,9 +117,43 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
   assert.match(browserSource, /activeRoomSetupTab\.helper/);
   assert.doesNotMatch(browserSource, /Pick a task/);
   assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\('create'\)\}/);
+
   assert.match(browserSource, /ROOM_SETUP_TABS = Object\.freeze\(\[/);
   assert.match(browserSource, /id: 'manage'/);
   assert.match(browserSource, /How should points work\?/);
   assert.doesNotMatch(browserSource, /Credits and promos/);
   assert.doesNotMatch(browserSource, /EventCreditsConfigPanel/);
+});
+
+test('quick setup compiles night outcomes and hides overlapping primitives by default', () => {
+  const source = readFileSync(launchPadBrowserPath, 'utf8');
+
+  assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Open Karaoke[\s\S]*Hosted Showcase[\s\S]*Crowd-Led Party[\s\S]*Fundraiser Night/);
+  assert.match(source, /data-launch-night-type-card=\{option\.id\}/);
+  assert.match(
+    source,
+    /const applyLaunchNightType =[\s\S]*setLaunchOperatingModel\(option\.operatingModel\);[\s\S]*applyLaunchEconomy\(option\.economyMode\);[\s\S]*setHostNightPreset\(option\.presetId\)/,
+    'Night type should compile host style, economy, and preset together',
+  );
+  assert.match(source, /One choice sets the recommended queue, host style, automation, and economy defaults\./);
+  assert.match(source, /const \[showAdvancedSetup, setShowAdvancedSetup\] = useState\(false\);/);
+  assert.match(source, /aria-expanded=\{showAdvancedSetup\}/);
+  assert.match(
+    source,
+    /\$\{showAdvancedSetup \? '' : 'hidden'\}[\s\S]*data-launch-operating-model/,
+    'Detailed host-style controls should stay behind Advanced Setup',
+  );
+  assert.match(
+    source,
+    /\$\{showAdvancedSetup \? '' : 'hidden'\}[\s\S]*data-launch-template-options/,
+    'Detailed template controls should stay behind Advanced Setup',
+  );
+  assert.match(source, /Step 1 - Room identity/);
+  assert.match(source, /Step 2 - Guest entry/);
+  assert.match(source, /Step 3 - Points & rewards/);
+  assert.match(source, /resolveRoomSetupEffectiveBehavior/);
+  assert.match(source, /data-launch-effective-behavior="true"/);
+  assert.match(source, /data-launch-effective-domain=\{domain\.key\}/);
+  assert.match(source, /nightPresetPayload: launchPresetPayloadPreview/);
+  assert.doesNotMatch(source, /nightPresetPayload: buildLaunchPresetPayload\(\)/);
 });

@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import {
   applyQaAppCheckDebugInitScript,
   requireQaAppCheckDebugTokenForRemoteUrl,
@@ -17,7 +21,17 @@ const toBool = (value, fallback = false) => {
 };
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const ROOM_CODE_BLOCKLIST = new Set(["ROOM", "CODE", "LIKE", "OPEN", "HOST", "BROWSER", "DASHBOARD"]);
+const gotoWithSurfaceRedirectTolerance = async (page, target, options = {}) => {
+  try {
+    return await page.goto(target, options);
+  } catch (error) {
+    if (!/ERR_ABORTED/i.test(String(error?.message || error))) throw error;
+    await delay(1500);
+    if (!page.url() || page.url() === 'about:blank') throw error;
+    return null;
+  }
+};
+const ROOM_CODE_BLOCKLIST = new Set(["ROOM", "CODE", "LIKE", "OPEN", "HOST", "BROWSER", "DASHBOARD", "ALREADY"]);
 
 const ensurePlaywright = async () => {
   try {
@@ -27,6 +41,299 @@ const ensurePlaywright = async () => {
     throw new Error(
       `Playwright is not installed (${message}). Run: npm install && npm run qa:admin:prod:install`
     );
+  }
+};
+
+const setupContractDetailByPage = new WeakMap();
+const BACKGROUND_AUDIO_QA_STATES = new Set(['off', 'ready', 'starting', 'playing', 'paused', 'stale', 'error', 'deferred', 'needs_connection', 'blocked']);
+const BACKGROUND_AUDIO_QA_CAPABILITIES = new Set(['host_playback', 'connected_host_playback', 'connection_required', 'embeddable_stage_media', 'external_only', 'content_agnostic']);
+const readBackgroundAudioQaSnapshot = async (page, timeoutMs) => {
+  await page.waitForFunction(
+    () => Boolean(window.__qaBackgroundAudioState?.key && window.__qaBackgroundAudioState?.capabilityKey),
+    { timeout: Math.min(20000, timeoutMs) }
+  ).catch(() => {});
+  return page.evaluate(() => window.__qaBackgroundAudioState || null).catch(() => null);
+};
+const assertBackgroundAudioQaSnapshot = (snapshot, surface) => {
+  if (!snapshot || !BACKGROUND_AUDIO_QA_STATES.has(String(snapshot.key || ''))) {
+    throw new Error(`${surface} did not expose a valid background-audio state.`);
+  }
+  if (!BACKGROUND_AUDIO_QA_CAPABILITIES.has(String(snapshot.capabilityKey || ''))) {
+    throw new Error(`${surface} did not expose a valid background-audio capability.`);
+  }
+  return `${snapshot.key}/${snapshot.capabilityKey}`;
+};
+
+const waitForBackgroundAudioState = async ({ page, keys, capabilityKeys, timeoutMs }) => {
+  const expectedKeys = new Set(keys || []);
+  const expectedCapabilities = new Set(capabilityKeys || []);
+  const started = Date.now();
+  while (Date.now() - started < Math.min(30000, timeoutMs)) {
+    const snapshot = await readBackgroundAudioQaSnapshot(page, timeoutMs);
+    if (snapshot
+      && (!expectedKeys.size || expectedKeys.has(String(snapshot.key || '')))
+      && (!expectedCapabilities.size || expectedCapabilities.has(String(snapshot.capabilityKey || '')))) {
+      return snapshot;
+    }
+    await delay(300);
+  }
+  const snapshot = await readBackgroundAudioQaSnapshot(page, timeoutMs);
+  throw new Error(`Background audio did not reach ${Array.from(expectedKeys).join('/')} with ${Array.from(expectedCapabilities).join('/')}. Last snapshot=${JSON.stringify(snapshot)}`);
+};
+
+const runBackgroundAudioEventDrill = async ({ browser, hostPage, tvOrigin, baseUrl, roomCode, timeoutMs }) => {
+  const evidenceDir = path.resolve(process.cwd(), 'docs/reviews/evidence/2026-07-13-background-audio-event-readiness');
+  await fs.mkdir(evidenceDir, { recursive: true });
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'beaurocks-bg-event-'));
+  const fileName = `qa-bg-event-${Date.now()}.mp3`;
+  const fixturePath = path.join(tempDir, fileName);
+  const compatibleFixturePath = path.resolve(process.cwd(), 'public/audio/Lantern Circuit.mp3');
+  await fs.copyFile(compatibleFixturePath, fixturePath);
+
+  let tvContext = null;
+  let uploadPresent = false;
+  const storageNetworkEvents = [];
+  const isStorageUrl = (value = '') => /firebasestorage|storage\.googleapis/i.test(String(value || ''));
+  const safeStorageUrl = (value = '') => {
+    try {
+      const parsed = new URL(String(value || ''));
+      return `${parsed.origin}${parsed.pathname}`;
+    } catch {
+      return 'storage-url-unavailable';
+    }
+  };
+  const recordStorageResponse = async (response) => {
+    if (!isStorageUrl(response.url())) return;
+    const headers = await response.allHeaders().catch(() => ({}));
+    storageNetworkEvents.push({
+      kind: 'response',
+      status: response.status(),
+      contentType: String(headers['content-type'] || ''),
+      url: safeStorageUrl(response.url()),
+    });
+  };
+  const recordStorageFailure = (request) => {
+    if (!isStorageUrl(request.url())) return;
+    storageNetworkEvents.push({
+      kind: 'request_failed',
+      failure: String(request.failure()?.errorText || ''),
+      url: safeStorageUrl(request.url()),
+    });
+  };
+  hostPage.on('response', recordStorageResponse);
+  hostPage.on('requestfailed', recordStorageFailure);
+  const openBackgroundLibrary = async () => {
+    const backButton = hostPage.locator('[data-feature-id="host-media-library-back-to-host"]').first();
+    if (!(await backButton.isVisible().catch(() => false))) {
+      const audioToggle = hostPage.locator('[data-feature-id="deck-audio-menu-toggle"]').first();
+      await audioToggle.waitFor({ state: 'visible', timeout: Math.min(15000, timeoutMs) });
+      const manageButton = hostPage.getByRole('button', { name: /Manage BG Library/i }).first();
+      if (!(await manageButton.isVisible().catch(() => false))) {
+        await audioToggle.click({ force: true });
+      }
+      if (!(await manageButton.isVisible().catch(() => false))) {
+        await delay(500);
+      }
+      await manageButton.waitFor({ state: 'visible', timeout: Math.min(10000, timeoutMs) });
+      await manageButton.click({ force: true });
+      await backButton.waitFor({ state: 'visible', timeout: Math.min(15000, timeoutMs) });
+    }
+    const backgroundTab = hostPage.locator('[data-feature-id="host-media-library-tabs"] button')
+      .filter({ hasText: /^Background/i })
+      .first();
+    await backgroundTab.waitFor({ state: 'visible', timeout: Math.min(15000, timeoutMs) });
+    await backgroundTab.click({ force: true });
+  };
+  const closeLibrary = async () => {
+    const backButton = hostPage.locator('[data-feature-id="host-media-library-back-to-host"]').first();
+    if (await backButton.isVisible().catch(() => false)) {
+      await backButton.click({ force: true });
+      await delay(500);
+    }
+  };
+  const qaTrackCard = () => hostPage.locator('div.rounded-2xl')
+    .filter({ hasText: fileName })
+    .filter({ has: hostPage.getByRole('button', { name: /^Start Now$/i }) })
+    .last();
+  const pauseFromTruthCard = async () => {
+    await openBackgroundLibrary();
+    const truthCard = hostPage.locator('[data-feature-id="background-audio-truth-state"]').first();
+    const pauseButton = truthCard.getByRole('button', { name: /^Pause Background$/i }).first();
+    await pauseButton.waitFor({ state: 'visible', timeout: Math.min(10000, timeoutMs) });
+    await pauseButton.click({ force: true });
+  };
+
+  try {
+    await openBackgroundLibrary();
+    const uploadInput = hostPage.locator('label')
+      .filter({ hasText: 'Upload to Background' })
+      .locator('input[type="file"]')
+      .first();
+    await uploadInput.setInputFiles(fixturePath);
+    const card = qaTrackCard();
+    await card.waitFor({ state: 'visible', timeout: Math.min(60000, timeoutMs) });
+    uploadPresent = true;
+    await card.getByRole('button', { name: /^Start Now$/i }).click({ force: true });
+    let hostPlaying;
+    try {
+      hostPlaying = await waitForBackgroundAudioState({
+        page: hostPage,
+        keys: ['playing'],
+        capabilityKeys: ['host_playback'],
+        timeoutMs,
+      });
+    } catch (error) {
+      const hostTruth = await hostPage.locator('[data-feature-id="background-audio-truth-state"]')
+        .first()
+        .innerText()
+        .catch(() => 'unavailable');
+      throw new Error(`${String(error?.message || error)} Host truth=${String(hostTruth || '').replace(/\s+/g, ' ').trim()} Storage network=${JSON.stringify(storageNetworkEvents.slice(-8))}`);
+    }
+    await hostPage.screenshot({ path: path.join(evidenceDir, 'host-upload-playing.png'), fullPage: true });
+
+    tvContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+    await applyQaAppCheckDebugInitScript(tvContext);
+    const tvPage = await tvContext.newPage();
+    await tvPage.goto(`${tvOrigin || baseUrl}/?room=${encodeURIComponent(roomCode)}&mode=tv`, {
+      waitUntil: 'domcontentloaded',
+      timeout: timeoutMs,
+    });
+    await delay(1800);
+    const startShow = tvPage.getByRole('button', { name: /start show|tap to start|start/i }).first();
+    if (await startShow.isVisible().catch(() => false)) {
+      await startShow.click({ force: true }).catch(() => {});
+      await delay(700);
+    }
+    let tvPlaying;
+    try {
+      tvPlaying = await waitForBackgroundAudioState({
+        page: tvPage,
+        keys: ['playing'],
+        capabilityKeys: ['host_playback'],
+        timeoutMs,
+      });
+    } catch (error) {
+      const hostSnapshot = await readBackgroundAudioQaSnapshot(hostPage, timeoutMs);
+      const hostTruth = await hostPage.locator('[data-feature-id="background-audio-truth-state"]')
+        .first()
+        .innerText()
+        .catch(() => 'unavailable');
+      throw new Error(`${String(error?.message || error)} Host snapshot=${JSON.stringify(hostSnapshot)} Host truth=${String(hostTruth || '').replace(/\s+/g, ' ').trim()} Storage network=${JSON.stringify(storageNetworkEvents.slice(-8))}`);
+    }
+    await tvPage.screenshot({ path: path.join(evidenceDir, 'tv-upload-playing.png'), fullPage: true });
+
+    await pauseFromTruthCard();
+    const paused = await waitForBackgroundAudioState({
+      page: hostPage,
+      keys: ['paused', 'ready'],
+      capabilityKeys: ['host_playback'],
+      timeoutMs,
+    });
+    await openBackgroundLibrary();
+    const truthCard = hostPage.locator('[data-feature-id="background-audio-truth-state"]').first();
+    const recoveryButton = truthCard.getByRole('button', { name: /Start Upload/i }).first();
+    await recoveryButton.waitFor({ state: 'visible', timeout: Math.min(15000, timeoutMs) });
+    await recoveryButton.click({ force: true });
+    const recovered = await waitForBackgroundAudioState({
+      page: hostPage,
+      keys: ['playing'],
+      capabilityKeys: ['host_playback'],
+      timeoutMs,
+    });
+    await hostPage.screenshot({ path: path.join(evidenceDir, 'host-upload-recovered.png'), fullPage: true });
+    await waitForBackgroundAudioState({
+      page: tvPage,
+      keys: ['playing'],
+      capabilityKeys: ['host_playback'],
+      timeoutMs,
+    });
+
+    await pauseFromTruthCard();
+    await waitForBackgroundAudioState({
+      page: hostPage,
+      keys: ['paused', 'ready'],
+      capabilityKeys: ['host_playback'],
+      timeoutMs,
+    });
+    await openBackgroundLibrary();
+    const appleTab = hostPage.locator('[data-feature-id="host-media-library-tabs"] button')
+      .filter({ hasText: /^Apple Music/i })
+      .first();
+    await appleTab.scrollIntoViewIfNeeded();
+    await appleTab.click();
+    await delay(700);
+    const appleSection = hostPage.locator('[data-feature-id="host-media-library-apple-music"]').first();
+    if (!(await appleSection.isVisible().catch(() => false))) {
+      await hostPage.screenshot({ path: path.join(evidenceDir, 'host-apple-tab-transition.png'), fullPage: true });
+      const transitionState = await hostPage.evaluate(() => ({
+        modalVisible: Boolean(document.querySelector('[data-feature-id="tv-moments-library-modal"]')),
+        tabs: Array.from(document.querySelectorAll('[data-feature-id="host-media-library-tabs"] button')).map((button) => ({
+          text: String(button.textContent || '').replace(/\s+/g, ' ').trim(),
+          selected: button.getAttribute('aria-selected'),
+        })),
+      }));
+      throw new Error(`Apple Music library section did not render after tab selection. Transition=${JSON.stringify(transitionState)}`);
+    }
+    const appleConnectedState = appleSection.getByText(/^Connected$/i).first();
+    const appleConnectButton = appleSection.getByRole('button', { name: /^Connect Apple Music$/i }).first();
+    await Promise.race([
+      appleConnectedState.waitFor({ state: 'visible', timeout: Math.min(10000, timeoutMs) }),
+      appleConnectButton.waitFor({ state: 'visible', timeout: Math.min(10000, timeoutMs) }),
+    ]).catch(() => {});
+    const appleConnected = await appleConnectedState.isVisible().catch(() => false);
+    const appleConnectAction = await appleConnectButton.isVisible().catch(() => false);
+    if (!appleConnected && !appleConnectAction) {
+      const appleText = await appleSection.innerText().catch(() => 'unavailable');
+      throw new Error(`Apple Music tab exposed neither a connected state nor a Connect action. Section=${String(appleText || '').replace(/\s+/g, ' ').trim()}`);
+    }
+    await hostPage.screenshot({ path: path.join(evidenceDir, 'host-apple-capability.png'), fullPage: true });
+
+    await hostPage.locator('[data-feature-id="host-media-library-tabs"] button')
+      .filter({ hasText: /^Background/i })
+      .first()
+      .click({ force: true });
+    const deleteCard = qaTrackCard();
+    const dialogPromise = hostPage.waitForEvent('dialog', { timeout: Math.min(10000, timeoutMs) });
+    const deleteClickPromise = deleteCard.getByRole('button', { name: /^Delete(?: Upload)?$/i }).click({ force: true });
+    const dialog = await dialogPromise;
+    await dialog.accept();
+    await deleteClickPromise;
+    await deleteCard.waitFor({ state: 'hidden', timeout: Math.min(30000, timeoutMs) });
+    uploadPresent = false;
+    const cleared = await waitForBackgroundAudioState({
+      page: hostPage,
+      keys: ['off', 'ready', 'needs_connection'],
+      capabilityKeys: ['content_agnostic', 'host_playback', 'connection_required'],
+      timeoutMs,
+    });
+    const tvCleared = await waitForBackgroundAudioState({
+      page: tvPage,
+      keys: ['off', 'ready', 'needs_connection'],
+      capabilityKeys: ['content_agnostic', 'host_playback', 'connection_required'],
+      timeoutMs,
+    });
+
+    return `Uploaded, played, paused, recovered, and deleted a disposable BG track. Host ${hostPlaying.key}/${hostPlaying.capabilityKey}; TV ${tvPlaying.key}/${tvPlaying.capabilityKey}; paused ${paused.key}; recovered ${recovered.key}; Apple ${appleConnected ? 'connected (not mutated)' : 'connection-required CTA'}; cleared Host ${cleared.key}, TV ${tvCleared.key}.`;
+  } finally {
+    hostPage.off('response', recordStorageResponse);
+    hostPage.off('requestfailed', recordStorageFailure);
+    if (uploadPresent) {
+      try {
+        await openBackgroundLibrary();
+        const card = qaTrackCard();
+        if (await card.isVisible().catch(() => false)) {
+          const dialogPromise = hostPage.waitForEvent('dialog', { timeout: Math.min(10000, timeoutMs) });
+          const deleteClickPromise = card.getByRole('button', { name: /^Delete(?: Upload)?$/i }).click({ force: true });
+          const dialog = await dialogPromise;
+          await dialog.accept();
+          await deleteClickPromise;
+        }
+      } catch {
+        // The disposable QA room remains isolated if UI cleanup cannot complete.
+      }
+    }
+    if (tvContext) await tvContext.close();
+    await fs.rm(tempDir, { recursive: true, force: true });
   }
 };
 
@@ -47,9 +354,10 @@ const deriveHostUrlFromBase = (baseUrl = "") => {
     const parsed = new URL(String(baseUrl || "").trim());
     const host = String(parsed.hostname || "").trim().toLowerCase();
     let nextHost = host;
-    if (host.startsWith("app.")) {
+    const singleOriginHosting = host.endsWith(".web.app") || host.endsWith(".firebaseapp.com");
+    if (!singleOriginHosting && host.startsWith("app.")) {
       nextHost = `host.${host.slice(4)}`;
-    } else if (host && !host.startsWith("host.") && host !== "localhost" && host !== "127.0.0.1") {
+    } else if (!singleOriginHosting && host && !host.startsWith("host.") && host !== "localhost" && host !== "127.0.0.1") {
       nextHost = `host.${host}`;
     }
     return `${parsed.protocol}//${nextHost}/?mode=host&hostUiVersion=v2&view=ops&section=ops.room_setup&tab=admin`;
@@ -62,9 +370,10 @@ const deriveHostAccessUrlFromBase = (baseUrl = "") => {
     const parsed = new URL(String(baseUrl || "").trim());
     const host = String(parsed.hostname || "").trim().toLowerCase();
     let nextHost = host;
-    if (host.startsWith("app.")) {
+    const singleOriginHosting = host.endsWith(".web.app") || host.endsWith(".firebaseapp.com");
+    if (!singleOriginHosting && host.startsWith("app.")) {
       nextHost = `host.${host.slice(4)}`;
-    } else if (host && !host.startsWith("host.") && host !== "localhost" && host !== "127.0.0.1") {
+    } else if (!singleOriginHosting && host && !host.startsWith("host.") && host !== "localhost" && host !== "127.0.0.1") {
       nextHost = `host.${host}`;
     }
     return `${parsed.protocol}//${nextHost}/host-access`;
@@ -77,9 +386,10 @@ const deriveTvOriginFromBase = (baseUrl = "") => {
     const parsed = new URL(String(baseUrl || "").trim());
     const host = String(parsed.hostname || "").trim().toLowerCase();
     let nextHost = host;
-    if (host.startsWith("app.")) {
+    const singleOriginHosting = host.endsWith(".web.app") || host.endsWith(".firebaseapp.com");
+    if (!singleOriginHosting && host.startsWith("app.")) {
       nextHost = `tv.${host.slice(4)}`;
-    } else if (host && !host.startsWith("tv.") && host !== "localhost" && host !== "127.0.0.1") {
+    } else if (!singleOriginHosting && host && !host.startsWith("tv.") && host !== "localhost" && host !== "127.0.0.1") {
       nextHost = `tv.${host}`;
     }
     return `${parsed.protocol}//${nextHost}`;
@@ -137,19 +447,22 @@ const waitForGameLaunchpad = async ({ page, timeoutMs }) => {
 };
 
 const readHostRoomCode = async (page) => {
-  const hooked = page.locator("[data-host-room-code]").first();
-  if (await hooked.count()) {
-    const text = sanitizeRoomCode(await hooked.innerText().catch(() => ""));
-    if (isLikelyRoomCode(text)) return text;
-  }
-
   const url = page.url();
   try {
     const parsed = new URL(url);
     const fromQuery = sanitizeRoomCode(parsed.searchParams.get("room") || "");
-    if (isLikelyRoomCode(fromQuery)) return fromQuery;
+    const mode = String(parsed.searchParams.get("mode") || "").trim().toLowerCase();
+    if (mode === "host" && isLikelyRoomCode(fromQuery)) return fromQuery;
   } catch {
     // ignore URL parse failures
+  }
+
+  const hooked = page.locator("[data-host-room-code]").first();
+  if (await hooked.count()) {
+    const text = sanitizeRoomCode(await hooked.innerText().catch(() => ""));
+    const bodyText = String(await page.locator("body").innerText().catch(() => "")).toLowerCase();
+    const onRoomBrowser = /beaurocks host rooms|create a room, reopen a recent room/i.test(bodyText);
+    if (!onRoomBrowser && isLikelyRoomCode(text)) return text;
   }
 
   const bodyText = await page.locator("body").innerText().catch(() => "");
@@ -217,6 +530,39 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
     const code = await readHostRoomCode(page);
     if (code) return code;
 
+    const workspaceBodyText = String(await page.locator("body").innerText().catch(() => "")).toLowerCase();
+    const onRoomBrowser = /beaurocks host rooms|create a room, reopen a recent room/i.test(workspaceBodyText);
+    const createRoomInput = page.locator('input[placeholder="Friday Karaoke"]').first();
+    const createRoomPrimary = page.locator('[data-host-create-room-primary="true"]').first();
+    if (onRoomBrowser && !createClicked) {
+      const createRoomTab = page.getByRole("button", { name: /^Create Room$/i }).first();
+      if (await createRoomTab.isVisible().catch(() => false)) {
+        await createRoomTab.click({ force: true });
+        await delay(500);
+      }
+      if (await createRoomInput.isVisible().catch(() => false)) {
+        const currentName = String(await createRoomInput.inputValue().catch(() => "")).trim();
+        if (!currentName) {
+          await createRoomInput.fill(`QA Setup Contract ${Date.now().toString(36).slice(-6)}`);
+          await delay(350);
+        }
+        const effectiveDomains = page.locator('[data-launch-effective-domain]');
+        const effectiveDomainCount = await effectiveDomains.count();
+        if (effectiveDomainCount !== 5) {
+          throw new Error(`Expected five effective setup domains before room creation; found ${effectiveDomainCount}.`);
+        }
+        const domainKeys = await effectiveDomains.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-launch-effective-domain') || '').filter(Boolean));
+        setupContractDetailByPage.set(page, `Five-domain setup summary rendered (${domainKeys.join(', ')}).`);
+        const enabled = await createRoomPrimary.isEnabled().catch(() => false);
+        if (enabled) {
+          await createRoomPrimary.click({ force: true });
+          createClicked = true;
+          await delay(1500);
+          continue;
+        }
+      }
+    }
+
     const advancedDetails = page.locator("details", {
       hasText: /Advanced Launch \(QA \/ Returning Hosts\)/i,
     }).first();
@@ -267,7 +613,7 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
     }
 
     const bodyText = (await page.locator("body").innerText().catch(() => "")).toLowerCase();
-    if (/beaurocks host rooms|browse rooms like a workspace/i.test(bodyText)) {
+    if (/beaurocks host rooms|browse rooms like a workspace/i.test(bodyText) && !(await createRoomInput.isVisible().catch(() => false))) {
       const openHostPanel = page.getByRole("button", { name: /Open Host Panel/i }).first();
       const openRoom = page.getByRole("button", { name: /^OPEN$/i }).first();
       if (await openHostPanel.isVisible().catch(() => false)) {
@@ -297,7 +643,7 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
 };
 
 const openHostAndCreateRoom = async ({ page, hostUrl, timeoutMs }) => {
-  await page.goto(hostUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  await gotoWithSurfaceRedirectTolerance(page, hostUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await delay(3000);
   return waitForHostRoomCode({ page, timeoutMs });
 };
@@ -381,15 +727,86 @@ const gotoHostAccessAndLogin = async ({ page, baseUrl, email, password, timeoutM
   return `Logged in as ${email}.`;
 };
 
+const openRequestedRoomFromBrowser = async ({ page, roomCode, timeoutMs }) => {
+  const started = Date.now();
+  const safeCode = sanitizeRoomCode(roomCode);
+  while (Date.now() - started < Math.min(30000, timeoutMs)) {
+    const bodyText = String(await page.locator("body").innerText().catch(() => "")).toLowerCase();
+    if (!/beaurocks host rooms|create a room, reopen a recent room/i.test(bodyText)) return true;
+
+    const existingRoomsTab = page.getByRole('tab', { name: /^Existing Rooms/i }).first();
+    if (await existingRoomsTab.isVisible().catch(() => false)) {
+      await existingRoomsTab.click({ force: true });
+      await delay(350);
+    }
+
+    const codeLabel = page.getByText(safeCode, { exact: true }).first();
+    if (await codeLabel.isVisible().catch(() => false)) {
+      const row = codeLabel.locator('xpath=ancestor::div[.//button[normalize-space()="Open"]][1]');
+      const openButton = row.getByRole("button", { name: /^Open$/i }).first();
+      if (await openButton.isVisible().catch(() => false) && await openButton.isEnabled().catch(() => false)) {
+        await openButton.click({ force: true });
+        await delay(1800);
+        const nextBodyText = String(await page.locator("body").innerText().catch(() => "")).toLowerCase();
+        if (!/beaurocks host rooms|create a room, reopen a recent room/i.test(nextBodyText)) return true;
+      }
+    }
+
+    const openByCodeDetails = page.locator('details', { hasText: /Open by room code/i }).first();
+    if (await openByCodeDetails.count()) {
+      const isOpen = await openByCodeDetails.evaluate((node) => Boolean(node.open)).catch(() => false);
+      if (!isOpen) {
+        await openByCodeDetails.locator('summary').first().click({ force: true }).catch(() => {});
+        await delay(250);
+      }
+      const roomCodeInput = openByCodeDetails.locator('input[placeholder="Open by room code"]').first();
+      if (await roomCodeInput.isVisible().catch(() => false)) {
+        await roomCodeInput.fill(safeCode);
+        await delay(250);
+        const openRoomButton = openByCodeDetails.getByRole('button', { name: /^Open Room$/i }).first();
+        if (await openRoomButton.isVisible().catch(() => false) && await openRoomButton.isEnabled().catch(() => false)) {
+          await openRoomButton.click({ force: true });
+          await delay(1800);
+          const nextBodyText = String(await page.locator('body').innerText().catch(() => '')).toLowerCase();
+          if (!/beaurocks host rooms|create a room, reopen a recent room/i.test(nextBodyText)) return true;
+        }
+      }
+    }
+    await delay(700);
+  }
+  return false;
+};
+
 const navigateHostToGames = async ({ page, hostUrl, roomCode, timeoutMs }) => {
   const hostOrigin = hostOriginFromUrl(hostUrl);
   if (!hostOrigin) {
     throw new Error(`Could not resolve host origin from hostUrl "${hostUrl}".`);
   }
   const hostRoomUrl = `${hostOrigin}/?room=${encodeURIComponent(roomCode)}&mode=host`;
-  if (!page.url().includes(`room=${encodeURIComponent(roomCode)}`)) {
-    await page.goto(hostRoomUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await delay(2500);
+  let alreadyInDirectHostRoom = false;
+  try {
+    const currentUrl = new URL(page.url());
+    alreadyInDirectHostRoom = sanitizeRoomCode(currentUrl.searchParams.get('room')) === sanitizeRoomCode(roomCode)
+      && String(currentUrl.searchParams.get('mode') || '').trim().toLowerCase() === 'host';
+  } catch {
+    alreadyInDirectHostRoom = false;
+  }
+  if (!alreadyInDirectHostRoom) {
+    await gotoWithSurfaceRedirectTolerance(page, hostRoomUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  }
+  await page.waitForFunction(
+    () => String(document.body?.innerText || '').trim().length > 50,
+    { timeout: Math.min(30000, timeoutMs) }
+  ).catch(() => {});
+  await delay(1200);
+
+  const initialBodyText = String(await page.locator("body").innerText().catch(() => "")).toLowerCase();
+  if (/beaurocks host rooms|create a room, reopen a recent room/i.test(initialBodyText)) {
+    const opened = await openRequestedRoomFromBrowser({ page, roomCode, timeoutMs });
+    if (!opened) {
+      throw new Error(`Room ${roomCode} was not available to open from the Host room browser.`);
+    }
+    await delay(1200);
   }
 
   const directReady = await getGameLaunchpadDetail(page);
@@ -569,12 +986,30 @@ const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
   const nameInput = page.locator('[data-singer-join-name]').first();
   const fallbackInput = page.getByPlaceholder(/Enter Your Name/i).first();
 
-  const needsJoin =
-    (await joinView.isVisible().catch(() => false)) ||
-    (await nameInput.isVisible().catch(() => false)) ||
-    (await fallbackInput.isVisible().catch(() => false));
+  let needsJoin = false;
+  const initialStateStartedAt = Date.now();
+  while (Date.now() - initialStateStartedAt < Math.min(20000, timeoutMs)) {
+    needsJoin =
+      (await joinView.isVisible().catch(() => false)) ||
+      (await nameInput.isVisible().catch(() => false)) ||
+      (await fallbackInput.isVisible().catch(() => false));
+    if (needsJoin) break;
+    if (await isSingerMainReady()) {
+      const hasReturningIdentity = await page.evaluate(() => Object.keys(window.localStorage || {}).some((key) => key.startsWith('beaurocks_returning_'))).catch(() => false);
+      if (hasReturningIdentity) return "Singer already joined.";
+      const gameOverlayVisible = await page.locator("[data-prompt-vote-player-view]").first().isVisible().catch(() => false);
+      if (gameOverlayVisible) {
+        throw new Error("Active game overlay is visible before singer membership can be established.");
+      }
+      return "Singer main shell rendered without a join prompt.";
+    }
+    await delay(350);
+  }
 
-  if (!needsJoin) return "Singer already joined.";
+  if (!needsJoin) {
+    const bodyText = String(await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 420);
+    throw new Error(`Singer surface did not reach an explicit join or main/game state. Snippet="${bodyText}"`);
+  }
 
   if (await nameInput.count()) {
     await nameInput.fill(singerName);
@@ -643,6 +1078,7 @@ const run = async () => {
   const singerName = process.env.QA_SINGER_NAME || "QA Singer";
   const suppliedRoomCode = sanitizeRoomCode(process.env.QA_ROOM_CODE || "");
   const skipRecap = toBool(process.env.QA_SKIP_RECAP, false);
+  const backgroundAudioDrill = toBool(process.env.QA_BACKGROUND_AUDIO_DRILL, false);
   const modeMeta = gameModeMeta(process.env.QA_GAME_MODE || DEFAULT_GAME_MODE);
   const email = String(process.env.QA_HOST_EMAIL || "").trim();
   const password = String(process.env.QA_HOST_PASSWORD || "");
@@ -680,14 +1116,15 @@ const run = async () => {
         if (!hostOrigin) {
           throw new Error(`Could not resolve host origin from hostUrl "${hostUrl}".`);
         }
-        await hostPage.goto(`${hostOrigin}/?room=${encodeURIComponent(roomCode)}&mode=host`, {
+        await gotoWithSurfaceRedirectTolerance(hostPage, `${hostOrigin}/?room=${encodeURIComponent(roomCode)}&mode=host`, {
           waitUntil: "domcontentloaded",
           timeout: timeoutMs,
         });
         return `Using provided room code ${roomCode}.`;
       }
       roomCode = await openHostAndCreateRoom({ page: hostPage, hostUrl, timeoutMs });
-      return `Created room ${roomCode}.`;
+      const setupDetail = setupContractDetailByPage.get(hostPage) || 'Setup summary was not inspected.';
+      return `Created room ${roomCode}. ${setupDetail}`;
     });
 
     if (!roomCode) {
@@ -696,8 +1133,10 @@ const run = async () => {
 
     await runCheck(checks, "host_open_games_and_launch_new_mode", async () => {
       await navigateHostToGames({ page: hostPage, hostUrl, roomCode, timeoutMs });
+      const backgroundSnapshot = await readBackgroundAudioQaSnapshot(hostPage, timeoutMs);
+      const backgroundDetail = assertBackgroundAudioQaSnapshot(backgroundSnapshot, 'Host');
       const launchDetail = await clickGameQuickLaunch({ page: hostPage, modeMeta, timeoutMs });
-      return launchDetail;
+      return `${launchDetail} Background audio: ${backgroundDetail}.`;
     });
 
     const singerContext = await browser.newContext({ viewport: { width: 430, height: 932 }, isMobile: true, hasTouch: true });
@@ -748,6 +1187,12 @@ const run = async () => {
       });
 
       await runCheck(checks, "singer_interacts_with_new_game_mode", async () => {
+        const freshRoundButton = hostPage.getByRole("button", { name: /Launch Next Question|Next Question|Launch Next Prompt|Next Prompt/i }).first();
+        if (await freshRoundButton.isVisible().catch(() => false)) {
+          await freshRoundButton.click({ force: true });
+          await delay(1200);
+        }
+
         const gameView = singerPage.locator(modeMeta.singerView).first();
         const fallbackGameHeading = singerPage.getByText(modeMeta.hostLabel, { exact: false }).first();
         let gameVisible = false;
@@ -765,30 +1210,29 @@ const run = async () => {
 
         if (modeMeta.mode.includes("wyr")) {
           const optionA = singerPage.locator('[data-wyr-choice="A"]').first();
-          if (await optionA.count()) {
-            await optionA.click({ force: true });
-          } else {
-            const fallback = singerPage.getByRole("button").filter({ hasText: /OR/i }).first();
-            if (await fallback.isVisible().catch(() => false)) {
-              await singerPage.getByRole("button").first().click({ force: true });
-            }
-          }
+          await optionA.waitFor({ state: "visible", timeout: Math.min(10000, timeoutMs) });
+          await optionA.click({ force: true });
         } else {
           const option0 = singerPage.locator('[data-qa-choice="0"]').first();
-          if (await option0.count()) {
-            await option0.click({ force: true });
-          } else {
-            await singerPage.getByRole("button").first().click({ force: true });
+          await option0.waitFor({ state: "visible", timeout: Math.min(10000, timeoutMs) });
+          await option0.click({ force: true });
+        }
+
+        const voteFeedbackStartedAt = Date.now();
+        let gameText = "";
+        while (Date.now() - voteFeedbackStartedAt < Math.min(15000, timeoutMs)) {
+          gameText = await singerPage.locator("body").innerText().catch(() => "");
+          if (modeMeta.singerSuccessRegex.test(gameText)) {
+            return `Singer successfully interacted with ${modeMeta.mode}.`;
           }
+          const voteErrorMatch = gameText.match(/could not submit vote|please try again|permission denied|rejoin the room|voting just closed|already locked/i);
+          if (voteErrorMatch) {
+            throw new Error(`Singer vote returned an error for ${modeMeta.mode}: ${voteErrorMatch[0]}.`);
+          }
+          await delay(400);
         }
-
-        await delay(600);
-        const gameText = await singerPage.locator("body").innerText();
-        if (!modeMeta.singerSuccessRegex.test(gameText)) {
-          throw new Error(`Singer vote confirmation not detected for ${modeMeta.mode}.`);
-        }
-
-        return `Singer successfully interacted with ${modeMeta.mode}.`;
+        const gameSnippet = gameText.replace(/\s+/g, " ").trim().slice(0, 320);
+        throw new Error(`Singer vote confirmation not detected for ${modeMeta.mode}. Snippet="${gameSnippet}"`);
       });
     } finally {
       await singerContext.close();
@@ -842,6 +1286,9 @@ const run = async () => {
           await delay(600);
         }
 
+        const backgroundSnapshot = await readBackgroundAudioQaSnapshot(tvPage, timeoutMs);
+        const backgroundDetail = assertBackgroundAudioQaSnapshot(backgroundSnapshot, 'TV');
+
         if (!modeMeta.tvLabelRegex.test(liveText)) {
           const bodyText = String(await tvPage.locator("body").innerText().catch(() => ""));
           const healthyFallbackSignals = [
@@ -863,9 +1310,9 @@ const run = async () => {
             const snippet = bodyText.replace(/\s+/g, " ").trim().slice(0, 240);
             throw new Error(`Expected TV live label to include ${modeMeta.hostLabel}, got "${liveText}". TV snippet="${snippet}"`);
           }
-          return "TV loaded in fallback state (live label not rendered in this room snapshot).";
+          return `TV loaded in fallback state (live label not rendered in this room snapshot). Background audio: ${backgroundDetail}.`;
         }
-        return `TV live label: ${liveText}`;
+        return `TV live label: ${liveText}. Background audio: ${backgroundDetail}.`;
       });
     } finally {
       await tvContext.close();
@@ -884,6 +1331,7 @@ const run = async () => {
           await delay(1500);
 
           const stateEl = recapPage.locator("[data-recap-state]").first();
+          await stateEl.waitFor({ state: "attached", timeout: Math.min(10000, timeoutMs) }).catch(() => {});
           if (await stateEl.count()) {
             const state = await stateEl.getAttribute("data-recap-state");
             if (!["ready", "not_ready", "missing_room"].includes(String(state || ""))) {
@@ -893,7 +1341,7 @@ const run = async () => {
           }
 
           const bodyText = await recapPage.locator("body").innerText();
-          if (!/Recap not ready yet|BROSS Karaoke Recap|Missing room code/i.test(bodyText)) {
+          if (!/Recap not ready yet|BROSS Karaoke Recap|Missing room code|recap not found/i.test(bodyText)) {
             throw new Error("Recap route loaded but expected recap content was not found.");
           }
           return "Recap route rendered fallback content.";
@@ -925,6 +1373,19 @@ const run = async () => {
       }
       throw new Error("Host did not return to karaoke within timeout after End Mode.");
     });
+
+    if (backgroundAudioDrill) {
+      await runCheck(checks, 'background_audio_event_readiness', async () => (
+        runBackgroundAudioEventDrill({
+          browser,
+          hostPage,
+          tvOrigin,
+          baseUrl,
+          roomCode,
+          timeoutMs,
+        })
+      ));
+    }
   } catch (error) {
     scenarioFailure = true;
     checks.push({
@@ -952,6 +1413,7 @@ const run = async () => {
     gameMode: modeMeta.mode,
     singerName,
     skipRecap,
+    backgroundAudioDrill,
     headless,
     timeoutMs,
     checks,

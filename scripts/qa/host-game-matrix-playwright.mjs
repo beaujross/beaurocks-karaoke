@@ -564,9 +564,20 @@ const clickHostGamesTab = async (page) => {
 const waitForGamesLauncher = async ({ page, timeoutMs }) => {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
+    const liveDrawer = page.locator('[data-host-game-launcher-drawer="content"]:visible').last();
+    const compactCard = liveDrawer.locator('[data-game-card-variant="live-switcher"]:visible').first();
+    if (await compactCard.isVisible().catch(() => false)) {
+      return true;
+    }
     const quickLaunch = page.locator("[data-game-quick-launch]").first();
     if (await quickLaunch.isVisible().catch(() => false)) {
       return true;
+    }
+    const openDrawerButton = page.getByRole("button", { name: /Open Launcher Drawer/i }).first();
+    if (await openDrawerButton.isVisible().catch(() => false)) {
+      await openDrawerButton.click({ force: true });
+      await delay(500);
+      continue;
     }
     await delay(500);
   }
@@ -1390,10 +1401,122 @@ const performInteraction = async ({ page, interaction, timeoutMs }) => {
   throw new Error(`Interaction did not reach expected confirmation. Snippet="${snippet}"`);
 };
 
+const getGameMomentBundleId = (modeId = "") => {
+  const normalized = String(modeId || "").trim().toLowerCase();
+  if (["bingo"].includes(normalized)) return "alongside_karaoke";
+  if (["flappy_bird", "vocal_challenge", "riding_scales", "karaoke_bracket"].includes(normalized)) return "full_screen_rounds";
+  return "between_songs";
+};
+
+const clickVisibleGameMomentBundle = async (page, bundleId) => {
+  const buttons = page.locator(`[data-feature-id="host-game-bundle-${bundleId}"]`);
+  const count = await buttons.count().catch(() => 0);
+  for (let index = count - 1; index >= 0; index -= 1) {
+    const button = buttons.nth(index);
+    if (!(await button.isVisible().catch(() => false))) continue;
+    await button.scrollIntoViewIfNeeded().catch(() => {});
+    await button.click({ force: true });
+    return true;
+  }
+  return false;
+};
+
+const COLLISION_ACCEPTANCE_CASES = Object.freeze({
+  trivia_pop: Object.freeze({
+    requestedModeId: "bingo",
+    requestedBundleId: "alongside_karaoke",
+    messageRegex: /finish the current room takeover/i,
+  }),
+  bingo: Object.freeze({
+    requestedModeId: "wyr",
+    requestedBundleId: "between_songs",
+    messageRegex: /pause or finish the all-night companion/i,
+  }),
+});
+
+const assertLaunchCollisionBlocked = async ({ page, activeEntry, timeoutMs }) => {
+  const collisionCase = COLLISION_ACCEPTANCE_CASES[activeEntry.id];
+  if (!collisionCase) return "No collision acceptance case configured.";
+  const activeModeBefore = String(await readHostLiveMode(page)).trim().toLowerCase();
+  if (!activeEntry.expectedHostModes.some((mode) => activeModeBefore.includes(mode))) {
+    throw new Error(`Expected ${activeEntry.id} to be live before collision attempt; found "${activeModeBefore}".`);
+  }
+
+  const launchers = page.locator('[data-host-game-launcher-drawer="content"]');
+  const launcherCount = await launchers.count().catch(() => 0);
+  let activeLauncher = null;
+  for (let index = launcherCount - 1; index >= 0; index -= 1) {
+    const candidate = launchers.nth(index);
+    if (!(await candidate.isVisible().catch(() => false))) continue;
+    const activeCard = candidate.locator(`[data-game-card="${activeEntry.id}"]`).first();
+    if (!(await activeCard.isVisible().catch(() => false))) continue;
+    activeLauncher = candidate;
+    break;
+  }
+  if (!activeLauncher) {
+    throw new Error(`Visible launcher drawer for ${activeEntry.id} is not available.`);
+  }
+
+  const compactCards = activeLauncher.locator('[data-game-card-variant="live-switcher"]:visible');
+  const compactCardCount = await compactCards.count().catch(() => 0);
+  if (compactCardCount < 1) {
+    throw new Error(`Visible launcher drawer for ${activeEntry.id} did not use the compact live-switcher card contract.`);
+  }
+  const actionCounts = await compactCards.evaluateAll((cards) =>
+    cards.map((card) => card.querySelectorAll("button").length)
+  ).catch(() => []);
+  const maxActionCount = Math.max(0, ...actionCounts);
+  if (maxActionCount > 2) {
+    throw new Error(`Compact live-switcher exposed ${maxActionCount} actions on one card; expected no more than 2.`);
+  }
+
+  const bundleButton = activeLauncher.locator(`[data-feature-id="host-game-bundle-${collisionCase.requestedBundleId}"]`).first();
+  if (!(await bundleButton.isVisible().catch(() => false))) {
+    throw new Error(`Collision bundle ${collisionCase.requestedBundleId} is not visible in the active launcher drawer.`);
+  }
+  await bundleButton.evaluate((button) => button.click());
+
+  const requestedButton = activeLauncher.locator(`[data-game-quick-launch="${collisionCase.requestedModeId}"]`).first();
+  const bundleChangedAt = Date.now();
+  while (Date.now() - bundleChangedAt < 5000 && !(await requestedButton.isVisible().catch(() => false))) {
+    await delay(200);
+  }
+  if (!(await requestedButton.isVisible().catch(() => false))) {
+    const visibleCardIds = await activeLauncher.locator("[data-game-card]:visible").evaluateAll((cards) =>
+      cards.map((card) => card.getAttribute("data-game-card")).filter(Boolean)
+    ).catch(() => []);
+    const bundleStates = await activeLauncher.locator('[data-feature-id^="host-game-bundle-"]').evaluateAll((buttons) =>
+      buttons.map((button) => `${button.getAttribute("data-feature-id")}:${button.className}`)
+    ).catch(() => []);
+    throw new Error(`Collision launch button ${collisionCase.requestedModeId} is not visible. Drawer cards: ${visibleCardIds.join(",") || "none"}. Bundles: ${bundleStates.join(" | ") || "none"}.`);
+  }
+  await requestedButton.evaluate((button) => button.click());
+
+  const started = Date.now();
+  while (Date.now() - started < Math.min(8000, timeoutMs)) {
+    const liveMode = String(await readHostLiveMode(page).catch(() => "")).trim().toLowerCase();
+    if (!activeEntry.expectedHostModes.some((mode) => liveMode.includes(mode))) {
+      throw new Error(`Blocked ${collisionCase.requestedModeId} launch changed live mode from ${activeModeBefore} to ${liveMode || "none"}.`);
+    }
+    const bodyText = String(await page.locator("body").innerText().catch(() => ""));
+    if (collisionCase.messageRegex.test(bodyText)) {
+      return `Blocked ${collisionCase.requestedModeId}; live mode remained ${liveMode}; compact cards exposed at most ${maxActionCount} actions.`;
+    }
+    await delay(200);
+  }
+  throw new Error(`Collision message was not visible after blocking ${collisionCase.requestedModeId}; live mode remained ${activeModeBefore}.`);
+};
+
 const launchGameMode = async ({ page, entry, timeoutMs, diagnostics = [], failureScreenshotPath = "" }) => {
   const launchButton = page.locator(`[data-game-quick-launch="${entry.id}"]`);
   if ((await launchButton.count().catch(() => 0)) === 0) {
-    throw new Error(`Quick launch button missing for ${entry.id}.`);
+    const bundleId = getGameMomentBundleId(entry.id);
+    if (await clickVisibleGameMomentBundle(page, bundleId)) {
+      await delay(500);
+    }
+  }
+  if ((await launchButton.count().catch(() => 0)) === 0) {
+    throw new Error(`Quick launch button missing for ${entry.id} after selecting ${getGameMomentBundleId(entry.id)}.`);
   }
   await clickVisibleGameLaunchButton(page, entry.id);
 
@@ -1487,6 +1610,7 @@ const run = async () => {
   const appOrigin = deriveSurfaceOriginFromRoot(rootUrl, "app") || rootUrl;
   const tvOrigin = deriveSurfaceOriginFromRoot(rootUrl, "tv") || rootUrl;
   const timeoutMs = Math.max(30000, Number(process.env.QA_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
+  const collisionAcceptance = toBool(process.env.QA_GAME_COLLISION_CHECK, false);
   const headless = !toBool(process.env.QA_HEADFUL, false);
   const failureScreenshotPath = process.env.QA_FAILURE_SCREENSHOT || DEFAULT_FAILURE_SCREENSHOT;
   const email = String(process.env.QA_HOST_EMAIL || "").trim();
@@ -1666,6 +1790,13 @@ const run = async () => {
             })
           );
 
+          if (collisionAcceptance && COLLISION_ACCEPTANCE_CASES[entry.id]) {
+            await runCheck(gameChecks, `${entry.id}:collision_blocked`, async () => {
+              await navigateHostToGames({ page: hostPage, rootUrl, roomCode, timeoutMs });
+              return assertLaunchCollisionBlocked({ page: hostPage, activeEntry: entry, timeoutMs });
+            });
+          }
+
           await runCheck(gameChecks, `${entry.id}:end_mode`, async () =>
             endHostMode({ page: hostPage, timeoutMs, entry })
           );
@@ -1711,6 +1842,7 @@ const run = async () => {
     roomCode,
     singerName,
     modeFilter,
+    collisionAcceptance,
     headless,
     timeoutMs,
     checks,

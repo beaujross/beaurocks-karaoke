@@ -1,0 +1,57 @@
+{
+  "capturedAt": "2026-07-13T18:56:33.009Z",
+  "source": "deterministic production build fixtures",
+  "workstream": "games and crowd interaction lifecycle simplification",
+  "measurements": {
+    "timingChoiceCount": 3,
+    "liveRecoveryActionCount": 2,
+    "liveRecoveryPath": [
+      "Games",
+      "Open Launcher Drawer"
+    ],
+    "visibleCompactCardCount": 7,
+    "actionButtonCountsByVisibleCard": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+    ],
+    "maxActionButtonsPerCompactCard": 2,
+    "targets": {
+      "timingChoiceCount": 3,
+      "liveRecoveryActionCountMax": 2,
+      "actionButtonsPerCompactCardMax": 2
+    }
+  },
+  "files": [
+    {
+      "name": "host-game-timing-bundles.png",
+      "persona": "Host",
+      "claim": "Modes start from timing intent."
+    },
+    {
+      "name": "host-live-game-launcher-drawer.png",
+      "persona": "Host",
+      "claim": "Live controls stay focused; alternate launch controls remain two deliberate actions away."
+    },
+    {
+      "name": "host-collision-guidance.png",
+      "persona": "Host",
+      "claim": "Incompatible starts are blocked with actionable recovery."
+    },
+    {
+      "name": "audience-trivia-action.png",
+      "persona": "Audience",
+      "claim": "The required action and lifecycle context are explicit."
+    },
+    {
+      "name": "tv-trivia-reveal-owner.png",
+      "persona": "Room/TV",
+      "claim": "The shared screen owns the prompt and reveal guidance."
+    }
+  ],
+  "stabilityBoundary": "No game mechanics, scoring, payload, schema, or economy state changed for this evidence capture."
+}

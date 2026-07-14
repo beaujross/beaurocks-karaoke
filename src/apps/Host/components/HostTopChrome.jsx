@@ -157,6 +157,7 @@ const HostTopChrome = ({
     appleMusicPickerItems = [],
     appleMusicPickerLoading = false,
     appleMusicPickerError = '',
+    appleMusicBgPendingId = '',
     loadAppleMusicPicker,
     applyAppleMusicPlaylistForBg,
     appleMusicAutoPlaylistId = '',
@@ -218,6 +219,7 @@ const HostTopChrome = ({
     onUndoOperatingStylePreset,
     liveCrowdModeHistoryLabel = '',
     liveOperatingStyleHistoryLabel = '',
+    modalOverlayActive = false,
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -1234,7 +1236,7 @@ const HostTopChrome = ({
             : 'border-amber-400/35 bg-amber-500/10 text-amber-100';
     const topStatusLabel = topStatusAllGreen ? 'Systems Ready' : `${topStatusIssueCount} Attention`;
     return (
-    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : minimalRuntimeChrome ? 'px-3 py-1.5' : adminWorkspaceChrome ? 'px-3 py-1.5' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col ${minimalRuntimeChrome ? 'gap-1' : adminWorkspaceChrome ? 'gap-1.5' : 'gap-2'} shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800`}>
+    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : minimalRuntimeChrome ? 'px-3 py-1.5' : adminWorkspaceChrome ? 'px-3 py-1.5' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col ${minimalRuntimeChrome ? 'gap-1' : adminWorkspaceChrome ? 'gap-1.5' : 'gap-2'} shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800 ${modalOverlayActive ? 'pointer-events-none invisible' : ''}`} aria-hidden={modalOverlayActive ? 'true' : undefined}>
         <div className={`flex flex-col ${minimalRuntimeChrome ? 'gap-1.5' : 'gap-2.5'} lg:flex-row lg:items-center lg:justify-between w-full`}>
             <div className="flex items-center gap-2 lg:gap-3">
                 <img
@@ -1743,7 +1745,11 @@ const HostTopChrome = ({
                                                     ) : null}
                                                     {appleMusicPickerItems.length ? (
                                                         <div className="max-h-56 overflow-y-auto rounded-lg border border-cyan-300/15 bg-black/25 custom-scrollbar">
-                                                            {appleMusicPickerItems.map((choice) => (
+                                                            {appleMusicPickerItems.map((choice) => {
+                                                                const choicePlaylistId = String(choice.id || '').trim();
+                                                                const choiceIsPending = !!choicePlaylistId && appleMusicBgPendingId === choicePlaylistId;
+                                                                const choiceIsActive = !!choicePlaylistId && !choiceIsPending && choicePlaylistId === String(appleMusicAutoPlaylistId || '').trim();
+                                                                return (
                                                                 <div key={`top-${choice.sourceType}-${choice.id}`} className="flex items-center gap-2 border-b border-white/10 px-2.5 py-2 last:border-b-0">
                                                                     {choice.artworkUrl ? (
                                                                         <img src={choice.artworkUrl} alt="" className="h-10 w-10 flex-none rounded-md border border-white/10 object-cover" />
@@ -1759,12 +1765,14 @@ const HostTopChrome = ({
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => { void applyAppleMusicPlaylistForBg?.(choice); }}
-                                                                        className={`${styles.btnStd} ${styles.btnHighlight} flex-none px-2.5 py-1.5 text-xs`}
+                                                                        disabled={choiceIsPending || choiceIsActive}
+                                                                        className={`${styles.btnStd} ${choiceIsActive ? styles.btnNeutral : styles.btnHighlight} flex-none px-2.5 py-1.5 text-xs ${choiceIsPending || choiceIsActive ? 'cursor-not-allowed opacity-75' : ''}`}
                                                                     >
-                                                                        Use BG
+                                                                        {choiceIsPending ? 'Starting...' : (choiceIsActive ? 'Active' : 'Start BG')}
                                                                     </button>
                                                                 </div>
-                                                            ))}
+                                                                );
+                                                            })}
                                                         </div>
                                                     ) : null}
                                                 </div>
@@ -3444,7 +3452,4 @@ const HostTopChrome = ({
 };
 
 export default HostTopChrome;
-
-
-
 

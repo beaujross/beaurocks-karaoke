@@ -1,5 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { GAMES_META } from '../lib/gameRegistry';
+import { getRoomGameLaunchPreflight } from '../lib/gameLaunchCompatibility';
+import {
+    HOST_GAME_MOMENT_BUNDLE_IDS,
+    filterGamesForHostMomentBundle,
+    getHostGameMomentBundle,
+    summarizeHostGameMomentBundles
+} from '../lib/hostGameMomentBundles';
 import { db, doc, onSnapshot, setDoc, updateDoc, serverTimestamp } from '../lib/firebase';
 import { APP_ID } from '../lib/assets';
 import { shuffleArray } from '../lib/utils';
@@ -466,7 +473,8 @@ const UnifiedGameLauncher = ({
     onToggleBracketCrowdVoting,
     onForfeitBracketContestant,
     onAddQuickRunOfShowMoment,
-    hostVoiceMicControl = null
+    hostVoiceMicControl = null,
+    compactLiveSwitcher = false
 }) => {
     const toast = useToast() || console.log;
     const canUseAiGeneration = !!capabilities?.['ai.generate_content'];
@@ -482,6 +490,7 @@ const UnifiedGameLauncher = ({
     };
     const [showGameConfig, setShowGameConfig] = useState(false);
     const [selectedGameForConfig, setSelectedGameForConfig] = useState(null);
+    const [selectedGameMomentBundleId, setSelectedGameMomentBundleId] = useState(HOST_GAME_MOMENT_BUNDLE_IDS.betweenSongs);
     const [selectedSingerId, setSelectedSingerId] = useState('');
     const sortedUsers = [...users].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     const allUserIds = useMemo(() => getResolvedRoomUserUids(sortedUsers), [sortedUsers]);
@@ -918,6 +927,18 @@ const UnifiedGameLauncher = ({
         setShowGameConfig(true);
     };
 
+    const canStartLifecycleMode = useCallback((gameId = '') => {
+        const preflight = getRoomGameLaunchPreflight({ requestedMode: gameId, room: room || {} });
+        if (preflight.allowed) return true;
+        toast(preflight.message || 'Finish the current room moment before starting this game.');
+        return false;
+    }, [room, toast]);
+
+    const withGameLaunchPreflight = useCallback((gameId, launchAction) => (...args) => {
+        if (!canStartLifecycleMode(gameId)) return undefined;
+        return typeof launchAction === 'function' ? launchAction(...args) : undefined;
+    }, [canStartLifecycleMode]);
+
     const buildVoiceGameAudioLaunchConfig = () => ({
         soundPackId: VOICE_GAME_SOUND_PACK_ID,
         soundPackManifestUrl: VOICE_GAME_SOUND_PACK_MANIFEST_URL,
@@ -973,6 +994,7 @@ const UnifiedGameLauncher = ({
     };
 
     const quickLaunchGame = async (gameId, config) => {
+        if (!canStartLifecycleMode(gameId)) return;
         if (config?.setMode) {
             if (config.mode !== 'selected' || !config.count) {
                 config.setMode('all');
@@ -1970,6 +1992,10 @@ const UnifiedGameLauncher = ({
         updateRoom
     ]);
 
+    const gameMomentBundleOptions = summarizeHostGameMomentBundles(GAMES_META);
+    const selectedGameMomentBundle = getHostGameMomentBundle(selectedGameMomentBundleId);
+    const visibleGameModes = filterGamesForHostMomentBundle(GAMES_META, selectedGameMomentBundleId);
+
     return (
         <div
             className="min-h-full flex flex-col"
@@ -1982,8 +2008,38 @@ const UnifiedGameLauncher = ({
                     </span>
                     Game Launchpad
                 </div>
-                <h2 className="text-2xl font-bold text-white mt-2">Launch a crowd moment</h2>
-                {activeGameLabel && (
+                <h2 className="text-2xl font-bold text-white mt-2">{compactLiveSwitcher ? 'Switch or add a moment' : 'Launch a crowd moment'}</h2>
+                {compactLiveSwitcher ? (
+                    <div data-feature-id="host-game-live-switcher-cue" className="mt-2 rounded-xl border border-cyan-300/20 bg-cyan-500/8 px-3 py-2 text-xs leading-5 text-cyan-50/80">
+                        The current moment stays live until a compatible start succeeds. Choose a timing lane, then launch or configure one option.
+                    </div>
+                ) : null}
+                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3" data-feature-id="host-game-moment-bundles">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">When should it run?</div>
+                    <div className="mt-2 grid gap-2 md:grid-cols-3">
+                        {gameMomentBundleOptions.map((bundle) => {
+                            const active = bundle.id === selectedGameMomentBundleId;
+                            const visibleCount = bundle.modeCount + (bundle.id === HOST_GAME_MOMENT_BUNDLE_IDS.alongsideKaraoke ? 1 : 0);
+                            return (
+                                <button
+                                    key={bundle.id}
+                                    type="button"
+                                    data-feature-id={`host-game-bundle-${bundle.id}`}
+                                    onClick={() => setSelectedGameMomentBundleId(bundle.id)}
+                                    className={`rounded-xl border px-3 py-3 text-left transition ${active ? 'border-cyan-300/40 bg-cyan-500/12' : 'border-white/10 bg-black/20 hover:border-cyan-300/25'}`}
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className={`text-sm font-black ${active ? 'text-cyan-100' : 'text-white'}`}><i className={`fa-solid ${bundle.icon} mr-2 text-xs`}></i>{bundle.shortLabel}</span>
+                                        <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[9px] font-black text-zinc-400">{visibleCount}</span>
+                                    </div>
+                                    <div className="mt-1 text-[11px] leading-4 text-zinc-400">{bundle.description}</div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div className="mt-2 text-xs text-cyan-100/75">{selectedGameMomentBundle.hostCue}</div>
+                </div>
+                {activeGameLabel && !compactLiveSwitcher && (
                     <div className="mt-2.5 flex flex-wrap items-center justify-between bg-zinc-900/70 border border-white/10 rounded-2xl px-3 py-2 gap-2">
                         <div>
                             <div className="text-xs uppercase tracking-[0.3em] text-zinc-400">Active Game</div>
@@ -2055,8 +2111,28 @@ const UnifiedGameLauncher = ({
             
             {/* Game Grid */}
             <div className="px-4 md:px-5 py-3 pr-2">
+                {selectedGameMomentBundleId === HOST_GAME_MOMENT_BUNDLE_IDS.alongsideKaraoke ? (
+                    <div className="mb-3 rounded-2xl border border-violet-300/25 bg-violet-500/10 p-4" data-feature-id="host-pop-trivia-companion-card">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-200/75">During performances</div>
+                                <div className="mt-1 text-base font-black text-white">Pop Trivia companion</div>
+                                <div className="mt-1 text-xs leading-5 text-zinc-300">Keeps karaoke on screen while audience phones answer performance-linked questions. It only activates when a performance is live.</div>
+                            </div>
+                            <button
+                                type="button"
+                                data-feature-id="host-pop-trivia-companion-toggle"
+                                onClick={() => { void updateRoom({ popTriviaEnabled: !room?.popTriviaEnabled }); }}
+                                className={`${STYLES.btnStd} ${room?.popTriviaEnabled ? STYLES.btnHighlight : STYLES.btnPrimary} min-w-[10rem] px-4 py-2 text-xs`}
+                            >
+                                <i className="fa-solid fa-bolt"></i>
+                                {room?.popTriviaEnabled ? 'Companion On' : 'Enable Companion'}
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
-                    {GAMES_META.map(game => {
+                    {visibleGameModes.map(game => {
                         const config = participantConfigs[game.id];
                         const nextQuestionAction = game.id === 'trivia_pop' && ['trivia_pop', 'trivia_reveal'].includes(room?.activeMode)
                             ? { label: room?.activeMode === 'trivia_reveal' ? 'Launch Next Question' : 'Next Question', onClick: launchNextTrivia }
@@ -2086,6 +2162,7 @@ const UnifiedGameLauncher = ({
                                 }}
                                 infoBadges={getGameBadges(game)}
                                 nextQuestionAction={nextQuestionAction}
+                                compactLiveSwitcher={compactLiveSwitcher}
                             />
                         );
                     })}
@@ -2115,20 +2192,20 @@ const UnifiedGameLauncher = ({
                 setScaleGuideTone={setScaleGuideTone}
                 scaleParticipants={scaleParticipants}
                 setScaleParticipants={setScaleParticipants}
-                onStartFlappyAmbient={startFlappyAmbient}
-                onStartFlappySolo={startFlappySolo}
-                onStartVocalAmbient={startVocalAmbient}
-                onStartVocalSolo={startVocalSolo}
-                onStartRidingCrowd={startRidingScalesCrowd}
-                onStartRidingTurns={startRidingScalesTurns}
+                onStartFlappyAmbient={withGameLaunchPreflight('flappy_bird', startFlappyAmbient)}
+                onStartFlappySolo={withGameLaunchPreflight('flappy_bird', startFlappySolo)}
+                onStartVocalAmbient={withGameLaunchPreflight('vocal_challenge', startVocalAmbient)}
+                onStartVocalSolo={withGameLaunchPreflight('vocal_challenge', startVocalSolo)}
+                onStartRidingCrowd={withGameLaunchPreflight('riding_scales', startRidingScalesCrowd)}
+                onStartRidingTurns={withGameLaunchPreflight('riding_scales', startRidingScalesTurns)}
                 hostVoiceMicControl={hostVoiceMicControl}
-                onStartTeamPong={startTeamPong}
-                onStartVolleyOrb={startVolleyOrb}
+                onStartTeamPong={withGameLaunchPreflight('team_pong', startTeamPong)}
+                onStartVolleyOrb={withGameLaunchPreflight('volley_orb', startVolleyOrb)}
                 teamPongTargetRally={teamPongTargetRally}
                 setTeamPongTargetRally={setTeamPongTargetRally}
                 teamPongRallyTimeoutMs={teamPongRallyTimeoutMs}
                 setTeamPongRallyTimeoutMs={setTeamPongRallyTimeoutMs}
-                onStartMusicalMoments={startMusicalMoments}
+                onStartMusicalMoments={withGameLaunchPreflight('musical_moments', startMusicalMoments)}
                 musicalMomentTitle={musicalMomentTitle}
                 setMusicalMomentTitle={setMusicalMomentTitle}
                 musicalMomentArtist={musicalMomentArtist}
@@ -2167,7 +2244,7 @@ const UnifiedGameLauncher = ({
                 setDoodleAiLoading={setDoodleAiLoading}
                 doodleCustomPrompt={doodleCustomPrompt}
                 setDoodleCustomPrompt={setDoodleCustomPrompt}
-                onStartDoodleOke={startDoodleOke}
+                onStartDoodleOke={withGameLaunchPreflight('doodle_oke', startDoodleOke)}
                 selfieChallengeParticipants={selfieChallengeParticipants}
                 setSelfieChallengeParticipants={setSelfieChallengeParticipants}
                 selfiePrompt={selfiePrompt}
@@ -2178,7 +2255,7 @@ const UnifiedGameLauncher = ({
                 setSelfieAutoStartVoting={setSelfieAutoStartVoting}
                 selfieAiLoading={selfieAiLoading}
                 setSelfieAiLoading={setSelfieAiLoading}
-                onStartSelfieChallenge={startSelfieChallenge}
+                onStartSelfieChallenge={withGameLaunchPreflight('selfie_challenge', startSelfieChallenge)}
                 generateSelfieChallengePrompt={generateSelfieChallengePrompt}
                 generateAIContent={generateAIContent}
                 triviaFilter={triviaFilter}
@@ -2191,12 +2268,12 @@ const UnifiedGameLauncher = ({
                 setSelectedTriviaId={setSelectedTriviaId}
                 selectedWyrId={selectedWyrId}
                 setSelectedWyrId={setSelectedWyrId}
-                onStartTrivia={launchTrivia}
-                onStartWyr={launchWyr}
-                onStartRandomTrivia={startRandomTrivia}
-                onStartRandomWyr={startRandomWyr}
-                onStartNextTrivia={launchNextTrivia}
-                onStartNextWyr={launchNextWyr}
+                onStartTrivia={withGameLaunchPreflight('trivia_pop', launchTrivia)}
+                onStartWyr={withGameLaunchPreflight('wyr', launchWyr)}
+                onStartRandomTrivia={withGameLaunchPreflight('trivia_pop', startRandomTrivia)}
+                onStartRandomWyr={withGameLaunchPreflight('wyr', startRandomWyr)}
+                onStartNextTrivia={withGameLaunchPreflight('trivia_pop', launchNextTrivia)}
+                onStartNextWyr={withGameLaunchPreflight('wyr', launchNextWyr)}
                 triviaAiTopic={triviaAiTopic}
                 setTriviaAiTopic={setTriviaAiTopic}
                 triviaImportText={triviaImportText}
@@ -2228,7 +2305,7 @@ const UnifiedGameLauncher = ({
                 wyrParticipantMode={wyrParticipantMode}
                 setWyrParticipantMode={setWyrParticipantMode}
                 bingoBoards={bingoBoards}
-                onStartBingo={startBingo}
+                onStartBingo={withGameLaunchPreflight('bingo', startBingo)}
                 bingoParticipants={bingoParticipants}
                 setBingoParticipants={setBingoParticipants}
                 bingoParticipantMode={bingoParticipantMode}
@@ -2257,9 +2334,9 @@ const UnifiedGameLauncher = ({
                 setBracketSongSelectionMode={setBracketSongSelectionMode}
                 onOpenSweet16BracketSignup={onOpenSweet16BracketSignup}
                 onCreateSweet16Bracket={onCreateSweet16Bracket}
-                onQueueNextBracketMatch={onQueueNextBracketMatch}
+                onQueueNextBracketMatch={withGameLaunchPreflight('karaoke_bracket', onQueueNextBracketMatch)}
                 onClearSweet16Bracket={onClearSweet16Bracket}
-                onGoLiveSweet16Bracket={onGoLiveSweet16Bracket}
+                onGoLiveSweet16Bracket={withGameLaunchPreflight('karaoke_bracket', onGoLiveSweet16Bracket)}
                 onSetBracketMatchWinner={onSetBracketMatchWinner}
                 onSetBracketWinnerFromCrowdVotes={onSetBracketWinnerFromCrowdVotes}
                 onToggleBracketCrowdVoting={onToggleBracketCrowdVoting}
@@ -2274,7 +2351,7 @@ const UnifiedGameLauncher = ({
     );
 };
 
-const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, infoBadges, smartDefaults, onQuickLaunch, onPreview, previewActive, nextQuestionAction }) => {
+const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, infoBadges, smartDefaults, onQuickLaunch, onPreview, previewActive, nextQuestionAction, compactLiveSwitcher = false }) => {
     const colorMap = {
         cyan: { border: 'border-cyan-400/30', badge: 'bg-cyan-500/10 border-cyan-400/30 text-cyan-200', text: 'text-cyan-300' },
         pink: { border: 'border-pink-400/30', badge: 'bg-pink-500/10 border-pink-400/30 text-pink-200', text: 'text-pink-300' },
@@ -2364,10 +2441,54 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
         participantConfig.setMode?.('selected');
         participantConfig.setParticipants(prev => (prev.includes(uid) ? prev.filter(v => v !== uid) : [...prev, uid]));
     };
+
+    if (compactLiveSwitcher) {
+        return (
+            <div
+                data-game-card={game.id}
+                data-game-card-variant="live-switcher"
+                className={`relative min-w-0 overflow-hidden rounded-2xl border ${c.border} bg-gradient-to-br from-zinc-900/92 to-zinc-950 p-3 shadow-lg`}
+            >
+                <div className="flex items-start gap-3">
+                    <div className="inline-flex h-10 w-10 flex-none items-center justify-center rounded-xl border border-white/10 bg-black/35 text-cyan-200">
+                        {iconIsFa ? <i className={`${game.icon} text-lg`}></i> : <span className="text-lg">{game.icon}</span>}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h3 className={`text-base font-black ${c.text}`}>{game.name}</h3>
+                            {isActive ? (
+                                <span className="rounded-full border border-red-400/35 bg-red-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-red-100">Live now</span>
+                            ) : game.badge ? (
+                                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${c.badge}`}>{game.badge}</span>
+                            ) : null}
+                        </div>
+                        <p className="mt-1 text-[11px] leading-4 text-zinc-400" style={descriptionClamp}>{game.description}</p>
+                    </div>
+                </div>
+                <div data-feature-id={`live-switcher-actions-${game.id}`} className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" data-game-configure={game.id} onClick={() => onLaunch(game.id)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} py-2 text-xs`} style={touchButtonStyle}>
+                        <i className="fa-solid fa-sliders mr-1"></i> Configure
+                    </button>
+                    {nextQuestionAction ? (
+                        <button type="button" data-feature-id={`active-${game.id}-next-question`} onClick={nextQuestionAction.onClick} className={`${STYLES.btnStd} ${STYLES.btnPrimary} py-2 text-xs`} style={touchButtonStyle}>
+                            <i className="fa-solid fa-forward-step mr-1"></i> {nextQuestionAction.label || 'Next Question'}
+                        </button>
+                    ) : !isActive ? (
+                        <button type="button" data-game-quick-launch={game.id} onClick={onQuickLaunch} className={`${STYLES.btnStd} ${STYLES.btnPrimary} py-2 text-xs`} style={touchButtonStyle}>
+                            <i className="fa-solid fa-bolt mr-1"></i> Quick Launch
+                        </button>
+                    ) : (
+                        <div className="inline-flex min-h-[34px] items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-500/8 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/70">Current moment</div>
+                    )}
+                </div>
+            </div>
+        );
+    }
     
     return (
         <div
             data-game-card={game.id}
+            data-game-card-variant="standard"
             className={`relative min-w-0 overflow-visible bg-gradient-to-b from-zinc-900/80 to-zinc-950 border ${c.border} rounded-2xl p-2.5 md:p-3 flex flex-col gap-2 shadow-lg hover:shadow-xl transition-all`}
         >
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl opacity-10 bg-white"></div>

@@ -24,16 +24,16 @@ test('live queue surface keeps the reorderable queue ahead of helper workflows',
     'Host queue tab should render the queue panel before Track Check helper content',
   );
 
-  const lockedQueueIndex = queueListPanelSource.indexOf('Up Next');
-  const benchQueueIndex = queueListPanelSource.indexOf('Ready Queue');
+  const readyQueueIndex = queueListPanelSource.indexOf('readyQueueHeaderLabel');
+  const lockedQueueIndex = queueListPanelSource.indexOf('lockedInLineup={lockedInLiveLineup}');
   const awaitingApprovalIndex = queueListPanelSource.indexOf('Awaiting Approval');
   const inlineActionsIndex = queueSongCardSource.indexOf("selected ? 'Less' : 'More'");
   assert.notStrictEqual(lockedQueueIndex, -1, 'Queue list panel should still expose the protected live lineup');
-  assert.notStrictEqual(benchQueueIndex, -1, 'Queue list panel should still expose the later ready bench');
+  assert.notStrictEqual(readyQueueIndex, -1, 'Queue list panel should expose the unified ready queue heading');
   assert.notStrictEqual(awaitingApprovalIndex, -1, 'Queue list panel should still expose the pending approval section');
   assert.notStrictEqual(inlineActionsIndex, -1, 'Queue songs should still expose inline queue actions');
   assert.ok(
-    lockedQueueIndex < benchQueueIndex && benchQueueIndex < awaitingApprovalIndex,
-    'Queue list panel should lead with the protected lineup, then the bench, before lower-priority helper queues',
+    readyQueueIndex < lockedQueueIndex && lockedQueueIndex < awaitingApprovalIndex,
+    'Queue list panel should lead with the ready lineup, protect its live slots, then show approval work',
   );
 });

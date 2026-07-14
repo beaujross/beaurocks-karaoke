@@ -104,6 +104,9 @@ const renderAddToQueueFormBody = async (overrides = {}, stateOverrides = {}) => 
       if (stateOverrides.activeMomentType && resolvedValue === 'performance') {
         return [stateOverrides.activeMomentType, noop];
       }
+      if (stateOverrides.selectedGameMomentBundleId && resolvedValue === 'between_songs') {
+        return [stateOverrides.selectedGameMomentBundleId, noop];
+      }
       return [resolvedValue, noop];
     };
     const useEffect = noop;
@@ -187,6 +190,7 @@ test('AddToQueueFormBody lets hosts search game modes and queue them next or lat
     searchQ: 'bingo',
   }, {
     activeMomentType: 'game',
+    selectedGameMomentBundleId: 'alongside_karaoke',
   });
   const searchInput = findByFeatureId(tree, 'host-moment-search-input');
   const queueNext = findByFeatureId(tree, 'moment-pack-queue-next-bingo');

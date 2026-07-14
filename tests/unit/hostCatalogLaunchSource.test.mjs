@@ -173,3 +173,49 @@ test('host catalogue helper mode requires singer assignment before queueing', ()
     'QA helper flows should capture the real queue payload for Playwright release gates',
   );
 });
+
+test('host catalog and media library accept migrated upload URL fields', () => {
+  assert.match(
+    hostAppSource,
+    /url: String\(item\?\.url \|\| item\?\.mediaUrl \|\| ''\)\.trim\(\),\s*mediaUrl: String\(item\?\.mediaUrl \|\| item\?\.url \|\| ''\)\.trim\(\),/,
+    'Room library uploads should be queueable whether the stored field is url or mediaUrl',
+  );
+  assert.match(
+    hostAppSource,
+    /const mediaUrl = getRoomMediaUrl\(item\);\s*const mediaTitle = String\(item\?\.title \|\| item\?\.trackName \|\| item\?\.fileName \|\| ''\)\.trim\(\);/,
+    'Local upload queueing should normalize the media URL and display title before writing queue records',
+  );
+  assert.match(
+    hostAppSource,
+    /flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-6 custom-scrollbar touch-scroll-y/,
+    'Browse and Top 100 modals should expose real scroll containers, not only scrollbar styling',
+  );
+});
+test('host catalog collection browsing preserves navigation and defaults to verified backings', () => {
+  assert.match(
+    hostAppSource,
+    /data-feature-id="host-catalog-category-detail"/,
+    'Collection detail should render as an identifiable inline catalog surface',
+  );
+  assert.match(
+    hostAppSource,
+    /data-feature-id="host-catalog-category-rail"/,
+    'Collection detail should keep direct collection switching visible',
+  );
+  assert.doesNotMatch(
+    hostAppSource,
+    /activeBrowseList && \(\s*<div className="fixed inset-0/,
+    'Collection detail should not cover the Host workspace with a full-screen overlay',
+  );
+  assert.match(
+    hostAppSource,
+    /const \[browseBackingFilter, setBrowseBackingFilter\] = useState\('ready'\);/,
+    'Curated browse should default to TV-ready backings',
+  );
+  assert.match(
+    hostAppSource,
+    /activeBrowseList\.songs\.filter\(\(song\) => song\.hasApprovedBacking\)/,
+    'TV-ready browse should filter collection songs through the approved backing index',
+  );
+  assert.match(hostAppSource, /Ready on TV/, 'Playable backing status should be explicit to hosts');
+});

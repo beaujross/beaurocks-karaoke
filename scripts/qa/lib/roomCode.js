@@ -10,6 +10,7 @@ const ROOM_CODE_BLOCKLIST = new Set([
   "GUIDED",
   "LAUNCH",
   "READY",
+  "ALREADY",
   "BROWSER",
   "DASHBOARD",
 ]);

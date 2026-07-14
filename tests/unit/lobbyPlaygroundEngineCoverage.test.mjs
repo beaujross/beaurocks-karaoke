@@ -18,7 +18,7 @@ import {
 test("lobbyPlaygroundEngineCoverage.test covers ultimates, fallbacks, and dynamic plans", () => {
   assert.equal(getLobbyInteractionProfile("lobby_play_echo").roleLabel, "Relay");
   assert.equal(getLobbyInteractionProfile("unknown").id, "wave");
-  assert.equal(getLobbyLevelDefinition(99).label, "Launch");
+  assert.equal(getLobbyLevelDefinition(99).label, "Inflate");
 
   const baselineState = createLobbyVolleyState();
 

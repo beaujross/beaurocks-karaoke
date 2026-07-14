@@ -1,0 +1,38 @@
+{
+  "capturedOn": "2026-07-13",
+  "source": "Google Cloud Quotas API via authenticated gcloud beta quotas info list",
+  "projectId": "beaurocks-karaoke-v2",
+  "projectNumber": "426849563936",
+  "service": "youtube.googleapis.com",
+  "assignedLimits": [
+    {
+      "metric": "youtube.googleapis.com/search_list",
+      "metricDisplayName": "Search Queries",
+      "quotaId": "defaultSearchListPerDayPerProject",
+      "refreshInterval": "day",
+      "value": 100,
+      "location": "global",
+      "increaseEligible": true
+    },
+    {
+      "metric": "youtube.googleapis.com/default",
+      "metricDisplayName": "Queries",
+      "quotaId": "defaultPerDayPerProject",
+      "refreshInterval": "day",
+      "value": 10000,
+      "location": "global",
+      "increaseEligible": true
+    },
+    {
+      "metric": "youtube.googleapis.com/video_insert",
+      "metricDisplayName": "Video Uploads",
+      "quotaId": "defaultVideoInsertPerDayPerProject",
+      "refreshInterval": "day",
+      "value": 100,
+      "location": "global",
+      "increaseEligible": true
+    }
+  ],
+  "quotaPreferences": [],
+  "interpretation": "No project-level quota preference override is present. The assigned Search Queries limit is 100 calls per day and the assigned general Queries limit is 10000 units per day."
+}

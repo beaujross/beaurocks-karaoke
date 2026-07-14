@@ -1,5 +1,12 @@
 import React from 'react';
 import { GAMES_META } from '../../../lib/gameRegistry';
+import { getGameLifecycleLabel } from '../../../lib/gameLaunchCompatibility';
+import {
+    HOST_GAME_MOMENT_BUNDLE_IDS,
+    filterGamesForHostMomentBundle,
+    getHostGameMomentBundle,
+    summarizeHostGameMomentBundles
+} from '../../../lib/hostGameMomentBundles';
 import { resolveRoomUserUid } from '../../../lib/gameLaunchSupport';
 import {
     YOUTUBE_PLAYBACK_STATUSES,
@@ -83,7 +90,7 @@ const ResultList = ({
                                         <i className="fa-solid fa-hard-drive text-xl text-[#00C4D9]"></i>
                                     </div>
                                 ) : (
-                                    <img src={r.artworkUrl100} className={`${compactRows ? 'h-14 md:h-16' : 'h-16 md:h-[76px]'} w-full object-cover`} alt="" />
+                                    <img src={r.catalogArtworkUrl || r.artworkUrl100} className={`${compactRows ? 'h-14 md:h-16' : 'h-16 md:h-[76px]'} w-full object-cover`} alt="" />
                                 )}
                                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent px-1.5 py-1.5">
                                     <div className="flex items-center justify-between gap-1 text-[8px] font-black uppercase tracking-[0.14em] text-white">
@@ -95,14 +102,19 @@ const ResultList = ({
                             <div className="min-w-0">
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0">
-                                        <div className={`${compactRows ? 'text-sm' : 'text-[15px]'} line-clamp-1 font-black leading-tight text-white`}>{r.trackName}</div>
-                                        <div className="mt-0.5 truncate text-xs text-zinc-300">{r.artistName}</div>
+                                        <div className={`${compactRows ? 'text-sm' : 'text-[15px]'} line-clamp-1 font-black leading-tight text-white`}>{r.catalogDisplayTitle || r.trackName}</div>
+                                        <div className="mt-0.5 truncate text-xs text-zinc-300">{r.catalogDisplayArtist || r.artistName}</div>
                                     </div>
                                     <div className="whitespace-nowrap rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.13em] text-cyan-100">
                                         {isAdding ? 'Adding...' : (quickAddOnResultClick ? 'Quick Add' : 'Select')}
                                     </div>
                                 </div>
                                 <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                    {r.catalogCapabilityLabel ? (
+                                        <span title={r.catalogCapabilityDetail || ''} className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${r.catalogCapabilityTone === 'ready' ? 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100' : r.catalogCapabilityTone === 'apple' ? 'border-pink-300/40 bg-pink-500/10 text-pink-100' : r.catalogCapabilityTone === 'external' ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : r.catalogCapabilityTone === 'local' ? 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100' : 'border-violet-300/30 bg-violet-500/10 text-violet-100'}`}>
+                                            {r.catalogCapabilityLabel}
+                                        </span>
+                                    ) : null}
                                     <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${
                                         r.source === 'itunes'
                                             ? 'border-pink-300/40 bg-pink-500/10 text-pink-100'
@@ -110,9 +122,15 @@ const ResultList = ({
                                                 ? 'border-red-300/40 bg-red-500/10 text-red-100'
                                                 : 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100'
                                     }`}>
-                                        {sourceLabel}
+                                        Via {sourceLabel}
                                     </span>
-                                    {r.source === 'youtube' ? (
+                                    {Number(r.catalogVersionCount || 0) > 1 ? (
+                                        <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-violet-100">
+                                            {r.catalogVersionCount} versions
+                                        </span>
+                                    ) : null}
+                                    {r.catalogRecommendedTvReady ? <span className="rounded-full border border-emerald-300/35 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-100">Recommended</span> : null}
+                                    {r.source === 'youtube' && !r.catalogCapabilityLabel ? (
                                         <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
                                             {playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'External' : 'TV'}
                                         </span>
@@ -123,6 +141,32 @@ const ResultList = ({
                                         </span>
                                     ) : null}
                                 </div>
+                                {Array.isArray(r.catalogAlternatives) && r.catalogAlternatives.length > 0 ? (
+                                    <details className="mt-2" onClick={(event) => event.stopPropagation()}>
+                                        <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.14em] text-violet-200">
+                                            Other versions ({r.catalogAlternatives.length})
+                                        </summary>
+                                        <div className="mt-2 grid gap-1.5">
+                                            {r.catalogAlternatives.map((alternative, alternativeIndex) => (
+                                                <button
+                                                    key={`${rowKey}_alternative_${getResultRowKey(alternative, alternativeIndex)}`}
+                                                    type="button"
+                                                    onClick={() => handleResultClick(alternative, alternativeIndex)}
+                                                    className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-left hover:border-violet-300/30"
+                                                >
+                                                    <span className="min-w-0">
+                                                        <span className="block truncate text-xs font-bold text-white">{alternative.trackName || alternative.title}</span>
+                                                        <span className="block truncate text-[10px] text-zinc-400">{alternative.artistName || alternative.artist || alternative.sourceDetail || 'Alternate backing'}</span>
+                                                    </span>
+                                                    <span className="shrink-0 text-right">
+                                                        <span className="block rounded-full border border-violet-300/25 bg-violet-500/10 px-2 py-0.5 text-[9px] font-black uppercase text-violet-100">{alternative.catalogCapabilityLabel || 'Review Needed'}</span>
+                                                        <span className="mt-1 block text-[8px] font-bold uppercase tracking-[0.12em] text-zinc-500">via {alternative.source || 'known'}</span>
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </details>
+                                ) : null}
                                 {performanceActionsEnabled ? (
                                     <div className={`${compactRows ? 'mt-2' : 'mt-2.5'} flex flex-wrap gap-2`}>
                                         {nextOpenSlot?.id ? (
@@ -385,6 +429,7 @@ const AddToQueueFormBody = ({
 }) => {
     const [manualEntryOpen, setManualEntryOpen] = React.useState(!dockResults);
     const [activeMomentType, setActiveMomentType] = React.useState('performance');
+    const [selectedGameMomentBundleId, setSelectedGameMomentBundleId] = React.useState(HOST_GAME_MOMENT_BUNDLE_IDS.betweenSongs);
     const [selectedLaterSlotId, setSelectedLaterSlotId] = React.useState('');
     const [performerPickerOpen, setPerformerPickerOpen] = React.useState(false);
     const [gameAssignmentModes, setGameAssignmentModes] = React.useState({});
@@ -548,8 +593,11 @@ const AddToQueueFormBody = ({
         : activeMomentType === 'tv'
             ? 'Search saved TV moments'
             : 'Search show moments';
+    const gameMomentBundleOptions = summarizeHostGameMomentBundles(gameMomentPacks);
+    const selectedGameMomentBundle = getHostGameMomentBundle(selectedGameMomentBundleId);
+    const bundledGameMomentPacks = filterGamesForHostMomentBundle(gameMomentPacks, selectedGameMomentBundleId);
     const filteredMomentPacks = (activeMomentType === 'game'
-        ? gameMomentPacks
+        ? bundledGameMomentPacks
         : quickMomentPacks.filter((pack) => pack.category === activeMomentType))
         .filter((pack) => matchesMomentSearch(searchQ, [pack.title, pack.detail, pack.id]));
     const allScenePresets = Array.isArray(scenePresets) ? scenePresets : [];
@@ -628,8 +676,8 @@ const AddToQueueFormBody = ({
         }`
     );
     return (
-        <div className={`mt-2 pr-1 ${dockResults ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''}`}>
-            <div className="mb-2 flex flex-wrap gap-2">
+        <div className={`mt-2 pr-1 ${dockResults ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden' : ''}`}>
+            <div className="mb-2 flex shrink-0 flex-wrap gap-2">
                 {momentTypes.map((entry) => {
                     const active = entry.id === activeMomentType;
                     return (
@@ -651,7 +699,7 @@ const AddToQueueFormBody = ({
             </div>
 
             {!performanceMode ? (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div className="shrink-0 rounded-2xl border border-white/10 bg-black/20 p-4">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                         {activeMomentType === 'tv' ? 'TV Moment' : 'Moment Builder'}
                     </div>
@@ -673,6 +721,33 @@ const AddToQueueFormBody = ({
                                 ? 'Send a ready break to the Queue, or save it to Planner for later.'
                                 : 'Send a ready moment to the Queue, or save it to Planner for later.'}
                     </div>
+                    {activeMomentType === 'game' ? (
+                        <div className="mt-3" data-feature-id="queue-game-moment-bundles">
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">When should it run?</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {gameMomentBundleOptions.map((bundle) => {
+                                    const active = bundle.id === selectedGameMomentBundleId;
+                                    return (
+                                        <button
+                                            key={bundle.id}
+                                            type="button"
+                                            data-feature-id={`queue-game-bundle-${bundle.id}`}
+                                            onClick={() => setSelectedGameMomentBundleId(bundle.id)}
+                                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${active ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300'}`}
+                                        >
+                                            {bundle.shortLabel} ({bundle.modeCount})
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="mt-2 text-[11px] leading-4 text-cyan-100/70">{selectedGameMomentBundle.hostCue}</div>
+                            {selectedGameMomentBundleId === HOST_GAME_MOMENT_BUNDLE_IDS.alongsideKaraoke ? (
+                                <div className="mt-2 rounded-xl border border-violet-300/20 bg-violet-500/8 px-3 py-2 text-[11px] leading-4 text-zinc-300" data-feature-id="queue-pop-trivia-companion-note">
+                                    Pop Trivia is a during-performance companion, so it is enabled from the Game Launchpad rather than queued as a standalone break.
+                                </div>
+                            ) : null}
+                        </div>
+                    ) : null}
                     <div className="mt-3">
                         <div className="relative">
                             <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
@@ -725,7 +800,7 @@ const AddToQueueFormBody = ({
             ) : (
                 <div className={`host-autocomplete-shell relative z-30 w-full min-w-0 ${dockResults ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
                     <div className={`host-autocomplete-field-wrap w-full min-w-0 rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 ${dockResults ? 'sticky top-0 z-20 shrink-0 py-1.5' : 'py-2'}`}>
-                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(13rem,0.8fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(13rem,0.8fr)_minmax(22rem,auto)]">
+                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.62fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(12rem,0.58fr)_minmax(14rem,0.75fr)]">
                             <div className="relative">
                                 <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
                                 <input
@@ -739,7 +814,7 @@ const AddToQueueFormBody = ({
                                 {performerSelect}
                             </div>
                             <div className="md:col-span-2 xl:col-span-1">
-                                <div className="grid gap-1.5 rounded-xl border border-white/10 bg-black/25 p-1.5 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[22rem]">
+                                <div className="grid gap-1.5 rounded-xl border border-white/10 bg-black/25 p-1.5 xl:min-w-0">
                                     <div className="grid min-w-0 grid-cols-2 gap-1 rounded-lg bg-zinc-950/80 p-1">
                                         <button
                                             type="button"
@@ -764,14 +839,16 @@ const AddToQueueFormBody = ({
                                         <button
                                             type="button"
                                             onClick={() => openYtSearch('manual', searchQ || `${manual.song || ''} ${manual.artist || ''}`.trim())}
-                                            className={`${styles.btnStd} ${styles.btnSecondary} min-h-[38px] justify-center whitespace-nowrap px-3 py-1 text-[11px] sm:min-w-[8.5rem]`}
+                                            aria-label="Open YouTube search"
+                                            title="Open YouTube search"
+                                            className={`${styles.btnStd} ${styles.btnSecondary} min-h-[36px] justify-center whitespace-nowrap px-3 py-1 text-[11px]`}
                                         >
-                                            <i className="fa-solid fa-magnifying-glass mr-1.5"></i>
-                                            Search YouTube
+                                            <i className="fa-solid fa-magnifying-glass"></i>
+                                            <span className="sr-only">Search YouTube</span>
                                         </button>
                                     ) : null}
                                     {autocompleteProvider === 'youtube' ? (
-                                        <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-zinc-950/60 p-1 sm:col-span-2">
+                                        <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-zinc-950/60 p-1">
                                             {[
                                                 ['karaoke', 'Karaoke Only'],
                                                 ['any', 'Any YouTube']
@@ -872,7 +949,7 @@ const AddToQueueFormBody = ({
             )}
 
             {!performanceMode && activeMomentType === 'tv' ? (
-                <div className="mt-3">
+                <div className={`${dockResults ? 'mt-3 flex min-h-0 flex-1 basis-0 flex-col overflow-hidden' : 'mt-3'}`}>
                     {filteredScenePresets.length > 0 ? (
                         <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">
                             <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
@@ -951,6 +1028,7 @@ const AddToQueueFormBody = ({
                         <div key={pack.id} className={`rounded-2xl border p-3 ${pack.toneClass}`}>
                             {(() => {
                                 const spotlightSupported = activeMomentType === 'game' && supportsSpotlightSingerAssignment(pack.id);
+                                const lifecycleLabel = activeMomentType === 'game' ? getGameLifecycleLabel(pack.id) : '';
                                 const assignmentMode = gameAssignmentModes[pack.id] === GAME_QUEUE_ASSIGNMENT_MODES.spotlight
                                     ? GAME_QUEUE_ASSIGNMENT_MODES.spotlight
                                     : GAME_QUEUE_ASSIGNMENT_MODES.crowd;
@@ -971,7 +1049,7 @@ const AddToQueueFormBody = ({
                                 });
                                 return (
                                     <>
-                            <div className="text-sm font-black text-white">{pack.title}</div>
+                            <div className="flex items-center justify-between gap-2"><div className="text-sm font-black text-white">{pack.title}</div>{lifecycleLabel ? <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-zinc-300" data-game-lifecycle-label={pack.id}>{lifecycleLabel}</span> : null}</div>
                             <div className="mt-1 text-xs text-zinc-300">{pack.detail}</div>
                             <div className="mt-2 text-[11px] text-zinc-500">
                                 {spotlightSupported

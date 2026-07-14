@@ -1,0 +1,58 @@
+export const HOST_MOMENT_COLLECTIONS = [
+  {
+    id: 'easy_first_song',
+    title: 'Easy First Song',
+    subtitle: 'Low-pressure wins to open the mic',
+    hostIntent: 'Get a hesitant singer comfortable fast.',
+    songs: [
+      { title: 'Ho Hey', artist: 'The Lumineers' },
+      { title: 'Stand by Me', artist: 'Ben E King' },
+      { title: 'Shake It Off', artist: 'Taylor Swift' },
+      { title: 'Sweet Caroline', artist: 'Neil Diamond' },
+      { title: 'I Want It That Way', artist: 'Backstreet Boys' },
+      { title: 'Friends in Low Places', artist: 'Garth Brooks' },
+    ],
+  },
+  {
+    id: 'whole_room_singalong',
+    title: 'Whole-Room Singalong',
+    subtitle: 'Pull the audience into one chorus',
+    hostIntent: 'Turn spectators back into participants.',
+    songs: [
+      { title: 'Dont Stop Believin', artist: 'Journey' },
+      { title: 'Sweet Caroline', artist: 'Neil Diamond' },
+      { title: 'Bohemian Rhapsody', artist: 'Queen' },
+      { title: 'Take Me Home Country Roads', artist: 'John Denver' },
+      { title: 'Wannabe', artist: 'Spice Girls' },
+      { title: 'I Gotta Feeling', artist: 'Black Eyed Peas' },
+    ],
+  },
+  {
+    id: 'dance_floor_reset',
+    title: 'Dance-Floor Reset',
+    subtitle: 'Bring the energy back in one song',
+    hostIntent: 'Recover the room after a slow or awkward stretch.',
+    songs: [
+      { title: 'Uptown Funk', artist: 'Bruno Mars' },
+      { title: 'Yeah!', artist: 'Usher' },
+      { title: 'Hey Ya', artist: 'OutKast' },
+      { title: 'I Wanna Dance with Somebody', artist: 'Whitney Houston' },
+      { title: 'Mr. Brightside', artist: 'The Killers' },
+      { title: 'Party Rock Anthem', artist: 'LMFAO' },
+    ],
+  },
+  {
+    id: 'two_mic_rescue',
+    title: 'Two-Mic Rescue',
+    subtitle: 'Pair up when nobody wants to go solo',
+    hostIntent: 'Keep the queue moving with a shared performance.',
+    songs: [
+      { title: 'Shallow', artist: 'Lady Gaga' },
+      { title: 'Need You Now', artist: 'Lady A' },
+      { title: 'Islands in the Stream', artist: 'Kenny Rogers and Dolly Parton' },
+      { title: 'Under Pressure', artist: 'Queen and David Bowie' },
+      { title: 'I Got You Babe', artist: 'Sonny and Cher' },
+      { title: 'Time of My Life', artist: 'Bill Medley and Jennifer Warnes' },
+    ],
+  },
+];

@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-06T16:33:39.590Z",
+  "capturedAt": "2026-07-13T22:19:23.854Z",
   "purpose": "YouTube API Services audit/quota-extension product evidence",
   "source": "deterministic QA fixtures rendered from the built dist artifact",
   "outputDir": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit",
@@ -7,7 +7,7 @@
     {
       "id": "host-youtube-add-panel",
       "surface": "host",
-      "url": "http://127.0.0.1:63542/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=run-of-show-console",
+      "url": "http://127.0.0.1:58036/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=run-of-show-console",
       "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\host-youtube-add-panel.png",
       "requiredText": [
         "YouTube",
@@ -20,21 +20,23 @@
     {
       "id": "host-room-library-curator",
       "surface": "host",
-      "url": "http://127.0.0.1:63542/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=run-of-show-console&hostUiVersion=v2&view=ops&section=ops.room_setup&tab=admin",
+      "url": "http://127.0.0.1:58036/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=run-of-show-console&hostUiVersion=v2&view=ops&section=ops.room_setup&tab=admin",
       "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\host-room-library-curator.png",
       "requiredText": [
         "Room Library Curator",
         "YouTube API Services",
         "YouTube Terms of Service",
         "Google Privacy Policy",
-        "searches left"
+        "searches left",
+        "Tonight's media preflight",
+        "Google Cloud Quotas is the source of truth"
       ],
       "status": "captured"
     },
     {
       "id": "audience-youtube-search",
       "surface": "audience",
-      "url": "http://127.0.0.1:63542/?mode=mobile&room=DEMOAUD&mkDemoEmbed=1&qaAudienceFixture=youtube-audit-search",
+      "url": "http://127.0.0.1:58036/?mode=mobile&room=DEMOAUD&mkDemoEmbed=1&qaAudienceFixture=youtube-audit-search",
       "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\audience-youtube-search.png",
       "requiredText": [
         "YouTube Search",
@@ -49,7 +51,7 @@
     {
       "id": "audience-youtube-url-paste",
       "surface": "audience",
-      "url": "http://127.0.0.1:63542/?mode=mobile&room=DEMOAUD&mkDemoEmbed=1&qaAudienceFixture=youtube-audit-paste",
+      "url": "http://127.0.0.1:58036/?mode=mobile&room=DEMOAUD&mkDemoEmbed=1&qaAudienceFixture=youtube-audit-paste",
       "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\audience-youtube-url-paste.png",
       "requiredText": [
         "Paste a YouTube link",
@@ -62,7 +64,7 @@
     {
       "id": "tv-youtube-performance",
       "surface": "tv",
-      "url": "http://127.0.0.1:63542/?mode=tv&room=DEMOAAHF&mkDemoEmbed=1&qaTvFixture=youtube-audit-performance",
+      "url": "http://127.0.0.1:58036/?mode=tv&room=DEMOAAHF&mkDemoEmbed=1&qaTvFixture=youtube-audit-performance",
       "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\tv-youtube-performance.png",
       "requiredText": [
         "Dreams",
@@ -73,7 +75,7 @@
     {
       "id": "tv-apple-background",
       "surface": "tv",
-      "url": "http://127.0.0.1:63542/?mode=tv&room=DEMOAAHF&mkDemoEmbed=1&qaTvFixture=apple-audit-background",
+      "url": "http://127.0.0.1:58036/?mode=tv&room=DEMOAAHF&mkDemoEmbed=1&qaTvFixture=apple-audit-background",
       "path": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\docs\\compliance\\evidence\\2026-07-06-youtube-product-audit\\tv-apple-background.png",
       "requiredText": [
         "Apple Music Background",

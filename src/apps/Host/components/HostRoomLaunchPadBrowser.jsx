@@ -7,7 +7,9 @@ import {
     normalizeAudienceJoinPolicy,
 } from '../../../lib/audienceJoinPolicy.js';
 import { buildHostNightPresetConfig } from '../hostNightPresets';
+import { resolveRoomSetupEffectiveBehavior } from '../roomSetupEffectiveBehavior';
 import { applyEventCreditsPreset } from '../hostLaunchHelpers';
+import { getRoomEconomySummary } from '../../../lib/roomEconomySummary';
 import RoomJoinPosterModal from './RoomJoinPosterModal';
 import { AAHF_FESTIVAL_LOGO_URL } from '../hostAppData';
 
@@ -35,7 +37,7 @@ const ROOM_SETUP_TABS = Object.freeze([
         id: 'create',
         label: 'Create Room',
         icon: 'fa-sparkles',
-        helper: 'Name the room, choose access, decide how points work, and start hosting.',
+        helper: 'Name the room, choose guest access, pick a host style, and start hosting.',
         activeToneClass: 'border-fuchsia-300/30 bg-[linear-gradient(180deg,rgba(43,16,39,0.98),rgba(23,10,24,0.98))] text-fuchsia-100 shadow-[0_-10px_30px_rgba(217,70,239,0.14)]',
         badgeToneClass: 'border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100',
     },
@@ -43,27 +45,33 @@ const ROOM_SETUP_TABS = Object.freeze([
 const LAUNCH_ECONOMY_OPTIONS = Object.freeze([
     {
         id: 'standard',
-        label: 'Standard Points',
-        eyebrow: 'Default',
-        summary: 'Games, host gifts, and bonus drops drive the score. No automatic event credits.',
+        label: 'Just for Fun',
+        eyebrow: 'Playful',
+        summary: 'Participation points are plentiful, non-cash, and earned through games, reactions, and host rewards.',
+    },
+    {
+        id: 'beaubucks',
+        label: 'BeauBucks',
+        eyebrow: 'Premium',
+        summary: 'Give each guest a clear starting balance for boosts, voting, and premium room interactions.',
     },
     {
         id: 'event',
-        label: 'Event Credits',
+        label: 'Ticket Value',
         eyebrow: 'Ticketed',
-        summary: 'Seed guests with a starting balance and optional timed refills for longer events.',
+        summary: 'Translate admission into a defined BeauBucks balance that guests can allocate during the event.',
     },
     {
         id: 'fundraiser',
-        label: 'Fundraiser Room',
+        label: 'Fundraiser',
         eyebrow: 'Support',
-        summary: 'Prepare support rewards for donors, the room, or both, then finish the details after launch.',
+        summary: 'Connect BeauBucks and support actions to performers, campaigns, or the room.',
     },
     {
         id: 'custom',
-        label: 'Custom Economy',
+        label: 'Custom Rules',
         eyebrow: 'Flexible',
-        summary: 'Start with event credits enabled and tune the deeper rules from the host panel.',
+        summary: 'Tune grants, refills, bonuses, and support behavior manually in Advanced Setup.',
     },
 ]);
 const LAUNCH_OPERATING_MODEL_OPTIONS = Object.freeze([
@@ -92,6 +100,13 @@ const LAUNCH_OPERATING_MODEL_OPTIONS = Object.freeze([
         icon: 'fa-people-group',
     },
 ]);
+const LAUNCH_NIGHT_TYPE_OPTIONS = Object.freeze([
+    { id: 'open_karaoke', label: 'Open Karaoke', eyebrow: 'Easygoing', summary: 'A familiar host-led karaoke night with an open queue and playful points.', presetId: 'casual', operatingModel: 'host_led', economyMode: 'standard', icon: 'fa-microphone-lines' },
+    { id: 'hosted_showcase', label: 'Hosted Showcase', eyebrow: 'Structured', summary: 'Tighter approvals, featured performances, and host-owned pacing.', presetId: 'competition', operatingModel: 'host_led', economyMode: 'standard', icon: 'fa-star' },
+    { id: 'crowd_party', label: 'Crowd-Led Party', eyebrow: 'Interactive', summary: 'Auto-DJ, short-form performances, and audience continuation votes keep things moving.', presetId: 'casual', operatingModel: 'crowd_driven', economyMode: 'standard', icon: 'fa-people-group' },
+    { id: 'fundraiser', label: 'Fundraiser Night', eyebrow: 'Support', summary: 'Host-assisted pacing with support rewards and contribution-ready room economics.', presetId: 'casual', operatingModel: 'assisted_host', economyMode: 'fundraiser', icon: 'fa-hand-holding-heart' },
+]);
+
 const getOptionLabel = (options = [], id = '', fallback = 'Default') => (
     options.find((option) => option.id === id)?.label || fallback
 );
@@ -239,6 +254,7 @@ const HostRoomLaunchPadBrowser = ({
     const selectedPresetUi = PRESET_UI_META?.[selectedPresetBaseId] || PRESET_UI_META?.[selectedLaunchPreset?.id] || null;
     const hasLaunchStartTime = !!String(quickLaunchDiscovery?.roomStartsAtLocal || '').trim();
     const launchRoomSummaryName = String(launchRoomName || '').trim() || 'Untitled room';
+    const eventCreditsEventId = String(eventCreditsConfig?.eventId || '').trim().toLowerCase();
     const eventCreditsPresetId = String(eventCreditsConfig?.presetId || '').trim();
     const eventCreditsEnabled = eventCreditsConfig?.enabled === true;
     const eventCreditsHasSupport = Boolean(String(eventCreditsConfig?.supportLabel || eventCreditsConfig?.supportProvider || eventCreditsConfig?.supportUrl || '').trim())
@@ -250,11 +266,17 @@ const HostRoomLaunchPadBrowser = ({
             ? 'fundraiser'
             : eventCreditsPresetId === 'ticketed_event'
                 ? 'event'
-                : 'custom';
+                : eventCreditsEventId === 'beaubucks'
+                    ? 'beaubucks'
+                    : 'custom';
     const selectedEconomyOption = LAUNCH_ECONOMY_OPTIONS.find((option) => option.id === launchEconomyMode) || LAUNCH_ECONOMY_OPTIONS[0];
+    const launchEconomySummary = getRoomEconomySummary(eventCreditsConfig);
     const selectedJoinOption = AUDIENCE_JOIN_ACCESS_OPTIONS.find((option) => option.id === launchJoinAccessMode) || AUDIENCE_JOIN_ACCESS_OPTIONS[0];
     const [launchOperatingModel, setLaunchOperatingModel] = useState('host_led');
+    const [launchNightType, setLaunchNightType] = useState('open_karaoke');
+    const [showAdvancedSetup, setShowAdvancedSetup] = useState(false);
     const selectedOperatingModelOption = LAUNCH_OPERATING_MODEL_OPTIONS.find((option) => option.id === launchOperatingModel) || LAUNCH_OPERATING_MODEL_OPTIONS[0];
+    const selectedNightType = LAUNCH_NIGHT_TYPE_OPTIONS.find((option) => option.id === launchNightType) || LAUNCH_NIGHT_TYPE_OPTIONS[0];
     const buildLaunchPresetPayload = () => buildHostNightPresetConfig({
         ...(selectedLaunchPreset || {}),
         settings: {
@@ -266,9 +288,34 @@ const HostRoomLaunchPadBrowser = ({
             },
         },
     });
+    const launchPresetPayloadPreview = buildLaunchPresetPayload();
+    const launchEffectiveBehavior = resolveRoomSetupEffectiveBehavior({
+        layers: [
+            {
+                id: 'launch_plan',
+                label: `${selectedLaunchPreset?.label || 'Starting plan'} + ${selectedOperatingModelOption.label}`,
+                type: 'provisioning',
+                values: {
+                    ...(launchPresetPayloadPreview?.settings || {}),
+                    hostNightPresetConfig: launchPresetPayloadPreview,
+                    eventProfileId: '',
+                    runOfShowEnabled: false,
+                },
+            },
+            {
+                id: 'launch_economy',
+                label: selectedEconomyOption?.label || 'Points plan',
+                type: 'provisioning',
+                values: { eventCredits: eventCreditsConfig || {} },
+            },
+        ],
+        context: {
+            spotlightMode: launchPresetPayloadPreview?.settings?.gamePreviewId || 'karaoke',
+        },
+    });
     const launchSummaryItems = [
         launchRoomSummaryName,
-        selectedOperatingModelOption?.label,
+        selectedNightType?.label,
         hasRequestedLaunchRoomCode ? `Code ${requestedLaunchRoomCodeCandidate}` : 'Auto room code',
         discoveryListingEnabled ? 'Discoverable' : 'Private link',
         hasLaunchStartTime ? `Starts ${launchStartSummary}` : 'Starts now',
@@ -281,6 +328,22 @@ const HostRoomLaunchPadBrowser = ({
             if (mode === 'event') return applyEventCreditsPreset('ticketed_event', prev);
             if (mode === 'fundraiser') {
                 const next = applyEventCreditsPreset('custom_event_credits', prev);
+            if (mode === 'beaubucks') {
+                const next = applyEventCreditsPreset('custom_event_credits', prev);
+                return {
+                    ...next,
+                    presetId: 'beaubucks',
+                    eventId: 'beaubucks',
+                    eventLabel: 'BeauBucks',
+                    generalAdmissionPoints: 100,
+                    vipBonusPoints: 0,
+                    skipLineBonusPoints: 0,
+                    websiteCheckInPoints: 0,
+                    socialPromoPoints: 0,
+                    timedLobbyEnabled: false,
+                    supportPoints: 0,
+                };
+            }
                 return {
                     ...next,
                     eventLabel: next.eventLabel || launchRoomSummaryName || 'Fundraiser Room',
@@ -291,11 +354,17 @@ const HostRoomLaunchPadBrowser = ({
             return applyEventCreditsPreset('custom_event_credits', prev);
         });
     };
+    const applyLaunchNightType = (nightTypeId = 'open_karaoke') => {
+        const option = LAUNCH_NIGHT_TYPE_OPTIONS.find((entry) => entry.id === nightTypeId) || LAUNCH_NIGHT_TYPE_OPTIONS[0];
+        setLaunchNightType(option.id);
+        setLaunchOperatingModel(option.operatingModel);
+        applyLaunchEconomy(option.economyMode);
+        if (presets.some((preset) => preset.id === option.presetId)) setHostNightPreset(option.presetId);
+    };
     useEffect(() => {
         if (resolvedLaunchPresetId !== 'aahf') return;
-        if (String(launchRequestedRoomCode || '').trim()) return;
-        setLaunchRequestedRoomCode('AAHF');
-    }, [launchRequestedRoomCode, resolvedLaunchPresetId, setLaunchRequestedRoomCode]);
+        setLaunchRequestedRoomCode((current) => String(current || '').trim() ? current : 'AAHF');
+    }, [resolvedLaunchPresetId, setLaunchRequestedRoomCode]);
     const activeJoinPosterRoom = useMemo(() => {
         if (!joinPosterRoom || typeof joinPosterRoom !== 'object') return null;
         const code = String(joinPosterRoom.code || '').trim().toUpperCase();
@@ -791,9 +860,9 @@ const HostRoomLaunchPadBrowser = ({
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">New room</div>
-                                <div className="mt-1 text-2xl font-black text-white">Create Room</div>
+                                <div className="mt-1 text-2xl font-black text-white">Create a room</div>
                                 <div className="mt-2 max-w-3xl text-sm text-cyan-100/70">
-                                    Set the room identity, guest access, and points behavior now. Detailed room settings stay available once the room exists.
+                                    Make three decisions now: name the room, choose guest access, and decide who drives the night. Everything else can wait.
                                 </div>
                             </div>
                             <span className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.16em] ${launchDisabled ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'}`}>
@@ -813,8 +882,39 @@ const HostRoomLaunchPadBrowser = ({
 
                         <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
                             <div className="space-y-3">
+                                <section className="rounded-xl border border-cyan-300/22 bg-cyan-500/8 px-3 py-3" data-launch-night-type>
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Quick setup</div>
+                                            <div className="mt-1 text-lg font-black text-white">What kind of night is this?</div>
+                                            <div className="mt-1 text-sm text-cyan-100/68">One choice sets the recommended queue, host style, automation, and economy defaults.</div>
+                                        </div>
+                                        <span className="rounded-full border border-cyan-300/25 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/72">{selectedNightType.eyebrow}</span>
+                                    </div>
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                        {LAUNCH_NIGHT_TYPE_OPTIONS.map((option) => {
+                                            const selected = option.id === launchNightType;
+                                            return (
+                                                <button key={option.id} type="button" data-launch-night-type-card={option.id} aria-pressed={selected} onClick={() => applyLaunchNightType(option.id)} className={`rounded-xl border px-3 py-3 text-left transition ${selected ? 'border-cyan-300/50 bg-cyan-500/18 text-white shadow-[0_14px_32px_rgba(34,211,238,0.12)]' : 'border-white/10 bg-black/18 text-cyan-100/74 hover:border-cyan-300/28 hover:bg-cyan-500/8'}`}>
+                                                    <span className="flex items-start gap-3">
+                                                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${selected ? 'border-cyan-200/40 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/[0.05] text-cyan-100'}`}><i className={`fa-solid ${option.icon}`}></i></span>
+                                                        <span className="min-w-0">
+                                                            <span className="flex flex-wrap items-center gap-2"><span className="text-sm font-black text-inherit">{option.label}</span><span className="rounded-full border border-white/10 bg-black/18 px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] opacity-72">{option.eyebrow}</span></span>
+                                                            <span className="mt-1 block text-xs leading-5 opacity-82">{option.summary}</span>
+                                                        </span>
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <button type="button" onClick={() => setShowAdvancedSetup((current) => !current)} aria-expanded={showAdvancedSetup} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-cyan-100/72 hover:text-white">
+                                        <i className={`fa-solid fa-chevron-${showAdvancedSetup ? 'up' : 'down'} text-[10px]`}></i>
+                                        {showAdvancedSetup ? 'Hide advanced setup' : 'Customize advanced setup'}
+                                    </button>
+                                </section>
+
                                 <section className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Room identity</div>
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Step 1 - Room identity</div>
                                     <div className="mt-1 text-sm text-cyan-100/66">Give guests a recognizable room and optionally reserve a memorable code.</div>
                                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                                         <label className="block">
@@ -836,7 +936,7 @@ const HostRoomLaunchPadBrowser = ({
                                 </section>
 
                                 <section className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Guest entry</div>
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Step 2 - Guest entry</div>
                                     <div className="mt-1 text-sm text-cyan-100/66">Decide when the room appears and how easily guests can get in.</div>
                                     <div className="mt-3 grid gap-3 lg:grid-cols-3">
                                         <label className="block lg:col-span-1">
@@ -861,10 +961,10 @@ const HostRoomLaunchPadBrowser = ({
                                     </div>
                                 </section>
 
-                                <section className="rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3" data-launch-operating-model>
+                                <section className={`${showAdvancedSetup ? '' : 'hidden'} rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3`} data-launch-operating-model>
                                     <div className="flex flex-wrap items-start justify-between gap-2">
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/62">Operating model</div>
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/62">Advanced host style</div>
                                             <div className="mt-1 text-lg font-black text-white">Who drives the night?</div>
                                             <div className="mt-1 text-sm text-fuchsia-100/68">Choose this when the room is created because it changes pacing, automation, and crowd prompts from the start.</div>
                                         </div>
@@ -897,10 +997,10 @@ const HostRoomLaunchPadBrowser = ({
                                         })}
                                     </div>
                                 </section>
-                                <section className="rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3">
+                                <section className={`${showAdvancedSetup ? '' : 'hidden'} rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3`} data-launch-template-options>
                                     <div className="flex flex-wrap items-start justify-between gap-2">
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Starting point</div>
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Optional template</div>
                                             <div className="mt-1 text-sm text-cyan-100/66">Choose the starting behavior for queue, requests, search, TV/crowd layers, automation, and guest access. You can refine these after the room exists.</div>
                                         </div>
                                         {selectedPresetUi?.eyebrow ? (<span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/62">{selectedPresetUi.eyebrow}</span>) : null}
@@ -951,14 +1051,26 @@ const HostRoomLaunchPadBrowser = ({
 
                             <div className="space-y-3">
                                 <section className="rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/62">Points & rewards</div>
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/62">Step 3 - Points & rewards</div>
                                     <div className="mt-1 text-lg font-black text-white">How should points work?</div>
                                     <div className="mt-1 text-sm text-fuchsia-100/68">Pick the launch economy. Host gifts, crowd rewards, and refill pacing can be adjusted quickly from the host panel.</div>
                                     <div className="mt-3 grid gap-2">
-                                        {LAUNCH_ECONOMY_OPTIONS.map((option) => {
+                                        {LAUNCH_ECONOMY_OPTIONS.filter((option) => showAdvancedSetup || option.id !== 'custom').map((option) => {
                                             const selected = option.id === launchEconomyMode;
                                             return (<button key={option.id} type="button" onClick={() => applyLaunchEconomy(option.id)} className={`rounded-xl border px-3 py-3 text-left transition ${selected ? 'border-fuchsia-300/45 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/72 hover:border-fuchsia-300/24 hover:bg-fuchsia-500/8'}`}><div className="flex items-center justify-between gap-3"><div className="text-sm font-semibold">{option.label}</div><span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${selected ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/58'}`}>{option.eyebrow}</span></div><div className="mt-1 text-xs leading-5 opacity-82">{option.summary}</div></button>);
                                         })}
+                                    </div>
+                                    <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3" data-launch-economy-preview="true">
+                                        <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/58">What guests experience</div>
+                                        <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                                            {launchEconomySummary.cards.map((card) => (
+                                                <div key={card.id} className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
+                                                    <div className="text-[9px] uppercase tracking-[0.15em] text-fuchsia-100/48">{card.eyebrow}</div>
+                                                    <div className="mt-1 text-xs font-semibold text-white">{card.value}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {launchEconomySummary.warnings.length ? <div className="mt-2 text-xs text-amber-200">Review: {launchEconomySummary.warnings.join(' ')}</div> : null}
                                     </div>
                                 </section>
 
@@ -966,15 +1078,26 @@ const HostRoomLaunchPadBrowser = ({
                                     <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Launch summary</div>
                                     <div className="mt-1 text-sm text-cyan-100/66">Confirm the room guests will enter first. Everything below can still be adjusted from the host panel.</div>
                                     <div className="mt-3 flex flex-wrap gap-2">{launchSummaryItems.map((item) => (<span key={item} className="rounded-full border border-white/10 bg-black/24 px-3 py-1.5 text-xs text-cyan-50/82">{item}</span>))}</div>
+                                    <div className="mt-3 grid gap-2" data-launch-effective-behavior="true">
+                                        {launchEffectiveBehavior.domains.map((domain) => (
+                                            <div key={domain.key} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5" data-launch-effective-domain={domain.key}>
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/58">{domain.label}</div>
+                                                    <div className="max-w-[46%] truncate text-[9px] uppercase tracking-[0.12em] text-zinc-500" title={domain.provenance?.sourceLabel || 'Launch plan'}>From {domain.provenance?.sourceLabel || 'launch plan'}</div>
+                                                </div>
+                                                <div className="mt-1 text-xs leading-5 text-cyan-50/82">{domain.summary}</div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </section>
 
                                 <div className="grid gap-2">
-                                    <button type="button" data-host-create-room-primary="true" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: buildLaunchPresetPayload() })} disabled={launchDisabled} className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full justify-center px-4 py-3 text-[11px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</button>
+                                    <button type="button" data-host-create-room-primary="true" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview })} disabled={launchDisabled} className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full justify-center px-4 py-3 text-[11px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</button>
                                     <details className="rounded-xl border border-white/10 bg-black/18 px-3 py-2">
                                         <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.16em] text-cyan-100/62">Planning ahead?</summary>
                                         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                                             <div className="text-sm text-cyan-100/66">Create the room and open the Show Plan when you want to sequence moments before guests arrive.</div>
-                                            <button type="button" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'show', nightPresetPayload: buildLaunchPresetPayload() })} disabled={launchDisabled} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>Create + Prepare Room</button>
+                                            <button type="button" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'show', nightPresetPayload: launchPresetPayloadPreview })} disabled={launchDisabled} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>Create + Prepare Room</button>
                                         </div>
                                     </details>
                                     <div className="text-xs text-cyan-100/58">Room creation stays focused on launch decisions. Use the host panel for detailed room settings, rewards tuning, and show planning.</div>

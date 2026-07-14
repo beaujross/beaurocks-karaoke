@@ -479,8 +479,8 @@ test('HostQueueTab add workspace exposes explicit performance placement actions 
 
   assert.match(markup, /Next: #2 Performance Slot/);
   assert.match(markup, /Later target/);
-  assert.match(markup, /Add Next/);
-  assert.match(markup, /Add Later/);
+  assert.match(markup, /Add to Queue/);
+  assert.match(markup, /Save to Planner/);
   assert.match(markup, /Queue Only/);
 });
 

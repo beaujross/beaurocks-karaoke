@@ -8,15 +8,16 @@ const MissionSetupPlanPreview = ({
     readinessScore = 0,
     readinessMissing = [],
     overrideCount = 0,
-    planImpactItems = []
+    planImpactItems = [],
+    effectiveBehaviorDomains = []
 }) => (
     <>
         <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Setup Summary</div>
         <div className="mt-2 rounded-2xl border border-cyan-500/30 bg-zinc-900/80 p-3">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">What You Picked</div>
-            <div className="text-sm text-zinc-200 mt-2"><span className="text-zinc-500">Archetype:</span> {missionPresetLabel}</div>
-            <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Constraint:</span> {flowRuleLabel}</div>
-            <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Host Style:</span> {assistLabel}</div>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">Your plan</div>
+            <div className="text-sm text-zinc-200 mt-2"><span className="text-zinc-500">Night feel:</span> {missionPresetLabel}</div>
+            <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Queue:</span> {flowRuleLabel}</div>
+            <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Host help:</span> {assistLabel}</div>
             <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Format:</span> {spotlightLabel}</div>
             {overrideCount > 0 && (
                 <div className="text-xs text-amber-200 mt-2">
@@ -26,15 +27,51 @@ const MissionSetupPlanPreview = ({
         </div>
 
         <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">What Changes</div>
-            <div className="mt-2 space-y-1.5">
-                {planImpactItems.map((item) => (
-                    <div key={`plan-impact-${item.label}`} className="flex items-start justify-between gap-3 text-xs text-zinc-200">
-                        <span className="text-zinc-400 uppercase tracking-[0.15em]">{item.label}</span>
-                        <span className="text-right">{item.value}</span>
-                    </div>
-                ))}
-            </div>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">What happens tonight</div>
+            {effectiveBehaviorDomains.length > 0 ? (
+                <div className="mt-2 space-y-2" data-room-setup-effective-behavior="true">
+                    {effectiveBehaviorDomains.map((domain) => (
+                        <div
+                            key={`effective-domain-${domain.key}`}
+                            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5"
+                            data-room-setup-effective-domain={domain.key}
+                        >
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="text-[10px] uppercase tracking-[0.17em] text-cyan-100/70">{domain.label}</div>
+                                <div className="max-w-[48%] truncate text-[9px] uppercase tracking-[0.12em] text-zinc-500" title={domain.provenance?.sourceLabel || 'Current room'}>
+                                    From {domain.provenance?.sourceLabel || 'current room'}
+                                </div>
+                            </div>
+                            <div className="mt-1 text-xs leading-5 text-zinc-200">{domain.summary}</div>
+                            {Array.isArray(domain.warnings) && domain.warnings.length > 0 ? (
+                                <div className="mt-1 text-[10px] leading-4 text-amber-200">Check: {domain.warnings.join(' ')}</div>
+                            ) : null}
+                            {Array.isArray(domain.details) && domain.details.length > 0 ? (
+                                <details className="mt-1.5">
+                                    <summary className="cursor-pointer list-none text-[10px] text-zinc-500 hover:text-zinc-300">View details</summary>
+                                    <div className="mt-1.5 space-y-1 border-t border-white/5 pt-1.5">
+                                        {domain.details.map((detail) => (
+                                            <div key={`${domain.key}-${detail.label}`} className="flex items-start justify-between gap-3 text-[10px] leading-4">
+                                                <span className="text-zinc-500">{detail.label}</span>
+                                                <span className="text-right text-zinc-300">{detail.value}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </details>
+                            ) : null}
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="mt-2 space-y-1.5">
+                    {planImpactItems.map((item) => (
+                        <div key={`plan-impact-${item.label}`} className="flex items-start justify-between gap-3 text-xs text-zinc-200">
+                            <span className="text-zinc-400 uppercase tracking-[0.15em]">{item.label}</span>
+                            <span className="text-right">{item.value}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
 
         <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">

@@ -1,6 +1,6 @@
 # YouTube Audit Packet Checklist
 
-Last updated: 2026-07-06
+Last updated: 2026-07-14
 
 ## Goal
 
@@ -39,12 +39,13 @@ Verified HTTP 200 without login on 2026-07-06. Desktop and mobile screenshots ar
 - public TV Apple Music background playback surface
 - rendered legal-page manifest: `docs/compliance/evidence/2026-07-06-youtube-audit/manifest.json`
 - rendered product-surface manifest: `docs/compliance/evidence/2026-07-06-youtube-product-audit/manifest.json`
+- authenticated Quotas API evidence for the live project (`100` Search Queries/day and `10,000` general units/day)
+- controlled production cooldown screenshot and evidence note
+- live disposable-room permanent-delete confirmation, success, hashes, and independent absence checks
 
-## Screenshots To Capture
+## Remaining Screenshot To Capture
 
 - Google Cloud Quotas page for the live YouTube Data API project
-- quota exhaustion fallback messaging from a real exhausted/cooldown condition or controlled production test
-- room permanent-delete path from a live test room
 - authenticated live-room host screenshot only if reviewers require evidence beyond the QA product-surface packet
 
 Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capture steps and filenames.
@@ -59,11 +60,28 @@ Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capt
 - explanation that known stale tracks refresh by `videoId` instead of forcing new text searches
 - explanation of canonical backing candidate storage and host-feedback/source-discovery telemetry
 - emulator test evidence for `upsertCuratedYouTubeIndexes` canonical candidate persistence
+- production usage-ledger baseline and the request-sizing calculation
+
+## Search Queries Request Sizing
+
+Proposed request: `1,000 Search Queries calls/day`.
+
+Observed production baseline from the server usage ledger for period `202607`, read on 2026-07-14:
+
+- `27` actual `search.list` calls
+- `26` actual `videos.list` calls
+- `94` total metered YouTube Data API method calls across all recorded sources
+- `13` rooms represented in the meter
+- `17` total YouTube method calls for the highest recorded single room
+
+The server meter was introduced recently and is monthly aggregate evidence, so it is not presented as a historical peak-event trace. The established five-hour, 150-person planning envelope in `docs/costs/GAME_MODE_COST_SHEET.md` models `120`, `300`, and `750` live searches for low, medium, and high engagement. A `1,000/day` request covers the high envelope with roughly 33% contingency while the product continues to reduce live demand through indexed, canonical, and cached reuse.
+
+The request is for the separate Search Queries bucket. At the high envelope, the paired `videos.list` validation work remains far below the assigned `10,000` general-data-unit limit. Google Cloud Console remains the source of truth for assigned limits and final submission values.
 
 ## Important Method/Cost Summary
 
 - default broader YouTube Data API quota: `10,000 units/day` for non-`search.list`/non-`videos.insert` endpoints; verify the live project in Google Cloud Console
-- `search.list`: separate default daily bucket of `100` calls; each call costs `1` quota from that bucket
+- `search.list`: separate default daily bucket of `100` calls; each live call consumes `1` call from that bucket
 - `videos.list`: `1` quota unit per call
 - `playlistItems.list`: `1` quota unit per call
 

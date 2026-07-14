@@ -1,7 +1,7 @@
 # YouTube Quota Extension Packet
 
 Date: 2026-07-06
-Status: Production hosting deploy completed on 2026-07-06 15:49 UTC (2026-07-06 08:49 America/Los_Angeles). Firebase analyzed functions during the deploy and skipped them because no deployable function changes were detected. Public legal URLs verified HTTP 200 after deploy, desktop/mobile legal-page screenshots are captured, and QA product-surface screenshots are captured. Not ready to submit until live Google Cloud quota evidence, quota-exhaustion evidence, and final business/contact details are attached.
+Status: Production event-readiness behavior is deployed, and authenticated quota, controlled cooldown, permanent-delete, and request-sizing evidence are captured. The latest room-deletion evidence is tied to Hosting release `ac2b07c988fe1f57` (2026-07-13). Not ready to submit until the Google Cloud Console presentation screenshot and final business/contact/request approval are attached.
 
 ## Executive Summary
 
@@ -30,8 +30,41 @@ Verified against official Google/YouTube docs on 2026-07-06:
 - Google Privacy Policy: https://policies.google.com/privacy
 - YouTube Terms: https://www.youtube.com/t/terms
 
-The Google quota/compliance guide says additional quota requires completing an audit demonstrating compliance with YouTube API Services Terms. The current quota calculator shows that `search.list` has its own default daily bucket of 100 calls, while other YouTube Data API endpoints share the broader daily quota allocation.
+The official quota/compliance guide was revalidated on 2026-07-13 against the June 2026 granular-quota model. Projects receive default allocations of 100 `search.list` calls per day, 100 `videos.insert` calls per day, and 10,000 units per day combined for other endpoints. `search.list` consumes 1 unit from its dedicated Search Queries bucket per call. Additional quota still requires an audit demonstrating compliance with the YouTube API Services Terms.
 
+Official current references:
+
+- Quota and compliance audits, last updated 2026-06-01: https://developers.google.com/youtube/v3/guides/quota_and_compliance_audits
+- `search.list`, including the dedicated quota impact: https://developers.google.com/youtube/v3/docs/search/list
+- June 2026 granular-quota revision: https://developers.google.com/youtube/v3/revision_history
+
+Do not infer the live project's assigned limits from these defaults. The Google Cloud Console quota page remains the source of truth and its screenshot is still a submission blocker.
+
+## 2026-07-13 Event-Scale Operating Posture
+
+The production event-readiness pass proved that BeauRocks can continue a night with Host-owned uploads and an explicit Apple connection boundary while YouTube remains a catalog/backing option. This reduces the operational pressure to treat every song request as a live YouTube search.
+
+Compliant behavior when the `search.list` bucket is low or exhausted:
+
+- prefer verified canonical-song backing candidates, curated indexes, account indexes, and recent compliant cache entries before live search;
+- revalidate known video IDs through bounded lower-cost metadata paths where required rather than repeating discovery searches;
+- keep non-embeddable or unknown tracks out of TV-ready ranking;
+- allow direct host-provided URLs only through the existing validation/embeddability path;
+- offer Host uploads, BeauRocks/local files, Apple capability flows, and provider-neutral external handoff where appropriate;
+- stop live search during cooldown and disclose the reduced catalog honestly;
+- never scrape YouTube search/results, download media, rotate API projects or keys to evade quota, or represent unverified results as an available in-app catalog.
+
+The quota-extension request should include measured peak-event search demand, cache/index hit rate, live-search share, embeddable acceptance rate, exhausted/cooldown behavior, and the requested Search Queries allocation. Requesting more quota and reducing avoidable live calls are complementary controls.
+
+## Deployed Event-Readiness Evidence
+
+Hosting release `3098b4aa26e1003d` adds `Tonight's media preflight` inside the Host Room Library Curator. The preflight combines known embeddable catalog coverage, room-proven fresh backings, content-agnostic fallback availability, and this Host browser's estimated Search Queries reserve. It limits guidance to three next moves and states that Google Cloud Quotas is the source of truth for assigned limits.
+
+Authenticated production acceptance observed 115 known embeddable tracks, 14 content-agnostic fallbacks, an estimated 100-search browser reserve, and 0 of the 3 targeted room-proven fresh backings. The product therefore reported `Ready with Watchouts` and asked the Host to use or approve three more room backings. These browser estimates are not submitted as evidence of the project's assigned Google quota.
+
+The product evidence capture fails if the Audio popover obscures Admin. The production Admin smoke also proves normal curator open/Back navigation and continued Chat/Approvals navigation, preventing a screenshot-only pass over an unusable workflow.
+
+Default granular limits are configurable through `VITE_YOUTUBE_DAILY_SEARCH_LIST_CALL_LIMIT` and `VITE_YOUTUBE_DAILY_GENERAL_DATA_UNIT_LIMIT`. Production should set those values only to allocations verified in Google Cloud; absent configuration, the client labels the June 2026 defaults as `official_default`.
 ## Product Use Of YouTube API Services
 
 BeauRocks uses YouTube Data API for:
@@ -149,8 +182,8 @@ The capture script, `scripts/qa/youtube-audit-product-evidence-screenshots.mjs`,
 Required screenshots:
 
 - Google Cloud Console YouTube Data API quota page for the live project
-- quota exhaustion fallback state
-- room permanent-delete path
+- `quota-exhaustion-fallback.png` (captured)
+- `room-permanent-delete-confirmation.png` and `room-permanent-delete-success.png` (captured)
 - authenticated production host session for the live audit room, if reviewers request live-room evidence beyond the QA product-surface packet
 
 Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capture steps and filenames.
@@ -161,22 +194,40 @@ Optional but useful screenshots:
 - Room Library Curator showing indexed/fresh/proven counts
 - host review flow showing `Known backing` suggestions
 
+
+Live permanent-delete evidence, hashes, and independent absence checks are documented in `docs/compliance/evidence/2026-07-06-youtube-live-evidence/room-permanent-delete-evidence.md`.
+
+## Proposed Search Queries Request
+
+Proposed allocation: `1,000 Search Queries calls/day`.
+
+Observed production baseline from the server usage ledger for period `202607`, read on 2026-07-14:
+
+- `27` actual `search.list` calls
+- `26` actual `videos.list` calls
+- `94` total metered YouTube Data API method calls
+- `13` rooms represented in the meter
+- `17` total YouTube method calls for the highest recorded single room
+
+This ledger was introduced recently and provides monthly aggregate evidence, not a complete historical peak-event trace. The established five-hour, 150-person event model supplies the capacity envelope: approximately `120` low-, `300` medium-, and `750` high-engagement live searches. Requesting `1,000/day` covers the high envelope with roughly 33% contingency while indexed, canonical, and cached reuse continue reducing live demand.
+
+The increase applies to the separate Search Queries bucket. Even the high envelope adds only about `750` paired `videos.list` units, remaining well below the assigned `10,000` general-data-unit limit.
+
 ## Remaining Submission Blockers
 
 No known code blocker remains for the quota-mitigation story.
 
 Submission still requires:
 
-- Google Cloud Console quota screenshot from the live project
-- quota exhaustion/cooldown evidence from a real exhausted state or controlled production test
-- room permanent-delete evidence from a live test room
+- Google Cloud Console quota screenshot from the live project (the authenticated Quotas API now independently confirms 100 Search Queries/day and 10,000 general units/day)
 - authenticated live-room product screenshots only if reviewers require evidence beyond the captured QA product-surface packet
 - confirmation of final business/contact details
+- confirmation that `1,000 Search Queries/day` is the approved request amount
 - final read-through to ensure the submitted narrative matches deployed behavior
 
 ## Recommended Submission Sequence
 
-1. Capture Google Cloud quota screenshots, quota exhaustion/cooldown evidence, and room permanent-delete evidence.
-2. Confirm final business/contact details.
+1. Capture the Google Cloud Console presentation screenshot; retain the captured Quotas API, controlled cooldown, and permanent-delete artifacts.
+2. Confirm final business/contact details and approve the proposed `1,000 Search Queries/day` request.
 3. Review this packet against deployed behavior.
 4. Submit the YouTube API Services Audit and Quota Extension Form.

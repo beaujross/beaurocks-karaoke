@@ -1,4 +1,5 @@
 import React from 'react';
+import HostBeauBucksReconciliationPanel from './HostBeauBucksReconciliationPanel';
 
 const HostQaDebugPanel = ({
     styles,
@@ -67,6 +68,7 @@ const HostQaDebugPanel = ({
                 )}
             </div>
         </div>
+        <HostBeauBucksReconciliationPanel roomCode={roomCode} styles={styles} />
         <div className="mt-4 border-t border-white/10 pt-3">
             <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="text-sm uppercase tracking-widest text-zinc-500">Smoke Test</div>

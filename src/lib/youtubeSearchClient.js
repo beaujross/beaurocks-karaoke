@@ -5,8 +5,18 @@ const YOUTUBE_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
 const YOUTUBE_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
 const YOUTUBE_QUOTA_STORAGE_KEY = 'bross_youtube_quota_block_until_ms_v1';
 const YOUTUBE_DAILY_BUDGET_STORAGE_KEY = 'bross_youtube_daily_budget_v1';
-const YOUTUBE_DAILY_SEARCH_LIST_CALLS = 100;
-const YOUTUBE_DAILY_GENERAL_DATA_UNITS = 10000;
+const readConfiguredQuotaLimit = (key = '', fallback = 1) => {
+    const raw = import.meta.env?.[key] ?? globalThis.process?.env?.[key] ?? '';
+    const parsed = Math.floor(Number(raw || 0));
+    return {
+        value: Number.isFinite(parsed) && parsed > 0 ? parsed : fallback,
+        source: Number.isFinite(parsed) && parsed > 0 ? 'configured' : 'official_default',
+    };
+};
+const youtubeSearchListLimit = readConfiguredQuotaLimit('VITE_YOUTUBE_DAILY_SEARCH_LIST_CALL_LIMIT', 100);
+const youtubeGeneralDataUnitLimit = readConfiguredQuotaLimit('VITE_YOUTUBE_DAILY_GENERAL_DATA_UNIT_LIMIT', 10000);
+const YOUTUBE_DAILY_SEARCH_LIST_CALLS = youtubeSearchListLimit.value;
+const YOUTUBE_DAILY_GENERAL_DATA_UNITS = youtubeGeneralDataUnitLimit.value;
 const YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH = 1;
 const YOUTUBE_ESTIMATED_SEARCH_LIST_CALLS_PER_LIVE_SEARCH = 1;
 const YOUTUBE_SEARCH_INTENT_STOPWORDS = new Set([
@@ -175,7 +185,9 @@ const buildYouTubeSearchTelemetrySnapshot = () => {
         cacheHitPct: 0,
         recentSearches: 0,
         dailySearchListCallLimit: YOUTUBE_DAILY_SEARCH_LIST_CALLS,
+        dailySearchListCallLimitSource: youtubeSearchListLimit.source,
         dailyGeneralDataUnitLimit: YOUTUBE_DAILY_GENERAL_DATA_UNITS,
+        dailyGeneralDataUnitLimitSource: youtubeGeneralDataUnitLimit.source,
         estimatedSearchListCallsPerLiveSearch: YOUTUBE_ESTIMATED_SEARCH_LIST_CALLS_PER_LIVE_SEARCH,
         estimatedGeneralUnitsPerLiveSearch: YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH,
         dailyQuotaUnits: YOUTUBE_DAILY_GENERAL_DATA_UNITS,

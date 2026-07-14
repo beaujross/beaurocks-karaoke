@@ -39,6 +39,8 @@ import {
 } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
 import { buildBrowseCuratedYouTubeIndex } from '../../../lib/curatedKaraokeIndex';
+import { enrichCatalogResultsWithCanonicalIdentity, groupUnifiedCatalogResults } from '../../../lib/unifiedCatalogResults';
+import { buildBackgroundAudioQaSnapshot, deriveBackgroundAudioState, getBackgroundAudioCapability } from '../../../lib/backgroundAudioState';
 import {
   searchYouTubeCatalog,
 } from '../../../lib/youtubeSearchClient';
@@ -59,7 +61,7 @@ import {
   resolveQueueReviewSelectionForHost,
   saveHostBackingPreferenceForRoom,
 } from '../queueSongReviewActions';
-import { buildSongKey, ensureSong, resolveSongCatalog } from '../../../lib/songCatalog';
+import { buildSongKey, ensureSong, resolveCanonicalTrackIdentityBatch, resolveSongCatalog } from '../../../lib/songCatalog';
 import {
   buildCollaborationSuggestionMap,
   rankSongRequestCandidates,
@@ -599,7 +601,7 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -673,6 +675,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [scenePresetTitle, setScenePresetTitle] = useState('');
     const [scenePresetDurationSec, setScenePresetDurationSec] = useState(20);
     const [sceneLibraryOpen, setSceneLibraryOpen] = useState(false);
+    const closeSceneLibrary = useCallback(() => setSceneLibraryOpen(false), []);
     const [mediaLibraryTab, setMediaLibraryTab] = useState('scenes');
     const [mediaLibraryFolderFilter, setMediaLibraryFolderFilter] = useState('all');
     const [sceneLibraryView, setSceneLibraryView] = useState('grid');
@@ -699,6 +702,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             window.cancelAnimationFrame(scrollResetFrame);
         };
     }, [sceneLibraryOpen]);
+    useEffect(() => {
+        if (!sceneLibraryOpen || typeof window === 'undefined') return undefined;
+        const handleMediaLibraryKeyDown = (event) => {
+            if (event.key === 'Escape') closeSceneLibrary();
+        };
+        window.addEventListener('keydown', handleMediaLibraryKeyDown);
+        return () => window.removeEventListener('keydown', handleMediaLibraryKeyDown);
+    }, [closeSceneLibrary, sceneLibraryOpen]);
 
     useEffect(() => {
         if (!mediaLibraryOpenRequest?.token) return;
@@ -1744,6 +1755,15 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         const t = setTimeout(async () => { 
             const normalizedQuery = String(searchQ || '').trim();
             const preferredAutocompleteSource = String(autocompleteProvider || 'youtube').toLowerCase();
+            const publishCanonicalResults = async (nextResults = []) => {
+                let resolvedResults = nextResults;
+                try {
+                    resolvedResults = await enrichCatalogResultsWithCanonicalIdentity(nextResults, resolveCanonicalTrackIdentityBatch);
+                } catch (error) {
+                    hostLogger.debug('Canonical search enrichment unavailable', error);
+                }
+                if (!cancelled) setResults(resolvedResults);
+            };
 
             // 1. Local Search
             const localMatchesRaw = searchSources.local
@@ -1757,7 +1777,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             if (preferredAutocompleteSource === 'spotify') {
                 setQueueSearchSourceNote('Spotify autocomplete is coming soon. Showing local results only.');
                 setQueueSearchNoResultHint('Switch autocomplete source to YouTube or Apple Music for live suggestions.');
-                setResults(localMatches);
+                await publishCanonicalResults(localMatches);
                 return;
             }
 
@@ -1765,13 +1785,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 if (!searchSources.itunes) {
                     setQueueSearchSourceNote('Apple Music autocomplete is disabled in Search Sources. Showing local results only.');
                     setQueueSearchNoResultHint('Enable Apple Music in Search Sources or switch autocomplete to YouTube.');
-                    setResults(localMatches);
+                    await publishCanonicalResults(localMatches);
                     return;
                 }
                 if (!appleMusicAuthorized) {
                     setQueueSearchSourceNote('Apple Music is not connected. Connect Apple Music or switch autocomplete to YouTube.');
                     setQueueSearchNoResultHint('No Apple Music results while disconnected.');
-                    setResults(localMatches);
+                    await publishCanonicalResults(localMatches);
                     return;
                 }
                 try {
@@ -1788,12 +1808,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     });
                     setQueueSearchSourceNote('Autocomplete source: Apple Music song intent + local library.');
                     setQueueSearchNoResultHint('No Apple Music song matches yet. Try song + artist.');
-                    setResults(mergeUniqueQueueSearchResults(localMatches, itunesMatches));
+                    await publishCanonicalResults(mergeUniqueQueueSearchResults(localMatches, itunesMatches));
                 } catch (_error) {
                     if (cancelled) return;
                     setQueueSearchSourceNote('Apple Music lookup is unavailable right now. Showing local results only.');
                     setQueueSearchNoResultHint('Apple lookup failed. Try again or switch autocomplete to YouTube.');
-                    setResults(localMatches);
+                    await publishCanonicalResults(localMatches);
                 }
                 return;
             }
@@ -1801,7 +1821,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             if (!searchSources.youtube) {
                 setQueueSearchSourceNote('YouTube autocomplete is disabled in Search Sources. Showing local results only.');
                 setQueueSearchNoResultHint('Enable YouTube in Search Sources or switch autocomplete to Apple Music.');
-                setResults(localMatches);
+                await publishCanonicalResults(localMatches);
                 return;
             }
 
@@ -1846,7 +1866,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 ? 'Autocomplete source: indexed + curated embeddable YouTube tracks, then live exact YouTube search if needed.'
                 : 'Autocomplete source: indexed + curated embeddable YouTube tracks, then live karaoke YouTube search if needed.');
             setQueueSearchNoResultHint('No embeddable YouTube tracks found. Try artist + song, switch YouTube mode, or paste a URL in manual YouTube search.');
-            setResults(mergeUniqueQueueSearchResults(localMatches, knownYouTubeMatches, liveYouTubeMatches));
+            await publishCanonicalResults(mergeUniqueQueueSearchResults(localMatches, knownYouTubeMatches, liveYouTubeMatches));
         }, 500); 
         return () => {
             cancelled = true;
@@ -2601,6 +2621,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             const res = await callFunction('logPerformance', {
                 roomCode,
                 songId: songEntry.songId || null,
+                canonicalSongId: songEntry.canonicalSongId || songEntry.songId || null,
+                backingCandidateId: songEntry.backingCandidateId || null,
+                backingProvider: songEntry.backingProvider || songEntry.trackSource || null,
+                providerTrackId: songEntry.providerTrackId || songEntry.videoId || songEntry.appleMusicId || null,
                 songTitle: safeTitle,
                 artist: safeArtist,
                 singerName: songEntry.singerName || '',
@@ -4174,22 +4198,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         Number(runOfShowPreflightReport?.criticalCount || 0) + Number(runOfShowPreflightReport?.riskyCount || 0),
     );
     const openPlannerWorkspace = useCallback(() => {
-        if (hasRunOfShowQueueHud) {
-            setDesktopQueueSurfaceTab('show');
-        }
+        setDesktopQueueSurfaceTab('show');
+        queueSurface.activateCompactTab('show');
         onOpenRunOfShow?.();
-    }, [hasRunOfShowQueueHud, onOpenRunOfShow]);
+    }, [onOpenRunOfShow, queueSurface]);
     const autoCollapsedRunOfShowAddFormRef = useRef(false);
     const addToQueueWorkspaceActive = queueSurface.isCompactQueueSurface
         ? queueSurface.activeCompactTab === 'add'
         : desktopQueueSurfaceTab === 'add';
     const addToQueueSectionOpen = addToQueueWorkspaceActive || showAddForm;
 
-    useEffect(() => {
-        if (!hasRunOfShowQueueHud && desktopQueueSurfaceTab === 'show') {
-            setDesktopQueueSurfaceTab('queue');
-        }
-    }, [desktopQueueSurfaceTab, hasRunOfShowQueueHud]);
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
         const focusQueueControls = () => {
@@ -4266,7 +4284,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         },
     };
     const activeQueueWorkspaceToneKey = queueSurface.isCompactQueueSurface
-        ? (queueSurface.activeCompactTab === 'catalog' ? 'catalog' : queueSurface.activeCompactTab === 'inbox' ? 'inbox' : queueSurface.activeCompactTab === 'add' ? 'add' : 'queue')
+        ? (queueSurface.activeCompactTab === 'show' ? 'show' : queueSurface.activeCompactTab === 'catalog' ? 'catalog' : queueSurface.activeCompactTab === 'inbox' ? 'inbox' : queueSurface.activeCompactTab === 'add' ? 'add' : 'queue')
         : (desktopQueueSurfaceTab === 'show' ? 'show' : desktopQueueSurfaceTab === 'catalog' ? 'catalog' : desktopQueueSurfaceTab === 'inbox' ? 'inbox' : desktopQueueSurfaceTab === 'add' ? 'add' : 'queue');
     const activeQueueWorkspaceTone = queueWorkspaceToneMap[activeQueueWorkspaceToneKey] || queueWorkspaceToneMap.queue;
     const queueWorkspaceTabListClass = `flex flex-wrap items-end gap-1.5 border-b border-white/10 ${isDenseLayout ? 'px-3 pt-3' : 'px-4 pt-4'}`;
@@ -4400,7 +4418,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     styles={STYLES}
                     quickAddOnResultClick={quickAddOnResultClick}
                     setQuickAddOnResultClick={setQuickAddOnResultClick}
-                    results={results}
+                    results={groupUnifiedCatalogResults(results)}
                     queueSearchSourceNote={queueSearchSourceNote}
                     queueSearchNoResultHint={queueSearchNoResultHint}
                     getResultRowKey={getResultRowKey}
@@ -4465,11 +4483,110 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             />
         </div>
     ) : null;
+    const plannerWorkspaceSection = runOfShowQueueHudSection || (
+        <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+            <div className="w-full max-w-xl rounded-2xl border border-emerald-300/16 bg-emerald-500/8 px-5 py-6 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-300/22 bg-emerald-500/12 text-emerald-100">
+                    <i className="fa-solid fa-clapperboard"></i>
+                </div>
+                <div className="mt-4 text-lg font-black text-white">Planner</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-400">Build planned moments here, then move them into the live queue when the room is ready.</div>
+                <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-4 px-4 py-2 text-[11px]`}>
+                    Open Planner
+                </button>
+            </div>
+        </div>
+    );
     const activeMediaScene = room?.announcement?.active && String(room?.announcement?.type || '').trim().toLowerCase() === 'media_scene'
         ? room.announcement
         : null;
+    const [backgroundAudioObservedAtMs, setBackgroundAudioObservedAtMs] = useState(() => Date.now());
+    useEffect(() => {
+        const playback = room?.appleMusicPlayback || {};
+        const applePlaylistPlaying = String(playback?.type || '').trim().toLowerCase() === 'playlist'
+            && String(playback?.status || '').trim().toLowerCase() === 'playing';
+        if (!applePlaylistPlaying) return undefined;
+        setBackgroundAudioObservedAtMs(Date.now());
+        const timer = window.setInterval(() => setBackgroundAudioObservedAtMs(Date.now()), 15000);
+        return () => window.clearInterval(timer);
+    }, [room?.appleMusicPlayback?.id, room?.appleMusicPlayback?.status, room?.appleMusicPlayback?.type]);
+    const backgroundAudioState = deriveBackgroundAudioState({
+        room,
+        performanceActive: (Array.isArray(songs) ? songs : []).some((song) => song?.status === 'performing'),
+        appleAuthorized: appleMusicAuthorized,
+        applePendingId: appleMusicBgPendingId,
+        applePlaylistId: appleMusicAutoPlaylistId,
+        applePlaylistTitle: appleMusicAutoPlaylistTitle,
+        localTrackId: currentBgTrackUploadId,
+        localTrackTitle: (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).find((item) => String(item?.id || '').trim() === String(currentBgTrackUploadId || '').trim())?.name || '',
+        statusMessage: appleMusicStatus,
+        nowMs: backgroundAudioObservedAtMs,
+    });
+    const backgroundAudioCapability = getBackgroundAudioCapability({
+        sourceType: backgroundAudioState.sourceType,
+        appleAuthorized: appleMusicAuthorized,
+    });
+    const backgroundAudioObservationRef = useRef('');
+    useEffect(() => {
+        const snapshot = buildBackgroundAudioQaSnapshot(backgroundAudioState);
+        const fingerprint = JSON.stringify(snapshot);
+        if (backgroundAudioObservationRef.current === fingerprint) return;
+        backgroundAudioObservationRef.current = fingerprint;
+        hostLogger.debug('Background audio state changed', snapshot);
+        if (typeof window !== 'undefined') window.__qaBackgroundAudioState = snapshot;
+    }, [backgroundAudioState.actionKey, backgroundAudioState.heartbeatAgeMs, backgroundAudioState.key, backgroundAudioState.label, backgroundAudioState.sourceLabel, backgroundAudioState.sourceType, backgroundAudioState.tone]);
+    const selectedBackgroundUpload = (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).find((item) => String(item?.id || '').trim() === String(currentBgTrackUploadId || '').trim()) || null;
+    const recoverBackgroundAudio = async () => {
+        if (backgroundAudioState.actionKey === 'connect_apple') {
+            void connectAppleMusic?.();
+            return;
+        }
+        if (backgroundAudioState.actionKey === 'resume_apple') {
+            void resumeAppleMusic?.();
+            return;
+        }
+        if (backgroundAudioState.actionKey === 'retry_apple' && appleMusicAutoPlaylistId) {
+            void applyAppleMusicPlaylistForBg?.({ id: appleMusicAutoPlaylistId, title: appleMusicAutoPlaylistTitle, sourceType: 'recovery' });
+            return;
+        }
+        if (backgroundAudioState.actionKey === 'pause_apple' || backgroundAudioState.actionKey === 'pause_local') {
+            if (autoBgMusic) {
+                setAutoBgMusic?.(false);
+                await updateRoom?.({ autoBgMusic: false });
+            }
+            if (backgroundAudioState.actionKey === 'pause_apple') {
+                await pauseAppleMusic?.();
+            } else {
+                await setBgMusicState?.(false);
+            }
+            return;
+        }
+        if (backgroundAudioState.actionKey === 'start_local' && selectedBackgroundUpload) {
+            void onStartBgTrack?.(selectedBackgroundUpload, { shouldPlay: true, syncRoom: true });
+        }
+    };
+    const backgroundAudioStatusCard = (
+        <div data-feature-id="background-audio-truth-state" className={`rounded-2xl border px-4 py-3 ${backgroundAudioState.tone === 'ready' ? 'border-emerald-300/25 bg-emerald-500/10' : backgroundAudioState.tone === 'error' ? 'border-rose-300/25 bg-rose-500/10' : backgroundAudioState.tone === 'working' || backgroundAudioState.tone === 'deferred' ? 'border-amber-300/25 bg-amber-500/10' : 'border-white/10 bg-black/25'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">Background Audio</div>
+                    <div className="mt-1 font-black text-white">{backgroundAudioState.label}</div>
+                </div>
+                {backgroundAudioState.sourceLabel ? <div className="max-w-xs truncate rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs font-bold text-zinc-200">{backgroundAudioState.sourceLabel}</div> : null}
+            </div>
+            <div className="mt-1 text-xs leading-5 text-zinc-300">{backgroundAudioState.detail}</div>
+            <div data-feature-id="background-audio-source-capability" className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                <div className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">{backgroundAudioCapability.label}</div>
+                <div className="mt-1 text-[11px] leading-4 text-zinc-400">{backgroundAudioCapability.detail}</div>
+            </div>
+            {backgroundAudioState.actionKey && backgroundAudioState.actionLabel ? <button type="button" onClick={recoverBackgroundAudio} className={`${STYLES.btnStd} ${backgroundAudioState.tone === 'error' ? STYLES.btnHighlight : STYLES.btnSecondary} mt-3 px-3 py-2 text-[10px]`}>
+                {backgroundAudioState.actionLabel}
+            </button> : null}
+        </div>
+    );
     const appleMusicMediaLibrarySection = (
         <div data-feature-id="host-media-library-apple-music" className="grid gap-4">
+            {backgroundAudioStatusCard}
             <div className="rounded-[24px] border border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -4551,7 +4668,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     ) : null}
                     {appleMusicPickerItems.length ? (
                         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                            {appleMusicPickerItems.map((choice) => (
+                            {appleMusicPickerItems.map((choice) => {
+                                const choicePlaylistId = String(choice.id || '').trim();
+                                const choiceIsPending = !!choicePlaylistId && appleMusicBgPendingId === choicePlaylistId;
+                                const choiceIsActive = !!choicePlaylistId && !choiceIsPending && choicePlaylistId === String(appleMusicAutoPlaylistId || room?.appleMusicAutoPlaylistId || '').trim();
+                                return (
                                 <div key={`media_apple_choice_${choice.sourceType}_${choice.id}`} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-950/55 p-3">
                                     {choice.artworkUrl ? (
                                         <img src={choice.artworkUrl} alt="" className="h-14 w-14 flex-none rounded-xl border border-white/10 object-cover" />
@@ -4564,11 +4685,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         <div className="truncate text-base font-black text-white">{choice.title}</div>
                                         <div className="truncate text-sm text-zinc-400">{choice.subtitle}</div>
                                     </div>
-                                    <button type="button" onClick={() => { void applyAppleMusicPlaylistForBg?.(choice); }} className={`${STYLES.btnStd} ${STYLES.btnHighlight} flex-none px-3 py-2 text-[10px]`}>
-                                        Use as Background
+                                    <button type="button" onClick={() => { void applyAppleMusicPlaylistForBg?.(choice); }} disabled={choiceIsPending || choiceIsActive} className={`${STYLES.btnStd} ${choiceIsActive ? STYLES.btnSecondary : STYLES.btnHighlight} flex-none px-3 py-2 text-[10px] ${choiceIsPending || choiceIsActive ? 'cursor-not-allowed opacity-75' : ''}`}>
+                                        {choiceIsPending ? 'Starting...' : (choiceIsActive ? 'Active' : 'Start BG')}
                                     </button>
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     ) : (
                         <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-zinc-950/35 px-4 py-5 text-sm text-zinc-500">
@@ -4590,9 +4712,20 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(145deg,rgba(9,16,28,0.98),rgba(18,12,27,0.96))]">
             <div className="sticky top-0 z-10 border-b border-white/10 bg-[linear-gradient(145deg,rgba(9,16,28,0.985),rgba(18,12,27,0.985))] px-4 py-3 backdrop-blur sm:px-5 sm:py-3.5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">Account Media Library</div>
-                        <div className="mt-1 max-w-2xl text-xs text-zinc-300 sm:text-sm">Reusable host media for every night: Public TV scenes, soundboard drops, and background beds.</div>
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <button
+                            type="button"
+                            onClick={closeSceneLibrary}
+                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[42px] flex-none px-3 py-2 text-[10px] sm:text-xs`}
+                            data-feature-id="host-media-library-back-to-host"
+                        >
+                            <i className="fa-solid fa-arrow-left mr-2"></i>
+                            Back to Host
+                        </button>
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">Account Media Library</div>
+                            <div className="mt-1 max-w-2xl text-xs text-zinc-300 sm:text-sm">Reusable host media for every night: Public TV scenes, soundboard drops, and background beds.</div>
+                        </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                         <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">{scenePresetCount} saved</span>
@@ -4605,7 +4738,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         ) : null}
                         <button
                             type="button"
-                            onClick={() => setSceneLibraryOpen(false)}
+                            onClick={closeSceneLibrary}
                             className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}
                         >
                             Close Media Library
@@ -4748,7 +4881,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     </div>
                 ) : null}
             </div>
-            <div ref={sceneLibraryScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar scroll-pt-20 sm:px-5">
+            <div ref={sceneLibraryScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-4 custom-scrollbar scroll-pt-20 sm:px-5">
                 {mediaLibraryTab === 'scenes' ? (
                 <>
                     <div data-feature-id="host-scene-template-quick-pads" className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -5040,6 +5173,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     appleMusicMediaLibrarySection
                 ) : (
                     <div className="grid gap-4">
+                        {mediaLibraryTab === 'bg' ? backgroundAudioStatusCard : null}
                         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                             <div className="rounded-[24px] border border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-5">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -5224,7 +5358,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                         )}
                                                         <div className="mt-3 flex flex-wrap gap-2">
                                                             {mediaLibraryTab === 'sfx' ? (
-                                                                <button type="button" onClick={() => playSfxSafe(item.url)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
+                                                                <button type="button" onClick={() => playSfxSafe(item.url || item.mediaUrl)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
                                                                     Preview
                                                                 </button>
                                                             ) : (
@@ -5278,7 +5412,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                                 <option key={`other_${item.id}_${option.value || 'general'}`} value={option.value}>{option.label}</option>
                                                             ))}
                                                         </select>
-                                                        <button type="button" onClick={() => playSfxSafe(item.url)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
+                                                        <button type="button" onClick={() => playSfxSafe(item.url || item.mediaUrl)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
                                                             Preview
                                                         </button>
                                                         <button type="button" disabled={isSaving} onClick={() => saveAudioLibraryDraft(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] ${isSaving ? 'cursor-not-allowed opacity-60' : ''}`}>
@@ -6014,7 +6148,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     activeToneClass: queueWorkspaceToneMap.inbox.activeToneClass,
                     badgeToneClass: inboxBadgeToneClass,
                 })}
-                {hasRunOfShowQueueHud ? renderQueueWorkspaceTabButton({
+                {renderQueueWorkspaceTabButton({
                     id: 'show',
                     label: 'Planner',
                     icon: 'fa-clapperboard',
@@ -6024,11 +6158,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     badge: runOfShowNeedsAttentionCount,
                     activeToneClass: queueWorkspaceToneMap.show.activeToneClass,
                     badgeToneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
-                }) : null}
+                })}
             </div>
             {queueWorkspaceHeader}
-            {desktopQueueSurfaceTab === 'show' && hasRunOfShowQueueHud
-                ? <div className="flex-1 min-h-0 overflow-hidden bg-emerald-500/[0.03]">{runOfShowQueueHudSection}</div>
+            {desktopQueueSurfaceTab === 'show'
+                ? <div className="flex-1 min-h-0 overflow-hidden bg-emerald-500/[0.03]">{plannerWorkspaceSection}</div>
                 : desktopQueueSurfaceTab === 'inbox'
                     ? inboxWorkspaceSection
                 : desktopQueueSurfaceTab === 'catalog'
@@ -6081,6 +6215,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         activeToneClass: queueWorkspaceToneMap.inbox.activeToneClass,
                         badgeToneClass: inboxBadgeToneClass,
                     })}
+                    {renderQueueWorkspaceTabButton({
+                        id: 'show-mobile',
+                        label: 'Planner',
+                        icon: 'fa-clapperboard',
+                        active: queueSurface.activeCompactTab === 'show',
+                        onClick: () => queueSurface.activateCompactTab('show'),
+                        featureId: 'queue-surface-tab-show',
+                        badge: runOfShowNeedsAttentionCount,
+                        activeToneClass: queueWorkspaceToneMap.show.activeToneClass,
+                        badgeToneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
+                    })}
                 </div>
                 {touchReorderAvailable && queueSurface.activeCompactTab === 'queue' ? (
                     <button
@@ -6107,8 +6252,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 inboxWorkspaceSection
             ) : queueSurface.activeCompactTab === 'catalog' ? (
                 catalogWorkspaceSection
+            ) : queueSurface.activeCompactTab === 'show' ? (
+                <div className="flex-1 min-h-0 overflow-hidden bg-emerald-500/[0.03]">{plannerWorkspaceSection}</div>
             ) : queueSurface.activeCompactTab === 'add' ? (
-                <div className="min-h-0 overflow-y-auto custom-scrollbar bg-fuchsia-500/[0.03]">
+                <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar bg-fuchsia-500/[0.03]">
                     {addToQueueSection}
                 </div>
             ) : queueListSection}
@@ -6195,16 +6342,25 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         paddingTop: sceneLibraryViewportInsetTop,
                         paddingBottom: sceneLibraryViewportInsetBottom,
                     }}
-                    onClick={() => setSceneLibraryOpen(false)}
+                    onClick={closeSceneLibrary}
                 >
                     <button
                         type="button"
                         aria-label="Close Media Library"
-                        onClick={() => setSceneLibraryOpen(false)}
-                        className="fixed right-3 z-[365] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white shadow-[0_12px_28px_rgba(0,0,0,0.38)] backdrop-blur-sm transition hover:border-cyan-300/35 hover:text-cyan-100 sm:right-4"
+                        onClick={closeSceneLibrary}
+                        className="fixed right-3 z-[365] inline-flex min-h-[42px] items-center justify-center gap-2 rounded-full border border-cyan-300/35 bg-black/75 px-3 text-xs font-black uppercase tracking-[0.12em] text-white shadow-[0_12px_28px_rgba(0,0,0,0.38)] backdrop-blur-sm transition hover:border-cyan-300/60 hover:text-cyan-100 sm:right-4"
                         style={{ top: `calc(${sceneLibraryViewportInsetTop} + 0.75rem)` }}
                     >
-                        <i className="fa-solid fa-xmark text-sm"></i>
+                        <i className="fa-solid fa-xmark text-sm"></i><span>Close</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={closeSceneLibrary}
+                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} fixed bottom-3 left-3 right-3 z-[365] min-h-[46px] justify-center px-4 py-2 text-xs shadow-[0_14px_34px_rgba(0,0,0,0.42)] sm:left-auto sm:right-4 sm:w-auto`}
+                        data-feature-id="host-media-library-bottom-close"
+                    >
+                        <i className="fa-solid fa-arrow-left mr-2"></i>
+                        Back to Host
                     </button>
                     <div
                         className="flex h-full w-full min-h-0 min-w-0 flex-col overflow-hidden"

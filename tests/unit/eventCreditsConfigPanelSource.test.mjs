@@ -15,12 +15,15 @@ test('event credits config panel exposes co-host credit policy and reaction cool
   assert.match(source, /normalizeReactionTapCooldownMs\(Number\(e\.target\.value \|\| 0\) \* 1000\)/);
 });
 
-test('event credits config panel exposes join credits and timed refill controls', () => {
-  assert.match(source, /Join credits/);
-  assert.match(source, /Lobby refill/);
+test('room economy config exposes currency-aware starting balance and timed refill controls', () => {
+  assert.match(source, /getRoomCurrencyPresentation/);
+  assert.match(source, /Starting \{currencyPresentation\.plural\}/);
+  assert.match(source, /Lobby refill \{currencyPresentation\.plural\}/);
   assert.match(source, /Every minutes/);
   assert.match(source, /Refill cap/);
-  assert.match(source, /Award capped lobby refill credits while guests stay active/);
+  assert.match(source, /Award capped \{currencyPresentation\.plural\} while guests stay active/);
+  assert.match(source, /BeauBucks, guest value, and support/);
+  assert.match(source, /Participation points and guest rewards/);
   assert.match(source, /timedLobbyIntervalMin/);
   assert.match(source, /timedLobbyMaxPerGuest/);
 });

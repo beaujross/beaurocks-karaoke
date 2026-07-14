@@ -29,6 +29,20 @@ const parseEmailTokens = (value = "") =>
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const withDeadline = async (promise, timeoutMs, label) => {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms.`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
 const ensurePlaywright = async () => {
   try {
     return await import("playwright");
@@ -41,12 +55,18 @@ const ensurePlaywright = async () => {
 };
 
 const runCheck = async (checks, name, fn) => {
+  const startedAt = Date.now();
+  console.error(`[qa:core-night] START ${name}`);
   try {
     const detail = await fn();
     checks.push({ name, pass: true, detail: detail || "" });
+    console.error(`[qa:core-night] PASS ${name} (${Date.now() - startedAt}ms)`);
     return true;
   } catch (error) {
-    checks.push({ name, pass: false, detail: String(error?.message || error) });
+    const detail = String(error?.message || error);
+    checks.push({ name, pass: false, detail });
+    console.error(`[qa:core-night] FAIL ${name} (${Date.now() - startedAt}ms): ${detail}`);
+    if (!toBool(process.env.QA_CONTINUE_ON_FAILURE, false)) throw error;
     return false;
   }
 };
@@ -1128,10 +1148,11 @@ const run = async () => {
       // ignore screenshot errors
     }
   } finally {
-    await audienceContext.close().catch(() => {});
-    await tvContext.close().catch(() => {});
-    await hostContext.close().catch(() => {});
-    await browser.close().catch(() => {});
+    const teardownTimeoutMs = Math.max(3000, Number(process.env.QA_TEARDOWN_TIMEOUT_MS || 10000));
+    await withDeadline(audienceContext.close().catch(() => {}), teardownTimeoutMs, "Audience context teardown").catch((error) => console.error(`[qa:core-night] ${error.message}`));
+    await withDeadline(tvContext.close().catch(() => {}), teardownTimeoutMs, "TV context teardown").catch((error) => console.error(`[qa:core-night] ${error.message}`));
+    await withDeadline(hostContext.close().catch(() => {}), teardownTimeoutMs, "Host context teardown").catch((error) => console.error(`[qa:core-night] ${error.message}`));
+    await withDeadline(browser.close().catch(() => {}), teardownTimeoutMs, "Browser teardown").catch((error) => console.error(`[qa:core-night] ${error.message}`));
   }
 
   const failed = checks.filter((check) => !check.pass);

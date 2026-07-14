@@ -58,8 +58,8 @@ test('UnifiedGameLauncher exposes Trivia and WYR banks with next-question contro
   );
   assert.match(source, /trivia-question-bank/, 'Trivia config should expose a browseable question bank surface');
   assert.match(source, /wyr-question-bank/, 'Would You Rather config should expose a browseable prompt bank surface');
-  assert.match(source, /onStartNextTrivia=\{launchNextTrivia\}/, 'Trivia config should have a next-in-bank launch action');
-  assert.match(source, /onStartNextWyr=\{launchNextWyr\}/, 'Would You Rather config should have a next-in-bank launch action');
+  assert.match(source, /onStartNextTrivia=\{withGameLaunchPreflight\('trivia_pop', launchNextTrivia\)\}/, 'Trivia config should have a next-in-bank launch action');
+  assert.match(source, /onStartNextWyr=\{withGameLaunchPreflight\('wyr', launchNextWyr\)\}/, 'Would You Rather config should have a next-in-bank launch action');
   assert.match(
     source,
     /room\?\.activeMode === 'trivia_pop'[\s\S]*onClick=\{launchNextTrivia\}[\s\S]*Next Question/,

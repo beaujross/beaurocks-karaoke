@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BeauRocks Executive Product Plan — July 2026</title>
+  <style>
+    :root {
+      --ink: #f8fafc;
+      --muted: #a1a1aa;
+      --panel: rgba(12, 12, 19, 0.86);
+      --pink: #ff2fa8;
+      --cyan: #27d7ff;
+      --violet: #9b6cff;
+      --lime: #b9ff66;
+      --amber: #ffca5c;
+    }
+    @page { size: 13.333in 7.5in; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #050509; color: var(--ink); font-family: Inter, "Avenir Next", "Segoe UI", Arial, sans-serif; }
+    body { counter-reset: slide; }
+    .slide {
+      position: relative;
+      width: 13.333in;
+      height: 7.5in;
+      overflow: hidden;
+      page-break-after: always;
+      background:
+        radial-gradient(circle at 86% 10%, rgba(39, 215, 255, .16), transparent 30%),
+        radial-gradient(circle at 10% 92%, rgba(255, 47, 168, .17), transparent 34%),
+        linear-gradient(135deg, #050509 0%, #0b0712 54%, #061017 100%);
+      padding: .58in .68in .52in;
+      counter-increment: slide;
+    }
+    .slide:last-child { page-break-after: auto; }
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image: linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,.85), transparent 85%);
+    }
+    .topline { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .eyebrow { color: var(--cyan); font-size: 12px; line-height: 1; letter-spacing: .22em; text-transform: uppercase; font-weight: 800; }
+    .brand { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 900; letter-spacing: .08em; font-size: 14px; }
+    .brand img { width: 34px; height: 34px; object-fit: contain; filter: drop-shadow(0 0 12px rgba(255,47,168,.45)); }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 46px; line-height: 1.02; letter-spacing: -.035em; max-width: 10.8in; }
+    h2 { position: relative; z-index: 2; margin-top: .28in; font-size: 31px; line-height: 1.04; letter-spacing: -.025em; max-width: 10.8in; }
+    h3 { font-size: 18px; line-height: 1.15; }
+    .lede { color: #d4d4d8; font-size: 19px; line-height: 1.42; max-width: 9.7in; }
+    .pink { color: var(--pink); }
+    .cyan { color: var(--cyan); }
+    .lime { color: var(--lime); }
+    .amber { color: var(--amber); }
+    .muted { color: var(--muted); }
+    .rule { width: 1.05in; height: 4px; margin: .24in 0 .25in; border-radius: 999px; background: linear-gradient(90deg, var(--pink), var(--cyan)); box-shadow: 0 0 16px rgba(255,47,168,.4); }
+    .footer { position: absolute; z-index: 4; left: .68in; right: .68in; bottom: .22in; display: flex; align-items: center; justify-content: space-between; color: #71717a; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+    .footer .n::after { content: counter(slide, decimal-leading-zero); }
+    .hero-logo { position: absolute; z-index: 1; right: .2in; bottom: .05in; width: 6.15in; height: 4.62in; object-fit: contain; opacity: .62; filter: drop-shadow(0 0 40px rgba(255,47,168,.38)); }
+    .hero-copy { position: relative; z-index: 3; margin-top: 1.05in; max-width: 7.9in; }
+    .hero-copy .lede { margin-top: .28in; max-width: 7.25in; }
+    .metric-row { position: relative; z-index: 3; display: flex; gap: .34in; margin-top: .5in; }
+    .metric { min-width: 1.45in; padding-top: .12in; border-top: 2px solid rgba(255,255,255,.2); }
+    .metric strong { display: block; font-size: 27px; line-height: 1; color: white; }
+    .metric span { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; line-height: 1.25; text-transform: uppercase; letter-spacing: .1em; }
+    .columns { position: relative; z-index: 2; display: grid; grid-template-columns: 1fr 1fr; gap: .48in; margin-top: .34in; }
+    .columns.wide-right { grid-template-columns: .78fr 1.22fr; }
+    .columns.wide-left { grid-template-columns: 1.15fr .85fr; }
+    .statement { font-size: 26px; line-height: 1.15; letter-spacing: -.02em; }
+    .line-list { display: grid; gap: .18in; }
+    .line-item { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; color: #d4d4d8; font-size: 16px; line-height: 1.32; }
+    .line-item b { color: #fff; }
+    .line-item .num { color: var(--pink); font-weight: 900; font-size: 17px; }
+    .quote { border-left: 4px solid var(--pink); padding-left: .22in; font-size: 24px; line-height: 1.22; color: #fff; }
+    .evidence-frame { position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,.16); border-radius: 18px; background: #09090b; box-shadow: 0 20px 55px rgba(0,0,0,.42), 0 0 24px rgba(39,215,255,.09); }
+    .evidence-frame img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+    .evidence-frame.contain img { object-fit: contain; }
+    .caption { margin-top: 9px; color: #8f8f99; font-size: 10px; line-height: 1.3; }
+    .before { padding: .25in .27in; border: 1px solid rgba(255,255,255,.13); border-left: 4px solid #71717a; background: rgba(10,10,15,.65); }
+    .before .tag, .after .tag { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; font-weight: 900; }
+    .before .tag { color: #a1a1aa; }
+    .after .tag { color: var(--cyan); }
+    .before p { margin-top: 10px; color: #d4d4d8; font-size: 15px; line-height: 1.38; }
+    .after { padding-left: .24in; border-left: 4px solid var(--cyan); }
+    .after p { margin-top: 10px; color: #e4e4e7; font-size: 15px; line-height: 1.38; }
+    .flow { position: relative; z-index: 2; display: flex; align-items: stretch; gap: .16in; margin-top: .48in; }
+    .node { flex: 1; min-height: 1.16in; padding: .2in; border-top: 3px solid var(--cyan); background: rgba(9,9,16,.72); }
+    .node:nth-child(2) { border-color: var(--violet); }
+    .node:nth-child(3) { border-color: var(--pink); }
+    .node:nth-child(4) { border-color: var(--lime); }
+    .node h3 { margin-bottom: .08in; }
+    .node p { color: #b7b7c1; font-size: 12px; line-height: 1.32; }
+    .arrow { align-self: center; color: #52525b; font-size: 22px; }
+    .provider-list { display: grid; gap: .2in; }
+    .provider { display: grid; grid-template-columns: 1.22in 1fr; gap: .18in; padding-bottom: .16in; border-bottom: 1px solid rgba(255,255,255,.1); }
+    .provider:last-child { border-bottom: 0; }
+    .provider b { font-size: 15px; }
+    .provider p { color: #b8b8c2; font-size: 13px; line-height: 1.33; }
+    .big-number { font-size: 54px; line-height: .95; font-weight: 900; letter-spacing: -.045em; }
+    .small-label { margin-top: 8px; color: #a1a1aa; font-size: 11px; line-height: 1.25; text-transform: uppercase; letter-spacing: .12em; }
+    .score-split { display: grid; grid-template-columns: 1fr 1fr; gap: .42in; align-items: end; }
+    .currency { min-height: 2.55in; padding: .25in .28in; background: rgba(8,8,14,.72); border-top: 4px solid var(--cyan); }
+    .currency.premium { border-color: var(--pink); }
+    .currency .name { font-size: 27px; font-weight: 900; }
+    .currency .purpose { margin-top: .1in; font-size: 16px; line-height: 1.28; color: #e4e4e7; }
+    .currency ul { margin: .18in 0 0; padding-left: .22in; color: #aeb0ba; font-size: 13px; line-height: 1.45; }
+    .status-strip { position: relative; z-index: 2; margin-top: .28in; padding: .14in .18in; border-left: 4px solid var(--lime); background: rgba(185,255,102,.07); color: #dfffc0; font-size: 13px; line-height: 1.35; }
+    .roadmap { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(3, 1fr); gap: .28in; margin-top: .4in; }
+    .phase { padding-top: .18in; border-top: 4px solid var(--pink); }
+    .phase:nth-child(2) { border-color: var(--cyan); }
+    .phase:nth-child(3) { border-color: var(--lime); }
+    .phase .when { color: #a1a1aa; font-size: 10px; letter-spacing: .17em; text-transform: uppercase; }
+    .phase h3 { margin-top: .09in; font-size: 20px; }
+    .phase p { margin-top: .12in; color: #b8b8c2; font-size: 13px; line-height: 1.37; }
+    .target { display: flex; gap: 8px; margin-top: .12in; color: white; font-size: 12px; line-height: 1.25; }
+    .target::before { content: "✓"; color: var(--lime); font-weight: 900; }
+    .source-note { position: absolute; z-index: 4; right: .68in; bottom: .45in; max-width: 5.2in; color: #71717a; font-size: 9px; line-height: 1.3; text-align: right; }
+    @media print {
+      html, body { width: 13.333in; }
+      .slide { break-after: page; }
+    }
+  </style>
+</head>
+<body>
+  <section class="slide">
+    <img class="hero-logo" src="../../../public/images/logo-library/beaurocks-logo-neon%20trasnparent.png" alt="BeauRocks neon logo" />
+    <div class="topline"><div class="eyebrow">Executive product plan · July 2026</div><div class="brand">BEAUROCKS</div></div>
+    <div class="hero-copy">
+      <h1>Less setup.<br />More <span class="pink">shared delight.</span></h1>
+      <p class="lede">A practical roadmap for a content-agnostic party platform that helps Hosts and audiences create the night together—without making either side learn the machinery.</p>
+      <div class="metric-row">
+        <div class="metric"><strong>10</strong><span>decision slides</span></div>
+        <div class="metric"><strong>6</strong><span>connected workstreams</span></div>
+        <div class="metric"><strong>1</strong><span>operating principle</span></div>
+      </div>
+    </div>
+    <div class="footer"><span>BeauRocks // Executive Plan</span><span class="n"></span></div>
+  </section>
+
+  <section class="slide">
+    <div class="topline"><div class="eyebrow">The strategic constraint</div><div class="brand"><img src="../../../public/images/logo-library/icon-reversed-gradient.png" alt="" /> BEAUROCKS</div></div>
+    <h2>We are not rebuilding the product.<br />We are <span class="cyan">making the primitives legible.</span></h2>
+    <div class="rule"></div>
+    <div class="columns wide-left">
+      <div>
+        <p class="quote">Every slice must reduce mental workload without transferring confusion to another persona.</p>
+        <div class="metric-row">
+          <div class="metric"><strong>Host</strong><span>knows what happens next</span></div>
+          <div class="metric"><strong>Guest</strong><span>knows what to do now</span></div>
+        </div>
+      </div>
+      <div class="line-list">
+        <div class="line-item"><span class="num">01</span><span><b>Content agnostic.</b> Karaoke is a use case—not the licensing-dependent definition of the platform.</span></div>
+        <div class="line-item"><span class="num">02</span><span><b>Bounded slices.</b> One operator or audience outcome, measurable before deployment.</span></div>
+        <div class="line-item"><span class="num">03</span><span><b>Progressive disclosure.</b> Live controls first; configuration depth when deliberately requested.</span></div>
+        <div class="line-item"><span class="num">04</span><span><b>Proof over promise.</b> Automated gates, persona QA, production acceptance, and rollback paths.</span></div>
+      </div>
+    </div>
+    <div class="footer"><span>North star + anti–boil-the-ocean rule</span><span class="n"></span></div>
+  </section>
+
+  <section class="slide">
+    <div class="topline"><div class="eyebrow">The operating architecture</div><div class="brand"><img src="../../../public/images/logo-library/icon-reversed-gradient.png" alt="" /> BEAUROCKS</div></div>
+    <h2>Many sources and modes.<br /><span class="pink">One understandable room.</span></h2>
+    <div class="flow">
+      <div class="node"><h3>Outside world</h3><p>YouTube Data + embeds<br />Apple MusicKit/API<br />Spotify discovery/handoff<br />Host uploads + local files</p></div>
+      <div class="arrow">→</div>
+      <div class="node"><h3>Stable contracts</h3><p>Canonical song identity<br />Backing candidates<br />Provider capabilities<br />Room policy + economy</p></div>
+      <div class="arrow">→</div>
+      <div class="node"><h3>Orchestration</h3><p>Queue + Run of Show<br />Lifecycle slots<br />Launch preflight<br />Ledger boundaries</p></div>
+      <div class="arrow">→</div>
+      <div class="node"><h3>Shared experience</h3><p>Host control<br />Audience action<br />TV reveal<br />Recap + ranking</p></div>
+    </div>
+    <div class="columns" style="margin-top:.5in">
+      <p class="statement">The architecture separates <span class="cyan">identity</span>, <span class="pink">playback</span>, and <span class="lime">participation</span> so one provider outage or quota limit does not redefine the product.</p>
+      <div class="line-list">
+        <div class="line-item"><span class="num">A</span><span><b>Canonical songs</b> aggregate rankings regardless of which backing track was used.</span></div>
+        <div class="line-item"><span class="num">B</span><span><b>Lifecycle slots</b> stop games and companions from silently replacing one another.</span></div>
+        <div class="line-item"><span class="num">C</span><span><b>Server-owned spend</b> keeps premium value auditable and retry-safe.</span></div>
+      </div>
+    </div>
+    <div class="footer"><span>CTO view // contracts before screens</span><span class="n"></span></div>
+  </section>
+
+  <section class="slide">
+    <div class="topline"><div class="eyebrow">Room setup · current + refinement</div><div class="brand"><img src="../../../public/images/logo-library/icon-reversed-gradient.png" alt="" /> BEAUROCKS</div></div>
+    <h2>Start with the <span class="cyan">night guests will feel</span>—not the database fields behind it.</h2>
+    <div class="columns wide-right">
+      <div>
+        <div class="before"><div class="tag">Documented baseline</div><p>Room name, code, presets, economy, audience rules, modes, and provider details appeared as peer-level decisions. The screen introduced more questions than it resolved.</p></div>
+        <div class="after" style="margin-top:.25in"><div class="tag">Current direction</div><p>Operating style, crowd posture, access/economy, and launch readiness become the consequential choices. Advanced controls stay available without blocking launch.</p></div>
+        <div class="status-strip">Resolved: room name and code can be fully cleared and edited without the last character snapping back.</div>
+      </div>
+      <div>
+        <div class="evidence-frame" style="height:4.55in"><img src="../evidence/2026-07-12-program-progress/after/host-room-setup.png" alt="Current Host room setup" /></div>
+        <div class="caption">Verified current-state capture. No historical screenshot was fabricated; the “before” state is the documented baseline.</div>
+      </div>
+    </div>
+    <div class="footer"><span>CPO view // fewer consequential decisions</span><span class="n"></span></div>
+  </section>
+
+  <section class="slide">
+    <div class="topline"><div class="eyebrow">Catalog + canonical song model</div><div class="brand"><img src="../../../public/images/logo-library/icon-reversed-gradient.png" alt="" /> BEAUROCKS</div></div>
+    <h2>Browse the song once.<br />Choose the <span class="pink">best playable backing.</span></h2>
+    <div class="columns wide-right">
+      <div>
+        <div class="line-list">
+          <div class="line-item"><span class="num">01</span><span><b>Navigation persists.</b> Diving into a category no longer strands the Host away from urgent panel tabs.</span></div>
+          <div class="line-item"><span class="num">02</span><span><b>Album-forward discovery.</b> Art, themes, and trusted collections support browsing—not just text search.</span></div>
+          <div class="line-item"><span class="num">03</span><span><b>One canonical identity.</b> Apple/iTunes metadata, ISRC when available, normalized title/artist, and provider links.</span></div>
+          <div class="line-item"><span class="num">04</span><span><b>Many backing candidates.</b> Embeddability is mandatory; Host feedback, completions, and skips outweigh raw popularity.</span></div>
+        </div>
+        <div class="status-strip">Outcome: worldwide song rankings can aggregate across YouTube versions, known tracks, and future approved sources.</div>
+      </div>
+      <div>
+        <div class="evidence-frame" style="height:4.25in"><img src="../evidence/2026-07-12-program-progress/after/host-catalog-browse.png" alt="Current Host catalog browse" /></div>
+        <div class="caption">Verified current-state capture, cropped at the album-forward discovery region.</div>
+      </div>
+    </div>
+    <div class="footer"><span>Content agnostic // identity ≠ backing ≠ provider</span><span class="n"></span></div>
+  </section>
+
+  <section class="slide">
+    <div class="topline"><div class="eyebrow">Provider capability + quota posture</div><div class="brand"><img src="../../../public/images/logo-library/icon-reversed-gradient.png" alt="" /> BEAUROCKS</div></div>
+    <h2>A resilient catalog uses every source for the job it can <span class="cyan">legally and reliably</span> perform.</h2>
+    <div class="columns">
+      <div class="provider-list">
+        <div class="provider"><b class="pink">YouTube</b><p>Embeddable stage media and karaoke backings. Reuse successful results for 72 hours, alias equivalent intents, verify playability, and index trusted playlists at low concurrency.</p></div>
+        <div class="provider"><b class="cyan">Apple Music</b><p>Host-owned library, background playlists, full-song fallback, and canonical metadata. Playback requires a connected MusicKit session.</p></div>
+        <div class="provider"><b class="lime">Spotify</b><p>Discovery or external handoff only until playback, licensing, and capability policy support more. Never imply in-app playback that does not exist.</p></div>
+        <div class="provider"><b class="amber">Uploads</b><p>Host-device background playback and content-agnostic fallback. “Playing” is reported only after the media element confirms it.</p></div>
+      </div>
+      <div>
+        <div class="big-number pink">Reuse first.</div>
+        <div class="small-label">The YouTube quota strategy</div>
+        <p class="lede" style="font-size:16px;margin-top:.22in">`search.list` is the expensive step. The compliant response is to reduce repeated live search, revalidate known IDs with lower-cost metadata calls, and request quota extension with evidence from real event demand—not scrape or bypass the API.</p>
+        <div class="status-strip" style="margin-top:.34in">Large-event readiness: trusted backing reuse + canonical catalog + provider fallbacks + an evidence-backed YouTube quota-extension packet.</div>
+      </div>
+    </div>
+    <div class="footer"><span>CTO + CMO view // capability truth is brand trust</span><span class="n"></span></div>
+  </section>
+
+  <section class="slide">
+    <div class="topline"><div class="eyebrow">Points, BeauBucks + monetization</div><div class="brand"><img src="../../../public/images/logo-library/icon-reversed-gradient.png" alt="" /> BEAUROCKS</div></div>
+    <h2>Separate <span class="cyan">participation status</span> from <span class="pink">spendable event value.</span></h2>
+    <div class="score-split" style="margin-top:.45in">
+      <div class="currency">
+        <div class="name cyan">Points</div>
+        <div class="purpose">Reputation, participation, rankings, and recognition.</div>
+        <ul><li>Earned through play and engagement</li><li>Not represented as cash value</li><li>Supports recurring identity across nights</li></ul>
+      </div>
+      <div class="currency premium">
+        <div class="name pink">BeauBucks</div>
+        <div class="purpose">Premium or event-funded value used for deliberate room actions.</div>
+        <ul><li>Can be included with paid admission</li><li>Can support performer-directed contribution intent</li><li>Server-priced, operation-ID protected, and auditable</li></ul>
+      </div>
+    </div>
+    <div class="columns" style="margin-top:.42in">
+      <p class="statement">Flexible policy, fixed clarity: a free-flowing house night and a $20 ticketed fundraiser can use the same primitives without making the currencies mean different things.</p>
+      <div class="line-list">
+        <div class="line-item"><span class="num">✓</span><span>Canary spends are atomic, retry-safe, and paired with typed shadow ledger entries.</span></div>
+        <div class="line-item"><span class="num">→</span><span>Legacy room points remain balance authority until reconciliation and opening-balance gates are explicitly satisfied.</span></div>
+      </div>
+    </div>
+    <div class="footer"><span>Economy principle // flexible policy, unambiguous value</span><span class="n"></span></div>
+  </section>
+
+  <section class="slide">
+    <div class="topline"><div class="eyebrow">Digital crowd fun · shipped iteration</div><div class="brand"><img src="../../../public/images/logo-library/icon-reversed-gradient.png" alt="" /> BEAUROCKS</div></div>
+    <h2>When a moment is live, the Host sees <span class="pink">the next useful decision</span>—not every setup primitive.</h2>
+    <div class="columns wide-left">
+      <div>
+        <div class="evidence-frame" style="height:4.2in"><img src="../evidence/2026-07-13-game-lifecycle/after/host-live-game-launcher-drawer.png" alt="Compact Host live switcher" /></div>
+        <div class="caption">Verified compact Live Switcher capture. The live controlpad remains primary; configuration depth is still one deliberate action away.</div>
+      </div>
+      <div>
+        <div class="big-number cyan">3</div><div class="small-label">timing choices</div>
+        <div class="big-number pink" style="margin-top:.24in">2</div><div class="small-label">actions to recover controls</div>
+        <div class="big-number lime" style="margin-top:.24in">≤ 2</div><div class="small-label">buttons per compact card</div>
+        <div class="status-strip" style="margin-top:.28in">Trivia blocked Bingo. Bingo blocked WYR. Both live modes stayed intact.</div>
+      </div>
+    </div>
+    <div class="footer"><span>Host workload // live focus + safe switching</span><span class="n"></span></div>
+  </section>
+
+  <section class="slide">
+    <div class="topline"><div class="eyebrow">Production evidence</div><div class="brand"><img src="../../../public/images/logo-library/icon-reversed-gradient.png" alt="" /> BEAUROCKS</div></div>
+    <h2>The proof spans <span class="cyan">Host</span>, <span class="pink">audience</span>, and <span class="lime">TV</span>—not just component tests.</h2>
+    <div class="columns" style="grid-template-columns:1.18fr .82fr">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.18in">
+        <div><div class="evidence-frame" style="height:2.03in"><img src="../evidence/2026-07-13-game-lifecycle/after/audience-trivia-action.png" alt="Audience Trivia action" /></div><div class="caption">Audience action contract</div></div>
+        <div><div class="evidence-frame" style="height:2.03in"><img src="../evidence/2026-07-13-game-lifecycle/after/tv-trivia-reveal-owner.png" alt="TV Trivia view" /></div><div class="caption">TV prompt + reveal ownership</div></div>
+        <div style="grid-column:1 / span 2"><div class="evidence-frame" style="height:1.7in"><img src="../evidence/2026-07-13-game-lifecycle/after/host-collision-guidance.png" alt="Host collision guidance" /></div><div class="caption">Blocked launch retains current live state and explains recovery.</div></div>
+      </div>
+      <div>
+        <div class="big-number">951</div><div class="small-label">passing unit tests · 268 files</div>
+        <div class="big-number cyan" style="margin-top:.28in">0</div><div class="small-label">lint errors</div>
+        <div class="big-number pink" style="margin-top:.28in">2 / 2</div><div class="small-label">authenticated collision paths passed</div>
+        <div class="status-strip" style="margin-top:.3in">Hosting release <b>8a0fc00146a6f351</b> passed build, deploy, audience interaction, TV, live-state retention, and End Mode.</div>
+      </div>
+    </div>
+    <div class="footer"><span>Release bar // deterministic + authenticated + recoverable</span><span class="n"></span></div>
+  </section>
+
+  <section class="slide">
+    <div class="topline"><div class="eyebrow">Practical next slices</div><div class="brand"><img src="../../../public/images/logo-library/icon-reversed-gradient.png" alt="" /> BEAUROCKS</div></div>
+    <h2>Keep shipping the plan.<br /><span class="pink">Measure the outcome, then earn the next slice.</span></h2>
+    <div class="roadmap">
+      <div class="phase"><div class="when">Now · evidence</div><h3>Decision artifact</h3><p>Package the verified room, catalog, provider, economy, and game work into one executive narrative and stakeholder scorecard.</p><div class="target">10 slides, evidence-linked, no invented “before” screenshots</div></div>
+      <div class="phase"><div class="when">Next · reliability</div><h3>Event readiness</h3><p>Close real-device Apple/background recovery, curated catalog operations, and the YouTube quota-extension submission packet.</p><div class="target">Successful fallback and recovery during a production-style event drill</div></div>
+      <div class="phase"><div class="when">Then · convergence</div><h3>Policy + comprehension</h3><p>Measure new-Host room launch, expand safe BeauBucks canary coverage, and test guest understanding of Points versus spendable value.</p><div class="target">No authority migration until reconciliation gates pass</div></div>
+    </div>
+    <div class="columns" style="margin-top:.55in">
+      <p class="statement">Success is not “more features.” It is a Host who can run the room while the audience understands how to join, act, spend, and delight one another.</p>
+      <div class="line-list">
+        <div class="line-item"><span class="num">CTO</span><span>Contracts, quota, observability, rollback, migration safety.</span></div>
+        <div class="line-item"><span class="num">CPO</span><span>Fewer decisions, coherent primitives, adoption, recovery.</span></div>
+        <div class="line-item"><span class="num">CMO</span><span>Content-agnostic promise, capability truth, theatrical BeauRocks energy.</span></div>
+      </div>
+    </div>
+    <div class="source-note">Sources: master roadmap; executive progress evidence; room economy conformance; YouTube catalog middle-ground; Apple Music + YouTube media plan; game lifecycle audit and production scorecard.</div>
+    <div class="footer"><span>Decision requested // continue bounded, evidence-led delivery</span><span class="n"></span></div>
+  </section>
+</body>
+</html>

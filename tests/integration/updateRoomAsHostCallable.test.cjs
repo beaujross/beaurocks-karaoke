@@ -463,6 +463,35 @@ async function run() {
     }],
 
 
+    ["host can persist a constrained local background playback observation", async () => {
+      const observation = {
+        type: "local_upload",
+        id: "upload_house_mix",
+        title: "House Mix",
+        url: "https://cdn.example.test/house-mix.mp3",
+        status: "playing",
+        reason: "",
+        lastReportedAt: 1714411115000,
+      };
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        backgroundAudioPlayback: observation,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, ["backgroundAudioPlayback"]);
+      const snap = await roomRef.get();
+      assert.deepEqual(snap.get("backgroundAudioPlayback"), observation);
+    }],
+
+    ["malformed local background playback observations are rejected", async () => {
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          backgroundAudioPlayback: { type: "spotify", status: "playing", unexpected: true },
+        })),
+        "invalid-argument"
+      );
+    }],
+
     ["host can sync Apple Music playback dotted fields", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         "appleMusicPlayback.status": "playing",

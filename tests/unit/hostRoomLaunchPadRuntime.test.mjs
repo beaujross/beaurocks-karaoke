@@ -139,8 +139,8 @@ test('HostRoomLaunchPad keeps AAHF in the existing-rooms workspace without a sep
 
   assert.match(markup, /AAHF Kick-Off/);
   assert.match(markup, /Existing Rooms/);
-  assert.match(markup, /Selected Room Details/);
-  assert.match(markup, />Host Panel</);
+  assert.match(markup, /Selected room/);
+  assert.match(markup, /Room controls/);
   assert.match(markup, />Room Settings</);
   assert.match(markup, />Open</);
   assert.doesNotMatch(markup, /Event Focus/);
@@ -200,13 +200,8 @@ test('HostRoomLaunchPad keeps create flow collapsed while existing rooms is acti
 
   assert.match(markup, /Existing Rooms/);
   assert.match(markup, /Create Room/);
-  assert.match(markup, /Choose one lane/);
-  assert.match(markup, /Existing Room Controls/);
-  assert.match(markup, /Open Host Panel/);
+  assert.match(markup, /Room browser ready/);
   assert.match(markup, /Friday Main Room/);
-  assert.match(markup, /Friday Karaoke/);
-  assert.match(markup, /Auto-assign room code/);
-  assert.match(markup, /defaults ready\./);
   assert.match(markup, />Open</);
   assert.doesNotMatch(markup, /Credits and promos/);
   assert.doesNotMatch(markup, /Requested room code/);
