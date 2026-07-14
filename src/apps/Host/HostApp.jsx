@@ -183,6 +183,15 @@ import {
     YOUTUBE_PLAYBACK_STATUSES
 } from '../../lib/youtubePlaybackStatus';
 import { getBgTrackById, getNextBgTrackIndex } from '../../lib/bgTrackOptions';
+import {
+    APPLE_MUSIC_PLAYBACK_START_TIMEOUT_MS,
+    buildAppleMusicPlaylistQueueAttempts,
+    buildAppleMusicPlaylistStartKey,
+    createAppleMusicAutomaticRetryError,
+    isAppleMusicAutomaticRetryCoolingDown,
+    isAppleMusicAutomaticRetryError,
+    parseAppleMusicPlaylistId,
+} from '../../lib/appleMusicPlaylistPlayback';
 import { createLogger } from '../../lib/logger';
 import {
     getAppCheckRetryDelayMs,
@@ -1918,14 +1927,6 @@ const loadMusicKitScript = () => new Promise((resolve, reject) => {
     document.head.appendChild(script);
 });
 
-const parseAppleMusicPlaylistId = (value = '') => {
-    const trimmed = value.trim();
-    if (!trimmed) return '';
-    const match = trimmed.match(/pl\.[A-Za-z0-9._-]+/);
-    if (match) return match[0];
-    return trimmed;
-};
-
 const APPLE_MUSIC_PICKER_MODES = Object.freeze([
     { id: 'library', label: 'My Playlists' },
     { id: 'forYou', label: 'For You' },
@@ -2046,7 +2047,7 @@ const applyAppleMusicOutputVolume = (instance = null, value = 0.3) => {
     return volume;
 };
 
-const waitForAppleMusicPlaybackStart = async (instance = null, { timeoutMs = 3200, intervalMs = 180 } = {}) => {
+const waitForAppleMusicPlaybackStart = async (instance = null, { timeoutMs = APPLE_MUSIC_PLAYBACK_START_TIMEOUT_MS, intervalMs = 180 } = {}) => {
     if (!instance) throw new Error('Apple Music playback unavailable');
     const startedAt = Date.now();
     while (Date.now() - startedAt <= timeoutMs) {
@@ -2063,8 +2064,8 @@ const waitForAppleMusicPlaybackStart = async (instance = null, { timeoutMs = 320
 const stopAppleMusicForQueueRetry = async (instance = null) => {
     if (!instance) return;
     try {
-        if (typeof instance.pause === 'function') await instance.pause();
-        else if (typeof instance.stop === 'function') await instance.stop();
+        if (typeof instance.stop === 'function') await instance.stop();
+        else if (typeof instance.pause === 'function') await instance.pause();
     } catch (_error) {
         // Playback may already be stopped while rotating queue descriptors.
     }
@@ -2089,50 +2090,23 @@ const authorizeAppleMusicInstance = async (instance = null) => {
     return rememberAppleMusicUserToken(instance, tokenPayload);
 };
 
-const isAppleMusicLibraryPlaylistId = (playlistId = '', sourceType = '') => {
-    const source = String(sourceType || '').trim().toLowerCase();
-    const id = String(playlistId || '').trim();
-    return source.includes('library') || (!!id && id.startsWith('p.') && !id.startsWith('pl.'));
+const getAppleMusicQueueItems = (queue = null, instance = null) => {
+    const candidates = [queue?.items, instance?.queue?.items, instance?.player?.queue?.items];
+    return candidates.find((items) => Array.isArray(items)) || [];
 };
 
-const buildAppleMusicPlaylistQueueDescriptor = (playlistId = '', meta = {}) => {
-    const id = String(playlistId || '').trim();
-    if (!id) return null;
-    return isAppleMusicLibraryPlaylistId(id, meta.sourceType)
-        ? { libraryPlaylist: id }
-        : { playlist: id };
-};
-
-const normalizeAppleMusicPlaylistQueueIds = (playlistId = '', meta = {}) => {
-    const ids = [
-        playlistId,
-        meta.playbackId,
-        meta.catalogId,
-        meta.playParamsId,
-        ...(Array.isArray(meta.alternatePlaylistIds) ? meta.alternatePlaylistIds : [])
-    ]
-        .map((id) => parseAppleMusicPlaylistId(String(id || '').trim()))
-        .filter(Boolean);
-    return Array.from(new Set(ids));
-};
-
-const buildAppleMusicPlaylistQueueAttempts = (playlistId = '', meta = {}) => {
-    const ids = normalizeAppleMusicPlaylistQueueIds(playlistId, meta);
-    const attempts = [];
-    ids.forEach((id) => {
-        const primary = buildAppleMusicPlaylistQueueDescriptor(id, meta);
-        if (primary) attempts.push(primary);
-        attempts.push(isAppleMusicLibraryPlaylistId(id, meta.sourceType)
-            ? { playlist: id }
-            : { libraryPlaylist: id });
-    });
-    const seen = new Set();
-    return attempts.filter((descriptor) => {
-        const key = JSON.stringify(descriptor || {});
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
+const startAppleMusicQueuePlayback = async (instance = null, queue = null) => {
+    const items = getAppleMusicQueueItems(queue, instance);
+    if (items.length && items.every((item) => item?.isPlayable === false)) {
+        throw new Error('Apple Music playlist has no playable items for this account');
+    }
+    const firstPlayableIndex = items.findIndex((item) => item?.isPlayable !== false);
+    const firstItemIsUnavailable = firstPlayableIndex > 0 && items[0]?.isPlayable === false;
+    if (firstItemIsUnavailable && typeof instance?.changeToMediaAtIndex === 'function') {
+        await instance.changeToMediaAtIndex(firstPlayableIndex);
+        return;
+    }
+    await instance.play();
 };
 
 const playAppleMusicPlaylistQueueWithFallback = async (instance = null, playlistId = '', meta = {}) => {
@@ -2142,8 +2116,8 @@ const playAppleMusicPlaylistQueueWithFallback = async (instance = null, playlist
     let firstError = null;
     for (const descriptor of attempts) {
         try {
-            await instance.setQueue(descriptor);
-            await instance.play();
+            const queue = await instance.setQueue(descriptor);
+            await startAppleMusicQueuePlayback(instance, queue);
             const snapshot = await waitForAppleMusicPlaybackStart(instance);
             return { descriptor, snapshot };
         } catch (error) {
@@ -2154,7 +2128,6 @@ const playAppleMusicPlaylistQueueWithFallback = async (instance = null, playlist
     if (firstError) throw firstError;
     throw new Error('Apple Music playlist did not start playback');
 };
-
 const callAppleMusicRestApi = async (instance = null, apiPath = '', { developerToken = '' } = {}) => {
     const token = String(developerToken || instance?.developerToken || instance?.__beauRocksDeveloperToken || '').trim();
     if (!token) throw new Error('Missing Apple Music developer token');
@@ -5060,6 +5033,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, []);
 
     const appleMusicRef = useRef(null);
+    const appleMusicPlaylistStartRef = useRef({ key: '', promise: null, failedAtMs: 0 });
     const appleMusicDeveloperTokenRef = useRef('');
     const appleMusicVolumeRef = useRef(0.3);
     const applePlaybackSyncKeyRef = useRef('');
@@ -5385,25 +5359,53 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const playAppleMusicPlaylist = useCallback(async (playlistId, meta = {}) => {
         if (!playlistId) return;
-        const instance = await ensureAppleMusic();
-        if (!instance.isAuthorized) {
-            await authorizeAppleMusicInstance(instance);
-            setAppleMusicAuthorized(true);
+        const startKey = buildAppleMusicPlaylistStartKey(playlistId, meta);
+        const currentStart = appleMusicPlaylistStartRef.current;
+        if (currentStart.promise && currentStart.key === startKey) return currentStart.promise;
+        if (meta.automatic === true && isAppleMusicAutomaticRetryCoolingDown(currentStart, startKey)) {
+            throw createAppleMusicAutomaticRetryError();
         }
-        const resolvedTitle = meta.title || await fetchAppleMusicPlaylistTitle(playlistId) || '';
-        applyAppleMusicOutputVolume(instance, appleMusicVolumeRef.current);
-        await playAppleMusicPlaylistQueueWithFallback(instance, playlistId, meta);
-        setAppleMusicPlaying(true);
-        if (roomCode) {
-            await updateRoom({
-                appleMusicPlayback: {
-                    type: 'playlist',
-                    id: String(playlistId),
-                    title: resolvedTitle || meta.title || '',
-                    startedAt: nowMs(),
-                    status: 'playing'
-                }
-            });
+
+        const startPlayback = async () => {
+            const instance = await ensureAppleMusic();
+            if (!instance.isAuthorized) {
+                await authorizeAppleMusicInstance(instance);
+                setAppleMusicAuthorized(true);
+            }
+            const resolvedTitle = meta.title || await fetchAppleMusicPlaylistTitle(playlistId) || '';
+            applyAppleMusicOutputVolume(instance, appleMusicVolumeRef.current);
+            await playAppleMusicPlaylistQueueWithFallback(instance, playlistId, meta);
+            setAppleMusicPlaying(true);
+            if (roomCode) {
+                await updateRoom({
+                    appleMusicPlayback: {
+                        type: 'playlist',
+                        id: String(playlistId),
+                        title: resolvedTitle || meta.title || '',
+                        startedAt: nowMs(),
+                        status: 'playing'
+                    }
+                });
+            }
+            return { playlistId: String(playlistId), title: resolvedTitle || meta.title || '' };
+        };
+
+        const priorPromise = currentStart.promise;
+        const startPromise = priorPromise
+            ? Promise.resolve(priorPromise).catch(() => {}).then(startPlayback)
+            : startPlayback();
+        appleMusicPlaylistStartRef.current = { key: startKey, promise: startPromise, failedAtMs: 0 };
+        try {
+            const result = await startPromise;
+            if (appleMusicPlaylistStartRef.current.promise === startPromise) {
+                appleMusicPlaylistStartRef.current = { key: startKey, promise: null, failedAtMs: 0 };
+            }
+            return result;
+        } catch (error) {
+            if (appleMusicPlaylistStartRef.current.promise === startPromise) {
+                appleMusicPlaylistStartRef.current = { key: startKey, promise: null, failedAtMs: Date.now() };
+            }
+            throw error;
         }
     }, [ensureAppleMusic, fetchAppleMusicPlaylistTitle, roomCode, updateRoom]);
     
@@ -5689,9 +5691,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
             setAppleMusicPlaylistStatus(`${label} is now the background playlist.`);
         } catch (error) {
+            setAutoBgMusic(false);
             hostLogger.warn('Apple Music background playlist start failed', error);
             reportAppleMusicDiagnostic('background_playlist_start', error, { playlistId, sourceType: choice.sourceType || '' });
             updateRoom({
+                autoBgMusic: false,
                 bgMusicPlaying: false,
                 bgMusicUrl: '',
                 appleMusicAutoPlaylistId: playlistId,
@@ -5700,7 +5704,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }).catch((persistError) => {
                 hostLogger.debug('Apple Music playlist selection persist failed after playback error', persistError);
             });
-            setAppleMusicPlaylistStatus(`${label} was saved, but Apple Music could not start it. Try Connect again or pick another playlist.`);
+            setAppleMusicPlaylistStatus(`${label} was saved, but Apple Music could not start it. Auto BG is paused; reconnect or try another playlist.`);
         } finally {
             setAppleMusicBgPendingId('');
         }
@@ -11479,13 +11483,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (queuedCount > 0 || performingCount > 0) return;
         const playlistId = room?.appleMusicAutoPlaylistId || '';
         if (!playlistId) return;
-        const playback = room?.appleMusicPlayback || {};
-        if (playback.type === 'playlist' && playback.id === playlistId && playback.status === 'playing') return;
-        playAppleMusicPlaylist(playlistId, { title: room?.appleMusicAutoPlaylistTitle || '' })
+        const playbackType = String(room?.appleMusicPlayback?.type || '').trim().toLowerCase();
+        const playbackId = String(room?.appleMusicPlayback?.id || '').trim();
+        const playbackStatus = String(room?.appleMusicPlayback?.status || '').trim().toLowerCase();
+        if (playbackType === 'playlist' && playbackId === playlistId && playbackStatus === 'playing') return;
+        playAppleMusicPlaylist(playlistId, { title: room?.appleMusicAutoPlaylistTitle || '', automatic: true })
             .catch((error) => {
+                if (isAppleMusicAutomaticRetryError(error)) return;
                 hostLogger.warn('Auto DJ failed to start Apple Music playlist', error);
             });
-    }, [autoDjEnabled, queuedCount, performingCount, room?.appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistTitle, room?.appleMusicPlayback?.status, room?.appleMusicPlayback, playAppleMusicPlaylist]);
+    }, [autoDjEnabled, queuedCount, performingCount, room?.appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistTitle, room?.appleMusicPlayback?.id, room?.appleMusicPlayback?.status, room?.appleMusicPlayback?.type, playAppleMusicPlaylist]);
     useEffect(() => {
         return () => {
             if (readyCheckTimerRef.current) clearTimeout(readyCheckTimerRef.current);
@@ -12085,7 +12092,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return result;
     }, [stopAppleMusic, updateRoom]);
 
-    const setBgMusicState = useCallback(async (next) => {
+    const setBgMusicState = useCallback(async (next, { automatic = false } = {}) => {
         const { playlistId, title } = getAppleBackgroundPlaylistConfig();
         const livePlayback = roomRef.current?.appleMusicPlayback || room?.appleMusicPlayback || {};
         const livePlaybackStatus = String(livePlayback?.status || '').trim().toLowerCase();
@@ -12101,7 +12108,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setPlayingBg(false);
             await updateRoom({ bgMusicPlaying: false, bgMusicUrl: '', backgroundAudioPlayback: null });
             if (configuredApplePlaylistIsActive && livePlaybackStatus === 'playing') return;
-            await playAppleMusicPlaylist(playlistId, { title });
+            await playAppleMusicPlaylist(playlistId, { title, automatic });
             return;
         }
 
@@ -12135,25 +12142,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (performingCount > 0) return;
         const { playlistId } = getAppleBackgroundPlaylistConfig();
         if (!playlistId) return;
-        const playback = room?.appleMusicPlayback || {};
-        const playbackStatus = String(playback?.status || '').trim().toLowerCase();
-        const applePlaylistAlreadyPlaying = String(playback?.type || '').trim().toLowerCase() === 'playlist'
-            && String(playback?.id || '').trim() === playlistId
+        const playbackType = String(room?.appleMusicPlayback?.type || '').trim().toLowerCase();
+        const playbackId = String(room?.appleMusicPlayback?.id || '').trim();
+        const playbackStatus = String(room?.appleMusicPlayback?.status || '').trim().toLowerCase();
+        const applePlaylistAlreadyPlaying = playbackType === 'playlist'
+            && playbackId === playlistId
             && playbackStatus === 'playing';
         if (applePlaylistAlreadyPlaying) return;
-        setBgMusicState(true).catch((error) => {
+        setBgMusicState(true, { automatic: true }).catch((error) => {
+            if (isAppleMusicAutomaticRetryError(error)) return;
+            setAutoBgMusic(false);
+            updateRoom({ autoBgMusic: false }).catch((persistError) => {
+                hostLogger.debug('Could not pause Auto BG after Apple Music start failure', persistError);
+            });
             hostLogger.warn('Auto BG failed to switch to Apple Music playlist', error);
-            setAppleMusicPlaylistStatus('Apple Music playlist is set, but BG could not start. Try the BG button again.');
+            setAppleMusicPlaylistStatus('Apple Music playlist is set, but BG could not start. Auto BG is paused; try the BG button again.');
         });
     }, [
         autoBgMusic,
         getAppleBackgroundPlaylistConfig,
         room?.appleMusicAutoPlaylistId,
         room?.appleMusicAutoPlaylistTitle,
-        room?.appleMusicPlayback,
+        room?.appleMusicPlayback?.id,
+        room?.appleMusicPlayback?.status,
+        room?.appleMusicPlayback?.type,
         performingCount,
         roomCode,
-        setBgMusicState
+        setBgMusicState,
+        updateRoom
     ]);
     const selectBgTrack = useCallback(async (
         trackId = '',

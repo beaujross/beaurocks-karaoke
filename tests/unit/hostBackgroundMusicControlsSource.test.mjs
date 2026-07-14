@@ -6,6 +6,7 @@ import { test } from 'vitest';
 const readSource = (relativePath) => readFileSync(resolve(relativePath), 'utf8');
 
 const hostAppSource = readSource('src/apps/Host/HostApp.jsx');
+const appleMusicPlaylistPlaybackSource = readSource('src/lib/appleMusicPlaylistPlayback.js');
 const automationControlsSource = readSource('src/apps/Host/components/AutomationControls.jsx');
 const hostTopChromeSource = readSource('src/apps/Host/components/HostTopChrome.jsx');
 
@@ -56,7 +57,12 @@ test('Apple Music setup exposes a picker without adding separate runtime playbac
     assert.match(hostAppSource, /const musicKitVolume = Number\.isFinite\(currentVolume\) && currentVolume > 1 \? Math\.round\(volume \* 100\) : volume;/);
     assert.match(hostAppSource, /const hasLoadedItem = !!\(instance\?\.nowPlayingItem \|\| instance\?\.queue\?\.currentItem \|\| snapshot\?\.trackId \|\| snapshot\?\.durationSec > 0\);/);
     assert.match(hostAppSource, /const playAppleMusicPlaylistQueueWithFallback = async/);
-    assert.match(hostAppSource, /for \(const descriptor of attempts\) \{[\s\S]*await instance\.setQueue\(descriptor\);[\s\S]*await instance\.play\(\);[\s\S]*await waitForAppleMusicPlaybackStart\(instance\);[\s\S]*await stopAppleMusicForQueueRetry\(instance\);/);
+    assert.match(hostAppSource, /for \(const descriptor of attempts\) \{[\s\S]*const queue = await instance\.setQueue\(descriptor\);[\s\S]*await startAppleMusicQueuePlayback\(instance, queue\);[\s\S]*await waitForAppleMusicPlaybackStart\(instance\);[\s\S]*await stopAppleMusicForQueueRetry\(instance\);/);
+    assert.match(hostAppSource, /const appleMusicPlaylistStartRef = useRef\(\{ key: '', promise: null, failedAtMs: 0 \}\);/);
+    assert.match(hostAppSource, /currentStart\.promise && currentStart\.key === startKey/);
+    assert.match(hostAppSource, /isAppleMusicAutomaticRetryCoolingDown\(currentStart, startKey\)/);
+    assert.match(hostAppSource, /setBgMusicState\(true, \{ automatic: true \}\)/);
+    assert.match(hostAppSource, /setAutoBgMusic\(false\);[\s\S]*autoBgMusic: false/);
     assert.match(hostAppSource, /applyAppleMusicOutputVolume\(instance, appleMusicVolumeRef\.current\);[\s\S]*await playAppleMusicPlaylistQueueWithFallback\(instance, playlistId, meta\);/);
     assert.match(hostAppSource, /const waitForAppleMusicPlaybackStart = async/);
     assert.match(hostAppSource, /appleMusicVolumeRef\.current = nextAppleVolume;[\s\S]*applyAppleMusicOutputVolume\(appleMusicRef\.current, nextAppleVolume\);/);
@@ -72,10 +78,11 @@ test('Apple Music setup exposes a picker without adding separate runtime playbac
     assert.match(hostAppSource, /const authorizeAppleMusicInstance = async[\s\S]*await instance\.authorize\(\)/);
     assert.match(hostAppSource, /__beauRocksMusicUserToken/);
     assert.match(hostAppSource, /headers\['Music-User-Token'\] = userToken/);
-    assert.match(hostAppSource, /const buildAppleMusicPlaylistQueueAttempts/);
+    assert.match(hostAppSource, /buildAppleMusicPlaylistQueueAttempts/);
     assert.match(hostAppSource, /Apple Music pause failed/);
-    assert.match(hostAppSource, /\{ libraryPlaylist: id \}/);
-    assert.match(hostAppSource, /meta\.alternatePlaylistIds/);
+    assert.doesNotMatch(appleMusicPlaylistPlaybackSource, /libraryPlaylist/);
+    assert.match(appleMusicPlaylistPlaybackSource, /return \{ playlist: id \};/);
+    assert.match(appleMusicPlaylistPlaybackSource, /meta\.alternatePlaylistIds/);
     assert.match(hostAppSource, /if \(!roomCode \|\| !autoBgMusic\) return;[\s\S]*setBgMusicState\(true\)/);
     assert.doesNotMatch(hostAppSource, /Auto-DJ playlist fallback/);
     assert.doesNotMatch(hostAppSource, /The BG button remains the single start\/stop control once a playlist is active\./);
