@@ -1881,10 +1881,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
       <section className="mk3-discover-radar-hero mk3-zone">
         <div className="mk3-discover-radar-copy">
           <div className="mk3-rebuild-kicker">Discover</div>
-          <h1>See which rooms are already in motion tonight.</h1>
+          <h1>Find karaoke rooms, recurring nights, and venues you can trust.</h1>
           <p>
-            Browse the nights already live, the rooms guests can join by code,
-            and the approved BeauRocks hosts already running the room.
+            Use Now or Tonight for time-sensitive plans, browse the full directory for recurring venues,
+            or jump directly into a public BeauRocks room by code.
           </p>
           <div className="mk3-discover-radar-meta">
             <span>{activeRegionLabel}</span>
@@ -1905,6 +1905,16 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
               }}
             >
               Show Joinable Rooms
+            </button>
+            <button
+              type="button"
+              className="mk3-rebuild-button is-secondary"
+              onClick={() => {
+                trackEvent("mk_discover_list_night_click", { source: "discover_hero" });
+                navigate("for_venues");
+              }}
+            >
+              List Your Karaoke Night
             </button>
             <button
               type="button"
@@ -2010,9 +2020,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
           <div className="mk3-discover-map-head">
             <div className="mk3-discover-map-head-copy">
               <span>Live map</span>
-              <h2>See the room before you pick it</h2>
+              <h2>See public listings before you pick a night</h2>
               {!isMobileViewport && (
-                <b>{mappableListings.length.toLocaleString()} rooms pinned</b>
+                <b>{mappableListings.length.toLocaleString()} public listings pinned</b>
               )}
               {isMobileViewport && <p>Check the rooms already in motion nearby.</p>}
             </div>

@@ -42,6 +42,7 @@ export const DEFAULT_QUICK_LAUNCH_DISCOVERY = Object.freeze({
     address1: '',
     city: '',
     state: '',
+    timezone: '',
     lat: '',
     lng: ''
 });
@@ -460,8 +461,10 @@ export const buildProvisionDiscoveryPayload = (draft = {}, options = {}) => {
     const roomName = String(options?.roomName || '').trim();
     const startsAtLocal = String(nextDraft?.startsAtLocal || '').trim() || String(nextDraft?.roomStartsAtLocal || '').trim();
     const startsAtMs = fromDateTimeLocalInput(startsAtLocal);
-    const lat = Number(nextDraft?.lat);
-    const lng = Number(nextDraft?.lng);
+    const rawLat = String(nextDraft?.lat ?? '').trim();
+    const rawLng = String(nextDraft?.lng ?? '').trim();
+    const lat = rawLat ? Number(rawLat) : Number.NaN;
+    const lng = rawLng ? Number(rawLng) : Number.NaN;
     const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
     const virtualOnly = !!nextDraft?.virtualOnly;
     const venueName = String(nextDraft?.venueName || '').trim();
@@ -481,8 +484,9 @@ export const buildProvisionDiscoveryPayload = (draft = {}, options = {}) => {
         address1: virtualOnly ? '' : String(nextDraft?.address1 || '').trim(),
         city: String(nextDraft?.city || '').trim(),
         state: String(nextDraft?.state || '').trim(),
-        lat: String(nextDraft?.lat || '').trim(),
-        lng: String(nextDraft?.lng || '').trim(),
+        timezone: String(nextDraft?.timezone || options?.timezone || '').trim(),
+        lat: rawLat,
+        lng: rawLng,
         location: hasCoords ? { lat, lng } : {},
         sessionMode: virtualOnly ? 'virtual' : 'karaoke',
     };

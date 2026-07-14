@@ -9,10 +9,7 @@ const shouldIncludeDiscoverListing = ({
   matchesTimeWindow = true,
   inBounds = true,
 } = {}) => {
-  if (item.listingType !== 'venue' && String(item.visibility || 'public') !== 'public') return false;
-  const sourceType = String(item.sourceType || '').trim().toLowerCase();
-  const isHostRoomSession = item.listingType === 'room_session' && sourceType === 'host_room';
-  if (isHostRoomSession && !item.isOfficialBeauRocksListing) return false;
+  if (String(item.visibility || 'public') !== 'public') return false;
   if (
     listingTypeFilter !== 'all'
     && item.listingType !== listingTypeFilter

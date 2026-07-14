@@ -11,6 +11,14 @@ const toDiscoverErrorMessage = (error) => {
   return raw.replace(/https?:\/\/\S+/g, "").trim();
 };
 
+const DEFAULT_DISCOVER_TIMEZONE = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+})();
+
 const DEFAULT_FACETS = Object.freeze({
   host: [],
   region: [],
@@ -49,6 +57,7 @@ export const useDirectoryDiscover = ({
   region = "",
   listingType = "all",
   timeWindow = "all",
+  timezone = DEFAULT_DISCOVER_TIMEZONE,
   sortMode = "smart",
   hostUid = "",
   officialRoomOnly = false,
@@ -81,6 +90,7 @@ export const useDirectoryDiscover = ({
         region,
         listingType,
         timeWindow,
+        timezone,
         sortMode,
         hostUid,
         officialRoomOnly,
@@ -106,7 +116,7 @@ export const useDirectoryDiscover = ({
         setLoadingMore(false);
       }
     }
-  }, [bounds, hostUid, limit, listingType, officialRoomOnly, region, search, sortMode, timeWindow]);
+  }, [bounds, hostUid, limit, listingType, officialRoomOnly, region, search, sortMode, timeWindow, timezone]);
 
   useEffect(() => {
     fetchPage({ cursor: "", append: false });

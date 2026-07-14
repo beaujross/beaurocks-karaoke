@@ -20,6 +20,11 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const DIST_DIR = path.join(repoRoot, "dist");
 const DEFAULT_TIMEOUT_MS = 120000;
+const EXPECTED_DEMO_FIXTURE_AUTH_ERROR = /(?:FirebaseError:\s*)?Sign in required\.?/i;
+
+const isExpectedDemoFixturePageError = (errorText = "") => (
+  EXPECTED_DEMO_FIXTURE_AUTH_ERROR.test(String(errorText || ""))
+);
 
 const waitForHostState = async (page, { tab, section, timeoutMs }) => {
   await page.waitForFunction(({ tabValue, sectionValue }) => {
@@ -36,12 +41,19 @@ const waitForHostState = async (page, { tab, section, timeoutMs }) => {
 const clickHostTab = async (page, tabKey, timeoutMs) => {
   const button = page.locator(`[data-host-tab="${tabKey}"]`).first();
   await button.waitFor({ state: "visible", timeout: timeoutMs });
-  await button.click({ force: true });
+  await button.click({ force: true, timeout: timeoutMs });
 };
 
 const ensureShowWorkspace = async (page, timeoutMs) => {
-  await clickHostTab(page, "run_of_show", timeoutMs);
-  await waitForHostState(page, { tab: "run_of_show", timeoutMs });
+  const alreadyInShow = await waitForHostState(page, {
+    tab: "run_of_show",
+    section: "show.timeline",
+    timeoutMs: Math.min(5000, timeoutMs),
+  }).then(() => true).catch(() => false);
+  if (!alreadyInShow) {
+    await clickHostTab(page, "run_of_show", timeoutMs);
+    await waitForHostState(page, { tab: "run_of_show", timeoutMs });
+  }
   await page.getByText("SHOW CONVEYOR").first().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
@@ -59,7 +71,7 @@ const ensureStageQueueWorkspace = async (page, timeoutMs) => {
   await ensureStageWorkspace(page, timeoutMs);
   const queueSurfaceTab = page.locator('[data-feature-id="queue-surface-tab-queue-desktop"]').first();
   if (await queueSurfaceTab.isVisible().catch(() => false)) {
-    await queueSurfaceTab.click({ force: true });
+    await queueSurfaceTab.click({ force: true, timeout: timeoutMs });
   }
   await page.locator('[data-feature-id="panel-tv-moments"]').first().waitFor({ state: "visible", timeout: timeoutMs });
 };
@@ -71,7 +83,17 @@ const ensureLobbyWorkspace = async (page, timeoutMs) => {
 };
 
 const gotoHostFixture = async (page, server, fixtureId, timeoutMs) => {
-  await page.goto(`${server.baseUrl}/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=${encodeURIComponent(fixtureId)}`, {
+  const params = new URLSearchParams({
+    mode: "host",
+    room: "DEMOAAHF",
+    mkDemoEmbed: "1",
+    qaHostFixture: fixtureId,
+    hostUiVersion: "v2",
+    view: "show",
+    section: "show.timeline",
+    tab: "run_of_show",
+  });
+  await page.goto(`${server.baseUrl}/?${params.toString()}`, {
     waitUntil: "domcontentloaded",
     timeout: timeoutMs,
   });
@@ -109,7 +131,7 @@ const ensureAdminMediaWorkspace = async (page, timeoutMs) => {
   await ensureAdminRoomSetup(page, timeoutMs);
   const mediaButton = page.getByRole("button", { name: /Screens \+ Playback/i }).first();
   await mediaButton.waitFor({ state: "visible", timeout: timeoutMs });
-  await mediaButton.click({ force: true });
+  await mediaButton.click({ force: true, timeout: timeoutMs });
   await page.getByText("Room Uploads").last().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
@@ -135,6 +157,7 @@ const main = async () => {
     Date.now = () => (Number.isFinite(fixedNowMs) && fixedNowMs > 0 ? fixedNowMs : originalDateNow());
   }, DEFAULT_FIREBASE_RUNTIME_CONFIG, FIXED_QA_HOST_NOW_MS);
   const page = await context.newPage();
+  page.setDefaultTimeout(timeoutMs);
   await page.emulateMedia({ reducedMotion: "reduce" });
 
   const checks = [];
@@ -147,6 +170,14 @@ const main = async () => {
     });
 
     await gotoHostFixture(page, server, "run-of-show-console", timeoutMs);
+    const initialRouteState = await page.evaluate(() => {
+      const root = document.querySelector(".host-app");
+      return {
+        tab: String(root?.getAttribute("data-host-active-tab") || ""),
+        section: String(root?.getAttribute("data-host-active-workspace-section") || ""),
+      };
+    });
+    console.log(`Host QA initial route: tab=${initialRouteState.tab || "missing"}, section=${initialRouteState.section || "missing"}`);
     await ensureShowWorkspace(page, timeoutMs);
 
     await runCheck(checks, "host_app_fixture_loaded", async () => {
@@ -168,7 +199,7 @@ const main = async () => {
       ], timeoutMs);
       const toggleName = await boardToggle.textContent();
       if (/open board/i.test(String(toggleName || ""))) {
-        await boardToggle.click({ force: true });
+        await boardToggle.click({ force: true, timeout: timeoutMs });
       }
       await page.getByText("Conveyor Actions").first().waitFor({ state: "visible", timeout: timeoutMs });
       await waitForAnyVisible([
@@ -183,7 +214,7 @@ const main = async () => {
       await ensureShowWorkspace(page, timeoutMs);
       const buildButton = page.getByRole("button", { name: /^BUILD$/i }).first();
       await buildButton.waitFor({ state: "visible", timeout: timeoutMs });
-      await buildButton.click({ force: true });
+      await buildButton.click({ force: true, timeout: timeoutMs });
       await page.getByText("Sequence Tools").first().waitFor({ state: "visible", timeout: timeoutMs });
       const trayToggle = page.getByRole("button", { name: /Hide Sequence Tools|Open Sequence Tools/i }).first();
       await trayToggle.waitFor({ state: "visible", timeout: timeoutMs });
@@ -195,7 +226,7 @@ const main = async () => {
       const audioToggle = page.locator('[data-feature-id="deck-audio-menu-toggle"]').first();
       await audioToggle.waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText(/^Stage$/).first().waitFor({ state: "visible", timeout: timeoutMs });
-      await audioToggle.click({ force: true });
+      await audioToggle.click({ force: true, timeout: timeoutMs });
       await page.getByText("Audio + Mix").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText(/Keep stage backing, room music, and the blend in one place\./i).first().waitFor({ state: "visible", timeout: timeoutMs });
       return "audio quick controls stay visible and the dropdown reveals the full mix panel";
@@ -206,7 +237,7 @@ const main = async () => {
       const audioToggle = page.locator('[data-feature-id="deck-audio-menu-toggle"]').first();
       await audioToggle.waitFor({ state: "visible", timeout: timeoutMs });
       if (!(await page.getByText("Audio + Mix").first().isVisible().catch(() => false))) {
-        await audioToggle.click({ force: true });
+        await audioToggle.click({ force: true, timeout: timeoutMs });
       }
       await page.getByText("Lantern Circuit").first().waitFor({ state: "visible", timeout: timeoutMs });
       const assetStatus = await page.evaluate(async () => {
@@ -249,7 +280,7 @@ const main = async () => {
       await ensureLobbyWorkspace(page, timeoutMs);
       const lineupButton = page.getByRole("button", { name: /Taylor/i }).first();
       await lineupButton.waitFor({ state: "visible", timeout: timeoutMs });
-      await lineupButton.click({ force: true });
+      await lineupButton.click({ force: true, timeout: timeoutMs });
 
       const selectedStrip = page.locator("div").filter({
         has: page.getByText(/Selected:\s*Taylor/i).first(),
@@ -258,13 +289,13 @@ const main = async () => {
 
       const makeCoHostButton = selectedStrip.getByRole("button", { name: /Make Co-Host/i }).first();
       await makeCoHostButton.waitFor({ state: "visible", timeout: timeoutMs });
-      await makeCoHostButton.click({ force: true });
+      await makeCoHostButton.click({ force: true, timeout: timeoutMs });
 
       const removeCoHostButton = selectedStrip.getByRole("button", { name: /Remove Co-Host/i }).first();
       await removeCoHostButton.waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("CO-HOST", { exact: true }).first().waitFor({ state: "visible", timeout: timeoutMs });
 
-      await removeCoHostButton.click({ force: true });
+      await removeCoHostButton.click({ force: true, timeout: timeoutMs });
       await selectedStrip.getByRole("button", { name: /Make Co-Host/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
       return "lobby audience selection can promote and remove a co-host";
     });
@@ -346,14 +377,19 @@ const main = async () => {
     });
 
     await runCheck(checks, "host_app_no_page_errors", async () => {
-      if (pageErrors.length) throw new Error(pageErrors[0]);
-      return "no client-side runtime errors";
+      const unexpectedPageErrors = pageErrors.filter((errorText) => !isExpectedDemoFixturePageError(errorText));
+      if (unexpectedPageErrors.length) throw new Error(unexpectedPageErrors[0]);
+      return pageErrors.length
+        ? `no unexpected client-side runtime errors (${pageErrors.length} fixture auth write error(s) ignored)`
+        : "no client-side runtime errors";
     });
   } catch (error) {
     failure = error;
+    console.error(`Host QA failed before teardown: ${String(error?.stack || error?.message || error)}`);
   } finally {
-    await browser.close().catch(() => {});
-    await server.stop().catch(() => {});
+    await Promise.race([context.close().catch(() => {}), delay(5000)]);
+    await Promise.race([browser.close().catch(() => {}), delay(5000)]);
+    await Promise.race([server.stop().catch(() => {}), delay(5000)]);
   }
 
   for (const check of checks) {

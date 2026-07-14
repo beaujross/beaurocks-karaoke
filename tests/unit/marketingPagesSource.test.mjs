@@ -24,6 +24,18 @@ describe("marketing page source", () => {
     expect(source).toContain("<b>Same account opens the dashboard</b>");
   });
 
+  it("documents both BeauRocks-hosted and independent map listing paths", () => {
+    const venueSource = readSource("src/apps/Marketing/pages/ForVenuesPage.jsx");
+    const discoverSource = readSource("src/apps/Marketing/pages/DiscoverPage.jsx");
+    const submissionSource = readSource("src/apps/Marketing/pages/ListingSubmissionPage.jsx");
+    expect(venueSource).toContain("Two ways to get on the map");
+    expect(venueSource).toContain("Publish the room from Host setup");
+    expect(venueSource).toContain("Submit a venue or recurring night");
+    expect(discoverSource).toContain("List Your Karaoke Night");
+    expect(submissionSource).toContain("Independent venues and karaoke nights can be listed");
+    expect(submissionSource).toContain("Venue Timezone");
+  });
+
   it("stacks the discover radar hero to one column on smaller screens", () => {
     const source = readSource("src/apps/Marketing/marketing.css");
     expect(source).toMatch(

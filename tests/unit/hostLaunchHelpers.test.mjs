@@ -62,6 +62,19 @@ test("hostLaunchHelpers can use room name as the discovery title fallback", () =
   assert.equal(payload.title, "Private Test Room");
   assert.equal(payload.venueId, "");
   assert.equal(payload.venueSource, "");
+  assert.equal(payload.lat, "");
+  assert.equal(payload.lng, "");
+  assert.deepEqual(payload.location, {});
+});
+
+test("hostLaunchHelpers does not turn blank coordinates into a zero-zero map pin", () => {
+  const payload = buildProvisionDiscoveryPayload(
+    createQuickLaunchDiscoveryDraft({ lat: "  ", lng: "" }),
+    { roomName: "Coordinate-free Room", timezone: "America/New_York" },
+  );
+
+  assert.deepEqual(payload.location, {});
+  assert.equal(payload.timezone, "America/New_York");
 });
 
 test("hostLaunchHelpers normalizes event credits and claim codes", () => {

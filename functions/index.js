@@ -66,6 +66,11 @@ const {
 const REACTION_POINT_COSTS = require("./lib/reactionPointCosts.json");
 const OFFICIAL_BEAUROCKS_DISCOVER_LISTINGS = require("./lib/officialBeauRocksDiscoverListings.json");
 const { shouldIncludeDiscoverListing } = require("./lib/discoverVisibility");
+const {
+  isDiscoverListingActiveOrUpcoming,
+  matchesDirectoryDiscoverTimeWindow,
+  normalizeDiscoverTimezone,
+} = require("./lib/discoverTimeWindow");
 const { resolveLedgerCurrency, setShadowLedgerEntry } = require("./lib/beauBucksLedger");
 const { buildShadowLedgerReconciliation } = require("./lib/beauBucksReconciliation");
 const {
@@ -5306,34 +5311,6 @@ const scoreHostVenueAutocompleteMatch = (venue = {}, token = "") => {
   score += Math.min(18, Math.floor(checkinCount / 5));
   score += Math.min(12, Math.floor(lastActiveAtMs / (1000 * 60 * 60 * 24 * 45)));
   return score;
-};
-
-const matchesDirectoryDiscoverTimeWindow = (item = {}, timeWindow = "all", nowMs = Date.now()) => {
-  const startsAtMs = Number(item.startsAtMs || 0);
-  if (timeWindow === "all") return true;
-  if (!startsAtMs) return false;
-  const msPerHour = 60 * 60 * 1000;
-  const liveLookbackMs = 2 * msPerHour;
-  if (timeWindow === "now") {
-    return startsAtMs >= (nowMs - liveLookbackMs) && startsAtMs <= (nowMs + msPerHour);
-  }
-  if (timeWindow === "this_week") {
-    return startsAtMs >= (nowMs - liveLookbackMs) && startsAtMs <= (nowMs + (7 * 24 * msPerHour));
-  }
-  if (timeWindow === "tonight") {
-    const now = new Date(nowMs);
-    const start = new Date(now);
-    start.setHours(17, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    end.setHours(2, 0, 0, 0);
-    if (now.getHours() < 2) {
-      start.setDate(start.getDate() - 1);
-      end.setDate(end.getDate() - 1);
-    }
-    return startsAtMs >= start.getTime() && startsAtMs <= end.getTime();
-  }
-  return true;
 };
 
 const requireDirectoryEntityType = (value = "") => {
@@ -14670,8 +14647,10 @@ const upsertHostRoomDiscoveryListingInternal = async ({
 
   const endsAtMsRaw = Number(nextListingInput.endsAtMs || 0);
   const endsAtMs = Number.isFinite(endsAtMsRaw) && endsAtMsRaw > startsAtMs ? Math.floor(endsAtMsRaw) : 0;
-  const parsedLat = Number(nextListingInput.lat ?? nextListingInput.location?.lat ?? 0);
-  const parsedLng = Number(nextListingInput.lng ?? nextListingInput.location?.lng ?? 0);
+  const rawLat = nextListingInput.lat ?? nextListingInput.location?.lat;
+  const rawLng = nextListingInput.lng ?? nextListingInput.location?.lng;
+  const parsedLat = rawLat === null || rawLat === undefined || String(rawLat).trim() === "" ? NaN : Number(rawLat);
+  const parsedLng = rawLng === null || rawLng === undefined || String(rawLng).trim() === "" ? NaN : Number(rawLng);
   const location = Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
     ? { lat: parsedLat, lng: parsedLng }
     : normalizeDirectoryLatLng(nextListingInput.location || nextListingInput.latLng || {});
@@ -15548,6 +15527,7 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
   const events = eventSnap.docs
     .map((docSnap) => buildDirectoryPublicListing(docSnap, "event"))
     .filter((item) => {
+      if (String(item.visibility || "public") !== "public") return false;
       const startsAtMs = Number(item.startsAtMs || 0);
       if (!startsAtMs) return true;
       return startsAtMs >= nowMsValue && startsAtMs <= maxStartMs;
@@ -15563,6 +15543,7 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
     .sort((a, b) => Number(a.startsAtMs || 0) - Number(b.startsAtMs || 0));
   const venues = venueSnap.docs
     .map((docSnap) => buildDirectoryPublicListing(docSnap, "venue"))
+    .filter((item) => String(item.visibility || "public") === "public")
     .sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
 
   const cacheMeta = cacheSnap && cacheSnap.exists ? (cacheSnap.data() || {}) : null;
@@ -15604,6 +15585,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
   const hostUidFilter = safeDirectoryString(request.data?.hostUid || "", 180);
   const officialRoomOnly = parseBooleanInput(request.data?.officialRoomOnly, false);
   const timeWindow = normalizeDirectoryDiscoverTimeWindow(request.data?.timeWindow || "all");
+  const viewerTimezone = normalizeDiscoverTimezone(request.data?.timezone || "UTC");
   const sortMode = normalizeDirectoryDiscoverSortMode(request.data?.sortMode || "smart");
   const cursor = normalizeDirectoryDiscoverCursor(request.data?.cursor || 0);
   const limit = clampNumber(request.data?.limit, 1, 120, DIRECTORY_DISCOVER_DEFAULT_LIMIT);
@@ -15759,7 +15741,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     hostUidFilter,
     officialRoomOnly,
     matchesSearch: matchesDirectoryDiscoverSearch(item, searchToken),
-    matchesTimeWindow: matchesDirectoryDiscoverTimeWindow(item, timeWindow, nowMs),
+    matchesTimeWindow: matchesDirectoryDiscoverTimeWindow(item, timeWindow, nowMs, viewerTimezone),
     inBounds: bounds ? isDirectoryLocationInBounds(item.location, bounds) : true,
   }));
 
@@ -15780,8 +15762,8 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
       if (aStarts <= 0 && bStarts > 0) return 1;
       return String(a.title || "").localeCompare(String(b.title || ""));
     }
-    const aIsLive = aStarts > 0 && aStarts >= (nowMs - (2 * 60 * 60 * 1000)) && aStarts <= (nowMs + (8 * 60 * 60 * 1000));
-    const bIsLive = bStarts > 0 && bStarts >= (nowMs - (2 * 60 * 60 * 1000)) && bStarts <= (nowMs + (8 * 60 * 60 * 1000));
+    const aIsLive = isDiscoverListingActiveOrUpcoming(a, nowMs, 8 * 60 * 60 * 1000);
+    const bIsLive = isDiscoverListingActiveOrUpcoming(b, nowMs, 8 * 60 * 60 * 1000);
     if (aIsLive !== bIsLive) return aIsLive ? -1 : 1;
     if ((typeRank[a.listingType] ?? 99) !== (typeRank[b.listingType] ?? 99)) {
       return (typeRank[a.listingType] ?? 99) - (typeRank[b.listingType] ?? 99);

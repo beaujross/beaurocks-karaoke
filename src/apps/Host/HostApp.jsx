@@ -272,6 +272,7 @@ import {
     isPostPerformanceBackingPromptEnabled,
 } from './lib/hostUiPrefs';
 import HostWorkspaceShell from './workspace/HostWorkspaceShell';
+import { resolveInitialHostWorkspaceRoute } from './workspace/initialRoute';
 import {
     MISSION_ASSIST_LEVELS,
     MISSION_FLOW_RULES,
@@ -5411,7 +5412,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     
     // 2. Local State
     const [view, setView] = useState('landing');
-    const [tab, setTab] = useState('admin');
+    const [tab, setTab] = useState(() => resolveInitialHostWorkspaceRoute(
+        typeof window !== 'undefined' ? window.location.search : ''
+    ).tab);
     const [autoBgMusic, setAutoBgMusic] = useState(false);
     const [autoDj, setAutoDj] = useState(false);
     const [autoPlayMedia, setAutoPlayMedia] = useState(true);
@@ -5717,9 +5720,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const localUploadsRef = useRef([]);
     const ytIndexRefreshAttemptRef = useRef({ key: '', atMs: 0 });
     const [showSettings, setShowSettings] = useState(true);
-    const [settingsTab, setSettingsTab] = useState('general');
-    const [activeWorkspaceView, setActiveWorkspaceView] = useState('ops');
-    const [activeWorkspaceSection, setActiveWorkspaceSection] = useState('ops.room_setup');
+    const [settingsTab, setSettingsTab] = useState(() => resolveInitialHostWorkspaceRoute(
+        typeof window !== 'undefined' ? window.location.search : ''
+    ).settingsTab);
+    const [activeWorkspaceView, setActiveWorkspaceView] = useState(() => resolveInitialHostWorkspaceRoute(
+        typeof window !== 'undefined' ? window.location.search : ''
+    ).view);
+    const [activeWorkspaceSection, setActiveWorkspaceSection] = useState(() => resolveInitialHostWorkspaceRoute(
+        typeof window !== 'undefined' ? window.location.search : ''
+    ).section);
     const [settingsNavQuery, setSettingsNavQuery] = useState('');
     const [settingsNavOpen, setSettingsNavOpen] = useState(false);
     const [adminContextOpen, setAdminContextOpen] = useState(false);

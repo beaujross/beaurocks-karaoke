@@ -15,6 +15,14 @@ import {
 
 const nowMs = () => Date.now();
 
+const getBrowserTimezone = () => {
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+        return 'UTC';
+    }
+};
+
 const useHostLaunchFlow = ({
     hostName,
     setHostName,
@@ -110,6 +118,7 @@ const useHostLaunchFlow = ({
                 nightPresetPayload: initialNightPresetPayload,
                 discoveryListing: buildProvisionDiscoveryPayload(discoveryDraft, {
                     roomName: discoveryDraft.publicRoom ? nextRoomName : '',
+                    timezone: getBrowserTimezone(),
                 }),
                 roomPlan: buildProvisionRoomPlanPayload(discoveryDraft),
                 eventCredits: buildProvisionEventCreditsPayload(eventCreditsDraft),

@@ -18,9 +18,22 @@ const splitTagInput = (value = "", max = 8) =>
     .filter((entry, index, array) => array.indexOf(entry) === index)
     .slice(0, Math.max(1, Number(max || 8)));
 
-const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
+const getBrowserTimezone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+};
+
+const normalizeRequestedListingType = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return ["venue", "event", "room_session"].includes(token) ? token : "venue";
+};
+
+const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
-  const [listingType, setListingType] = useState("venue");
+  const [listingType, setListingType] = useState(() => normalizeRequestedListingType(route?.params?.targetType));
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [form, setForm] = useState({
@@ -29,6 +42,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
     city: "",
     state: "",
     region: "nationwide",
+    timezone: getBrowserTimezone(),
     address1: "",
     startsAtLocal: "",
     endsAtLocal: "",
@@ -90,6 +104,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
         city: form.city,
         state: form.state,
         region: form.region,
+        timezone: form.timezone,
         address1: form.address1,
         startsAtMs: Number(startsAtMs || 0) || 0,
         endsAtMs: Number(endsAtMs || 0) || 0,
@@ -136,9 +151,9 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-chip">submit listing</div>
-        <h2>Create Venue, Event, or Room Session</h2>
+        <h2>List a Karaoke Venue or Night</h2>
         <p>
-          All submissions route through moderation. Browsing remains public; posting requires login.
+          Independent venues and karaoke nights can be listed even when they do not use BeauRocks. Every submission is reviewed before it reaches the public map.
         </p>
         {!canSubmit && (
           <div className="mk3-actions-block">
@@ -167,14 +182,14 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
           <label>
             Listing Type
             <select value={listingType} onChange={(e) => setListingType(e.target.value)}>
-              <option value="venue">Venue</option>
-              <option value="event">Event</option>
-              <option value="room_session">Room Session</option>
+              <option value="venue">Venue page</option>
+              <option value="event">Karaoke night / event</option>
+              <option value="room_session">BeauRocks room session</option>
             </select>
           </label>
           <label>
             Title
-            <input value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} />
+            <input required value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} />
           </label>
           <label className="full">
             Description
@@ -274,6 +289,14 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
             Region Token
             <input value={form.region} onChange={(e) => setForm((prev) => ({ ...prev, region: e.target.value }))} />
           </label>
+          <label>
+            Venue Timezone
+            <input
+              value={form.timezone}
+              onChange={(e) => setForm((prev) => ({ ...prev, timezone: e.target.value }))}
+              placeholder="America/Los_Angeles"
+            />
+          </label>
           <label className="full">
             Address
             <input value={form.address1} onChange={(e) => setForm((prev) => ({ ...prev, address1: e.target.value }))} />
@@ -366,7 +389,8 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
         <ul className="mk3-plain-list">
           <li>Moderation required before publish.</li>
           <li>Google/Yelp enrichment can be added by admins.</li>
-          <li>Room sessions support public/private visibility.</li>
+          <li>Use Venue or Karaoke night / event for an independent listing. BeauRocks room sessions are published from the Host setup flow.</li>
+          <li>Room sessions support explicit public/private visibility.</li>
           <li>Experience tags drive discover badges and modern karaoke storytelling.</li>
         </ul>
         {previewStart > 0 && (

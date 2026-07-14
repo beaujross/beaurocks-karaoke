@@ -5,7 +5,7 @@ import { test } from 'vitest';
 const require = createRequire(import.meta.url);
 const { shouldIncludeDiscoverListing } = require('../../functions/lib/discoverVisibility.js');
 
-test('discover visibility hides unofficial host-room sessions but keeps official room sessions and public venue/event listings', () => {
+test('discover visibility includes opted-in host rooms and excludes every explicitly private listing type', () => {
   assert.equal(shouldIncludeDiscoverListing({
     item: {
       id: 'host-room-1',
@@ -14,7 +14,7 @@ test('discover visibility hides unofficial host-room sessions but keeps official
       sourceType: 'host_room',
       isOfficialBeauRocksListing: false,
     },
-  }), false);
+  }), true);
 
   assert.equal(shouldIncludeDiscoverListing({
     item: {
@@ -33,7 +33,7 @@ test('discover visibility hides unofficial host-room sessions but keeps official
       listingType: 'venue',
       visibility: 'private',
     },
-  }), true);
+  }), false);
 
   assert.equal(shouldIncludeDiscoverListing({
     item: {

@@ -1384,6 +1384,12 @@ const MarketingSite = () => {
                   Discover
                 </a>
                 <a
+                  href={buildHref(MARKETING_ROUTE_PAGES.forVenues, "", withCampaignParams({ utm_content: "footer_list_night" }))}
+                  onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.forVenues, "", withCampaignParams({ utm_content: "footer_list_night" }))}
+                >
+                  List a Night
+                </a>
+                <a
                   href={buildHref(MARKETING_ROUTE_PAGES.join, "", withCampaignParams({ utm_content: "footer_join" }))}
                   onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.join, "", withCampaignParams({ utm_content: "footer_join" }))}
                 >

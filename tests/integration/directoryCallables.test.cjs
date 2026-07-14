@@ -291,6 +291,26 @@ async function run() {
       assert.equal(String(sessionSnap.get("roomCode")), "DEMO1");
       assert.equal(String(sessionSnap.get("visibility")), "public");
       assert.equal(String(sessionSnap.get("status")), "approved");
+      const discoverResult = await listDirectoryDiscover.run(
+        requestFor("", { search: "house karaoke friday", listingType: "room_session", limit: 20 })
+      );
+      assert.equal(
+        discoverResult.items.some((item) => item.id === result.listingId && item.sourceType === "host_room"),
+        true
+      );
+      await db.doc("artifacts/bross-app/public/data/rooms/DEMO2").set({
+        hostUid: USER_UID,
+        hostUids: [USER_UID],
+        hostName: "Demo Host",
+      });
+      const noCoordinates = await upsertHostRoomDiscoveryListing.run(
+        requestFor(USER_UID, {
+          roomCode: "DEMO2",
+          listing: { publicRoom: true, title: "No Coordinates Yet" },
+        })
+      );
+      const noCoordinatesSnap = await db.doc("room_sessions/" + noCoordinates.listingId).get();
+      assert.equal(noCoordinatesSnap.get("location"), null);
     }],
 
     ["upsertDirectoryProfile ignores client role escalation attempts", async () => {
@@ -859,12 +879,25 @@ async function run() {
         city: "Seattle",
         state: "WA",
       });
+      await db.doc("venues/geo_venue_private").set({
+        title: "Private Geo Venue",
+        status: "approved",
+        visibility: "private",
+        region: "wa_seattle",
+      });
       await db.doc("karaoke_events/geo_event").set({
         title: "Geo Event",
         status: "approved",
         region: "wa_seattle",
         city: "Seattle",
         state: "WA",
+        startsAtMs: now,
+      });
+      await db.doc("karaoke_events/geo_event_private").set({
+        title: "Private Geo Event",
+        status: "approved",
+        visibility: "private",
+        region: "wa_seattle",
         startsAtMs: now,
       });
       await db.doc("room_sessions/geo_session_public").set({
