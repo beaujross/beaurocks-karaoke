@@ -26,7 +26,7 @@ Program closeout does not mean every long-term workstream is finished. The corre
 | BeauBucks and event economics | Guarded canary | ledger contract, reconciliation, server-authoritative spend boundary, idempotent replay, operator health panel | readiness remains below `12` accepted operations, `3` guests, and all `3` spend kinds; legacy balance must remain authoritative |
 | Games and crowd interaction | Lifecycle slice closed | one lifecycle registry/presentation contract, collision preflight, three timing bundles, compact two-action launcher recovery | Pop Trivia and voice-mode recap completeness remain future mechanics work, not release blockers |
 | Persona, brand, and design governance | Closed for this program | CTO/CPO/CMO/persona scorecards and branded 10-slide PDF with current screenshots | continue as a gate on every new slice |
-| YouTube event readiness | Product closed; submission nearly ready | compliant fallback, preflight, Quotas API evidence, cooldown capture, permanent-delete capture | Console screenshot, contact/legal confirmation, and approval of the proposed request amount |
+| YouTube event readiness | Technical submission gate green; human handoff open | compliant fallback, current-release narrative, Quotas API evidence, cooldown and permanent-delete captures, live legal URLs, method/retention verification, and automated submission preflight | Console screenshot, contact/legal confirmation, and approval of the proposed request amount |
 | Deployment and QA | Released and source-attributed | checkpoint `fbe64d8`; Hosting release `1784078708909000`; coordinated Functions, ruleset `1e8e01b7-b77a-4d9a-9e29-635b7fc1b605`, and ready index `CICAgPigw5IK`; production golden, cross-surface, charts, authenticated-host, and direct-arrival smokes green | retain evidence and run intentional real-event persona acceptance |
 | Discovery and public charts | Production foundation released | server-owned sanitized Global/Song/Public Room projections, canonical-song grouping, account chart identity, `/charts`, Discover teaser, Admin repair/rebuild, approved-host launch preflight, and desktop/mobile production smoke | verify one real qualifying member result, guest exclusion, and public-to-private cleanup during controlled manual QA; do not seed synthetic chart history |
 
@@ -52,7 +52,7 @@ This recent monthly aggregate is an observed baseline, not a full historical pea
 - confirm `hello@beaurocks.app` as the audit/legal contact;
 - confirm the legal operator/product name used on Terms, Privacy, and deletion pages;
 - approve or adjust the proposed `1,000 Search Queries/day` request;
-- perform one final narrative read-through against Hosting release `ac2b07c988fe1f57`.
+- final narrative read-through completed against Hosting release `1784078708909000` (version `5bc48c15cd873eac`).
 
 ### Gate 2: Source-control reproducibility
 

@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 ## Status
 
-This draft supports the YouTube Data API compliance audit and quota-extension request. The product behavior and permanent-delete path are deployed through Hosting release `ac2b07c988fe1f57`; the production callable is active.
+This draft supports the YouTube Data API compliance audit and quota-extension request. The current product behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`); the production callable is active. The permanent-delete evidence was captured on the earlier production checkpoint and remains independently verified.
 
 Do not submit yet if the following are still missing:
 - Google Cloud Console quota presentation screenshot from the live project
@@ -167,4 +167,4 @@ Current note:
 - Google Cloud Console quota presentation screenshot
 - final business/contact confirmation
 - final confirmation of the proposed `1,000 Search Queries/day` request
-- final audit narrative read-through against deployed release `ac2b07c988fe1f57`
+- final audit narrative read-through completed against deployed release `1784078708909000` (version `5bc48c15cd873eac`)

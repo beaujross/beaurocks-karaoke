@@ -103,18 +103,13 @@ Minimum acceptance criteria:
 - capture the Google Cloud Console YouTube Data API quota page showing the same assigned limits
 - be ready to explain that the in-app counter is an operational request counter, not the official quota ledger
 
-## Blocker 5: Final Submission Narrative Should Be Checked Against Live Behavior
+## Resolved: Final Submission Narrative Checked Against Live Behavior
 
 Current repo state:
 
 - the draft narrative is in [YOUTUBE_AUDIT_SUBMISSION_DRAFT.md](</C:/Users/beauj/Desktop/beaurocks-karaoke/docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md>)
 
-Why this still blocks submission:
-
-- the audit answer set should match the live product exactly
-- any mismatch between screenshots, URLs, and narrative will weaken the submission
-
-Minimum acceptance criteria:
+Verified against Hosting release `1784078708909000` (version `5bc48c15cd873eac`):
 
 - verify the live product still matches the documented method list:
   - `search.list`
@@ -127,6 +122,8 @@ Minimum acceptance criteria:
   - bounded canonical candidate backfill for verified embeddable indexed tracks
   - permanent room deletion removes the room host library
 - confirm the proposed `1,000 Search Queries/day` request against the observed production baseline and the documented 150-person event envelope
+
+The automated preflight at `scripts/ops/youtube-submission-preflight.mjs` now checks the current release identifiers, required evidence artifacts, live legal URLs, API method call sites, and the 30-day maintenance contract. The narrative matches the deployed method and retention story. Request approval remains a human business decision.
 
 ## Resolved In Repo
 

@@ -3,6 +3,7 @@
 Date created: 2026-07-06
 Deployment checkpoint: 2026-07-06 15:49 UTC (2026-07-06 08:49 America/Los_Angeles)
 Production hosting release: `3098b4aa26e1003d` on the Firebase Hosting live channel for `beaurocks-karaoke-v2`
+Current behavior revalidated against Hosting release `1784078708909000` (version `5bc48c15cd873eac`) on 2026-07-14; original artifact provenance remains unchanged.
 Production app URL: https://beaurocks.app/
 Firebase Hosting URL: https://beaurocks-karaoke-v2.web.app/
 Production project: beaurocks-karaoke-v2

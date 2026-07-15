@@ -1,7 +1,7 @@
 # YouTube Quota Extension Packet
 
 Date: 2026-07-06
-Status: Production event-readiness behavior is deployed, and authenticated quota, controlled cooldown, permanent-delete, and request-sizing evidence are captured. The latest room-deletion evidence is tied to Hosting release `ac2b07c988fe1f57` (2026-07-13). Not ready to submit until the Google Cloud Console presentation screenshot and final business/contact/request approval are attached.
+Status: Production event-readiness behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`), and authenticated quota, controlled cooldown, permanent-delete, and request-sizing evidence are captured. The room-deletion evidence remains tied to its original 2026-07-13 production checkpoint. Not ready to submit until the Google Cloud Console presentation screenshot and final business/contact/request approval are attached.
 
 ## Executive Summary
 
@@ -58,7 +58,7 @@ The quota-extension request should include measured peak-event search demand, ca
 
 ## Deployed Event-Readiness Evidence
 
-Hosting release `3098b4aa26e1003d` adds `Tonight's media preflight` inside the Host Room Library Curator. The preflight combines known embeddable catalog coverage, room-proven fresh backings, content-agnostic fallback availability, and this Host browser's estimated Search Queries reserve. It limits guidance to three next moves and states that Google Cloud Quotas is the source of truth for assigned limits.
+Hosting release `3098b4aa26e1003d` introduced `Tonight's media preflight` inside the Host Room Library Curator; the behavior remains active through current release `1784078708909000` (version `5bc48c15cd873eac`). The preflight combines known embeddable catalog coverage, room-proven fresh backings, content-agnostic fallback availability, and this Host browser's estimated Search Queries reserve. It limits guidance to three next moves and states that Google Cloud Quotas is the source of truth for assigned limits.
 
 Authenticated production acceptance observed 115 known embeddable tracks, 14 content-agnostic fallbacks, an estimated 100-search browser reserve, and 0 of the 3 targeted room-proven fresh backings. The product therefore reported `Ready with Watchouts` and asked the Host to use or approve three more room backings. These browser estimates are not submitted as evidence of the project's assigned Google quota.
 

@@ -353,3 +353,14 @@ Program closeout audit (2026-07-14):
 Closeout scorecard: `docs/reviews/2026-07-14-program-closeout-scorecard.md`.
 
 Next bounded slice: package the deployed program state into a clean source-control checkpoint, then finish the human-owned YouTube submission fields. Do not reopen stable product contracts or promote the BeauBucks canary during closeout.
+
+Production closeout and YouTube handoff (2026-07-14):
+
+- discovery and public charts shipped through Hosting release `1784078708909000` (version `5bc48c15cd873eac`), ruleset `1e8e01b7-b77a-4d9a-9e29-635b7fc1b605`, and ready index `CICAgPigw5IK`;
+- application source checkpoint `fbe64d8` and production-acceptance checkpoint `2009d0a` are pushed to `origin/main`;
+- the YouTube submission packet now names the current production release and its automated preflight reports `technicalReady: true`;
+- required evidence artifacts, `search.list` / `videos.list` / `playlistItems.list` call sites, the 30-day retention contract, and all three live legal URLs pass;
+- remaining YouTube work is strictly human-owned: the Console quota screenshot, contact confirmation, legal identity confirmation, and approval of `1,000 Search Queries/day`;
+- the remaining chart persona checks have a controlled real-event runbook and must not be satisfied by synthetic `launch_v1` performance data.
+
+Next bounded slice: complete the human YouTube handoff and the three real-event chart persona checks. Until those inputs exist, collect event telemetry without reopening the stable provider, economy, room-setup, or leaderboard contracts.
