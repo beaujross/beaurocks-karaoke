@@ -199,7 +199,7 @@ Live permanent-delete evidence, hashes, and independent absence checks are docum
 
 ## Proposed Search Queries Request
 
-Proposed allocation: `1,000 Search Queries calls/day`.
+Proposed allocation: `5,000 Search Queries calls/day` with a `120 calls/minute` peak.
 
 Observed production baseline from the server usage ledger for period `202607`, read on 2026-07-14:
 
@@ -209,9 +209,9 @@ Observed production baseline from the server usage ledger for period `202607`, r
 - `13` rooms represented in the meter
 - `17` total YouTube method calls for the highest recorded single room
 
-This ledger was introduced recently and provides monthly aggregate evidence, not a complete historical peak-event trace. The established five-hour, 150-person event model supplies the capacity envelope: approximately `120` low-, `300` medium-, and `750` high-engagement live searches. Requesting `1,000/day` covers the high envelope with roughly 33% contingency while indexed, canonical, and cached reuse continue reducing live demand.
+This ledger was introduced recently and provides monthly aggregate evidence, not a complete historical peak-event trace. The established five-hour, 150-person event model supplies the capacity envelope: approximately `120` low-, `300` medium-, and `750` high-engagement live searches per event. Requesting `5,000/day` supports five same-day high-engagement event-equivalents (`3,750` calls) plus `1,250` calls of reserve, or approximately 13 medium-engagement events with contingency. The `120/minute` peak supports four short room/actor bursts at the enforced `30/minute` callable limit while staying below the global `600/minute` safety ceiling. Indexed, canonical, and cached reuse continue reducing live demand, and measured adoption should justify any later increase.
 
-The increase applies to the separate Search Queries bucket. Even the high envelope adds only about `750` paired `videos.list` units, remaining well below the assigned `10,000` general-data-unit limit.
+The increase applies to the separate Search Queries bucket. At full requested search usage, an approximately one-to-one paired `videos.list` validation pattern would consume about `5,000` of the assigned `10,000` general-data units, leaving capacity for playlist inspection, known-ID refresh, and other low-cost detail calls.
 
 ## Remaining Submission Blockers
 
@@ -222,12 +222,12 @@ Submission still requires:
 - current-form Cloud quota, Privacy, policy-link, Terms, and player/embed captures (the authenticated Quotas API independently confirms 100 Search Queries/day and 10,000 general units/day)
 - authenticated live-room product screenshots only if reviewers require evidence beyond the captured QA product-surface packet
 - confirmation of final business/contact details
-- confirmation that `1,000 Search Queries/day` is the approved request amount
+- confirmation that `5,000 Search Queries/day` with a `120/minute` peak is the approved request amount
 - final read-through to ensure the submitted narrative matches deployed behavior
 
 ## Recommended Submission Sequence
 
-1. Capture the five current-form address-bar presentation screenshots; retain the captured Quotas API, controlled cooldown, and permanent-delete artifacts.
-2. Confirm final business/contact details and approve the proposed `1,000 Search Queries/day` request.
+1. Capture the Cloud-owner quota screenshot; retain the completed public/product address-bar captures, Quotas API, controlled cooldown, and permanent-delete artifacts.
+2. Confirm final business/contact details and approve the proposed `5,000 Search Queries/day` request with a `120/minute` peak.
 3. Review this packet against deployed behavior.
 4. Submit the YouTube API Services Audit and Quota Extension Form.

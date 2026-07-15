@@ -9,7 +9,7 @@ This draft supports the YouTube Data API compliance audit and quota-extension re
 Do not submit yet if the following are still missing:
 - current-form address-bar presentation captures from `docs/compliance/evidence/2026-07-15-youtube-form/`
 - final business/contact confirmation
-- final confirmation of the proposed `1,000 Search Queries/day` request
+- final confirmation of the proposed `5,000 Search Queries/day` request with a `120/minute` peak
 
 
 Controlled cooldown and permanent-delete evidence are complete. Authenticated Quotas API evidence and the production usage-ledger baseline are captured. The remaining hard evidence items are the current form's address-bar presentation captures; business/contact and final request-amount confirmation remain open.
@@ -95,13 +95,13 @@ If asked how quota is controlled, use an answer like this:
 
 ## Requested Search Queries Allocation
 
-Proposed request: `1,000 Search Queries calls/day`.
+Proposed request: `5,000 Search Queries calls/day` with a `120 calls/minute` peak.
 
 The production server ledger for period `202607` records `27` actual `search.list` calls, `26` paired `videos.list` calls, `94` total metered YouTube Data API calls, `13` represented rooms, and `17` total method calls for the highest recorded single room. This recent monthly aggregate is an observed baseline, not a complete historical peak trace.
 
-The established five-hour, 150-person event envelope models `120`, `300`, and `750` live searches at low, medium, and high engagement. The proposed `1,000/day` allocation covers the high envelope with roughly 33% contingency. It does not reduce the obligation to prefer indexed, canonical, cached, direct-URL, and content-agnostic paths before live search.
+The established five-hour, 150-person event envelope models `120`, `300`, and `750` live searches at low, medium, and high engagement. The proposed `5,000/day` allocation supports five same-day high-engagement event-equivalents (`3,750` calls) plus `1,250` calls of reserve, or approximately 13 medium-engagement events with contingency. The `120/minute` peak supports four short room/actor bursts at the enforced `30/minute` callable limit while remaining below the global `600/minute` safety ceiling. This staged public-launch allocation does not reduce the obligation to prefer indexed, canonical, cached, direct-URL, and content-agnostic paths before live search; measured adoption should drive any later request.
 
-The paired validation load remains far below the assigned `10,000` general-data-unit limit. The requested increase applies to the separate Search Queries bucket.
+At full requested search usage, an approximately one-to-one paired `videos.list` validation pattern would consume about `5,000` of the assigned `10,000` general-data units, leaving capacity for playlist inspection, known-ID refresh, and other low-cost detail calls. The requested increase applies to the separate Search Queries bucket.
 
 ## Deletion / Retention Answer
 
@@ -129,9 +129,9 @@ Already captured:
 
 Still required before submission:
 
-- current-form address-bar captures for Cloud quota, Privacy, policy-link context, Terms, and player/embed context
+- the Cloud-owner quota screenshot; Privacy, policy-link context, Terms, and player/embed address-bar captures are complete
 - final business/contact confirmation
-- final confirmation of the proposed `1,000 Search Queries/day` request
+- final confirmation of the proposed `5,000 Search Queries/day` request with a `120/minute` peak
 - optional authenticated live-room host screenshot only if reviewers request proof beyond the captured packet
 
 Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for the remaining live-only capture steps.
@@ -164,7 +164,7 @@ Current note:
 
 ## Remaining Submission Blockers
 
-- current-form address-bar presentation captures
+- Cloud-owner quota address-bar capture; all public/product captures are complete
 - final business/contact confirmation
-- final confirmation of the proposed `1,000 Search Queries/day` request
+- final confirmation of the proposed `5,000 Search Queries/day` request with a `120/minute` peak
 - final audit narrative read-through completed against deployed release `1784078708909000` (version `5bc48c15cd873eac`)

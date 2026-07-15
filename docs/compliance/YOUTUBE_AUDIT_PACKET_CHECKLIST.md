@@ -64,7 +64,7 @@ Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capt
 
 ## Search Queries Request Sizing
 
-Proposed request: `1,000 Search Queries calls/day`.
+Proposed request: `5,000 Search Queries calls/day` with a `120 calls/minute` peak.
 
 Observed production baseline from the server usage ledger for period `202607`, read on 2026-07-14:
 
@@ -74,9 +74,9 @@ Observed production baseline from the server usage ledger for period `202607`, r
 - `13` rooms represented in the meter
 - `17` total YouTube method calls for the highest recorded single room
 
-The server meter was introduced recently and is monthly aggregate evidence, so it is not presented as a historical peak-event trace. The established five-hour, 150-person planning envelope in `docs/costs/GAME_MODE_COST_SHEET.md` models `120`, `300`, and `750` live searches for low, medium, and high engagement. A `1,000/day` request covers the high envelope with roughly 33% contingency while the product continues to reduce live demand through indexed, canonical, and cached reuse.
+The server meter was introduced recently and is monthly aggregate evidence, so it is not presented as a historical peak-event trace. The established five-hour, 150-person planning envelope in `docs/costs/GAME_MODE_COST_SHEET.md` models `120`, `300`, and `750` live searches for low, medium, and high engagement. A `5,000/day` request supports five same-day high-engagement event-equivalents (`3,750` calls) plus `1,250` calls of reserve, or approximately 13 medium-engagement events with contingency. The `120/minute` peak supports four short room/actor bursts at the enforced `30/minute` limit while staying below the global `600/minute` safety ceiling. The product continues to reduce live demand through indexed, canonical, and cached reuse.
 
-The request is for the separate Search Queries bucket. At the high envelope, the paired `videos.list` validation work remains far below the assigned `10,000` general-data-unit limit. Google Cloud Console remains the source of truth for assigned limits and final submission values.
+The request is for the separate Search Queries bucket. At full requested search usage, an approximately one-to-one paired `videos.list` validation pattern would use about `5,000` of the assigned `10,000` general-data units, leaving capacity for playlist inspection, known-ID refresh, and other detail calls. Google Cloud Console remains the source of truth for assigned limits and final submission values.
 
 ## Important Method/Cost Summary
 

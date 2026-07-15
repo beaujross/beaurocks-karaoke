@@ -123,7 +123,7 @@ Verified against Hosting release `1784078708909000` (version `5bc48c15cd873eac`)
   - nightly cleanup
   - bounded canonical candidate backfill for verified embeddable indexed tracks
   - permanent room deletion removes the room host library
-- confirm the proposed `1,000 Search Queries/day` request against the observed production baseline and the documented 150-person event envelope
+- confirm the proposed staged public-launch request of `5,000 Search Queries/day` and `120/minute` against the observed production baseline and the documented 150-person event envelope
 
 The automated preflight at `scripts/ops/youtube-submission-preflight.mjs` now checks the current release identifiers, required evidence artifacts, live legal URLs, API method call sites, and the 30-day maintenance contract. The narrative matches the deployed method and retention story. Request approval remains a human business decision.
 
@@ -144,7 +144,7 @@ These are no longer the main blockers in the codebase:
 
 ## Recommended Submission Sequence
 
-1. Capture the five current-form presentation screenshots; retain the completed API, cooldown, and permanent-delete evidence.
+1. Capture the Cloud-owner quota screenshot; the four public/product address-bar captures are complete. Retain the completed API, cooldown, and permanent-delete evidence.
 2. Confirm final business/contact details.
-3. Confirm the proposed `1,000 Search Queries/day` allocation and review `docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md` and the submission draft against the live product once.
+3. Confirm the proposed `5,000 Search Queries/day` allocation with a `120/minute` peak and review `docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md` and the submission draft against the live product once.
 4. Only then submit the audit/quota-extension request.

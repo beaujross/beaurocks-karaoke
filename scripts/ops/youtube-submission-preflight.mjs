@@ -82,7 +82,7 @@ await verifyArtifact("docs/compliance/evidence/2026-07-06-youtube-live-evidence/
 await verifyText("docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md", [
   CURRENT_HOSTING_RELEASE,
   CURRENT_HOSTING_VERSION,
-  "1,000 Search Queries/day",
+  "5,000 Search Queries/day",
   "search.list",
   "videos.list",
   "playlistItems.list",
@@ -90,7 +90,7 @@ await verifyText("docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md", [
 await verifyText("docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md", [
   CURRENT_HOSTING_RELEASE,
   CURRENT_HOSTING_VERSION,
-  "1,000 Search Queries calls/day",
+  "5,000 Search Queries calls/day",
   "100 Search Queries/day",
   "10,000",
 ]);
@@ -174,10 +174,10 @@ if (process.env.YOUTUBE_AUDIT_LEGAL_IDENTITY_CONFIRMED !== "1") {
     action: "Confirm the final legal operator and product naming, then set YOUTUBE_AUDIT_LEGAL_IDENTITY_CONFIRMED=1 for the strict run.",
   });
 }
-if (String(process.env.YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED || "") !== "1000") {
+if (String(process.env.YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED || "") !== "5000") {
   humanBlockers.push({
     id: "request_amount_approval",
-    action: "Approve 1,000 Search Queries/day, then set YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED=1000 for the strict run.",
+    action: "Approve 5,000 Search Queries/day with a 120/minute peak, then set YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED=5000 for the strict run.",
   });
 }
 

@@ -11,9 +11,9 @@ The technical packet is ready. Do not submit until the five required address-bar
 1. Capture the five required files in `docs/compliance/evidence/2026-07-15-youtube-form/` using the included README.
 2. Confirm `hello@beaurocks.app` as the audit/legal contact.
 3. Confirm the final legal operator name and `BeauRocks Karaoke` product naming used on Terms, Privacy, and deletion pages.
-4. Approve the proposed request of `1,000 Search Queries/day`.
+4. Approve the proposed staged public-launch request of `5,000 Search Queries/day` with a `120/minute` peak.
 
-Recommendation: approve `1,000 Search Queries/day`. The documented high-engagement envelope is `750` live searches across a five-hour, 150-person event, leaving roughly 33% contingency. Indexed, canonical, cached, direct-URL, and content-agnostic paths continue to reduce live-search demand.
+Recommendation: approve `5,000 Search Queries/day` and `120/minute`. The documented high-engagement envelope is `750` live searches across a five-hour, 150-person event. The request supports five high-engagement event-equivalents (`3,750` calls) plus `1,250` calls of reserve, or approximately 13 medium-engagement events with contingency. It is large enough for a controlled public launch without making an unsupported mass-scale forecast; measured production adoption should drive the next increase. Indexed, canonical, cached, direct-URL, and content-agnostic paths continue to reduce live-search demand.
 
 ## Technical Status
 
@@ -38,7 +38,7 @@ Final strict gate after the screenshot and approvals:
 ```powershell
 $env:YOUTUBE_AUDIT_CONTACT_CONFIRMED = "1"
 $env:YOUTUBE_AUDIT_LEGAL_IDENTITY_CONFIRMED = "1"
-$env:YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED = "1000"
+$env:YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED = "5000"
 node scripts/ops/youtube-submission-preflight.mjs --live --strict
 ```
 

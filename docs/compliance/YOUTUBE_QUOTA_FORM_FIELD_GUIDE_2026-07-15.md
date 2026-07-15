@@ -21,8 +21,8 @@ Confirm these values:
 - Legal address: `[CONFIRM]`
 - Primary contact: `[CONFIRM FULL NAME] <hello@beaurocks.app>`
 - Current monetization selections: `[CONFIRM CURRENT TRUTH]`
-- Requested Search Queries allocation: `1,000/day`
-- Requested Search Queries peak: `30/minute`
+- Requested Search Queries allocation: `5,000/day`
+- Requested Search Queries peak: `120/minute`
 
 Do not store the demo password in this repository. Paste it directly into the Google form from the secure QA credential.
 
@@ -123,12 +123,12 @@ General quota:
 
 Search Queries quota:
 
-- Total per day: `1,000`
-- Peak per minute: `30`
+- Total per day: `5,000`
+- Peak per minute: `120`
 
 Detailed justification:
 
-> BeauRocks runs live karaoke events that may serve approximately 150 participants over a five-hour show. Our modeled low-, medium-, and high-engagement envelopes are approximately 120, 300, and 750 uncached live searches. We request 1,000 search.list calls/day to cover the high-event envelope with approximately 33% contingency. The 30-calls/minute peak matches the application’s enforced per-actor callable rate limit and supports short request bursts without permitting unbounded traffic. Live search remains the last discovery path: the application first uses client, server, and durable query caches; room, account, curated, and canonical backing indexes; known video-ID refresh; and direct host URLs. Quota exhaustion triggers a cooldown and known-catalog/content-agnostic fallback rather than circumvention. We do not download YouTube media, rotate API projects or keys, or present non-embeddable results as playable.
+> BeauRocks runs live karaoke events that may serve approximately 150 participants over a five-hour show. Our modeled low-, medium-, and high-engagement envelopes are approximately 120, 300, and 750 uncached live searches per event. We request 5,000 search.list calls/day for a controlled public-launch capacity of five simultaneous or same-day high-engagement event-equivalents (3,750 calls) plus 1,250 calls of reserve, or approximately 13 medium-engagement events with contingency. The requested 120-calls/minute peak supports four short room/actor bursts at the application’s enforced 30-calls/minute callable limit and remains below the application-wide 600-calls/minute safety ceiling. Live search remains the last discovery path: the application first uses client, server, and durable query caches; room, account, curated, and canonical backing indexes; known video-ID refresh; and direct host URLs. Quota exhaustion triggers a cooldown and known-catalog/content-agnostic fallback rather than circumvention. We do not download YouTube media, rotate API projects or keys, or present non-embeddable results as playable. We will monitor production usage and request a further reviewed increase only when measured adoption justifies it.
 
 ## Section 6 — Upload Mapping
 
