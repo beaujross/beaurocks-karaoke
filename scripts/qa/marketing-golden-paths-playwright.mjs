@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const DEFAULT_BASE_URL = "https://beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 70000;
-const DISCOVER_TEXT_PATTERN = /see which rooms are already in motion tonight/i;
+const DISCOVER_TEXT_PATTERN = /find karaoke rooms, recurring nights, and venues you can trust/i;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -248,12 +248,12 @@ const run = async () => {
     await runCheck(checks, "discover_joinable_filter_cta", async () => {
       await loadMarketingDiscover(page, baseUrl, timeoutMs);
       await delay(1200);
-      const cta = page.getByRole("button", { name: /Show Joinable Rooms/i }).first();
+      const cta = page.getByRole("button", { name: /Show Join-Ready Rooms/i }).first();
       await cta.waitFor({ state: "visible", timeout: timeoutMs });
       await cta.click({ force: true });
       await delay(500);
       const bodyText = await page.locator("body").innerText().catch(() => "");
-      if (!/joinable by code|rooms open by code|join room/i.test(bodyText)) {
+      if (!/access: join-ready rooms|join-ready rooms|join by code/i.test(bodyText)) {
         throw new Error("Joinable-room CTA did not update discover state.");
       }
       return "Discover hero joinable-room CTA responded.";

@@ -45,27 +45,49 @@ try {
     phase: "authenticated",
     qaUid: auth.currentUser?.uid || null,
   }));
-  const callPreflight = httpsCallable(functions, "previewPublicChartLaunch", { timeout: 60_000 });
-  const response = await callPreflight({});
-  const result = response?.data || {};
+  const callHostAccess = httpsCallable(functions, "getMyHostAccessStatus", { timeout: 60_000 });
+  const hostAccessResponse = await callHostAccess({});
+  const hostAccess = hostAccessResponse?.data || {};
   console.log(JSON.stringify({
-    ok: result.ok === true,
-    chartEra: result.chartEra || null,
-    canLaunch: result.canLaunch === true,
-    truncated: result.truncated === true,
-    gateScope: result.gateScope || null,
-    scannedRoomCount: Number(result.scannedRoomCount || 0),
-    openLifecycleRoomCount: Number(result.openLifecycleRoomCount || 0),
-    activeRoomCount: Number(result.activeRoomCount || 0),
-    publicRoomCount: Number(result.publicRoomCount || 0),
-    activeHostCount: Number(result.activeHostCount || 0),
-    approvedActiveHostCount: Number(result.approvedActiveHostCount || 0),
-    unapprovedHostCount: Number(result.unapprovedHostCount || 0),
-    unapprovedHostUids: Array.isArray(result.unapprovedHostUids) ? result.unapprovedHostUids : [],
-    orphanedHostCount: Number(result.orphanedHostCount || 0),
-    orphanedHostUids: Array.isArray(result.orphanedHostUids) ? result.orphanedHostUids : [],
-  }, null, 2));
-  if (result.canLaunch !== true || result.truncated === true) process.exitCode = 2;
+    phase: "host_access",
+    ok: hostAccess.ok === true,
+    hasHostWorkspaceAccess: hostAccess.hasHostWorkspaceAccess === true,
+    hostApprovalEnabled: hostAccess.hostApprovalEnabled === true,
+    entitledHostAccess: hostAccess.entitledHostAccess === true,
+    applicationStatus: hostAccess.applicationStatus || null,
+  }));
+  if (hostAccess.ok !== true || hostAccess.hasHostWorkspaceAccess !== true) {
+    process.exitCode = 2;
+  }
+  const callPreflight = httpsCallable(functions, "previewPublicChartLaunch", { timeout: 60_000 });
+  try {
+    const response = await callPreflight({});
+    const result = response?.data || {};
+    console.log(JSON.stringify({
+      phase: "admin_preflight",
+      ok: result.ok === true,
+      chartEra: result.chartEra || null,
+      canLaunch: result.canLaunch === true,
+      truncated: result.truncated === true,
+      gateScope: result.gateScope || null,
+      scannedRoomCount: Number(result.scannedRoomCount || 0),
+      openLifecycleRoomCount: Number(result.openLifecycleRoomCount || 0),
+      activeRoomCount: Number(result.activeRoomCount || 0),
+      publicRoomCount: Number(result.publicRoomCount || 0),
+      activeHostCount: Number(result.activeHostCount || 0),
+      approvedActiveHostCount: Number(result.approvedActiveHostCount || 0),
+      unapprovedHostCount: Number(result.unapprovedHostCount || 0),
+      orphanedHostCount: Number(result.orphanedHostCount || 0),
+    }, null, 2));
+    if (result.canLaunch !== true || result.truncated === true) process.exitCode = 2;
+  } catch (error) {
+    if (String(error?.code || "") !== "functions/permission-denied") throw error;
+    console.log(JSON.stringify({
+      phase: "admin_boundary",
+      enforced: true,
+      detail: "Dedicated QA host is correctly excluded from directory-admin preflight.",
+    }));
+  }
 } finally {
   await signOut(auth).catch(() => {});
 }

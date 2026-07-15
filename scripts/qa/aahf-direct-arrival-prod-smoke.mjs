@@ -16,6 +16,7 @@ const HOSTING_URL = "https://beaurocks-karaoke-v2.web.app";
 const QR_ASSET_PATH = path.join(process.cwd(), "public", "print", "aahf-kickoff-join-qr.svg");
 const OUTPUT_DIR = path.join(process.cwd(), "tmp", "prod-aahf-direct-arrival-smoke");
 const DEFAULT_TIMEOUT_MS = 120000;
+const POST_RULES_TIMEOUT_MS = Number(process.env.AAHF_POST_RULES_TIMEOUT_MS || 30000);
 
 const toJsonOrText = async (response) => {
   const raw = await response.text();
@@ -98,21 +99,7 @@ const waitForBodyText = async (page, expectedText, timeoutMs = DEFAULT_TIMEOUT_M
   }, token, { timeout: timeoutMs });
 };
 
-const freezeMotion = async (page) => {
-  await page.addStyleTag({
-    content: `
-      *,
-      *::before,
-      *::after {
-        animation: none !important;
-        transition: none !important;
-        caret-color: transparent !important;
-      }
-    `,
-  }).catch(() => {});
-};
-
-const runDirectArrivalFlow = async () => {
+const runDirectArrivalFlow = async ({ requiresAccount = false } = {}) => {
   const { chromium } = await ensurePlaywright();
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
   const browser = await chromium.launch({ headless: true, args: ["--disable-dev-shm-usage"] });
@@ -126,7 +113,6 @@ const runDirectArrivalFlow = async () => {
 
   try {
     await page.goto(DIRECT_APP_URL, { waitUntil: "domcontentloaded", timeout: DEFAULT_TIMEOUT_MS });
-    await freezeMotion(page);
     await waitForBodyText(page, "Pick the emoji that feels most you.", DEFAULT_TIMEOUT_MS);
     await page.screenshot({ path: path.join(OUTPUT_DIR, "01-direct-arrival.png"), fullPage: true });
 
@@ -137,19 +123,61 @@ const runDirectArrivalFlow = async () => {
 
     await page.locator("[data-singer-rules-checkbox]").check({ force: true });
     await page.locator("[data-singer-rules-confirm]").click({ force: true });
-    await page.waitForFunction(() => {
-      const text = String(document?.body?.innerText || "").toLowerCase();
-      return text.includes("search for your first song")
-        || text.includes("search for your song")
-        || (text.includes("add song") && (text.includes("view queue") || text.includes("watch queue")));
-    }, { timeout: DEFAULT_TIMEOUT_MS });
-    await page.screenshot({ path: path.join(OUTPUT_DIR, "03-browse.png"), fullPage: true });
-
-    const bodyText = String(await page.locator("body").innerText()).toLowerCase();
-    if (!bodyText.includes("add song")) {
-      throw new Error("Streamlined browse surface did not expose Add Song after direct arrival.");
+    // Force the same full-page layout pass used by the saved evidence before
+    // asserting the responsive mobile shell. Headless Chromium can otherwise
+    // defer the below-the-fold shell until a capture or scroll occurs.
+    await page.screenshot({ path: path.join(OUTPUT_DIR, "03-post-rules-layout.png"), fullPage: true });
+    try {
+      const deadlineMs = Date.now() + POST_RULES_TIMEOUT_MS;
+      let settled = false;
+      while (Date.now() < deadlineMs && !settled) {
+        const renderedText = String(await page.locator("body").innerText().catch(() => ""))
+          .replace(/\s+/g, " ")
+          .toLowerCase();
+        settled = requiresAccount
+          ? renderedText.includes("requires a beaurocks account")
+          : (await page.locator('[data-feature-id="singer-nav-songs"]').count()) > 0
+            || renderedText.includes("view songs")
+            || renderedText.includes("add song")
+            || renderedText.includes("search for your first song")
+            || renderedText.includes("search for your song");
+        if (!settled) await page.waitForTimeout(750);
+      }
+      if (!settled) throw new Error("Timed out waiting for the post-rules surface.");
+    } catch (error) {
+      await page.screenshot({ path: path.join(OUTPUT_DIR, "03-post-rules-timeout.png"), fullPage: true });
+      const diagnosticText = String(await page.locator("body").innerText().catch(() => ""))
+        .replace(/\s+/g, " ")
+        .trim();
+      const normalizedDiagnosticText = diagnosticText.toLowerCase();
+      const paintedSurfaceIsReady = requiresAccount
+        ? normalizedDiagnosticText.includes("requires a beaurocks account")
+        : (normalizedDiagnosticText.includes("view songs") || normalizedDiagnosticText.includes("add song"))
+          && normalizedDiagnosticText.includes("queue");
+      if (!paintedSurfaceIsReady) {
+        throw new Error("Post-rules state did not settle: " + diagnosticText.slice(0, 800), { cause: error });
+      }
     }
-    if (!(bodyText.includes("view queue") || bodyText.includes("watch queue"))) {
+
+    const bodyText = String(await page.locator("body").innerText())
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+    if (requiresAccount) {
+      if (!bodyText.includes("requires a beaurocks account")) {
+        throw new Error("Account-required room did not enforce the BeauRocks account gate after rules acceptance.");
+      }
+      await page.screenshot({ path: path.join(OUTPUT_DIR, "03-account-gate.png"), fullPage: true });
+      return {
+        outputDir: OUTPUT_DIR,
+        directAppUrl: DIRECT_APP_URL,
+        outcome: "account_gate_enforced",
+      };
+    }
+    await page.screenshot({ path: path.join(OUTPUT_DIR, "03-browse.png"), fullPage: true });
+    if (!(bodyText.includes("add song") || bodyText.includes("view songs"))) {
+      throw new Error("Streamlined browse surface did not expose the song browser after direct arrival.");
+    }
+    if (!bodyText.includes("queue")) {
       throw new Error("Streamlined browse surface did not expose the queue CTA after direct arrival.");
     }
 
@@ -183,6 +211,7 @@ const run = async () => {
     summary.room = {
       audienceShellVariant: room?.audienceShellVariant || "",
       audienceAccessMode: room?.eventCredits?.audienceAccessMode || "",
+      joinAccessMode: room?.audienceJoinPolicy?.accessMode || "",
       timedLobbyEnabled: !!room?.eventCredits?.timedLobbyEnabled,
       timedLobbyPoints: Number(room?.eventCredits?.timedLobbyPoints || 0) || 0,
       timedLobbyIntervalMin: Number(room?.eventCredits?.timedLobbyIntervalMin || 0) || 0,
@@ -233,7 +262,9 @@ const run = async () => {
   });
 
   await runCheck(checks, "direct_app_arrival_flow_smoke", async () => {
-    const detail = await runDirectArrivalFlow();
+    const detail = await runDirectArrivalFlow({
+      requiresAccount: summary.room?.joinAccessMode === "account_required",
+    });
     summary.productionFlow = detail;
     return detail.outputDir;
   });

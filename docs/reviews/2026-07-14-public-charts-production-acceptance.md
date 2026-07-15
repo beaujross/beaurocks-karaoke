@@ -66,3 +66,21 @@ Recorded 2026-07-14 PDT / 2026-07-15 UTC:
 - Both recently active hosts resolved through the same access paths accepted by `logPerformance`: one approved host and one super-admin.
 - The final operator result was `canLaunch: true` with zero ineligible, orphaned, or indeterminate recently active hosts.
 - Corrected callable revision `previewpublicchartlaunch-00002-vep` is active in `us-west1`; it uses the same 30-day compatibility scope, read-only entitlement resolution, complete room pagination, and separate orphan reporting.
+
+## Production deployment evidence
+
+Recorded 2026-07-14 PDT / 2026-07-15 UTC:
+
+- Source release checkpoint `fbe64d8` (`Release discovery and public charts foundation`) is pushed to `origin/main`.
+- The complete Functions deployment finished successfully after the corrected launch preflight.
+- Firestore ruleset `1e8e01b7-b77a-4d9a-9e29-635b7fc1b605` is released.
+- Composite index `CICAgPigw5IK` for the `room_sessions` venue query reached `READY` before Hosting was released.
+- Firebase Hosting version `5bc48c15cd873eac`, release `1784078708909000`, went live at `2026-07-15T01:25:08.909Z`. This timestamp is the `launch_v1` chart-era boundary.
+- Marketing production golden paths passed `9/9`.
+- Cross-surface production smoke passed all four checks on desktop Chromium, Android Chromium, and iOS WebKit.
+- Discover-to-Join accessibility and layout gates passed against the built artifact.
+- `/charts` production smoke passed on desktop and mobile: route, Global/Songs/Public Rooms tabs, Discover teaser navigation, no chart warning, and exact no-overflow checks.
+- Authenticated QA host access passed; the QA host has workspace and entitlement access, and the directory-admin callable correctly returned `permission-denied`.
+- The live AAHF direct-arrival smoke passed all four checks in `7.9s`, including QR target, streamlined room contract, rules acceptance, and the rendered Songs/Queue surface.
+
+No synthetic qualifying performance was written to production. This preserves a clean chart era. A real signed-in qualifying result, guest exclusion, and a public-to-private transition remain intentional manual persona acceptance steps during the next controlled QA event.

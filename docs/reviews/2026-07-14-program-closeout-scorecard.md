@@ -1,7 +1,7 @@
 # BeauRocks Program Closeout Scorecard
 
 Date: 2026-07-14
-Production baseline: Firebase Hosting release `ac2b07c988fe1f57` and active `permanentlyDeleteHostRoom` callable
+Production baseline: Firebase Hosting release `1784078708909000` (version `5bc48c15cd873eac`), source checkpoint `fbe64d8`, and coordinated Functions/rules/index release
 Parent roadmap: `docs/reviews/2026-07-11-original-plan-program-roadmap.md`
 
 ## Executive Readout
@@ -27,8 +27,8 @@ Program closeout does not mean every long-term workstream is finished. The corre
 | Games and crowd interaction | Lifecycle slice closed | one lifecycle registry/presentation contract, collision preflight, three timing bundles, compact two-action launcher recovery | Pop Trivia and voice-mode recap completeness remain future mechanics work, not release blockers |
 | Persona, brand, and design governance | Closed for this program | CTO/CPO/CMO/persona scorecards and branded 10-slide PDF with current screenshots | continue as a gate on every new slice |
 | YouTube event readiness | Product closed; submission nearly ready | compliant fallback, preflight, Quotas API evidence, cooldown capture, permanent-delete capture | Console screenshot, contact/legal confirmation, and approval of the proposed request amount |
-| Deployment and QA | Runtime closed; source checkpoint open | full regression/lint/build/rules/callable gates and authenticated production acceptance | commit and push the deployed program state so rollback and audit attribution map to Git |
-| Discovery and public charts | Local implementation complete; release open | server-owned sanitized Global/Song/Public Room projections, canonical-song grouping, account chart identity, `/charts`, Discover teaser, Admin repair/rebuild, and approved-host launch preflight | authenticated persona QA, then coordinated Functions/rules/indexes/Hosting release |
+| Deployment and QA | Released and source-attributed | checkpoint `fbe64d8`; Hosting release `1784078708909000`; coordinated Functions, ruleset `1e8e01b7-b77a-4d9a-9e29-635b7fc1b605`, and ready index `CICAgPigw5IK`; production golden, cross-surface, charts, authenticated-host, and direct-arrival smokes green | retain evidence and run intentional real-event persona acceptance |
+| Discovery and public charts | Production foundation released | server-owned sanitized Global/Song/Public Room projections, canonical-song grouping, account chart identity, `/charts`, Discover teaser, Admin repair/rebuild, approved-host launch preflight, and desktop/mobile production smoke | verify one real qualifying member result, guest exclusion, and public-to-private cleanup during controlled manual QA; do not seed synthetic chart history |
 
 ## YouTube Request Sizing
 
@@ -115,8 +115,6 @@ The following are legitimate roadmap extensions, not closeout blockers:
 
 ## Recommended Immediate Sequence
 
-1. Run the authenticated chart persona QA matrix and confirm the Admin launch preflight is green in production.
-2. Coordinate the chart Functions, rules, indexes, and Hosting release, then complete the production smoke.
-4. Package the deployed code, tests, contracts, evidence, and closeout docs into a clean Git checkpoint.
-5. Capture the Google Cloud Console quota screenshot, confirm contact/legal identity and the `1,000/day` request amount, and submit the packet.
-6. Run the next real event with the guarded contracts and collect the success measurements above.
+1. Complete the three intentional chart persona checks during controlled manual QA: one qualifying member result, one guest result, and one public-to-private transition.
+2. Capture the Google Cloud Console quota screenshot, confirm contact/legal identity and the `1,000/day` request amount, and submit the packet.
+3. Run the next real event with the guarded contracts and collect the success measurements above.
