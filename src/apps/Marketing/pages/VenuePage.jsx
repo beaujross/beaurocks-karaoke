@@ -36,6 +36,7 @@ const applyImageFallback = (event, fallbackUrl = "/images/marketing/venue-locati
 const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEntity }) => {
   const [venue, setVenue] = useState(null);
   const [events, setEvents] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -49,6 +50,23 @@ const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
       venueQuery,
       (snap) => setVenue(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() }),
       (err) => setError(String(err?.message || "Failed to load venue."))
+    );
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return () => {};
+    const sessionQuery = query(
+      collection(db, "room_sessions"),
+      where("venueId", "==", id),
+      where("status", "==", "approved"),
+      where("visibility", "==", "public"),
+      orderBy("startsAtMs", "asc"),
+      limit(40)
+    );
+    return onSnapshot(
+      sessionQuery,
+      (snap) => setSessions(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))),
+      () => setSessions([])
     );
   }, [id]);
 
@@ -109,8 +127,9 @@ const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
     );
   }
 
-  const eventCount = events.length;
-  const nextEvent = events[0] || null;
+  const eventCount = events.length + sessions.length;
+  const nextEvent = [...events, ...sessions]
+    .sort((left, right) => Number(left?.startsAtMs || 0) - Number(right?.startsAtMs || 0))[0] || null;
   const venueImages = resolveListingImageCandidates(venue, "venue");
   const fallbackVenueImage = buildPublicLocationImageUrl(venue) || "/images/marketing/venue-location-fallback.svg";
   const allImages = [...venueImages, fallbackVenueImage]
@@ -131,9 +150,8 @@ const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
   const phoneHref = toTelephoneHref(phoneLabel);
   const venueExperienceSource = {
     ...venue,
-    ...(nextEvent || {}),
     title: venue.title,
-    description: venue.description || nextEvent?.description || "",
+    description: venue.description || "",
     venueName: venue.title,
     imageUrl: heroImage,
   };
@@ -267,6 +285,24 @@ const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
             >
               <span>{event.title}</span>
               <span>{formatDateTime(event.startsAtMs)}</span>
+            </a>
+          ))}
+        </div>
+        <div className="mk3-sub-list">
+          <h3>Interactive BeauRocks rooms</h3>
+          {sessions.length === 0 && <div className="mk3-status">No public interactive rooms linked to this venue yet.</div>}
+          {sessions.map((sessionItem) => (
+            <a
+              key={sessionItem.id}
+              className="mk3-list-row"
+              href={buildHref ? buildHref("session", sessionItem.id) : "#"}
+              onClick={(clickEvent) => {
+                clickEvent.preventDefault();
+                navigate("session", sessionItem.id);
+              }}
+            >
+              <span>{sessionItem.title}</span>
+              <span>{sessionItem.recurringRule === "weekly" ? `Weekly | ${formatDateTime(sessionItem.startsAtMs)}` : formatDateTime(sessionItem.startsAtMs)}</span>
             </a>
           ))}
         </div>

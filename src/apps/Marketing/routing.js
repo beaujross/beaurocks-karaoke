@@ -1,5 +1,6 @@
 export const MARKETING_ROUTE_PAGES = {
   discover: "discover",
+  charts: "charts",
   demo: "demo",
   demoAuto: "demo_auto",
   changelog: "changelog",
@@ -38,6 +39,7 @@ const QUERY_PARAM_KEYS = new Set([
 
 const LEGACY_PAGE_TO_CANONICAL = {
   discover: { page: MARKETING_ROUTE_PAGES.discover },
+  charts: { page: MARKETING_ROUTE_PAGES.charts },
   demo: { page: MARKETING_ROUTE_PAGES.demo },
   demo_auto: { page: MARKETING_ROUTE_PAGES.demoAuto },
   "auto-demo": { page: MARKETING_ROUTE_PAGES.demoAuto },
@@ -106,6 +108,7 @@ const routeForPathTokens = (parts = []) => {
   const normalizedParts = parts.map((token) => lower(token));
 
   if (normalizedParts[0] === "discover") return { page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} };
+  if (normalizedParts[0] === "charts") return { page: MARKETING_ROUTE_PAGES.charts, id: "", params: {} };
   if (normalizedParts[0] === "demo") return { page: MARKETING_ROUTE_PAGES.demo, id: "", params: {} };
   if (normalizedParts[0] === "auto-demo" || normalizedParts[0] === "demo-auto") {
     return { page: MARKETING_ROUTE_PAGES.demoAuto, id: "", params: {} };
@@ -268,6 +271,7 @@ export const parseMarketingRouteFromHref = (href = "") => {
 export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.discover, id = "", params = {} } = {}) => {
   const safeId = String(id || "").trim();
   if (page === MARKETING_ROUTE_PAGES.discover) return applyBasePath("/discover");
+  if (page === MARKETING_ROUTE_PAGES.charts) return applyBasePath("/charts");
   if (page === MARKETING_ROUTE_PAGES.demo) return applyBasePath("/demo");
   if (page === MARKETING_ROUTE_PAGES.demoAuto) return applyBasePath("/auto-demo");
   if (page === MARKETING_ROUTE_PAGES.changelog) return applyBasePath("/changelog");
@@ -325,6 +329,7 @@ export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.discove
   params.set("mode", "marketing");
   const pageMap = {
     [MARKETING_ROUTE_PAGES.discover]: "discover",
+    [MARKETING_ROUTE_PAGES.charts]: "charts",
     [MARKETING_ROUTE_PAGES.demo]: "demo",
     [MARKETING_ROUTE_PAGES.demoAuto]: "demo_auto",
     [MARKETING_ROUTE_PAGES.changelog]: "changelog",

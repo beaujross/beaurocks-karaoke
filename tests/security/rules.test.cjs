@@ -57,11 +57,52 @@ async function resetState() {
       visibility: "private",
       ownerUid: HOST_UID,
     });
+    await db.doc(`room_private_access/${ROOM_CODE}`).set({
+      roomCode: ROOM_CODE,
+      salt: "server-only-salt",
+      hash: "server-only-hash",
+    });
+    await db.doc("night_series/night_rules_test").set({
+      seriesId: "night_rules_test",
+      roomCode: ROOM_CODE,
+      active: true,
+    });
+    await db.doc("night_occurrences/occ_rules_test").set({
+      occurrenceId: "occ_rules_test",
+      seriesId: "night_rules_test",
+      roomCode: ROOM_CODE,
+      status: "scheduled",
+    });
     await db.doc(`directory_profiles/${HOST_UID}`).set({
       uid: HOST_UID,
       displayName: "Host",
       status: "approved",
       visibility: "public",
+    });
+    await db.doc("performances/performance_rules_1").set({
+      singerUid: GUEST_UID,
+      singerName: "Guest",
+      roomCode: ROOM_CODE,
+      totalScore: 120,
+    });
+    await db.doc("public_chart_members/member_rules_1").set({
+      memberKey: "member_rules_1",
+      displayName: "Chart Singer",
+      rankScore: 120,
+    });
+    await db.doc("public_chart_songs/song_rules_1").set({
+      songId: "song_rules_1",
+      songTitle: "Dreams",
+      bestScore: 120,
+    });
+    await db.doc("public_chart_nights/night_rules_1").set({
+      listingId: "night_rules_1",
+      title: "Friday Night",
+      rankScore: 120,
+    });
+    await db.doc("public_chart_moderation_events/mod_rules_1").set({
+      resultId: "result_rules_1",
+      action: "remove",
     });
   });
 }
@@ -90,6 +131,37 @@ async function run() {
   });
 
   const checks = [
+    ["firestore: public can read sanitized chart projections", async () => {
+      const db = testEnv.unauthenticatedContext().firestore();
+      await assertSucceeds(db.doc("public_chart_members/member_rules_1").get());
+      await assertSucceeds(db.doc("public_chart_songs/song_rules_1").get());
+      await assertSucceeds(db.doc("public_chart_nights/night_rules_1").get());
+      await assertFails(db.doc("public_chart_moderation_events/mod_rules_1").get());
+    }],
+
+    ["firestore: clients cannot write sanitized chart projections", async () => {
+      const db = nonAnonymousContext(GUEST_UID).firestore();
+      await assertFails(db.doc("public_chart_members/member_rules_1").set({ rankScore: 999 }));
+      await assertFails(db.doc("public_chart_songs/song_rules_1").set({ bestScore: 999 }));
+      await assertFails(db.doc("public_chart_nights/night_rules_1").set({ rankScore: 999 }));
+      await assertFails(db.doc("public_chart_moderation_events/mod_rules_1").set({ action: "restore" }));
+    }],
+
+    ["firestore: singer can read own raw performance history", async () => {
+      const db = nonAnonymousContext(GUEST_UID).firestore();
+      await assertSucceeds(db.doc("performances/performance_rules_1").get());
+    }],
+
+    ["firestore: another user cannot read raw performance history", async () => {
+      const db = nonAnonymousContext(OTHER_UID).firestore();
+      await assertFails(db.doc("performances/performance_rules_1").get());
+    }],
+
+    ["firestore: unauthenticated clients cannot read raw performance history", async () => {
+      const db = testEnv.unauthenticatedContext().firestore();
+      await assertFails(db.doc("performances/performance_rules_1").get());
+    }],
+
     ["firestore: unauthenticated cannot read user profile", async () => {
       const db = testEnv.unauthenticatedContext().firestore();
       await assertFails(db.doc(`users/${GUEST_UID}`).get());
@@ -466,6 +538,24 @@ async function run() {
         "currentPerformanceMeta.durationConfidence": "high",
         "currentPerformanceMeta.autoEndSafe": true,
       }));
+    }],
+
+    ["firestore: even a room host cannot read or write guest passcode hashes", async () => {
+      const db = nonAnonymousContext(HOST_UID).firestore();
+      await assertFails(db.doc(`room_private_access/${ROOM_CODE}`).get());
+      await assertFails(db.doc(`room_private_access/${ROOM_CODE}`).set({
+        roomCode: ROOM_CODE,
+        salt: "client-salt",
+        hash: "client-hash",
+      }));
+    }],
+
+    ["firestore: recurrence definitions and cancellation history are callable-only", async () => {
+      const db = nonAnonymousContext(HOST_UID).firestore();
+      await assertFails(db.doc("night_series/night_rules_test").get());
+      await assertFails(db.doc("night_series/night_rules_test").update({ active: false }));
+      await assertFails(db.doc("night_occurrences/occ_rules_test").get());
+      await assertFails(db.doc("night_occurrences/occ_rules_test").update({ status: "cancelled" }));
     }],
 
     ["firestore: public TV cannot rewrite active performance session identity", async () => {

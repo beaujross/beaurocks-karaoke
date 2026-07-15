@@ -182,8 +182,17 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
   const latestRecapAtMs = Math.max(0, Number(entry?.latestRecapAtMs || 0) || 0);
   const endsAtMs = Math.max(0, Number(entry?.endsAtMs || 0) || 0);
   const latestRecapUrl = String(entry?.latestRecapUrl || "").trim();
+  const occurrenceId = String(entry?.occurrenceId || "").trim();
+  const occurrenceStatus = String(entry?.occurrenceStatus || "").trim().toLowerCase();
+  const nightSeriesId = String(entry?.nightSeriesId || "").trim();
+  const recurrenceTimezone = String(entry?.recurrenceTimezone || "").trim();
+  const isNextOccurrenceProjection = !!nightSeriesId && !!occurrenceId && occurrenceStatus !== "cancelled";
   const hasPublicRecap = listingType === "room_session" && hasPublishedRoomSessionRecap({
     roomCode,
+    joinAccessMode: String(entry?.joinAccessMode || "anonymous_allowed").trim().toLowerCase(),
+    requiresGuestPasscode: entry?.requiresGuestPasscode === true,
+    nightSeriesId: String(entry?.nightSeriesId || "").trim(),
+    identityLinks: entry?.identityLinks && typeof entry.identityLinks === "object" ? entry.identityLinks : {},
     latestRecapAtMs,
     latestRecapUrl,
   });
@@ -219,7 +228,9 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
     : locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
   const timeLabel = listingType === "venue"
     ? String(entry?.karaokeNightsLabel || "").trim()
-    : startsAtMs > 0 ? formatDateTime(startsAtMs) : "Time TBD";
+    : startsAtMs > 0
+      ? `${isNextOccurrenceProjection ? "Next: " : ""}${formatDateTime(startsAtMs)}`
+      : "Time TBD";
   const cadenceBadges = extractCadenceBadges({
     karaokeNightsLabel: entry?.karaokeNightsLabel,
     recurringRule: entry?.recurringRule,
@@ -250,6 +261,11 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
     startsAtMs,
     roomCode,
     recurringRule,
+    nightSeriesId,
+    occurrenceId,
+    occurrenceStatus,
+    recurrenceTimezone,
+    isNextOccurrenceProjection,
     karaokeNightsLabel,
   });
 

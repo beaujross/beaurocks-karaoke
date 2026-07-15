@@ -74,6 +74,11 @@ async function seedArtifacts() {
   ));
   await db.doc(`${ROOT}/host_libraries/${ROOM_CODE}`).set({ roomCode: ROOM_CODE, marker: "library" });
   await db.doc(`room_sessions/${ROOM_CODE}_listing`).set({ roomCode: ROOM_CODE, sourceType: "host_room" });
+  await db.doc(`public_chart_nights/${ROOM_CODE}_listing`).set({
+    listingId: `${ROOM_CODE}_listing`,
+    roomCode: ROOM_CODE,
+    rankScore: 120,
+  });
 }
 
 async function expectRejected(promise, code) {
@@ -112,13 +117,14 @@ async function run() {
   assert.equal(result.ok, true);
   assert.equal(result.roomCode, ROOM_CODE);
   assert.equal(result.deletedStorageObjectCount, 0);
-  assert.equal(result.deletedDocumentCount, PURGE_COLLECTIONS.length + 3);
+  assert.equal(result.deletedDocumentCount, PURGE_COLLECTIONS.length + 4);
 
   const deletedSnaps = await Promise.all([
     ...PURGE_COLLECTIONS.map((name) => db.doc(`${ROOT}/${name}/${ROOM_CODE}_${name}`).get()),
     db.doc(`${ROOT}/host_libraries/${ROOM_CODE}`).get(),
     db.doc(`${ROOT}/rooms/${ROOM_CODE}`).get(),
     db.doc(`room_sessions/${ROOM_CODE}_listing`).get(),
+    db.doc(`public_chart_nights/${ROOM_CODE}_listing`).get(),
   ]);
   assert.equal(deletedSnaps.every((snap) => !snap.exists), true);
   console.log("PASS permanentlyDeleteHostRoom authorization, archive precondition, and complete purge");

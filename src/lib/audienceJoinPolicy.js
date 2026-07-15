@@ -1,6 +1,7 @@
 export const AUDIENCE_JOIN_ACCESS_MODES = Object.freeze({
     anonymousAllowed: 'anonymous_allowed',
     accountRequired: 'account_required',
+    passcodeRequired: 'passcode_required',
 });
 
 export const AUDIENCE_WELCOME_GRANT_MODES = Object.freeze({
@@ -50,5 +51,10 @@ export const AUDIENCE_JOIN_ACCESS_OPTIONS = Object.freeze([
         id: AUDIENCE_JOIN_ACCESS_MODES.accountRequired,
         label: 'BeauRocks Account Required',
         description: 'Guests must continue with a BeauRocks account before joining the room.',
+    },
+    {
+        id: AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired,
+        label: 'Guest Passcode Required',
+        description: 'Guests need the room code plus a separate passcode. The passcode stays private and is never shown in Discover.',
     },
 ]);

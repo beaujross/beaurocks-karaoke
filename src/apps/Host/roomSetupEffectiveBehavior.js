@@ -161,7 +161,8 @@ const formatMode = (value = '') => {
 
 const formatJoinAccess = (effective = {}) => {
     const mode = String(effective?.audienceJoinPolicy?.accessMode || effective?.eventCredits?.audienceAccessMode || 'open').trim().toLowerCase();
-    if (mode === 'account') return 'BeauRocks account';
+    if (mode === 'account' || mode === 'account_required') return 'BeauRocks account';
+    if (mode === 'passcode_required') return 'Room code + guest passcode';
     if (mode === 'email' || mode === 'email_capture') return 'Email entry';
     if (mode === 'donation') return 'Support unlock';
     if (mode === 'email_or_donation') return 'Email or support unlock';

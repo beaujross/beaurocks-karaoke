@@ -71,6 +71,14 @@ const {
   matchesDirectoryDiscoverTimeWindow,
   normalizeDiscoverTimezone,
 } = require("./lib/discoverTimeWindow");
+const {
+  buildDirectoryOccurrenceRolloutConfig,
+  buildNightSeriesId,
+  buildWeeklyOccurrencePlan,
+  isWeeklyRecurringRule,
+  selectNextScheduledOccurrence,
+  shouldArchiveOccurrence,
+} = require("./lib/directoryOccurrences");
 const { resolveLedgerCurrency, setShadowLedgerEntry } = require("./lib/beauBucksLedger");
 const { buildShadowLedgerReconciliation } = require("./lib/beauBucksReconciliation");
 const {
@@ -853,6 +861,95 @@ const isBetterScore = (candidateScore, candidateApplause, current) => {
   if (candidateScore === bestScore && candidateApplause > bestApplause) return true;
   return false;
 };
+
+const PUBLIC_CHART_MEMBERS_COLLECTION = "public_chart_members";
+const PUBLIC_CHART_SONGS_COLLECTION = "public_chart_songs";
+const PUBLIC_CHART_NIGHTS_COLLECTION = "public_chart_nights";
+const PUBLIC_CHART_MODERATION_COLLECTION = "public_chart_moderation_events";
+const PUBLIC_CHART_REPAIR_QUERY_LIMIT = 501;
+const PUBLIC_CHART_PREFLIGHT_PAGE_SIZE = 500;
+const PUBLIC_CHART_PREFLIGHT_MAX_ROOMS = 2500;
+const PUBLIC_CHART_PREFLIGHT_ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const normalizeChartIdentityVisibility = (value = "") =>
+  String(value || "").trim().toLowerCase() === "anonymous" ? "anonymous" : "public";
+const buildChartMemberKey = (uid = "") => crypto
+  .createHash("sha256")
+  .update(`beaurocks-chart-member:${String(uid || "").trim()}`)
+  .digest("hex")
+  .slice(0, 32);
+const buildPublicChartIdentity = ({
+  uid = "",
+  accountUser = {},
+  directoryProfile = {},
+  roomUser = {},
+  fallbackName = "Singer",
+} = {}) => {
+  const leaderboardProfile = accountUser?.leaderboardProfile && typeof accountUser.leaderboardProfile === "object"
+    ? accountUser.leaderboardProfile
+    : {};
+  const identityVisibility = normalizeChartIdentityVisibility(
+    leaderboardProfile.visibility || directoryProfile.chartVisibility || "public"
+  );
+  const preferredName = String(
+    leaderboardProfile.displayName
+    || directoryProfile.chartName
+    || directoryProfile.displayName
+    || accountUser.name
+    || roomUser.name
+    || fallbackName
+    || "Singer"
+  ).trim().slice(0, 80) || "Singer";
+  const publicProfileAvailable = identityVisibility === "public"
+    && directoryProfile.status === "approved"
+    && directoryProfile.visibility === "public";
+  return {
+    memberKey: buildChartMemberKey(uid),
+    displayName: identityVisibility === "anonymous" ? "BeauRocks Singer" : preferredName,
+    identityVisibility,
+    avatarUrl: publicProfileAvailable
+      ? normalizeDirectoryOptionalUrl(directoryProfile.avatarUrl || "")
+      : null,
+  };
+};
+const isEligiblePublicChartPerformance = (data = {}) => (
+  data.globalLeaderboardEligible === true
+  && data.leaderboardEligibility === "qualified_member"
+  && Number(data.qualificationVersion || 0) >= 1
+  && Number(data.projectionVersion || 0) >= 1
+  && String(data.publicChartStatus || "active").trim().toLowerCase() !== "removed"
+  && !!normalizeUidToken(data.singerUid || "")
+  && !!String(data.canonicalSongId || data.songId || "").trim()
+);
+const getPublicChartPerformanceScore = (data = {}) =>
+  Math.max(0, Number(data.totalScore ?? data.score ?? 0) || 0);
+const getPublicChartPerformanceApplause = (data = {}) =>
+  Math.max(0, Number(data.applauseScore || 0) || 0);
+const getPublicChartPerformanceTimestampMs = (data = {}) => {
+  const value = data.timestamp;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const selectBestPublicChartPerformance = (docs = []) => docs.reduce((best, docSnap) => {
+  const candidate = docSnap.data() || {};
+  if (!best) return docSnap;
+  return isBetterScore(
+    getPublicChartPerformanceScore(candidate),
+    getPublicChartPerformanceApplause(candidate),
+    {
+      bestScore: getPublicChartPerformanceScore(best.data() || {}),
+      applauseScore: getPublicChartPerformanceApplause(best.data() || {}),
+    }
+  ) ? docSnap : best;
+}, null);
+const selectLatestPublicChartPerformance = (docs = []) => docs.reduce((latest, docSnap) => {
+  if (!latest) return docSnap;
+  return getPublicChartPerformanceTimestampMs(docSnap.data() || {})
+    > getPublicChartPerformanceTimestampMs(latest.data() || {})
+    ? docSnap
+    : latest;
+}, null);
 
 let stripeClient = null;
 const getStripeClient = () => {
@@ -2371,6 +2468,7 @@ const ROOM_UNKNOWN_BACKING_POLICIES = Object.freeze({
   blockUnknown: "block_unknown",
 });
 const ROOM_AUDIENCE_JOIN_ACCESS_MODES = Object.freeze({
+  passcodeRequired: 'passcode_required',
   anonymousAllowed: "anonymous_allowed",
   accountRequired: "account_required",
 });
@@ -2384,6 +2482,51 @@ const VALID_ROOM_AUDIENCE_BACKING_MODES = new Set(Object.values(ROOM_AUDIENCE_BA
 const VALID_ROOM_UNKNOWN_BACKING_POLICIES = new Set(Object.values(ROOM_UNKNOWN_BACKING_POLICIES));
 const VALID_ROOM_AUDIENCE_JOIN_ACCESS_MODES = new Set(Object.values(ROOM_AUDIENCE_JOIN_ACCESS_MODES));
 const VALID_ROOM_WELCOME_GRANT_MODES = new Set(Object.values(ROOM_WELCOME_GRANT_MODES));
+const ROOM_GUEST_PASSCODE_MIN_LENGTH = 4;
+const ROOM_GUEST_PASSCODE_MAX_LENGTH = 24;
+const ROOM_GUEST_PASSCODE_HASH_BYTES = 32;
+const ROOM_GUEST_PASSCODE_HASH_VERSION = 1;
+const normalizeRoomGuestPasscode = (value = '') => String(value || '')
+  .trim()
+  .toUpperCase()
+  .replace(/[^A-Z0-9]/g, '')
+  .slice(0, ROOM_GUEST_PASSCODE_MAX_LENGTH);
+const validateRoomGuestPasscode = (value = '') => {
+  const raw = String(value || '').trim().toUpperCase();
+  const normalized = normalizeRoomGuestPasscode(raw);
+  return normalized.length >= ROOM_GUEST_PASSCODE_MIN_LENGTH
+    && normalized.length <= ROOM_GUEST_PASSCODE_MAX_LENGTH
+    && normalized === raw;
+};
+const buildRoomGuestPasscodeRecord = (value = '') => {
+  if (!validateRoomGuestPasscode(value)) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Guest passcode must be ${ROOM_GUEST_PASSCODE_MIN_LENGTH}-${ROOM_GUEST_PASSCODE_MAX_LENGTH} letters or numbers.`,
+    );
+  }
+  const passcode = normalizeRoomGuestPasscode(value);
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(passcode, salt, ROOM_GUEST_PASSCODE_HASH_BYTES).toString('hex');
+  return {
+    hash,
+    salt,
+    hashVersion: ROOM_GUEST_PASSCODE_HASH_VERSION,
+  };
+};
+const verifyRoomGuestPasscode = (value = '', record = {}) => {
+  if (!validateRoomGuestPasscode(value)) return false;
+  const salt = String(record?.salt || '').trim();
+  const expectedHash = String(record?.hash || '').trim().toLowerCase();
+  if (!salt || !/^[a-f0-9]{64}$/.test(expectedHash)) return false;
+  const actualHash = crypto
+    .scryptSync(normalizeRoomGuestPasscode(value), salt, ROOM_GUEST_PASSCODE_HASH_BYTES)
+    .toString('hex');
+  const actualBuffer = Buffer.from(actualHash, 'hex');
+  const expectedBuffer = Buffer.from(expectedHash, 'hex');
+  return actualBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+};
 const ROOM_REQUEST_POLICY_KEYS = new Set([
   "requestMode",
   "allowSingerTrackSelect",
@@ -2411,6 +2554,7 @@ const ROOM_UPDATE_BLOCKED_ROOT_KEYS = new Set([
   "constructor",
 ]);
 const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
+  'audienceJoinPasscode',
   "activeMode",
   "activeScreen",
   "allowSingerTrackSelect",
@@ -2713,6 +2857,7 @@ const HOST_ROOM_TIMESTAMP_ROOT_KEYS = new Set([
   "updatedAt",
 ]);
 const HOST_ROOM_STRING_ROOT_KEYS = new Set([
+  'audienceJoinPasscode',
   "activeMode",
   "activeScreen",
   "appleMusicAutoPlaylistId",
@@ -5158,6 +5303,41 @@ const rankDirectoryDiscoverVenues = (byVenueId = new Map()) => {
   return rankByVenueId;
 };
 
+const buildDirectoryPublicExperienceProfile = (value = {}) => {
+  const source = value && typeof value === 'object' ? value : {};
+  const mechanics = source.mechanics && typeof source.mechanics === 'object' ? source.mechanics : {};
+  const audienceFeatures = source.audienceFeatures && typeof source.audienceFeatures === 'object' ? source.audienceFeatures : {};
+  const games = source.games && typeof source.games === 'object' ? source.games : {};
+  return {
+    schemaVersion: Math.max(1, Math.min(10, Number(source.schemaVersion || 1) || 1)),
+    format: normalizeDirectoryToken(source.format || 'karaoke', 30),
+    intensity: normalizeDirectoryToken(source.intensity || 'social', 30),
+    mechanics: {
+      scoring: mechanics.scoring === true,
+      firstTimerBoost: mechanics.firstTimerBoost === true,
+      fairRotation: mechanics.fairRotation === true,
+      limitedTurns: mechanics.limitedTurns === true,
+      singerChoosesTrack: mechanics.singerChoosesTrack === true,
+      hostCuratedTracks: mechanics.hostCuratedTracks === true,
+    },
+    audienceFeatures: {
+      voting: audienceFeatures.voting === true,
+      reactions: audienceFeatures.reactions === true,
+      chat: audienceFeatures.chat === true,
+      interactiveScreen: audienceFeatures.interactiveScreen === true,
+      liveJoin: audienceFeatures.liveJoin === true,
+    },
+    games: {
+      trivia: games.trivia === true,
+      popTrivia: games.popTrivia === true,
+      bingo: games.bingo === true,
+      wouldYouRather: games.wouldYouRather === true,
+    },
+    provenance: normalizeDirectoryToken(source.provenance || '', 30),
+    computedAtMs: Math.max(0, Number(source.computedAtMs || 0) || 0),
+  };
+};
+
 const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
   const data = docSnap.data() || {};
   const listingType = forcedType || safeDirectoryString(data.listingType || "", 40);
@@ -5233,6 +5413,23 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     ownerUid,
     roomCode,
     recurringRule: safeDirectoryString(data.recurringRule || "", 160),
+    nightSeriesId: safeDirectoryString(data.nightSeriesId || "", 180),
+    occurrenceId: safeDirectoryString(data.occurrenceId || "", 220),
+    occurrenceStatus: normalizeDirectoryToken(data.occurrenceStatus || "", 40),
+    nextOccurrenceAtMs: Math.max(0, Number(data.nextOccurrenceAtMs || 0) || 0),
+    seriesAnchorStartsAtMs: Math.max(0, Number(data.seriesAnchorStartsAtMs || 0) || 0),
+    recurrenceTimezone: safeDirectoryString(data.recurrenceTimezone || data.timezone || "", 80),
+    identityLinks: {
+      venueId: safeDirectoryString(data?.identityLinks?.venueId || data.venueId || "", 180),
+      hostUids: (Array.isArray(data?.identityLinks?.hostUids) ? data.identityLinks.hostUids : [])
+        .map((uid) => safeDirectoryString(uid || "", 180))
+        .filter(Boolean)
+        .slice(0, 12),
+      nightSeriesId: safeDirectoryString(data?.identityLinks?.nightSeriesId || data.nightSeriesId || "", 180),
+    },
+    joinAccessMode: normalizeDirectoryToken(data.joinAccessMode || "anonymous_allowed", 40),
+    requiresGuestPasscode: data.requiresGuestPasscode === true,
+    experienceProfile: buildDirectoryPublicExperienceProfile(data.experienceProfile || {}),
     karaokeNightsLabel: safeDirectoryString(data.karaokeNightsLabel || "", 200),
     location: normalizeDirectoryLatLng(data.location || {}),
     status: normalizeDirectoryStatus(data.status || "approved", "approved"),
@@ -5821,6 +6018,8 @@ const normalizeDirectoryProfilePayload = (payload = {}) => {
     country: safeDirectoryString(payload?.country || DIRECTORY_DEFAULT_COUNTRY, 2).toUpperCase(),
     avatarUrl: normalizeDirectoryOptionalUrl(payload?.avatarUrl || payload?.profilePictureUrl || ""),
     visibility: normalizeDirectoryVisibility(payload?.visibility || "public", "public"),
+    chartName: safeDirectoryString(payload?.chartName || displayName, 80),
+    chartVisibility: normalizeChartIdentityVisibility(payload?.chartVisibility || "public"),
     socialLinks: {
       instagram: normalizeDirectoryOptionalUrl(payload?.socialLinks?.instagram || ""),
       tiktok: normalizeDirectoryOptionalUrl(payload?.socialLinks?.tiktok || ""),
@@ -6825,6 +7024,44 @@ const hasEntitledHostWorkspaceAccess = (entitlements = null) => {
     || capabilities["api.apple_music"]
     || capabilities["ai.generate_content"]
   );
+};
+
+const resolveReadOnlyHostWorkspaceAccess = async ({ uid = "", email = "", superAdmin = false } = {}) => {
+  const safeUid = normalizeUidToken(uid);
+  if (!safeUid) return { eligible: false, hostApprovalEnabled: false, entitledHostAccess: false };
+  if (superAdmin) return { eligible: true, hostApprovalEnabled: false, entitledHostAccess: true };
+  const db = admin.firestore();
+  const userSnap = await db.collection("users").doc(safeUid).get();
+  const userData = userSnap.data() || {};
+  const ownerScopedOrgId = buildOrgIdForUid(safeUid);
+  const claimedOrgId = sanitizeOrgToken(userData?.organization?.orgId || "");
+  let orgId = ownerScopedOrgId;
+  if (claimedOrgId && claimedOrgId !== ownerScopedOrgId) {
+    const memberSnap = await db.collection(ORGS_COLLECTION).doc(claimedOrgId).collection("members").doc(safeUid).get();
+    if (memberSnap.exists) orgId = claimedOrgId;
+  }
+  const [entitlements, hostApprovalEnabled] = await Promise.all([
+    readOrganizationEntitlements(orgId),
+    hasHostApprovalAccess(safeUid, normalizeEmailToken(email)),
+  ]);
+  const capabilities = normalizeCapabilities(entitlements.capabilities || {});
+  const allowLegacyTierEntitlements = ["1", "true", "yes", "on"].includes(
+    String(process.env.ALLOW_LEGACY_USER_TIER_ENTITLEMENTS || "").trim().toLowerCase()
+  );
+  if (allowLegacyTierEntitlements) {
+    const legacyTier = String(userData?.subscription?.tier || "").toLowerCase();
+    if (legacyTier === "host" || legacyTier === "host_plus") {
+      capabilities["ai.generate_content"] = true;
+      capabilities["api.youtube_data"] = true;
+      capabilities["api.apple_music"] = true;
+    }
+  }
+  const entitledHostAccess = hasEntitledHostWorkspaceAccess({ ...entitlements, capabilities });
+  return {
+    eligible: hostApprovalEnabled || entitledHostAccess,
+    hostApprovalEnabled,
+    entitledHostAccess,
+  };
 };
 
 const requireHostWorkspaceAccess = async (request, options = {}) => {
@@ -10990,17 +11227,78 @@ exports.resolveCanonicalTrackIdentityBatch = onCall({ cors: true }, async (reque
 
 exports.logPerformance = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "log_performance", { perMinute: 24, perHour: 240 });
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Sign in required.");
-  }
   enforceAppCheckIfEnabled(request, "log_performance");
-  const data = request.data || {};
+  const callerUid = requireAuth(request);
+  await requireHostWorkspaceAccess(request, {
+    deniedMessage: "Only approved BeauRocks hosts can record qualifying performances.",
+  });
+  const submittedData = request.data || {};
+  const roomCode = normalizeRoomCode(submittedData.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  const rootRef = getRootRef();
+  const { roomData } = await ensureRoomHostAccess({
+    rootRef,
+    roomCode,
+    callerUid,
+    deniedMessage: "Only the approved host for this room can record performances.",
+  });
+  const lastPerformance = roomData?.lastPerformance && typeof roomData.lastPerformance === "object"
+    ? roomData.lastPerformance
+    : null;
+  if (!lastPerformance) {
+    throw new HttpsError("failed-precondition", "Finish the performance recap before recording its score.");
+  }
+  const requestedPerformanceId = String(submittedData.performanceId || submittedData.id || "").trim();
+  const authoritativePerformanceId = String(lastPerformance.id || lastPerformance.performanceId || "").trim();
+  if (requestedPerformanceId && authoritativePerformanceId && requestedPerformanceId !== authoritativePerformanceId) {
+    throw new HttpsError("failed-precondition", "The requested performance is not the room's latest completed performance.");
+  }
+  const performanceId = authoritativePerformanceId || requestedPerformanceId;
+  if (!performanceId) {
+    throw new HttpsError("failed-precondition", "A completed performance ID is required.");
+  }
+  const performanceDocId = crypto
+    .createHash("sha256")
+    .update(`${roomCode}:${performanceId}`)
+    .digest("hex")
+    .slice(0, 48);
+  const performanceRef = admin.firestore().collection("performances").doc(performanceDocId);
+  const existingPerformanceSnap = await performanceRef.get();
+  if (
+    existingPerformanceSnap.exists
+    && Number(existingPerformanceSnap.get("projectionVersion") || 0) >= 1
+  ) {
+    const existingPerformance = existingPerformanceSnap.data() || {};
+    return {
+      songId: existingPerformance.songId || existingPerformance.canonicalSongId || null,
+      canonicalSongId: existingPerformance.canonicalSongId || existingPerformance.songId || null,
+      backingCandidateId: existingPerformance.backingCandidateId || null,
+      trackId: existingPerformance.trackId || null,
+      totalScore: Math.max(0, Number(existingPerformance.totalScore ?? existingPerformance.score ?? 0) || 0),
+      applauseScore: Math.max(0, Number(existingPerformance.applauseScore || 0) || 0),
+      hypeScore: Math.max(0, Number(existingPerformance.hypeScore || 0) || 0),
+      hostBonus: Math.max(0, Number(existingPerformance.hostBonus || 0) || 0),
+      isNewAllTime: false,
+      isNewWeekly: false,
+      globalLeaderboardEligible: existingPerformance.globalLeaderboardEligible === true,
+      leaderboardEligibility: existingPerformance.leaderboardEligibility || "room_only_guest",
+      weekKey: existingPerformance.weekKey || getWeekKeyUtc(new Date()),
+      duplicate: true,
+    };
+  }
+  const data = {
+    ...submittedData,
+    ...lastPerformance,
+    roomCode,
+    performanceId,
+  };
   const songTitle = (data.songTitle || data.title || "").trim();
   if (!songTitle) {
     throw new HttpsError("invalid-argument", "songTitle is required.");
   }
   const artist = (data.artist || "Unknown").trim() || "Unknown";
-  const roomCode = data.roomCode || "";
   const albumArtUrl = data.albumArtUrl || "";
   const sourceGuess = data.trackSource
     || (data.appleMusicId ? "apple" : extractYouTubeId(data.mediaUrl || "") ? "youtube" : "custom");
@@ -11090,14 +11388,48 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     }, { merge: true });
   }
 
-  const applauseScore = Math.round(data.applauseScore || 0);
-  const hypeScore = Math.round(data.hypeScore || 0);
-  const hostBonus = Math.round(data.hostBonus || 0);
+  const applauseScore = Math.max(0, Math.round(Number(data.applauseScore || 0)));
+  const hypeScore = Math.max(0, Math.round(Number(data.hypeScore || 0)));
+  const hostBonus = Math.max(0, Math.round(Number(data.hostBonus || 0)));
   const totalScore = hypeScore + applauseScore + hostBonus;
   const weekKey = getWeekKeyUtc(new Date());
   const isOfficial = isSongVerified(songResult?.songData);
-
-  await admin.firestore().collection("performances").add({
+  const singerUid = normalizeUidToken(data.singerUid || "");
+  const [roomUserSnap, accountUserSnap, directoryProfileSnap] = singerUid
+    ? await Promise.all([
+      rootRef.collection("room_users").doc(`${roomCode}_${singerUid}`).get(),
+      admin.firestore().collection("users").doc(singerUid).get(),
+      admin.firestore().collection("directory_profiles").doc(singerUid).get(),
+    ])
+    : [null, null, null];
+  const roomUserData = roomUserSnap?.exists ? (roomUserSnap.data() || {}) : {};
+  const accountUserData = accountUserSnap?.exists ? (accountUserSnap.data() || {}) : {};
+  const directoryProfileData = directoryProfileSnap?.exists ? (directoryProfileSnap.data() || {}) : {};
+  const singerBelongsToRoom = !!singerUid
+    && roomUserSnap?.exists
+    && normalizeRoomCode(roomUserData.roomCode || "") === roomCode;
+  const globalLeaderboardEligible = singerBelongsToRoom
+    && roomUserData.leaderboardAccountEligible === true
+    && accountUserData.leaderboardAccountEligible === true;
+  const singerName = String(
+    accountUserData?.leaderboardProfile?.displayName
+    || accountUserData.name
+    || roomUserData.name
+    || data.singerName
+    || "Singer"
+  ).trim().slice(0, 80) || "Singer";
+  const chartIdentity = buildPublicChartIdentity({
+    uid: singerUid,
+    accountUser: accountUserData,
+    directoryProfile: directoryProfileData,
+    roomUser: roomUserData,
+    fallbackName: singerName,
+  });
+  const leaderboardEligibility = globalLeaderboardEligible
+    ? "qualified_member"
+    : "room_only_guest";
+  await performanceRef.set({
+    performanceId,
     songId,
     canonicalSongId: songId,
     trackId: trackId || null,
@@ -11106,8 +11438,8 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     providerTrackId: String(data.providerTrackId || extractYouTubeId(data.mediaUrl || "") || data.appleMusicId || "").trim() || null,
     trackSource: sourceGuess || null,
     roomCode,
-    singerName: data.singerName || "",
-    singerUid: data.singerUid || null,
+    singerName,
+    singerUid: singerUid || null,
     songTitle: canonicalTitle,
     artist: canonicalArtist,
     score: totalScore,
@@ -11116,46 +11448,194 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     hypeScore,
     hostBonus,
     isOfficial,
+    globalLeaderboardEligible,
+    leaderboardEligibility,
+    qualificationVersion: 1,
+    qualifiedHostUid: callerUid,
+    weekKey,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  }, { merge: true });
 
   const bestRef = admin.firestore().collection("song_hall_of_fame").doc(songId);
-  const bestSnap = await bestRef.get();
-  const bestData = bestSnap.exists ? bestSnap.data() : null;
-  const isNewAllTime = isBetterScore(totalScore, applauseScore, bestData);
-
-  if (isNewAllTime) {
-    await bestRef.set({
-      songId,
-      canonicalSongId: songId,
-      songTitle: canonicalTitle,
-      artist: canonicalArtist,
-      albumArtUrl,
-      bestScore: totalScore,
-      applauseScore,
-      singerName: data.singerName || "",
-      singerUid: data.singerUid || null,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
-  }
-
   const weeklyId = `${weekKey}__${songId}`;
   const weeklyRef = admin.firestore().collection("song_hall_of_fame_weeks").doc(weeklyId);
-  const weeklySnap = await weeklyRef.get();
-  const weeklyData = weeklySnap.exists ? weeklySnap.data() : null;
-  if (isBetterScore(totalScore, applauseScore, weeklyData)) {
-    await weeklyRef.set({
-      weekKey,
-      songId,
-      canonicalSongId: songId,
-      songTitle: canonicalTitle,
-      artist: canonicalArtist,
-      albumArtUrl,
-      bestScore: totalScore,
-      applauseScore,
-      singerName: data.singerName || "",
-      singerUid: data.singerUid || null,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  let isNewAllTime = false;
+  let isNewWeekly = false;
+  if (globalLeaderboardEligible) {
+    await admin.firestore().runTransaction(async (tx) => {
+      const [bestSnap, weeklySnap] = await Promise.all([
+        tx.get(bestRef),
+        tx.get(weeklyRef),
+      ]);
+      const bestData = bestSnap.exists && bestSnap.get("globalLeaderboardEligible") === true
+        ? bestSnap.data()
+        : null;
+      const weeklyData = weeklySnap.exists && weeklySnap.get("globalLeaderboardEligible") === true
+        ? weeklySnap.data()
+        : null;
+      isNewAllTime = isBetterScore(totalScore, applauseScore, bestData);
+      isNewWeekly = isBetterScore(totalScore, applauseScore, weeklyData);
+      const commonEntry = {
+        songId,
+        canonicalSongId: songId,
+        songTitle: canonicalTitle,
+        artist: canonicalArtist,
+        albumArtUrl,
+        bestScore: totalScore,
+        applauseScore,
+        singerName: chartIdentity.displayName,
+        singerUid: admin.firestore.FieldValue.delete(),
+        memberKey: chartIdentity.memberKey,
+        identityVisibility: chartIdentity.identityVisibility,
+        profileUid: admin.firestore.FieldValue.delete(),
+        avatarUrl: chartIdentity.avatarUrl,
+        sourcePerformanceId: performanceId,
+        resultId: performanceDocId,
+        globalLeaderboardEligible: true,
+        qualificationVersion: 1,
+        qualifiedHostUid: callerUid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      if (isNewAllTime) {
+        tx.set(bestRef, commonEntry, { merge: true });
+      }
+      if (isNewWeekly) {
+        tx.set(weeklyRef, { ...commonEntry, weekKey }, { merge: true });
+      }
+    });
+
+    const discoverListingId = safeDirectoryString(roomData?.discover?.listingId || "", 220);
+    const roomIsMarkedPublic = roomData?.publicRoom === true
+      || roomData?.discover?.publicRoom === true
+      || roomData?.discover?.visibility === "public";
+    const roomSessionSnap = roomIsMarkedPublic && discoverListingId
+      ? await admin.firestore().collection("room_sessions").doc(discoverListingId).get()
+      : null;
+    const roomSessionData = roomSessionSnap?.exists ? (roomSessionSnap.data() || {}) : {};
+    const isApprovedPublicNight = roomSessionSnap?.exists
+      && roomSessionData.status === "approved"
+      && roomSessionData.visibility === "public";
+    const memberRef = admin.firestore()
+      .collection(PUBLIC_CHART_MEMBERS_COLLECTION)
+      .doc(chartIdentity.memberKey);
+    const publicSongRef = admin.firestore()
+      .collection(PUBLIC_CHART_SONGS_COLLECTION)
+      .doc(songId);
+    const publicNightRef = isApprovedPublicNight
+      ? admin.firestore().collection(PUBLIC_CHART_NIGHTS_COLLECTION).doc(discoverListingId)
+      : null;
+
+    await admin.firestore().runTransaction(async (tx) => {
+      const reads = [
+        tx.get(performanceRef),
+        tx.get(memberRef),
+        tx.get(publicSongRef),
+      ];
+      if (publicNightRef) reads.push(tx.get(publicNightRef));
+      const [projectionPerformanceSnap, memberSnap, publicSongSnap, publicNightSnap = null] = await Promise.all(reads);
+      if (Number(projectionPerformanceSnap.get("projectionVersion") || 0) >= 1) return;
+      const memberData = memberSnap.exists ? (memberSnap.data() || {}) : {};
+      const priorMemberTotal = Math.max(0, Number(memberData.totalScore || 0) || 0);
+      const priorPerformanceCount = Math.max(0, Number(memberData.performanceCount || 0) || 0);
+      const nextTotalScore = priorMemberTotal + totalScore;
+      const nextPerformanceCount = priorPerformanceCount + 1;
+      const memberBestScore = Math.max(0, Number(memberData.bestScore || 0) || 0);
+      const memberBestApplause = Math.max(0, Number(memberData.bestApplauseScore || 0) || 0);
+      const memberHasNewBest = totalScore > memberBestScore
+        || (totalScore === memberBestScore && applauseScore > memberBestApplause);
+      tx.set(memberRef, {
+        schemaVersion: 1,
+        memberKey: chartIdentity.memberKey,
+        displayName: chartIdentity.displayName,
+        identityVisibility: chartIdentity.identityVisibility,
+        profileUid: admin.firestore.FieldValue.delete(),
+        avatarUrl: chartIdentity.avatarUrl,
+        totalScore: nextTotalScore,
+        rankScore: nextTotalScore,
+        performanceCount: nextPerformanceCount,
+        averageScore: Math.round(nextTotalScore / nextPerformanceCount),
+        bestScore: memberHasNewBest ? totalScore : memberBestScore,
+        bestApplauseScore: memberHasNewBest ? applauseScore : memberBestApplause,
+        latestSongId: songId,
+        latestSongTitle: canonicalTitle,
+        latestArtist: canonicalArtist,
+        latestResultId: performanceDocId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      const publicSongData = publicSongSnap.exists ? (publicSongSnap.data() || {}) : null;
+      if (isBetterScore(totalScore, applauseScore, publicSongData)) {
+        tx.set(publicSongRef, {
+          schemaVersion: 1,
+          songId,
+          canonicalSongId: songId,
+          songTitle: canonicalTitle,
+          artist: canonicalArtist,
+          albumArtUrl: albumArtUrl || null,
+          bestScore: totalScore,
+          applauseScore,
+          memberKey: chartIdentity.memberKey,
+          displayName: chartIdentity.displayName,
+          identityVisibility: chartIdentity.identityVisibility,
+          profileUid: admin.firestore.FieldValue.delete(),
+          avatarUrl: chartIdentity.avatarUrl,
+          resultId: performanceDocId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+
+      if (publicNightRef) {
+        const publicNightData = publicNightSnap?.exists ? (publicNightSnap.data() || {}) : {};
+        const priorNightTotal = Math.max(0, Number(publicNightData.totalScore || 0) || 0);
+        const priorNightCount = Math.max(0, Number(publicNightData.performanceCount || 0) || 0);
+        const nextNightTotal = priorNightTotal + totalScore;
+        const nextNightCount = priorNightCount + 1;
+        const nightBestScore = Math.max(0, Number(publicNightData.bestScore || 0) || 0);
+        const nightBestApplause = Math.max(0, Number(publicNightData.bestApplauseScore || 0) || 0);
+        const nightHasNewBest = totalScore > nightBestScore
+          || (totalScore === nightBestScore && applauseScore > nightBestApplause);
+        tx.set(publicNightRef, {
+          schemaVersion: 1,
+          listingId: discoverListingId,
+          title: safeDirectoryString(roomSessionData.title || roomData.roomName || roomData.name || "BeauRocks Night", 180),
+          venueId: safeDirectoryString(roomSessionData.venueId || "", 180) || null,
+          venueName: safeDirectoryString(roomSessionData.venueName || "", 180) || null,
+          hostName: safeDirectoryString(roomSessionData.hostName || roomData.hostName || "", 120) || null,
+          city: safeDirectoryString(roomSessionData.city || "", 80) || null,
+          state: safeDirectoryString(roomSessionData.state || "", 40) || null,
+          startsAtMs: Math.max(0, Number(roomSessionData.startsAtMs || 0) || 0),
+          totalScore: nextNightTotal,
+          rankScore: nextNightTotal,
+          performanceCount: nextNightCount,
+          averageScore: Math.round(nextNightTotal / nextNightCount),
+          bestScore: nightHasNewBest ? totalScore : nightBestScore,
+          bestApplauseScore: nightHasNewBest ? applauseScore : nightBestApplause,
+          topMemberKey: nightHasNewBest ? chartIdentity.memberKey : (publicNightData.topMemberKey || null),
+          topSingerName: nightHasNewBest ? chartIdentity.displayName : (publicNightData.topSingerName || null),
+          topIdentityVisibility: nightHasNewBest ? chartIdentity.identityVisibility : (publicNightData.topIdentityVisibility || null),
+          topProfileUid: admin.firestore.FieldValue.delete(),
+          topAvatarUrl: nightHasNewBest ? chartIdentity.avatarUrl : (publicNightData.topAvatarUrl || null),
+          topResultId: nightHasNewBest ? performanceDocId : (publicNightData.topResultId || null),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+      tx.set(performanceRef, {
+        projectionVersion: 1,
+        chartEra: "launch_v1",
+        publicChartStatus: "active",
+        publicNightListingId: publicNightRef ? discoverListingId : null,
+        projectedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+  }
+
+  if (!globalLeaderboardEligible) {
+    await performanceRef.set({
+      projectionVersion: 1,
+      chartEra: "launch_v1",
+      publicChartStatus: "room_only",
+      publicNightListingId: null,
+      projectedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
   }
 
@@ -11169,7 +11649,397 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     hypeScore,
     hostBonus,
     isNewAllTime,
+    isNewWeekly,
+    globalLeaderboardEligible,
+    leaderboardEligibility,
     weekKey,
+    duplicate: false,
+  };
+});
+
+const loadPublicChartIdentityForPerformance = async ({ tx, db, rootRef, performance = {} }) => {
+  const singerUid = normalizeUidToken(performance.singerUid || "");
+  if (!singerUid) {
+    return {
+      memberKey: "",
+      displayName: "BeauRocks Singer",
+      identityVisibility: "anonymous",
+      avatarUrl: null,
+    };
+  }
+  const roomCode = normalizeRoomCode(performance.roomCode || "");
+  const [accountSnap, directoryProfileSnap, roomUserSnap] = await Promise.all([
+    tx.get(db.collection("users").doc(singerUid)),
+    tx.get(db.collection("directory_profiles").doc(singerUid)),
+    roomCode
+      ? tx.get(rootRef.collection("room_users").doc(`${roomCode}_${singerUid}`))
+      : Promise.resolve(null),
+  ]);
+  if (!accountSnap.exists) {
+    return {
+      memberKey: buildChartMemberKey(singerUid),
+      displayName: "BeauRocks Singer",
+      identityVisibility: "anonymous",
+      avatarUrl: null,
+    };
+  }
+  return buildPublicChartIdentity({
+    uid: singerUid,
+    accountUser: accountSnap.data() || {},
+    directoryProfile: directoryProfileSnap.exists ? (directoryProfileSnap.data() || {}) : {},
+    roomUser: roomUserSnap?.exists ? (roomUserSnap.data() || {}) : {},
+    fallbackName: "BeauRocks Singer",
+  });
+};
+
+exports.moderatePublicChartResult = onCall({ cors: true, timeoutSeconds: 120 }, async (request) => {
+  checkRateLimit(request.rawRequest, "moderate_public_chart_result", { perMinute: 12, perHour: 80 });
+  enforceAppCheckIfEnabled(request, "moderate_public_chart_result");
+  const callerUid = requireAuth(request, "Sign in required.");
+  const requesterAccess = await getDirectoryModeratorAccess(callerUid);
+  if (!requesterAccess.isAdmin) {
+    throw new HttpsError("permission-denied", "Directory admin role required.");
+  }
+  const resultId = String(request.data?.resultId || "").trim();
+  const reason = normalizeDirectoryTextBlock(request.data?.reason || "support_review", 500)
+    || "support_review";
+  const apply = request.data?.apply === true;
+  if (!/^[a-f0-9]{48}$/.test(resultId)) {
+    throw new HttpsError("invalid-argument", "A valid public result ID is required.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const performanceRef = db.collection("performances").doc(resultId);
+  const initialSnap = await performanceRef.get();
+  if (!initialSnap.exists) {
+    throw new HttpsError("not-found", "Public chart result not found.");
+  }
+  const initialData = initialSnap.data() || {};
+  if (!isEligiblePublicChartPerformance(initialData)
+    && String(initialData.publicChartStatus || "").trim().toLowerCase() !== "removed") {
+    throw new HttpsError("failed-precondition", "This result is not an eligible public chart result.");
+  }
+  const singerUid = normalizeUidToken(initialData.singerUid || "");
+  const canonicalSongId = String(initialData.canonicalSongId || initialData.songId || "").trim();
+  const listingId = safeDirectoryString(initialData.publicNightListingId || "", 220);
+  const weekKey = String(initialData.weekKey || "").trim();
+  const preview = {
+    ok: true,
+    dryRun: !apply,
+    resultId,
+    affectedMemberKey: buildChartMemberKey(singerUid),
+    affectedSongId: canonicalSongId,
+    affectedRoomListingId: listingId || null,
+    affectedWeekKey: weekKey || null,
+    alreadyRemoved: String(initialData.publicChartStatus || "").trim().toLowerCase() === "removed",
+  };
+  if (!apply) return preview;
+
+  const moderationEventRef = db.collection(PUBLIC_CHART_MODERATION_COLLECTION).doc();
+  const repairResult = await db.runTransaction(async (tx) => {
+    const currentSnap = await tx.get(performanceRef);
+    if (!currentSnap.exists) {
+      throw new HttpsError("not-found", "Public chart result not found.");
+    }
+    const memberQuery = db.collection("performances")
+      .where("singerUid", "==", singerUid)
+      .limit(PUBLIC_CHART_REPAIR_QUERY_LIMIT);
+    const songQuery = db.collection("performances")
+      .where("canonicalSongId", "==", canonicalSongId)
+      .limit(PUBLIC_CHART_REPAIR_QUERY_LIMIT);
+    const nightQuery = listingId
+      ? db.collection("performances")
+        .where("publicNightListingId", "==", listingId)
+        .limit(PUBLIC_CHART_REPAIR_QUERY_LIMIT)
+      : null;
+    const reads = [tx.get(memberQuery), tx.get(songQuery)];
+    if (nightQuery) reads.push(tx.get(nightQuery));
+    if (listingId) reads.push(tx.get(db.collection("room_sessions").doc(listingId)));
+    const [memberSnap, songSnap, nightSnap = null, roomSessionSnap = null] = await Promise.all(reads);
+    if (memberSnap.size >= PUBLIC_CHART_REPAIR_QUERY_LIMIT
+      || songSnap.size >= PUBLIC_CHART_REPAIR_QUERY_LIMIT
+      || (nightSnap && nightSnap.size >= PUBLIC_CHART_REPAIR_QUERY_LIMIT)) {
+      throw new HttpsError(
+        "resource-exhausted",
+        "Chart repair scope exceeds the safe transaction limit. Use the offline repair runbook."
+      );
+    }
+    const remainsEligible = (docSnap) => docSnap.id !== resultId
+      && isEligiblePublicChartPerformance(docSnap.data() || {});
+    const memberDocs = memberSnap.docs.filter(remainsEligible);
+    const songDocs = songSnap.docs.filter(remainsEligible);
+    const nightDocs = nightSnap ? nightSnap.docs.filter(remainsEligible) : [];
+    const latestMemberDoc = selectLatestPublicChartPerformance(memberDocs);
+    const bestSongDoc = selectBestPublicChartPerformance(songDocs);
+    const bestNightDoc = selectBestPublicChartPerformance(nightDocs);
+    const weekDocs = weekKey
+      ? songDocs.filter((docSnap) => String(docSnap.get("weekKey") || "").trim() === weekKey)
+      : [];
+    const bestWeekDoc = selectBestPublicChartPerformance(weekDocs);
+    const identityDocs = [latestMemberDoc, bestSongDoc, bestNightDoc, bestWeekDoc].filter(Boolean);
+    const identityByUid = new Map();
+    for (const docSnap of identityDocs) {
+      const uid = normalizeUidToken(docSnap.get("singerUid") || "");
+      if (!uid || identityByUid.has(uid)) continue;
+      identityByUid.set(uid, await loadPublicChartIdentityForPerformance({
+        tx,
+        db,
+        rootRef,
+        performance: docSnap.data() || {},
+      }));
+    }
+    const identityFor = (docSnap) => identityByUid.get(normalizeUidToken(docSnap?.get("singerUid") || "")) || {
+      memberKey: "",
+      displayName: "BeauRocks Singer",
+      identityVisibility: "anonymous",
+      avatarUrl: null,
+    };
+
+    const memberRef = db.collection(PUBLIC_CHART_MEMBERS_COLLECTION).doc(buildChartMemberKey(singerUid));
+    const publicSongRef = db.collection(PUBLIC_CHART_SONGS_COLLECTION).doc(canonicalSongId);
+    const hallRef = db.collection("song_hall_of_fame").doc(canonicalSongId);
+    const weeklyRef = weekKey
+      ? db.collection("song_hall_of_fame_weeks").doc(`${weekKey}__${canonicalSongId}`)
+      : null;
+    const publicNightRef = listingId
+      ? db.collection(PUBLIC_CHART_NIGHTS_COLLECTION).doc(listingId)
+      : null;
+
+    tx.set(performanceRef, {
+      publicChartStatus: "removed",
+      projectionVersion: 2,
+      moderationReason: reason,
+      moderatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    tx.set(moderationEventRef, {
+      resultId,
+      action: "remove",
+      reason,
+      performedByUid: callerUid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    if (!latestMemberDoc) {
+      tx.delete(memberRef);
+    } else {
+      const latestData = latestMemberDoc.data() || {};
+      const bestMemberDoc = selectBestPublicChartPerformance(memberDocs);
+      const bestMemberData = bestMemberDoc?.data() || {};
+      const memberIdentity = identityFor(latestMemberDoc);
+      const totalScore = memberDocs.reduce(
+        (sum, docSnap) => sum + getPublicChartPerformanceScore(docSnap.data() || {}),
+        0
+      );
+      tx.set(memberRef, {
+        schemaVersion: 1,
+        memberKey: buildChartMemberKey(singerUid),
+        displayName: memberIdentity.displayName,
+        identityVisibility: memberIdentity.identityVisibility,
+        profileUid: admin.firestore.FieldValue.delete(),
+        avatarUrl: memberIdentity.avatarUrl,
+        totalScore,
+        rankScore: totalScore,
+        performanceCount: memberDocs.length,
+        averageScore: Math.round(totalScore / memberDocs.length),
+        bestScore: getPublicChartPerformanceScore(bestMemberData),
+        bestApplauseScore: getPublicChartPerformanceApplause(bestMemberData),
+        latestSongId: String(latestData.canonicalSongId || latestData.songId || "").trim(),
+        latestSongTitle: String(latestData.songTitle || "").trim(),
+        latestArtist: String(latestData.artist || "Unknown").trim() || "Unknown",
+        latestResultId: latestMemberDoc.id,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: false });
+    }
+
+    const writeBestSong = (ref, docSnap, extra = {}) => {
+      if (!docSnap) {
+        tx.delete(ref);
+        return;
+      }
+      const data = docSnap.data() || {};
+      const identity = identityFor(docSnap);
+      tx.set(ref, {
+        schemaVersion: 1,
+        songId: canonicalSongId,
+        canonicalSongId,
+        songTitle: String(data.songTitle || "Untitled song").trim() || "Untitled song",
+        artist: String(data.artist || "Unknown").trim() || "Unknown",
+        albumArtUrl: String(data.albumArtUrl || "").trim() || null,
+        bestScore: getPublicChartPerformanceScore(data),
+        applauseScore: getPublicChartPerformanceApplause(data),
+        memberKey: identity.memberKey,
+        displayName: identity.displayName,
+        singerName: identity.displayName,
+        singerUid: admin.firestore.FieldValue.delete(),
+        identityVisibility: identity.identityVisibility,
+        profileUid: admin.firestore.FieldValue.delete(),
+        avatarUrl: identity.avatarUrl,
+        resultId: docSnap.id,
+        sourcePerformanceId: String(data.performanceId || "").trim() || null,
+        globalLeaderboardEligible: true,
+        qualificationVersion: 1,
+        qualifiedHostUid: data.qualifiedHostUid || null,
+        ...extra,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: false });
+    };
+    writeBestSong(publicSongRef, bestSongDoc);
+    writeBestSong(hallRef, bestSongDoc);
+    if (weeklyRef) writeBestSong(weeklyRef, bestWeekDoc, { weekKey });
+
+    const roomSessionData = roomSessionSnap?.exists ? (roomSessionSnap.data() || {}) : {};
+    const roomRemainsPublic = roomSessionSnap?.exists
+      && roomSessionData.status === "approved"
+      && roomSessionData.visibility === "public";
+    if (publicNightRef) {
+      if (!roomRemainsPublic || !nightDocs.length || !bestNightDoc) {
+        tx.delete(publicNightRef);
+      } else {
+        const bestNightData = bestNightDoc.data() || {};
+        const nightIdentity = identityFor(bestNightDoc);
+        const totalScore = nightDocs.reduce(
+          (sum, docSnap) => sum + getPublicChartPerformanceScore(docSnap.data() || {}),
+          0
+        );
+        tx.set(publicNightRef, {
+          schemaVersion: 1,
+          listingId,
+          title: safeDirectoryString(roomSessionData.title || "BeauRocks Room", 180),
+          venueId: safeDirectoryString(roomSessionData.venueId || "", 180) || null,
+          venueName: safeDirectoryString(roomSessionData.venueName || "", 180) || null,
+          hostName: safeDirectoryString(roomSessionData.hostName || "", 120) || null,
+          city: safeDirectoryString(roomSessionData.city || "", 80) || null,
+          state: safeDirectoryString(roomSessionData.state || "", 40) || null,
+          startsAtMs: Math.max(0, Number(roomSessionData.startsAtMs || 0) || 0),
+          totalScore,
+          rankScore: totalScore,
+          performanceCount: nightDocs.length,
+          averageScore: Math.round(totalScore / nightDocs.length),
+          bestScore: getPublicChartPerformanceScore(bestNightData),
+          bestApplauseScore: getPublicChartPerformanceApplause(bestNightData),
+          topMemberKey: nightIdentity.memberKey,
+          topSingerName: nightIdentity.displayName,
+          topIdentityVisibility: nightIdentity.identityVisibility,
+          topProfileUid: admin.firestore.FieldValue.delete(),
+          topAvatarUrl: nightIdentity.avatarUrl,
+          topResultId: bestNightDoc.id,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: false });
+      }
+    }
+    return {
+      remainingMemberPerformances: memberDocs.length,
+      remainingSongPerformances: songDocs.length,
+      remainingRoomPerformances: nightDocs.length,
+    };
+  });
+
+  return {
+    ...preview,
+    dryRun: false,
+    applied: true,
+    ...repairResult,
+  };
+});
+
+exports.previewPublicChartLaunch = onCall({ cors: true, timeoutSeconds: 60 }, async (request) => {
+  checkRateLimit(request.rawRequest, "preview_public_chart_launch", { perMinute: 12, perHour: 80 });
+  enforceAppCheckIfEnabled(request, "preview_public_chart_launch");
+  const callerUid = requireAuth(request, "Sign in required.");
+  const requesterAccess = await getDirectoryModeratorAccess(callerUid);
+  if (!requesterAccess.isAdmin) {
+    throw new HttpsError("permission-denied", "Directory admin role required.");
+  }
+  const rootRef = getRootRef();
+  const roomDocs = [];
+  let cursor = null;
+  let truncated = false;
+  while (roomDocs.length < PUBLIC_CHART_PREFLIGHT_MAX_ROOMS) {
+    let roomQuery = rootRef.collection("rooms")
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(PUBLIC_CHART_PREFLIGHT_PAGE_SIZE);
+    if (cursor) roomQuery = roomQuery.startAfter(cursor);
+    const pageSnap = await roomQuery.get();
+    roomDocs.push(...pageSnap.docs);
+    cursor = pageSnap.docs[pageSnap.docs.length - 1] || null;
+    if (pageSnap.size < PUBLIC_CHART_PREFLIGHT_PAGE_SIZE) break;
+    if (roomDocs.length >= PUBLIC_CHART_PREFLIGHT_MAX_ROOMS) truncated = true;
+  }
+  const openLifecycleRooms = roomDocs.filter((docSnap) => {
+    const room = docSnap.data() || {};
+    const archived = room.archived === true
+      || String(room.archivedStatus || "").trim().toLowerCase() === "archived";
+    const closedAtMs = valueToMillis(room.closedAt)
+      || Math.max(0, Number(room.closedAtMs || room.closedAt || 0) || 0);
+    return !archived && closedAtMs <= 0;
+  });
+  const activityCutoffMs = Date.now() - PUBLIC_CHART_PREFLIGHT_ACTIVITY_WINDOW_MS;
+  const activeRooms = openLifecycleRooms.filter((docSnap) => {
+    const room = docSnap.data() || {};
+    const activityAtMs = Math.max(
+      valueToMillis(room.updatedAt),
+      Math.max(0, Number(room.updatedAtMs || 0) || 0),
+      valueToMillis(room.lastPerformance?.timestamp),
+      Math.max(0, Number(room.currentPerformanceSession?.lastHeartbeatAtMs || 0) || 0),
+      valueToMillis(room.createdAt),
+      Math.max(0, Number(room.createdAtMs || 0) || 0)
+    );
+    return activityAtMs >= activityCutoffMs;
+  });
+  const activeHostUids = new Set();
+  activeRooms.forEach((docSnap) => {
+    const room = docSnap.data() || {};
+    [room.hostUid, ...(Array.isArray(room.hostUids) ? room.hostUids : [])]
+      .map((uid) => normalizeUidToken(uid || ""))
+      .filter(Boolean)
+      .forEach((uid) => activeHostUids.add(uid));
+  });
+  const accessChecks = await Promise.all(Array.from(activeHostUids).map(async (uid) => {
+    try {
+      const userRecord = await admin.auth().getUser(uid);
+      const email = normalizeEmailToken(userRecord.email || "");
+      const superAdmin = SUPER_ADMIN_UIDS.has(uid)
+        || (userRecord.emailVerified === true && SUPER_ADMIN_EMAILS.has(email));
+      const access = await resolveReadOnlyHostWorkspaceAccess({ uid, email, superAdmin });
+      return { uid, authUserExists: true, ...access };
+    } catch (error) {
+      if (String(error?.code || "").includes("user-not-found")) {
+        return { uid, authUserExists: false, eligible: false };
+      }
+      throw error;
+    }
+  }));
+  const unapprovedHostUids = accessChecks
+    .filter((entry) => entry.authUserExists && !entry.eligible)
+    .map((entry) => entry.uid)
+    .sort();
+  const orphanedHostUids = accessChecks
+    .filter((entry) => !entry.authUserExists)
+    .map((entry) => entry.uid)
+    .sort();
+  const publicRoomCount = openLifecycleRooms.filter((docSnap) => {
+    const room = docSnap.data() || {};
+    return room.publicRoom === true
+      || room.discover?.publicRoom === true
+      || String(room.discover?.visibility || "").trim().toLowerCase() === "public";
+  }).length;
+  return {
+    ok: true,
+    chartEra: "launch_v1",
+    canLaunch: !truncated && unapprovedHostUids.length === 0,
+    truncated,
+    gateScope: "rooms_with_activity_in_last_30_days",
+    scannedRoomCount: roomDocs.length,
+    openLifecycleRoomCount: openLifecycleRooms.length,
+    activeRoomCount: activeRooms.length,
+    publicRoomCount,
+    activeHostCount: activeHostUids.size,
+    approvedActiveHostCount: accessChecks.filter((entry) => entry.eligible).length,
+    unapprovedHostCount: unapprovedHostUids.length,
+    unapprovedHostUids,
+    orphanedHostCount: orphanedHostUids.length,
+    orphanedHostUids,
   };
 });
 
@@ -14361,11 +15231,22 @@ exports.upsertDirectoryProfile = onCall({ cors: true }, async (request) => {
   const preservedRoles = normalizeDirectoryRoles(existingProfile.roles || []);
   const effectiveHandle = normalized.handle
     || normalizeDirectoryToken(existingProfile.handle || normalized.displayName, 40);
+  const chartName = safeDirectoryString(
+    normalized.chartName || existingProfile.chartName || normalized.displayName,
+    80
+  ) || normalized.displayName;
+  const chartVisibility = normalizeChartIdentityVisibility(
+    Object.prototype.hasOwnProperty.call(profileInput || {}, "chartVisibility")
+      ? normalized.chartVisibility
+      : (existingProfile.chartVisibility || "public")
+  );
   const now = buildDirectoryNow();
   const payload = {
     uid,
     ...normalized,
     handle: effectiveHandle,
+    chartName,
+    chartVisibility,
     roles: preservedRoles,
     status: "approved",
     vipLevel: Number(userData.vipLevel || 0) || 0,
@@ -14375,7 +15256,55 @@ exports.upsertDirectoryProfile = onCall({ cors: true }, async (request) => {
     updatedAt: now,
     createdAt: now,
   };
-  await db.collection("directory_profiles").doc(uid).set(payload, { merge: true });
+  await Promise.all([
+    db.collection("directory_profiles").doc(uid).set(payload, { merge: true }),
+    db.collection("users").doc(uid).set({
+      leaderboardProfile: {
+        displayName: chartName,
+        visibility: chartVisibility,
+        updatedAt: now,
+      },
+      updatedAt: now,
+    }, { merge: true }),
+  ]);
+  const memberKey = buildChartMemberKey(uid);
+  const publicIdentity = {
+    displayName: chartVisibility === "anonymous" ? "BeauRocks Singer" : chartName,
+    identityVisibility: chartVisibility,
+    profileUid: admin.firestore.FieldValue.delete(),
+    avatarUrl: chartVisibility === "public" && payload.visibility === "public"
+      ? (payload.avatarUrl || null)
+      : null,
+    updatedAt: now,
+  };
+  const [memberSnap, songSnaps, nightSnaps] = await Promise.all([
+    db.collection(PUBLIC_CHART_MEMBERS_COLLECTION).doc(memberKey).get(),
+    db.collection(PUBLIC_CHART_SONGS_COLLECTION).where("memberKey", "==", memberKey).limit(200).get(),
+    db.collection(PUBLIC_CHART_NIGHTS_COLLECTION).where("topMemberKey", "==", memberKey).limit(200).get(),
+  ]);
+  const projectionBatch = db.batch();
+  let projectionWriteCount = 0;
+  if (memberSnap.exists) {
+    projectionBatch.set(memberSnap.ref, publicIdentity, { merge: true });
+    projectionWriteCount += 1;
+  }
+  songSnaps.docs.forEach((docSnap) => {
+    projectionBatch.set(docSnap.ref, publicIdentity, { merge: true });
+    projectionWriteCount += 1;
+  });
+  nightSnaps.docs.forEach((docSnap) => {
+    projectionBatch.set(docSnap.ref, {
+      topSingerName: publicIdentity.displayName,
+      topIdentityVisibility: publicIdentity.identityVisibility,
+      topProfileUid: admin.firestore.FieldValue.delete(),
+      topAvatarUrl: publicIdentity.avatarUrl,
+      updatedAt: now,
+    }, { merge: true });
+    projectionWriteCount += 1;
+  });
+  if (projectionWriteCount > 0) {
+    await projectionBatch.commit();
+  }
   return { ok: true, uid, profile: payload };
 });
 
@@ -14589,6 +15518,384 @@ exports.submitDirectoryListing = onCall(
   }
 );
 
+const DIRECTORY_NIGHT_SERIES_COLLECTION = "night_series";
+const DIRECTORY_NIGHT_OCCURRENCES_COLLECTION = "night_occurrences";
+const DIRECTORY_OCCURRENCE_WEEKS_AHEAD = 12;
+const DIRECTORY_OCCURRENCE_ARCHIVE_AFTER_MS = 90 * 24 * 60 * 60 * 1000;
+
+const buildDirectoryNightSeriesDoc = ({
+  seriesId = "",
+  listingType = "",
+  sourceListingId = "",
+  listing = {},
+  actorUid = "",
+  existing = {},
+} = {}) => {
+  const sourceCollection = listingType === "event" ? "karaoke_events" : "room_sessions";
+  const anchorStartsAtMs = Math.max(
+    0,
+    Number(listing.seriesAnchorStartsAtMs || existing.anchorStartsAtMs || listing.startsAtMs || 0) || 0,
+  );
+  const listingEndsAtMs = Math.max(0, Number(listing.endsAtMs || 0) || 0);
+  const inferredDurationMs = listingEndsAtMs > Number(listing.startsAtMs || 0)
+    ? listingEndsAtMs - Number(listing.startsAtMs || 0)
+    : Math.max(0, Number(existing.durationMs || 0) || 0);
+  const timezone = normalizeDiscoverTimezone(
+    listing.recurrenceTimezone || listing.timezone || existing.timezone || "UTC",
+  );
+  const status = normalizeDirectoryStatus(listing.status || "approved", "approved");
+  return {
+    seriesId,
+    schemaVersion: 1,
+    listingType,
+    sourceCollection,
+    sourceListingId,
+    sourceType: normalizeDirectoryToken(listing.sourceType || existing.sourceType || "", 40),
+    recurringRule: "weekly",
+    timezone,
+    anchorStartsAtMs,
+    durationMs: inferredDurationMs,
+    active: status === "approved" && anchorStartsAtMs > 0,
+    scheduleStatus: anchorStartsAtMs > 0 ? "active" : "needs_anchor",
+    visibility: normalizeDirectoryVisibility(listing.visibility || existing.visibility || "public", "public"),
+    title: safeDirectoryString(listing.title || existing.title || "", 180),
+    roomCode: normalizeRoomCode(listing.roomCode || existing.roomCode || ""),
+    venueId: safeDirectoryString(listing.venueId || existing.venueId || "", 180),
+    venueName: safeDirectoryString(listing.venueName || existing.venueName || "", 180),
+    hostUid: safeDirectoryString(listing.hostUid || existing.hostUid || actorUid || "", 180),
+    hostUids: Array.from(new Set([
+      ...(Array.isArray(listing.hostUids) ? listing.hostUids : []),
+      ...(Array.isArray(existing.hostUids) ? existing.hostUids : []),
+      listing.hostUid,
+      actorUid,
+    ].map((entry) => safeDirectoryString(entry || "", 180)).filter(Boolean))).slice(0, 12),
+    ownerUid: safeDirectoryString(listing.ownerUid || existing.ownerUid || actorUid || "", 180),
+    cancelledOccurrenceIds: (Array.isArray(existing.cancelledOccurrenceIds)
+      ? existing.cancelledOccurrenceIds
+      : []).map((entry) => safeDirectoryString(entry || "", 220)).filter(Boolean).slice(-104),
+  };
+};
+
+const syncDirectoryNightSeries = async ({
+  seriesId = "",
+  nowMs = Date.now(),
+  actorUid = "system_occurrence_engine",
+} = {}) => {
+  const safeSeriesId = safeDirectoryString(seriesId || "", 180);
+  if (!safeSeriesId) return { ok: false, reason: "missing_series_id" };
+  const db = admin.firestore();
+  const seriesRef = db.collection(DIRECTORY_NIGHT_SERIES_COLLECTION).doc(safeSeriesId);
+  const seriesSnap = await seriesRef.get();
+  if (!seriesSnap.exists) return { ok: false, reason: "series_not_found", seriesId: safeSeriesId };
+  const series = seriesSnap.data() || {};
+  if (series.active !== true || !isWeeklyRecurringRule(series.recurringRule || "")) {
+    return { ok: true, reason: "series_inactive", seriesId: safeSeriesId };
+  }
+  const sourceCollection = String(series.sourceCollection || "") === "karaoke_events"
+    ? "karaoke_events"
+    : "room_sessions";
+  const sourceListingId = safeDirectoryString(series.sourceListingId || "", 220);
+  if (!sourceListingId) {
+    await seriesRef.set({
+      active: false,
+      scheduleStatus: "missing_source",
+      updatedAt: buildDirectoryNow(),
+    }, { merge: true });
+    return { ok: false, reason: "missing_source_id", seriesId: safeSeriesId };
+  }
+  const sourceRef = db.collection(sourceCollection).doc(sourceListingId);
+  const sourceSnap = await sourceRef.get();
+  if (!sourceSnap.exists) {
+    await seriesRef.set({
+      active: false,
+      scheduleStatus: "source_deleted",
+      updatedAt: buildDirectoryNow(),
+    }, { merge: true });
+    return { ok: false, reason: "source_deleted", seriesId: safeSeriesId };
+  }
+  const source = sourceSnap.data() || {};
+  if (normalizeDirectoryStatus(source.status || "pending", "pending") !== "approved") {
+    await seriesRef.set({
+      active: false,
+      scheduleStatus: "source_not_approved",
+      updatedAt: buildDirectoryNow(),
+    }, { merge: true });
+    return { ok: true, reason: "source_not_approved", seriesId: safeSeriesId };
+  }
+
+  const anchorStartsAtMs = Math.max(0, Number(series.anchorStartsAtMs || 0) || 0);
+  const anchorEndsAtMs = anchorStartsAtMs + Math.max(0, Number(series.durationMs || 0) || 0);
+  const occurrences = buildWeeklyOccurrencePlan({
+    seriesId: safeSeriesId,
+    anchorStartsAtMs,
+    anchorEndsAtMs,
+    timezone: series.timezone || source.timezone || "UTC",
+    nowMs,
+    weeksAhead: DIRECTORY_OCCURRENCE_WEEKS_AHEAD,
+    cancelledOccurrenceIds: series.cancelledOccurrenceIds || [],
+  });
+  const nextOccurrence = selectNextScheduledOccurrence(occurrences, nowMs);
+  if (!occurrences.length || !nextOccurrence) {
+    await seriesRef.set({
+      scheduleStatus: "no_future_occurrence",
+      nextOccurrenceId: "",
+      nextOccurrenceAtMs: 0,
+      updatedAt: buildDirectoryNow(),
+    }, { merge: true });
+    return { ok: false, reason: "no_future_occurrence", seriesId: safeSeriesId };
+  }
+
+  const now = buildDirectoryNow();
+  const batch = db.batch();
+  occurrences.forEach((occurrence) => {
+    const occurrenceRef = db.collection(DIRECTORY_NIGHT_OCCURRENCES_COLLECTION).doc(occurrence.occurrenceId);
+    const occurrenceDoc = {
+      ...occurrence,
+      schemaVersion: 1,
+      listingType: series.listingType || (sourceCollection === "karaoke_events" ? "event" : "room_session"),
+      sourceCollection,
+      sourceListingId,
+      roomCode: normalizeRoomCode(series.roomCode || source.roomCode || ""),
+      venueId: safeDirectoryString(series.venueId || source.venueId || "", 180),
+      hostUid: safeDirectoryString(series.hostUid || source.hostUid || "", 180),
+      visibility: normalizeDirectoryVisibility(source.visibility || series.visibility || "public", "public"),
+      updatedAt: now,
+      updatedBy: actorUid,
+    };
+    if (occurrence.status === "scheduled") {
+      occurrenceDoc.cancelledAt = admin.firestore.FieldValue.delete();
+      occurrenceDoc.cancelledBy = admin.firestore.FieldValue.delete();
+    }
+    batch.set(occurrenceRef, occurrenceDoc, { merge: true });
+  });
+
+  batch.set(sourceRef, {
+    recurringRule: "weekly",
+    nightSeriesId: safeSeriesId,
+    seriesAnchorStartsAtMs: anchorStartsAtMs,
+    recurrenceTimezone: normalizeDiscoverTimezone(series.timezone || source.timezone || "UTC"),
+    occurrenceId: nextOccurrence.occurrenceId,
+    occurrenceStatus: nextOccurrence.status,
+    startsAtMs: nextOccurrence.startsAtMs,
+    endsAtMs: nextOccurrence.endsAtMs,
+    nextOccurrenceAtMs: nextOccurrence.startsAtMs,
+    scheduleVerifiedAtMs: Math.max(Number(source.scheduleVerifiedAtMs || 0) || 0, nowMs),
+    updatedAt: now,
+  }, { merge: true });
+  batch.set(seriesRef, {
+    active: true,
+    scheduleStatus: "active",
+    nextOccurrenceId: nextOccurrence.occurrenceId,
+    nextOccurrenceAtMs: nextOccurrence.startsAtMs,
+    generatedThroughMs: Math.max(...occurrences.map((entry) => Number(entry.endsAtMs || 0))),
+    generatedOccurrenceCount: occurrences.length,
+    lastGeneratedAt: now,
+    updatedAt: now,
+  }, { merge: true });
+
+  const roomCode = normalizeRoomCode(series.roomCode || source.roomCode || "");
+  if (sourceCollection === "room_sessions" && roomCode) {
+    batch.set(getRootRef().collection("rooms").doc(roomCode), {
+      discover: {
+        nightSeriesId: safeSeriesId,
+        occurrenceId: nextOccurrence.occurrenceId,
+        startsAtMs: nextOccurrence.startsAtMs,
+        endsAtMs: nextOccurrence.endsAtMs,
+        recurrenceTimezone: normalizeDiscoverTimezone(series.timezone || source.timezone || "UTC"),
+        updatedAt: now,
+      },
+      updatedAt: now,
+    }, { merge: true });
+  }
+  await batch.commit();
+  return {
+    ok: true,
+    reason: "synced",
+    seriesId: safeSeriesId,
+    occurrenceCount: occurrences.length,
+    nextOccurrence,
+  };
+};
+
+const upsertDirectoryNightSeriesForSource = async ({
+  listingType = "",
+  sourceListingId = "",
+  listing = {},
+  actorUid = "",
+  syncNow = true,
+} = {}) => {
+  const safeListingType = listingType === "event" ? "event" : "room_session";
+  const safeSourceListingId = safeDirectoryString(sourceListingId || "", 220);
+  if (!safeSourceListingId || !isWeeklyRecurringRule(listing.recurringRule || "")) {
+    return { ok: false, reason: "not_weekly" };
+  }
+  const seriesId = buildNightSeriesId({
+    explicitSeriesId: listing.nightSeriesId || "",
+    venueId: listing.venueId || "",
+    venueName: listing.venueName || "",
+    title: listing.title || "",
+    sourceListingId: safeSourceListingId,
+  });
+  const db = admin.firestore();
+  const seriesRef = db.collection(DIRECTORY_NIGHT_SERIES_COLLECTION).doc(seriesId);
+  const existingSnap = await seriesRef.get();
+  const existing = existingSnap.data() || {};
+  const seriesDoc = buildDirectoryNightSeriesDoc({
+    seriesId,
+    listingType: safeListingType,
+    sourceListingId: safeSourceListingId,
+    listing,
+    actorUid,
+    existing,
+  });
+  const now = buildDirectoryNow();
+  await Promise.all([
+    seriesRef.set({
+      ...seriesDoc,
+      createdAt: existing.createdAt || now,
+      createdBy: existing.createdBy || actorUid || "system",
+      updatedAt: now,
+      updatedBy: actorUid || "system",
+    }, { merge: true }),
+    db.collection(seriesDoc.sourceCollection).doc(safeSourceListingId).set({
+      recurringRule: "weekly",
+      nightSeriesId: seriesId,
+      seriesAnchorStartsAtMs: seriesDoc.anchorStartsAtMs,
+      recurrenceTimezone: seriesDoc.timezone,
+      updatedAt: now,
+    }, { merge: true }),
+  ]);
+  if (!syncNow || !seriesDoc.active) {
+    return { ok: true, reason: seriesDoc.active ? "series_upserted" : "needs_anchor", seriesId };
+  }
+  return syncDirectoryNightSeries({ seriesId, actorUid });
+};
+
+const bootstrapDirectoryNightSeries = async ({ limit = 80 } = {}) => {
+  const db = admin.firestore();
+  const safeLimit = Math.max(1, Math.min(160, Number(limit || 80)));
+  const [eventSnap, sessionSnap] = await Promise.all([
+    db.collection("karaoke_events").where("status", "==", "approved").limit(safeLimit).get(),
+    db.collection("room_sessions").where("status", "==", "approved").limit(safeLimit).get(),
+  ]);
+  const candidates = [
+    ...eventSnap.docs.map((docSnap) => ({
+      listingType: "event",
+      sourceListingId: docSnap.id,
+      listing: docSnap.data() || {},
+    })),
+    ...sessionSnap.docs.map((docSnap) => ({
+      listingType: "room_session",
+      sourceListingId: docSnap.id,
+      listing: docSnap.data() || {},
+    })),
+  ].filter((entry) => isWeeklyRecurringRule(entry.listing.recurringRule || ""));
+  const results = [];
+  for (let offset = 0; offset < candidates.length; offset += 8) {
+    const group = candidates.slice(offset, offset + 8);
+    const groupResults = await Promise.all(group.map((entry) =>
+      upsertDirectoryNightSeriesForSource({
+        ...entry,
+        actorUid: "system_occurrence_bootstrap",
+        syncNow: false,
+      }).catch((error) => ({
+        ok: false,
+        reason: String(error?.message || error || "bootstrap_failed"),
+      }))
+    ));
+    results.push(...groupResults);
+  }
+  return {
+    scanned: eventSnap.size + sessionSnap.size,
+    candidates: candidates.length,
+    upserted: results.filter((entry) => entry?.ok).length,
+    failed: results.filter((entry) => !entry?.ok).length,
+  };
+};
+
+const rollDirectoryNightOccurrences = async ({
+  bootstrapLimit = 80,
+  seriesLimit = 100,
+  bootstrapEnabled = false,
+  archiveEnabled = false,
+  seriesIds = [],
+  nowMs = Date.now(),
+} = {}) => {
+  const db = admin.firestore();
+  const bootstrap = bootstrapEnabled
+    ? await bootstrapDirectoryNightSeries({ limit: bootstrapLimit })
+    : { skipped: true, reason: "bootstrap_disabled", scanned: 0, candidates: 0, upserted: 0, failed: 0 };
+  const requestedSeriesIds = Array.from(new Set((Array.isArray(seriesIds) ? seriesIds : [])
+    .map((entry) => safeDirectoryString(entry || "", 180))
+    .filter((entry) => entry && !entry.includes("/"))))
+    .slice(0, 25);
+  let seriesDocs = [];
+  if (requestedSeriesIds.length > 0) {
+    const requestedSnaps = await Promise.all(requestedSeriesIds.map((seriesId) =>
+      db.collection(DIRECTORY_NIGHT_SERIES_COLLECTION).doc(seriesId).get()
+    ));
+    seriesDocs = requestedSnaps.filter((docSnap) => docSnap.exists);
+  } else {
+    const seriesSnap = await db.collection(DIRECTORY_NIGHT_SERIES_COLLECTION)
+      .where("active", "==", true)
+      .limit(Math.max(1, Math.min(200, Number(seriesLimit || 100))))
+      .get();
+    seriesDocs = seriesSnap.docs;
+  }
+  const results = [];
+  for (let offset = 0; offset < seriesDocs.length; offset += 8) {
+    const group = seriesDocs.slice(offset, offset + 8);
+    const groupResults = await Promise.all(group.map((docSnap) =>
+      syncDirectoryNightSeries({
+        seriesId: docSnap.id,
+        nowMs,
+        actorUid: "system_occurrence_engine",
+      }).catch((error) => ({
+        ok: false,
+        reason: String(error?.message || error || "sync_failed"),
+        seriesId: docSnap.id,
+      }))
+    ));
+    results.push(...groupResults);
+  }
+
+  let archived = 0;
+  if (archiveEnabled && requestedSeriesIds.length === 0) {
+    const archiveCutoffMs = nowMs - DIRECTORY_OCCURRENCE_ARCHIVE_AFTER_MS;
+    const expiredSnap = await db.collection(DIRECTORY_NIGHT_OCCURRENCES_COLLECTION)
+      .where("endsAtMs", "<", archiveCutoffMs)
+      .limit(240)
+      .get();
+    const batch = db.batch();
+    expiredSnap.docs.forEach((docSnap) => {
+      if (!shouldArchiveOccurrence(
+        docSnap.data() || {},
+        nowMs,
+        DIRECTORY_OCCURRENCE_ARCHIVE_AFTER_MS,
+      )) return;
+      archived += 1;
+      batch.set(docSnap.ref, {
+        status: "archived",
+        archivedAt: buildDirectoryNow(),
+        updatedAt: buildDirectoryNow(),
+        updatedBy: "system_occurrence_engine",
+      }, { merge: true });
+    });
+    if (archived > 0) await batch.commit();
+  }
+  return {
+    ok: true,
+    bootstrap,
+    requestedSeriesCount: requestedSeriesIds.length,
+    missingRequestedSeries: Math.max(0, requestedSeriesIds.length - seriesDocs.length),
+    scannedSeries: seriesDocs.length,
+    syncedSeries: results.filter((entry) => entry?.ok).length,
+    failedSeries: results.filter((entry) => !entry?.ok).length,
+    archiveEnabled: archiveEnabled && requestedSeriesIds.length === 0,
+    archivedOccurrences: archived,
+  };
+};
+
 const upsertHostRoomDiscoveryListingInternal = async ({
   callerUid = "",
   roomCode = "",
@@ -14626,6 +15933,7 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     .map((entry) => safeDirectoryString(entry || "", 180))
     .filter(Boolean)));
   const hostName = safeDirectoryString(roomData.hostName || "", 120) || "Host";
+  const roomJoinPolicy = normalizeRoomAudienceJoinPolicy(roomData.audienceJoinPolicy || {});
   const publicRoom = parseBooleanInput(
     nextListingInput.publicRoom ?? nextListingInput.isPublicRoom ?? nextListingInput.public ?? false,
     false
@@ -14658,6 +15966,64 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     nextListingInput.title || nextListingInput.venueName || `${hostName} Karaoke Room ${resolvedRoomCode}`,
     180
   ) || `${hostName} Karaoke Room ${resolvedRoomCode}`;
+  const venueId = safeDirectoryString(nextListingInput.venueId || roomData?.discover?.venueId || '', 180);
+  const venueName = safeDirectoryString(nextListingInput.venueName || roomData?.discover?.venueName || '', 120);
+  const recurringRuleInput = safeDirectoryString(
+    nextListingInput.recurringRule || roomData?.discover?.recurringRule || 'one_time',
+    40,
+  ).toLowerCase();
+  const recurringRule = recurringRuleInput === 'weekly' ? 'weekly' : 'one_time';
+  const explicitNightSeriesId = safeDirectoryString(
+    nextListingInput.nightSeriesId || roomData?.discover?.nightSeriesId || '',
+    180,
+  );
+  const nightSeriesId = recurringRule === 'weekly'
+    ? buildNightSeriesId({
+      explicitSeriesId: explicitNightSeriesId,
+      venueId,
+      venueName,
+      title,
+      sourceListingId: `room_${normalizeDirectoryToken(resolvedRoomCode, 80) || "session"}`,
+    })
+    : '';
+  const recurrenceTimezone = normalizeDiscoverTimezone(
+    nextListingInput.timezone || roomData?.discover?.recurrenceTimezone || "America/Los_Angeles",
+  );
+  const presetId = String(roomData.hostNightPreset || roomData?.hostNightPresetConfig?.basePresetId || '').trim().toLowerCase();
+  const gamePreviewId = String(roomData.gamePreviewId || '').trim().toLowerCase();
+  const primaryFormat = presetId === 'trivia' || gamePreviewId === 'trivia'
+    ? 'trivia'
+    : presetId === 'bingo' || gamePreviewId === 'bingo'
+      ? 'bingo'
+      : (roomData.popTriviaEnabled === true ? 'hybrid' : 'karaoke');
+  const experienceProfile = {
+    schemaVersion: 1,
+    format: primaryFormat,
+    intensity: presetId === 'competition' || roomData.showScoring === true ? 'competitive' : 'social',
+    mechanics: {
+      scoring: roomData.showScoring === true,
+      firstTimerBoost: roomData?.queueSettings?.firstTimeBoost === true,
+      fairRotation: String(roomData?.queueSettings?.rotation || '').trim().toLowerCase() === 'round_robin',
+      limitedTurns: String(roomData?.queueSettings?.limitMode || '').trim().toLowerCase() !== 'none',
+      singerChoosesTrack: roomData.allowSingerTrackSelect === true,
+      hostCuratedTracks: roomData.allowSingerTrackSelect !== true,
+    },
+    audienceFeatures: {
+      voting: String(roomData.bingoVotingMode || '').trim().toLowerCase().includes('votes'),
+      reactions: true,
+      chat: roomData.chatShowOnTv === true,
+      interactiveScreen: true,
+      liveJoin: true,
+    },
+    games: {
+      trivia: primaryFormat === 'trivia',
+      popTrivia: roomData.popTriviaEnabled === true,
+      bingo: primaryFormat === 'bingo',
+      wouldYouRather: gamePreviewId === 'would_you_rather',
+    },
+    provenance: 'room_config',
+    computedAtMs: Date.now(),
+  };
   const sessionMode = safeDirectoryString(
     nextListingInput.sessionMode || (virtualOnly ? "virtual" : "karaoke"),
     40
@@ -14696,10 +16062,22 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     bookingUrl: normalizeDirectoryOptionalUrl(nextListingInput.bookingUrl || ""),
     imageUrl: normalizeDirectoryOptionalUrl(nextListingInput.imageUrl || ""),
     roomCode: resolvedRoomCode,
-    venueName: safeDirectoryString(nextListingInput.venueName || "", 120),
-    venueId: safeDirectoryString(nextListingInput.venueId || "", 180),
+    venueName,
+    venueId,
     venueSource: safeDirectoryString(nextListingInput.venueSource || "", 40),
     sessionMode,
+    recurringRule,
+    nightSeriesId,
+    seriesAnchorStartsAtMs: recurringRule === 'weekly' ? startsAtMs : 0,
+    recurrenceTimezone,
+    identityLinks: {
+      venueId,
+      hostUids,
+      nightSeriesId,
+    },
+    joinAccessMode: roomJoinPolicy.accessMode,
+    requiresGuestPasscode: roomJoinPolicy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired,
+    experienceProfile,
     hostUid,
     hostUids,
     hostName,
@@ -14742,6 +16120,18 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     virtualOnly,
     isVirtualOnly: virtualOnly,
     sessionMode,
+    recurringRule,
+    nightSeriesId,
+    seriesAnchorStartsAtMs: recurringRule === 'weekly' ? startsAtMs : 0,
+    recurrenceTimezone,
+    identityLinks: {
+      venueId,
+      hostUids,
+      nightSeriesId,
+    },
+    joinAccessMode: roomJoinPolicy.accessMode,
+    requiresGuestPasscode: roomJoinPolicy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired,
+    experienceProfile,
     updatedAt: now,
     updatedBy: safeCallerUid,
     createdAt: now,
@@ -14759,11 +16149,42 @@ const upsertHostRoomDiscoveryListingInternal = async ({
         sessionMode,
         title,
         startsAtMs,
+        venueId,
+        venueName,
+        recurringRule,
+        nightSeriesId,
+        recurrenceTimezone,
+        joinAccessMode: roomJoinPolicy.accessMode,
         updatedAt: now,
       },
       updatedAt: now,
     }, { merge: true }),
   ]);
+  if (!publicRoom) {
+    await admin.firestore()
+      .collection(PUBLIC_CHART_NIGHTS_COLLECTION)
+      .doc(listingId)
+      .delete()
+      .catch(() => {});
+  }
+
+  let recurrence = null;
+  if (recurringRule === "weekly") {
+    recurrence = await upsertDirectoryNightSeriesForSource({
+      listingType: "room_session",
+      sourceListingId: listingId,
+      listing: roomSessionDoc,
+      actorUid: safeCallerUid,
+      syncNow: true,
+    });
+  } else if (explicitNightSeriesId) {
+    await admin.firestore().collection(DIRECTORY_NIGHT_SERIES_COLLECTION).doc(explicitNightSeriesId).set({
+      active: false,
+      scheduleStatus: "recurrence_removed",
+      updatedAt: buildDirectoryNow(),
+      updatedBy: safeCallerUid,
+    }, { merge: true });
+  }
 
   return {
     ok: true,
@@ -14774,6 +16195,10 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     isPublicRoom: publicRoom,
     virtualOnly,
     sourceType: "host_room",
+    recurringRule,
+    nightSeriesId,
+    occurrenceId: recurrence?.nextOccurrence?.occurrenceId || "",
+    nextOccurrenceAtMs: Number(recurrence?.nextOccurrence?.startsAtMs || startsAtMs || 0) || 0,
   };
 };
 
@@ -14797,6 +16222,99 @@ exports.upsertHostRoomDiscoveryListing = onCall(
     });
   }
 );
+
+exports.setHostNightOccurrenceStatus = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "set_host_night_occurrence_status", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "set_host_night_occurrence_status");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  const action = normalizeDirectoryToken(request.data?.action || "cancel", 24);
+  if (!["cancel", "reinstate"].includes(action)) {
+    throw new HttpsError("invalid-argument", "action must be cancel or reinstate.");
+  }
+  const access = await ensureRoomHostAccess({
+    roomCode,
+    callerUid,
+    deniedMessage: "Only room hosts can change recurring night occurrences.",
+  });
+  const roomData = access.roomData || {};
+  const seriesId = safeDirectoryString(
+    request.data?.nightSeriesId || roomData?.discover?.nightSeriesId || "",
+    180,
+  );
+  if (!seriesId) {
+    throw new HttpsError("failed-precondition", "This room does not have a recurring night series.");
+  }
+  const db = admin.firestore();
+  const seriesRef = db.collection(DIRECTORY_NIGHT_SERIES_COLLECTION).doc(seriesId);
+  const seriesSnap = await seriesRef.get();
+  if (!seriesSnap.exists) {
+    throw new HttpsError("not-found", "Recurring night series not found.");
+  }
+  const series = seriesSnap.data() || {};
+  if (normalizeRoomCode(series.roomCode || "") !== roomCode) {
+    throw new HttpsError("permission-denied", "The recurring night series does not belong to this room.");
+  }
+  const plan = buildWeeklyOccurrencePlan({
+    seriesId,
+    anchorStartsAtMs: Number(series.anchorStartsAtMs || 0),
+    anchorEndsAtMs: Number(series.anchorStartsAtMs || 0) + Number(series.durationMs || 0),
+    timezone: series.timezone || "UTC",
+    nowMs: Date.now(),
+    weeksAhead: DIRECTORY_OCCURRENCE_WEEKS_AHEAD,
+    cancelledOccurrenceIds: series.cancelledOccurrenceIds || [],
+  });
+  const defaultOccurrence = selectNextScheduledOccurrence(plan, Date.now());
+  const occurrenceId = safeDirectoryString(
+    request.data?.occurrenceId || roomData?.discover?.occurrenceId || defaultOccurrence?.occurrenceId || "",
+    220,
+  );
+  const targetOccurrence = plan.find((entry) => entry.occurrenceId === occurrenceId) || null;
+  if (!targetOccurrence) {
+    throw new HttpsError("invalid-argument", "Occurrence is outside the editable schedule window.");
+  }
+  const occurrenceRef = db.collection(DIRECTORY_NIGHT_OCCURRENCES_COLLECTION).doc(occurrenceId);
+  const now = buildDirectoryNow();
+  const batch = db.batch();
+  batch.set(seriesRef, {
+    cancelledOccurrenceIds: action === "cancel"
+      ? admin.firestore.FieldValue.arrayUnion(occurrenceId)
+      : admin.firestore.FieldValue.arrayRemove(occurrenceId),
+    updatedAt: now,
+    updatedBy: callerUid,
+  }, { merge: true });
+  batch.set(occurrenceRef, action === "cancel" ? {
+    ...targetOccurrence,
+    status: "cancelled",
+    cancelledAt: now,
+    cancelledBy: callerUid,
+    updatedAt: now,
+    updatedBy: callerUid,
+  } : {
+    ...targetOccurrence,
+    status: "scheduled",
+    cancelledAt: admin.firestore.FieldValue.delete(),
+    cancelledBy: admin.firestore.FieldValue.delete(),
+    updatedAt: now,
+    updatedBy: callerUid,
+  }, { merge: true });
+  await batch.commit();
+  const result = await syncDirectoryNightSeries({
+    seriesId,
+    actorUid: callerUid,
+  });
+  return {
+    ok: true,
+    action,
+    roomCode,
+    nightSeriesId: seriesId,
+    occurrenceId,
+    nextOccurrence: result.nextOccurrence || null,
+  };
+});
 
 exports.updateDirectoryListing = onCall(
   { cors: true, secrets: [GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_SERVER_API_KEY] },
@@ -14826,6 +16344,35 @@ exports.updateDirectoryListing = onCall(
     const isOwner = uid === ownerUid || uid === hostUid;
     const cadencePatch = buildDirectoryCadencePatch(listingType, nextPayloadInput);
     const hasCadencePatch = hasDirectoryCadencePatch(listingType, cadencePatch);
+    const refreshRecurrence = async () => {
+      if (listingType !== "event") return null;
+      const updatedSnap = await listingRef.get();
+      const updated = updatedSnap.data() || {};
+      if (updatedSnap.exists && isWeeklyRecurringRule(updated.recurringRule || "")) {
+        return upsertDirectoryNightSeriesForSource({
+          listingType: "event",
+          sourceListingId: listingId,
+          listing: {
+            ...updated,
+            seriesAnchorStartsAtMs: Number(nextPayloadInput?.startsAtMs || 0) > 0
+              ? Number(nextPayloadInput.startsAtMs)
+              : updated.seriesAnchorStartsAtMs,
+          },
+          actorUid: uid,
+          syncNow: true,
+        });
+      }
+      const existingSeriesId = safeDirectoryString(existing.nightSeriesId || "", 180);
+      if (existingSeriesId) {
+        await db.collection(DIRECTORY_NIGHT_SERIES_COLLECTION).doc(existingSeriesId).set({
+          active: false,
+          scheduleStatus: "recurrence_removed",
+          updatedAt: buildDirectoryNow(),
+          updatedBy: uid,
+        }, { merge: true });
+      }
+      return null;
+    };
 
     if (access.isModerator) {
       let payload = null;
@@ -14856,7 +16403,8 @@ exports.updateDirectoryListing = onCall(
         updatedAt: now,
         updatedBy: uid,
       }, { merge: true });
-      return { ok: true, mode: "direct_update", listingId };
+      const recurrence = await refreshRecurrence();
+      return { ok: true, mode: "direct_update", listingId, recurrence };
     }
 
     if (!hasCadencePatch) {
@@ -14882,7 +16430,8 @@ exports.updateDirectoryListing = onCall(
         cadenceUpdatedAt: now,
         cadenceUpdatedBy: uid,
       }, { merge: true });
-      return { ok: true, mode: "owner_direct_update", listingId, updateScope: "cadence" };
+      const recurrence = await refreshRecurrence();
+      return { ok: true, mode: "owner_direct_update", listingId, updateScope: "cadence", recurrence };
     }
 
     const submissionId = buildDirectorySubmissionId(listingType, uid);
@@ -15201,7 +16750,29 @@ exports.resolveModerationItem = onCall({ cors: true }, async (request) => {
     };
   });
 
-  return { ok: true, ...outcome };
+  let recurrence = null;
+  if (outcome?.mode === "approved" && outcome?.listingType === "event" && outcome?.entityId) {
+    try {
+      const eventSnap = await db.collection("karaoke_events").doc(outcome.entityId).get();
+      const eventData = eventSnap.data() || {};
+      if (eventSnap.exists && isWeeklyRecurringRule(eventData.recurringRule || "")) {
+        recurrence = await upsertDirectoryNightSeriesForSource({
+          listingType: "event",
+          sourceListingId: outcome.entityId,
+          listing: eventData,
+          actorUid: uid,
+          syncNow: true,
+        });
+      }
+    } catch (error) {
+      console.warn("[directory/occurrences] approved event recurrence sync failed", {
+        eventId: outcome.entityId,
+        error: String(error?.message || error || ""),
+      });
+      recurrence = { ok: false, reason: "sync_failed_after_approval" };
+    }
+  }
+  return { ok: true, ...outcome, recurrence };
 });
 
 exports.runExternalDirectoryIngestion = onCall(
@@ -16143,6 +17714,14 @@ exports.previewDirectoryRoomSessionByCode = onCall({ cors: true }, async (reques
       venueId: safeDirectoryString(top.venueId || "", 220),
       venueName: safeDirectoryString(top.venueName || "", 220),
       visibility: normalizeDirectoryVisibility(top.visibility || "private", "private"),
+      joinAccessMode: safeDirectoryString(top.joinAccessMode || "anonymous_allowed", 40),
+      requiresGuestPasscode: top.requiresGuestPasscode === true,
+      recurringRule: safeDirectoryString(top.recurringRule || "", 40),
+      nightSeriesId: safeDirectoryString(top.nightSeriesId || "", 180),
+      occurrenceId: safeDirectoryString(top.occurrenceId || "", 220),
+      occurrenceStatus: normalizeDirectoryToken(top.occurrenceStatus || "", 40),
+      nextOccurrenceAtMs: Math.max(0, Number(top.nextOccurrenceAtMs || top.startsAtMs || 0) || 0),
+      recurrenceTimezone: safeDirectoryString(top.recurrenceTimezone || top.timezone || "", 80),
       latestRecapAtMs: Math.max(0, Number(top.latestRecapAtMs || 0) || 0),
       latestRecapUrl: normalizeDirectoryOptionalUrl(top.latestRecapUrl || ""),
       hostRecapCount: Math.max(0, Number(top.hostRecapCount || 0) || 0),
@@ -16317,6 +17896,7 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
     || ""
   ).trim().toLowerCase();
   const isAnonymousAuth = authProvider === "anonymous";
+  const leaderboardAccountEligible = !!authProvider && !isAnonymousAuth;
 
   const db = admin.firestore();
   const rootRef = getRootRef();
@@ -16334,6 +17914,21 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
   const roomJoinPolicy = normalizeRoomAudienceJoinPolicy(roomData.audienceJoinPolicy || {});
   if (roomJoinPolicy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.accountRequired && isAnonymousAuth) {
     throw new HttpsError("failed-precondition", "This room requires a BeauRocks account before joining.");
+  }
+  if (roomJoinPolicy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired) {
+    const [accessSnap, existingMemberSnap] = await Promise.all([
+      db.collection('room_private_access').doc(roomCode).get(),
+      roomUserRef.get(),
+    ]);
+    if (!existingMemberSnap.exists) {
+      const accepted = accessSnap.exists && verifyRoomGuestPasscode(
+        request.data?.passcode || '',
+        accessSnap.data() || {},
+      );
+      if (!accepted) {
+        throw new HttpsError('permission-denied', 'Guest passcode was not accepted.');
+      }
+    }
   }
   const participantIdentity = resolveJoinParticipantIdentity({
     joinPolicy: roomJoinPolicy,
@@ -16558,6 +18153,8 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
       uid: callerUid,
       name: safeName,
       avatar: resolvedAvatar,
+      leaderboardAccountEligible,
+      leaderboardAuthProvider: authProvider || null,
       participantKey: participantIdentity.participantKey,
       participantIdentityType: participantIdentity.participantIdentityType,
       participantInstallIdHash: participantIdentity.participantInstallIdHash || null,
@@ -16581,6 +18178,12 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
         matchedTicketTier: matchedEntitlement.ticketTier,
         ...(matchedEntitlement.skipLineEntitled ? { skipLineEntitled: true } : {}),
       } : {}),
+    }, { merge: true });
+    tx.set(userRef, {
+      uid: callerUid,
+      leaderboardAccountEligible,
+      leaderboardAuthProvider: authProvider || null,
+      leaderboardAccountUpdatedAt: serverNow,
     }, { merge: true });
     if (migratedRoomUserRef) {
       tx.delete(migratedRoomUserRef);
@@ -16828,6 +18431,12 @@ exports.updateAudienceIdentity = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "update_audience_identity", { perMinute: 40, perHour: 240 });
   enforceAppCheckIfEnabled(request, "update_audience_identity");
   const callerUid = requireAuth(request);
+  const authProvider = String(
+    request.auth?.token?.firebase?.sign_in_provider
+    || request.auth?.token?.sign_in_provider
+    || ""
+  ).trim().toLowerCase();
+  const leaderboardAccountEligible = !!authProvider && authProvider !== "anonymous";
   const roomCode = normalizeRoomCode(request.data?.roomCode || "");
   if (!roomCode) {
     throw new HttpsError("invalid-argument", "roomCode is required.");
@@ -16870,6 +18479,9 @@ exports.updateAudienceIdentity = onCall({ cors: true }, async (request) => {
       uid: callerUid,
       name: safeName,
       avatar: resolvedAvatar,
+      leaderboardAccountEligible,
+      leaderboardAuthProvider: authProvider || null,
+      leaderboardAccountUpdatedAt: serverNow,
       updatedAt: serverNow,
     };
     if (identityChanged) {
@@ -16885,6 +18497,8 @@ exports.updateAudienceIdentity = onCall({ cors: true }, async (request) => {
       uid: callerUid,
       name: safeName,
       avatar: resolvedAvatar,
+      leaderboardAccountEligible,
+      leaderboardAuthProvider: authProvider || null,
       isVip: vipLevel > 0,
       vipLevel,
       fameLevel,
@@ -17985,6 +19599,12 @@ exports.mergeAnonymousAccountData = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "merge_anonymous_account_data", { perMinute: 12, perHour: 60 });
   enforceAppCheckIfEnabled(request, "merge_anonymous_account_data");
   const callerUid = requireAuth(request);
+  const authProvider = String(
+    request.auth?.token?.firebase?.sign_in_provider
+    || request.auth?.token?.sign_in_provider
+    || ""
+  ).trim().toLowerCase();
+  const leaderboardAccountEligible = !!authProvider && authProvider !== "anonymous";
   const sourceUid = safeDirectoryString(request.data?.sourceUid || "", 180);
   const targetUid = safeDirectoryString(request.data?.targetUid || callerUid, 180);
   if (!sourceUid) {
@@ -18035,6 +19655,9 @@ exports.mergeAnonymousAccountData = onCall({ cors: true }, async (request) => {
       totalFamePoints: Math.max(Number(targetUser.totalFamePoints || 0), Number(sourceUser.totalFamePoints || 0)),
       currentLevel: Math.max(Number(targetUser.currentLevel || 0), Number(sourceUser.currentLevel || 0)),
       vipLevel: Math.max(Number(targetUser.vipLevel || 0), Number(sourceUser.vipLevel || 0)),
+      leaderboardAccountEligible,
+      leaderboardAuthProvider: authProvider || null,
+      leaderboardAccountUpdatedAt: now,
       mergedFromUids: admin.firestore.FieldValue.arrayUnion(sourceUid),
       updatedAt: now,
     }, { merge: true });
@@ -18073,6 +19696,54 @@ exports.mergeAnonymousAccountData = onCall({ cors: true }, async (request) => {
 
   return { ok: true, ...result, sourceUid, targetUid };
 });
+
+exports.rollDirectoryNightOccurrences = onSchedule(
+  {
+    schedule: "every 6 hours",
+    timeZone: "UTC",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async () => {
+    const rollout = buildDirectoryOccurrenceRolloutConfig(process.env);
+    const rolloutSummary = {
+      mode: rollout.mode,
+      reason: rollout.reason,
+      canarySeriesCount: rollout.canarySeriesIds.length,
+      bootstrapEnabled: rollout.bootstrapEnabled,
+      archiveEnabled: rollout.archiveEnabled,
+      bootstrapLimit: rollout.bootstrapLimit,
+      seriesLimit: rollout.seriesLimit,
+    };
+    if (!rollout.canRun) {
+      console.info("[directory/occurrences] roll skipped", rolloutSummary);
+      return;
+    }
+    const startedAtMs = Date.now();
+    try {
+      const result = await rollDirectoryNightOccurrences({
+        bootstrapLimit: rollout.bootstrapLimit,
+        seriesLimit: rollout.seriesLimit,
+        bootstrapEnabled: rollout.bootstrapEnabled,
+        archiveEnabled: rollout.archiveEnabled,
+        seriesIds: rollout.canarySeriesIds,
+        nowMs: startedAtMs,
+      });
+      console.log("[directory/occurrences] roll completed", {
+        ...rolloutSummary,
+        durationMs: Date.now() - startedAtMs,
+        ...result,
+      });
+    } catch (error) {
+      console.error("[directory/occurrences] roll failed", {
+        ...rolloutSummary,
+        durationMs: Date.now() - startedAtMs,
+        error: String(error?.message || error || "unknown_error"),
+      });
+      throw error;
+    }
+  }
+);
 
 exports.nightlyDirectorySync = onSchedule(
   {
@@ -19863,6 +21534,17 @@ exports.provisionHostRoom = onCall(
       eventCredits: eventCreditsConfig,
       roomPlan: roomPlanInput,
     });
+    const provisionJoinPolicy = normalizeRoomAudienceJoinPolicy(roomData.audienceJoinPolicy || {});
+    const guestPasscodeInput = String(payload.audienceJoinPasscode || '').trim();
+    const guestPasscodeRecord = guestPasscodeInput
+      ? buildRoomGuestPasscodeRecord(guestPasscodeInput)
+      : null;
+    if (
+      provisionJoinPolicy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired
+      && !guestPasscodeRecord
+    ) {
+      throw new HttpsError('failed-precondition', 'Set a guest passcode before creating a passcode-protected room.');
+    }
     const provisioning = await db.runTransaction(async (tx) => {
       if (jobRef) {
         const existingJob = await tx.get(jobRef);
@@ -19884,6 +21566,15 @@ exports.provisionHostRoom = onCall(
       });
       const roomRef = rootRef.collection("rooms").doc(roomCode);
       tx.set(roomRef, roomData, { merge: false });
+      if (guestPasscodeRecord) {
+        tx.set(db.collection('room_private_access').doc(roomCode), {
+          roomCode,
+          ...guestPasscodeRecord,
+          updatedBy: callerUid,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: false });
+      }
       tx.set(
         rootRef.collection("host_libraries").doc(roomCode),
         {
@@ -19948,11 +21639,7 @@ exports.provisionHostRoom = onCall(
           listingInput,
           roomAccess: {
             roomRef: rootRef.collection("rooms").doc(roomCode),
-            roomData: {
-              hostUid: callerUid,
-              hostUids: [callerUid, ...coHostUids],
-              hostName,
-            },
+            roomData,
             roomCode,
           },
         });
@@ -20040,6 +21727,16 @@ exports.publishPublicRoomRecap = onCall({ cors: true }, async (request) => {
     callerUid,
     deniedMessage: "Only room hosts can publish recap pages.",
   });
+  const discoverVisibility = String(roomData?.discover?.visibility || "").trim().toLowerCase();
+  const publicRecapAllowed = roomData?.publicRoom === true
+    || roomData?.discover?.publicRoom === true
+    || discoverVisibility === "public";
+  if (!publicRecapAllowed) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Private rooms keep their recap inside the host workspace. Make the room public before publishing it."
+    );
+  }
 
   const recap = roomData?.recap && typeof roomData.recap === "object" ? roomData.recap : null;
   if (!recap) {
@@ -20168,6 +21865,13 @@ exports.permanentlyDeleteHostRoom = onCall({ cors: true, timeoutSeconds: 300 }, 
       if (storagePath) storagePaths.add(storagePath);
     });
   });
+  const publicRecapStoragePath = String(
+    roomData?.publicRecap?.storagePath
+    || ((roomData?.publicRecap || roomData?.latestRecapUrl)
+      ? buildPublicRoomRecapStoragePath(safeRoomCode)
+      : "")
+  ).trim();
+  if (publicRecapStoragePath) storagePaths.add(publicRecapStoragePath);
   if (storagePaths.size > 0) {
     const bucket = admin.storage().bucket();
     const storageResults = await Promise.allSettled(Array.from(storagePaths).map((storagePath) =>
@@ -20179,12 +21883,19 @@ exports.permanentlyDeleteHostRoom = onCall({ cors: true, timeoutSeconds: 300 }, 
     }
   }
 
-  const roomSessionSnap = await db.collection("room_sessions")
-    .where("roomCode", "==", safeRoomCode)
-    .get();
+  const [roomSessionSnap, nightSeriesSnap, nightOccurrenceSnap] = await Promise.all([
+    db.collection("room_sessions").where("roomCode", "==", safeRoomCode).get(),
+    db.collection(DIRECTORY_NIGHT_SERIES_COLLECTION).where("roomCode", "==", safeRoomCode).get(),
+    db.collection(DIRECTORY_NIGHT_OCCURRENCES_COLLECTION).where("roomCode", "==", safeRoomCode).get(),
+  ]);
   const deleteRefs = [];
   artifactSnaps.forEach((snap) => snap.docs.forEach((docSnap) => deleteRefs.push(docSnap.ref)));
   roomSessionSnap.docs.forEach((docSnap) => deleteRefs.push(docSnap.ref));
+  roomSessionSnap.docs.forEach((docSnap) => {
+    deleteRefs.push(db.collection(PUBLIC_CHART_NIGHTS_COLLECTION).doc(docSnap.id));
+  });
+  nightSeriesSnap.docs.forEach((docSnap) => deleteRefs.push(docSnap.ref));
+  nightOccurrenceSnap.docs.forEach((docSnap) => deleteRefs.push(docSnap.ref));
   deleteRefs.push(rootRef.collection("host_libraries").doc(safeRoomCode));
   deleteRefs.push(roomRef);
 
@@ -20236,17 +21947,42 @@ exports.removeHostRoomDiscoveryListing = onCall({ cors: true }, async (request) 
     listingIds.add(docSnap.id);
   });
 
+  const publicRecapStoragePath = String(
+    roomData?.publicRecap?.storagePath
+    || ((roomData?.publicRecap || roomData?.latestRecapUrl)
+      ? buildPublicRoomRecapStoragePath(safeRoomCode)
+      : "")
+  ).trim();
+  if (publicRecapStoragePath) {
+    await admin.storage().bucket().file(publicRecapStoragePath).delete({ ignoreNotFound: true });
+  }
+
   const batch = db.batch();
   Array.from(listingIds).forEach((listingId) => {
-    batch.delete(db.collection("room_sessions").doc(listingId));
+    batch.set(db.collection("room_sessions").doc(listingId), {
+      visibility: "private",
+      isPublicRoom: false,
+      latestRecapUrl: admin.firestore.FieldValue.delete(),
+      beauRocksCapabilities: admin.firestore.FieldValue.arrayRemove("recap_ready"),
+      updatedAt: now,
+      updatedBy: callerUid,
+    }, { merge: true });
+    batch.delete(db.collection(PUBLIC_CHART_NIGHTS_COLLECTION).doc(listingId));
   });
+  const nightSeriesId = safeDirectoryString(roomData?.discover?.nightSeriesId || "", 180);
+  if (nightSeriesId) {
+    batch.set(db.collection(DIRECTORY_NIGHT_SERIES_COLLECTION).doc(nightSeriesId), {
+      visibility: "private",
+      updatedAt: now,
+      updatedBy: callerUid,
+    }, { merge: true });
+  }
   batch.update(roomRef, {
     "discover.publicRoom": false,
     "discover.visibility": "private",
     "discover.updatedAt": now,
-    "discover.listingId": admin.firestore.FieldValue.delete(),
-    "discover.title": admin.firestore.FieldValue.delete(),
-    "discover.startsAtMs": admin.firestore.FieldValue.delete(),
+    latestRecapUrl: admin.firestore.FieldValue.delete(),
+    publicRecap: admin.firestore.FieldValue.delete(),
     updatedAt: now,
   });
   await batch.commit();
@@ -20254,8 +21990,10 @@ exports.removeHostRoomDiscoveryListing = onCall({ cors: true }, async (request) 
   return {
     ok: true,
     roomCode: safeRoomCode,
-    deletedListingCount: listingIds.size,
-    deletedListingIds: Array.from(listingIds),
+    updatedListingCount: listingIds.size,
+    updatedListingIds: Array.from(listingIds),
+    visibility: "private",
+    publicRecapRemoved: !!publicRecapStoragePath,
   };
 });
 
@@ -20972,6 +22710,15 @@ exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
   const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
   ensureString(roomCode, "roomCode");
   const rawUpdates = normalizeHostRoomUpdates(request.data?.updates || {});
+  const passcodeWasSupplied = Object.prototype.hasOwnProperty.call(rawUpdates, 'audienceJoinPasscode');
+  const requestedPasscode = passcodeWasSupplied
+    ? normalizeRoomGuestPasscode(rawUpdates.audienceJoinPasscode || '')
+    : '';
+  const passcodeRecord = requestedPasscode
+    ? buildRoomGuestPasscodeRecord(rawUpdates.audienceJoinPasscode)
+    : null;
+  const roomUpdateInput = { ...rawUpdates };
+  delete roomUpdateInput.audienceJoinPasscode;
 
   const db = admin.firestore();
   const rootRef = getRootRef();
@@ -20985,10 +22732,40 @@ exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
     });
     const updates = syncHostRoomRequestPolicyUpdates({
       roomData,
-      updates: rawUpdates,
+      updates: roomUpdateInput,
     });
-    tx.update(roomRef, updates);
-    return { roomCode: safeRoomCode, updates };
+    const nextJoinPolicy = normalizeRoomAudienceJoinPolicy(
+      updates.audienceJoinPolicy || roomData.audienceJoinPolicy || {},
+    );
+    const accessRef = db.collection('room_private_access').doc(safeRoomCode);
+    let accessSnap = null;
+    if (nextJoinPolicy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired) {
+      accessSnap = await tx.get(accessRef);
+      if (!passcodeRecord && !accessSnap.exists) {
+        throw new HttpsError('failed-precondition', 'Set a guest passcode before requiring passcode entry.');
+      }
+    }
+    if (Object.keys(updates).length) {
+      tx.update(roomRef, updates);
+    }
+    if (nextJoinPolicy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired && passcodeRecord) {
+      tx.set(accessRef, {
+        roomCode: safeRoomCode,
+        ...passcodeRecord,
+        updatedBy: callerUid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: accessSnap?.exists
+          ? (accessSnap.get('createdAt') || admin.firestore.FieldValue.serverTimestamp())
+          : admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } else if (nextJoinPolicy.accessMode !== ROOM_AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired) {
+      tx.delete(accessRef);
+    }
+    return {
+      roomCode: safeRoomCode,
+      updates,
+      passcodeConfigured: nextJoinPolicy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired,
+    };
   });
 
   if (Object.prototype.hasOwnProperty.call(result.updates, "eventCredits")) {
@@ -21013,6 +22790,7 @@ exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
     ok: true,
     roomCode: result.roomCode,
     updatedKeys: Object.keys(result.updates),
+    passcodeConfigured: result.passcodeConfigured === true,
   };
 });
 

@@ -18,6 +18,8 @@ import {
   submitDirectoryReview,
   listModerationQueue,
   resolveModerationItem,
+  moderatePublicChartResult,
+  previewPublicChartLaunch,
   runExternalDirectoryIngestion,
   submitDirectoryClaimRequest,
   resolveDirectoryClaimRequest,
@@ -108,6 +110,8 @@ const buildActiveRoomJoinPreview = ({ roomCode = "", roomData = {} } = {}) => {
     roomCode: code,
     previewType: "active_room",
     activeMode: mode,
+    joinAccessMode: String(roomData?.audienceJoinPolicy?.accessMode || "anonymous_allowed").trim().toLowerCase(),
+    requiresGuestPasscode: String(roomData?.audienceJoinPolicy?.accessMode || "").trim().toLowerCase() === "passcode_required",
     isPaused,
   };
 };
@@ -270,6 +274,38 @@ export const subscribeModeratorAccess = ({ uid, onData, onError }) => {
     disposed = true;
     stopRoleDoc();
   };
+};
+
+export const subscribePublicCharts = ({ onData, onError, limitCount = 50 } = {}) => {
+  const safeLimit = Math.max(3, Math.min(100, Number(limitCount || 50) || 50));
+  const state = {
+    members: [],
+    songs: [],
+    nights: [],
+  };
+  const emit = () => onData?.({
+    members: [...state.members],
+    songs: [...state.songs],
+    nights: [...state.nights],
+  });
+  const subscribeRanked = (collectionName, stateKey) => onSnapshot(
+    query(
+      collection(db, collectionName),
+      orderBy(stateKey === "songs" ? "bestScore" : "rankScore", "desc"),
+      limit(safeLimit)
+    ),
+    (snap) => {
+      state[stateKey] = mapDocs(snap);
+      emit();
+    },
+    (error) => onError?.(error)
+  );
+  const unsubscribers = [
+    subscribeRanked("public_chart_members", "members"),
+    subscribeRanked("public_chart_songs", "songs"),
+    subscribeRanked("public_chart_nights", "nights"),
+  ];
+  return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
 };
 
 export { getMyHostAccessStatus, getMyDirectoryAccess, listHostApplications, resolveHostApplication };
@@ -456,6 +492,8 @@ export const directoryActions = {
   submitDirectoryReview,
   listModerationQueue,
   resolveModerationItem,
+  moderatePublicChartResult,
+  previewPublicChartLaunch,
   runExternalDirectoryIngestion,
   submitDirectoryClaimRequest,
   resolveDirectoryClaimRequest,

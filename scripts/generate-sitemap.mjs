@@ -38,6 +38,7 @@ const ROUTE_DETAIL_PAGES = new Set([
 
 const PUBLIC_CORE_ROUTE_PAGES = [
   MARKETING_ROUTE_PAGES.discover,
+  MARKETING_ROUTE_PAGES.charts,
   MARKETING_ROUTE_PAGES.changelog,
   MARKETING_ROUTE_PAGES.forHosts,
   MARKETING_ROUTE_PAGES.forVenues,
@@ -76,6 +77,7 @@ const REGION_ALIASES = Object.freeze({
 
 const CARD_BACKGROUND_BY_PAGE = Object.freeze({
   [MARKETING_ROUTE_PAGES.discover]: "/images/marketing/app-landing-live.png",
+  [MARKETING_ROUTE_PAGES.charts]: "/images/marketing/CLEAN 1.png",
   [MARKETING_ROUTE_PAGES.demo]: "/images/marketing/tv-surface-live.png",
   [MARKETING_ROUTE_PAGES.demoAuto]: "/images/marketing/app-landing-live.png",
   [MARKETING_ROUTE_PAGES.changelog]: "/images/marketing/CLEAN 1.png",
@@ -94,6 +96,7 @@ const CARD_BACKGROUND_BY_PAGE = Object.freeze({
 
 const PAGE_KICKER = Object.freeze({
   [MARKETING_ROUTE_PAGES.discover]: "Discover",
+  [MARKETING_ROUTE_PAGES.charts]: "Charts",
   [MARKETING_ROUTE_PAGES.demo]: "Demo",
   [MARKETING_ROUTE_PAGES.demoAuto]: "Auto Demo",
   [MARKETING_ROUTE_PAGES.changelog]: "Changelog",
@@ -938,6 +941,7 @@ const buildRobotsTxt = (siteUrl) => {
 
 const getRoutePriority = (page = "") => {
   if (page === MARKETING_ROUTE_PAGES.discover) return "1.0";
+  if (page === MARKETING_ROUTE_PAGES.charts) return "0.9";
   if (page === MARKETING_ROUTE_PAGES.forHosts || page === MARKETING_ROUTE_PAGES.forVenues) return "0.9";
   if (page === MARKETING_ROUTE_PAGES.forFans || page === MARKETING_ROUTE_PAGES.forPerformers) return "0.8";
   if (page === MARKETING_ROUTE_PAGES.geoCity || page === MARKETING_ROUTE_PAGES.geoRegion) return "0.8";

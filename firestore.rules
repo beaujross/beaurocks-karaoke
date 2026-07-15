@@ -731,6 +731,23 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Guest passcodes are verified only by trusted callables. Clients never
+    // receive salts or hashes, including room hosts and directory moderators.
+    match /room_private_access/{roomCode} {
+      allow read, write: if false;
+    }
+
+    // Recurrence definitions and occurrence audit history are managed only by
+    // trusted callables and the scheduler. Public clients consume the safe
+    // next-occurrence projection on venues, events, and room sessions.
+    match /night_series/{seriesId} {
+      allow read, write: if false;
+    }
+
+    match /night_occurrences/{occurrenceId} {
+      allow read, write: if false;
+    }
+
     match /venues/{venueId} {
       allow read: if isPublicApproved(resource.data)
         || isDirectoryModerator()
@@ -901,7 +918,8 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Global catalog + leaderboards (read-only to clients; writes via Admin SDK)
+    // Global catalog + sanitized leaderboards are read-only to clients; writes
+    // happen through trusted server code. Raw performance history is self-only.
     match /songs/{songId} {
       allow read: if true;
       allow write: if false;
@@ -918,7 +936,8 @@ service cloud.firestore {
     }
 
     match /performances/{docId} {
-      allow read: if true;
+      allow read: if isAuthed()
+        && resource.data.singerUid == request.auth.uid;
       allow write: if false;
     }
 
@@ -930,6 +949,25 @@ service cloud.firestore {
     match /song_hall_of_fame_weeks/{docId} {
       allow read: if true;
       allow write: if false;
+    }
+
+    match /public_chart_members/{memberKey} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /public_chart_songs/{songId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /public_chart_nights/{listingId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /public_chart_moderation_events/{eventId} {
+      allow read, write: if false;
     }
 
     match /feedback/{docId} {

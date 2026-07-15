@@ -2620,6 +2620,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
 
             const res = await callFunction('logPerformance', {
                 roomCode,
+                performanceId: songEntry.id || null,
                 songId: songEntry.songId || null,
                 canonicalSongId: songEntry.canonicalSongId || songEntry.songId || null,
                 backingCandidateId: songEntry.backingCandidateId || null,

@@ -75,7 +75,7 @@ const buildCapabilitySet = (entry = {}) => {
   ) {
     capabilities.add("recap_ready");
   }
-  if (Number(entry?.scheduleVerifiedAtMs || 0) > 0 || String(entry?.karaokeNightsLabel || "").trim() || String(entry?.recurringRule || "").trim()) {
+  if (Number(entry?.scheduleVerifiedAtMs || 0) > 0 || String(entry?.karaokeNightsLabel || "").trim() || String(entry?.recurringRule || "").trim().toLowerCase() === "weekly") {
     capabilities.add("verified_schedule");
   }
   if (Number(entry?.lastActiveAtMs || 0) > 0) capabilities.add("live_activity");
@@ -85,6 +85,20 @@ const buildCapabilitySet = (entry = {}) => {
 };
 
 export const deriveDirectoryExperience = (entry = {}) => {
+  const experienceProfile = entry?.experienceProfile && typeof entry.experienceProfile === "object"
+    ? entry.experienceProfile
+    : {};
+  const experienceFormat = normalizeToken(experienceProfile?.format || "");
+  const experienceIntensity = normalizeToken(experienceProfile?.intensity || "");
+  const experienceMechanics = experienceProfile?.mechanics && typeof experienceProfile.mechanics === "object"
+    ? experienceProfile.mechanics
+    : {};
+  const experienceAudience = experienceProfile?.audienceFeatures && typeof experienceProfile.audienceFeatures === "object"
+    ? experienceProfile.audienceFeatures
+    : {};
+  const experienceGames = experienceProfile?.games && typeof experienceProfile.games === "object"
+    ? experienceProfile.games
+    : {};
   const experienceTags = normalizeTokenList(entry?.experienceTags || [], 10);
   const hostStyleTags = normalizeTokenList(entry?.hostStyleTags || [], 6);
   const crowdVibeTags = normalizeTokenList(entry?.crowdVibeTags || [], 8);
@@ -108,6 +122,16 @@ export const deriveDirectoryExperience = (entry = {}) => {
   const trustBadges = [];
   const bestForBadges = [];
   const whyThisNightWorks = [];
+
+  if (experienceFormat === "trivia") pushUnique(funBadges, "Trivia Night");
+  if (experienceFormat === "bingo") pushUnique(funBadges, "Music Bingo");
+  if (experienceFormat === "hybrid") pushUnique(funBadges, "Karaoke + Pop Trivia");
+  if (experienceIntensity === "competitive") pushUnique(funBadges, "Competitive Scoring");
+  if (experienceMechanics.firstTimerBoost === true) pushUnique(funBadges, "First-Timer Boost");
+  if (experienceMechanics.fairRotation === true) pushUnique(funBadges, "Fair Rotation");
+  if (experienceAudience.voting === true) pushUnique(capabilityBadges, "Audience Voting");
+  if (experienceGames.wouldYouRather === true) pushUnique(capabilityBadges, "Would You Rather");
+  if (entry?.requiresGuestPasscode === true) pushUnique(capabilityBadges, "Guest Passcode");
 
   const rotationLabel = describeRotation(rotationEstimate);
   if (rotationLabel) {
@@ -146,7 +170,7 @@ export const deriveDirectoryExperience = (entry = {}) => {
     pushUnique(funBadges, "Strong Sound");
   }
 
-  if (scheduleVerifiedAtMs > 0 || String(entry?.karaokeNightsLabel || "").trim() || String(entry?.recurringRule || "").trim()) {
+  if (scheduleVerifiedAtMs > 0 || String(entry?.karaokeNightsLabel || "").trim() || String(entry?.recurringRule || "").trim().toLowerCase() === "weekly") {
     pushUnique(trustBadges, "Verified Weekly");
   }
   if (lastActiveAtMs > 0 || Number(entry?.startsAtMs || 0) > 0) {
@@ -215,6 +239,8 @@ export const deriveDirectoryExperience = (entry = {}) => {
     discoveryBoost,
     tasteTags: allTasteTags,
     capabilities: Array.from(capabilities),
+    experienceFormat,
+    experienceIntensity,
   };
 };
 
@@ -231,6 +257,12 @@ export const matchesDirectoryExperienceFilter = (entry = {}, filterId = "all") =
   if (filter === "modern") return experience.isBeauRocksPowered;
   if (filter === "beginner") return experience.funBadges.includes("Beginner Friendly");
   if (filter === "fast_rotation") return experience.funBadges.includes("Fast Rotation");
+  if (filter === "karaoke") return !experience.experienceFormat || experience.experienceFormat === "karaoke";
+  if (filter === "trivia") return experience.experienceFormat === "trivia" || experience.experienceFormat === "hybrid";
+  if (filter === "bingo") return experience.experienceFormat === "bingo";
+  if (filter === "competitive") return experience.experienceIntensity === "competitive";
+  if (filter === "first_timer_boost") return experience.funBadges.includes("First-Timer Boost");
+  if (filter === "audience_voting") return experience.capabilityBadges.includes("Audience Voting");
   return true;
 };
 

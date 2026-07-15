@@ -554,6 +554,7 @@ const getJoinErrorMessage = (error) => {
     if (isQueueAppCheckError(error)) return 'Security check is still warming up. Refresh and try again.';
     if (isQueueUnauthenticatedError(error)) return 'Session is still connecting. Try again.';
     if (message.includes('requires a beaurocks account')) return 'This room requires a BeauRocks account before you can join.';
+    if (message.includes('guest passcode')) return 'That guest passcode was not accepted. Check it with the host and try again.';
     if (isQueuePermissionDeniedError(error)) return 'Join is still syncing. Wait a second and tap Join again.';
     if (isQueueRateLimitError(error)) return 'Join traffic is heavy right now. Wait 10 seconds, then retry. If venue Wi-Fi is crowded, try cellular.';
     if (isQueueNetworkError(error)) return 'Network issue while joining. Try again.';
@@ -1851,6 +1852,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [crowdSelfieMomentOptIn, setCrowdSelfieMomentOptIn] = useState(false);
     const [showRulesModal, setShowRulesModal] = useState(false);
     const [pendingJoin, setPendingJoin] = useState(null);
+    const [guestPasscode, setGuestPasscode] = useState('');
     const [nameFocused, setNameFocused] = useState(false);
     const joinNameInputRef = useRef(null);
     const joinContainerRef = useRef(null);
@@ -3362,6 +3364,7 @@ const SingerApp = ({ roomCode, uid }) => {
         && audienceFeatureAccess?.features?.premiumReactions === AUDIENCE_FEATURE_ACCESS_LEVELS.open;
     const roomJoinPolicy = normalizeAudienceJoinPolicy(room?.audienceJoinPolicy || {});
     const roomJoinRequiresAccount = roomJoinPolicy.accessMode === AUDIENCE_JOIN_ACCESS_MODES.accountRequired;
+    const roomJoinRequiresPasscode = roomJoinPolicy.accessMode === AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired;
     useEffect(() => {
         if (!supportEmbedOpen || !roomSupportWidgetId || typeof document === 'undefined') return undefined;
         const existing = document.querySelector(`script[src="${GIVEBUTTER_WIDGET_SCRIPT_SRC}"]`);
@@ -3411,6 +3414,8 @@ const SingerApp = ({ roomCode, uid }) => {
             : 'Optional: Continue With Email';
     const joinAccessHelperText = roomJoinRequiresAccount
         ? 'This room requires a BeauRocks account before joining. Email sign-in also keeps your room identity stable across refresh.'
+        : roomJoinRequiresPasscode
+            ? 'This is a private, passcode-protected room. Ask the host for the separate guest passcode; the room code alone only locates the room.'
         : festivalGuestJoinNoEmail
         ? 'Join now. No BeauRocks email is required for AAHF tonight.'
         : simplifyFestivalSupportAccess
@@ -3419,13 +3424,16 @@ const SingerApp = ({ roomCode, uid }) => {
             ? 'Join now. Email save-in and room support stay available after you are inside.'
             : 'Join now. Email save-in stays available after you are inside.';
     const joinReadyName = clampName(String(form.name || '').trim());
-    const joinCanSubmit = !!activeUid && !!joinReadyName;
+    const joinReadyPasscode = String(guestPasscode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
+    const joinCanSubmit = !!activeUid && !!joinReadyName && (!roomJoinRequiresPasscode || joinReadyPasscode.length >= 4);
     const joinButtonLabel = isJoining
         ? 'JOINING...'
         : !activeUid
         ? 'CONNECTING...'
         : roomJoinRequiresAccount && isAnon
             ? 'CONTINUE WITH EMAIL'
+        : roomJoinRequiresPasscode && joinReadyPasscode.length < 4
+            ? 'ADD GUEST PASSCODE'
         : joinCanSubmit
             ? 'JOIN THE PARTY'
             : 'ADD YOUR NAME';
@@ -3435,6 +3443,8 @@ const SingerApp = ({ roomCode, uid }) => {
         ? 'Connecting you to the room now.'
         : roomJoinRequiresAccount && isAnon
             ? 'This room is account-only. Continue with email, then join.'
+        : roomJoinRequiresPasscode && joinReadyPasscode.length < 4
+            ? 'Enter the separate guest passcode from the host.'
         : joinCanSubmit
             ? 'Songs opens first so you can add yourself fast.'
             : 'Add your name to light up the queue.';
@@ -6405,6 +6415,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 name: safeName,
                 avatar: finalEmoji,
                 installId,
+                passcode: roomJoinRequiresPasscode ? joinReadyPasscode : '',
             })
         );
 
@@ -8553,6 +8564,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             points: migratedPoints + 5000,
             lastSeen: serverTimestamp()
         }, { merge: true });
+        await verifiedUser?.getIdToken?.(true);
+        await updateAudienceIdentity({
+            roomCode,
+            name: profile?.name || user?.name || form.name || (normalizedEmail.split('@')[0] || 'Guest'),
+            avatar: profile?.avatar || user?.avatar || form.emoji || DEFAULT_EMOJI
+        });
         if (sourceUid && linkedUid && sourceUid !== linkedUid) {
             const previousRoomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${sourceUid}`);
             await deleteDoc(previousRoomUserRef).catch(() => {});
@@ -9212,6 +9229,22 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         <div className="text-base font-bold text-zinc-200 mt-1.5">{selectedAvatar?.flavor}</div>
                     )}
                 </div>
+                {roomJoinRequiresPasscode ? (
+                    <div className="relative w-full max-w-sm mt-2 mb-2.5">
+                        <input
+                            data-singer-join-passcode
+                            type="password"
+                            value={guestPasscode}
+                            maxLength={24}
+                            onChange={(event) => setGuestPasscode(String(event.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24))}
+                            className="w-full rounded-xl border-2 border-white/30 bg-zinc-100/90 p-3 text-center text-lg font-semibold uppercase tracking-[0.18em] text-zinc-900 outline-none"
+                            placeholder="Guest Passcode"
+                            autoComplete="one-time-code"
+                            inputMode="text"
+                        />
+                        <div className="mt-2 text-center text-xs text-zinc-300">This is different from room code {roomCode}.</div>
+                    </div>
+                ) : null}
                 <div className="relative w-full max-w-sm mt-2 mb-2.5">
                     <input
                         ref={joinNameInputRef}
@@ -9222,7 +9255,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                                 e.preventDefault();
-                                if (!joinReadyName) return;
+                                if (!joinCanSubmit) return;
                                 if (!termsAccepted) {
                                     setPendingJoin({ type: 'join', payload: null });
                                     setShowRulesModal(true);
@@ -9350,6 +9383,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         <li>Be kind. No hate, threats, or harassment.</li>
                         <li>Only request content you own or can use.</li>
                     </ul>
+                    <p className="mb-3 text-[0.82rem] leading-5 text-zinc-300">
+                        Signed-in singers automatically qualify for BeauRocks charts at approved nights.
+                    </p>
                     <label className="flex items-center gap-2 mb-3 text-[0.98rem] text-zinc-100">
                         <input
                             data-singer-rules-checkbox

@@ -6,6 +6,7 @@ import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestra
 import { trackEvent } from "../lib/marketingAnalytics";
 import EmptyStatePanel from "./EmptyStatePanel";
 import DiscoverListingCard from "./DiscoverListingCard";
+import PublicChartsTeaser from "./PublicChartsTeaser";
 import { createDiscoverViewState, reduceDiscoverViewState } from "./discoverViewState";
 import { countJoinableRoomListings, isJoinableRoomListing } from "./discoverFilters";
 import {
@@ -90,6 +91,12 @@ const EVENT_CADENCE_OPTIONS = [
 ];
 const EXPERIENCE_FILTER_OPTIONS = [
   { id: "all", label: "All nights" },
+  { id: "karaoke", label: "Karaoke" },
+  { id: "trivia", label: "Trivia + pop trivia" },
+  { id: "bingo", label: "Music bingo" },
+  { id: "competitive", label: "Competitive scoring" },
+  { id: "first_timer_boost", label: "First-timer boost" },
+  { id: "audience_voting", label: "Audience voting" },
   { id: "modern", label: "Modern karaoke" },
   { id: "interactive", label: "Interactive rooms" },
   { id: "live_join", label: "Live join" },
@@ -1348,6 +1355,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
       recap: 0,
       beginner: 0,
       fast_rotation: 0,
+      karaoke: 0,
+      trivia: 0,
+      bingo: 0,
+      competitive: 0,
+      first_timer_boost: 0,
+      audience_voting: 0,
     };
     filteredByHost.forEach((entry) => {
       const experience = entry.experience || deriveDirectoryExperience(entry);
@@ -1357,6 +1370,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
       if (matchesDirectoryExperienceFilter(experience, "recap")) counts.recap += 1;
       if (matchesDirectoryExperienceFilter(experience, "beginner")) counts.beginner += 1;
       if (matchesDirectoryExperienceFilter(experience, "fast_rotation")) counts.fast_rotation += 1;
+      if (matchesDirectoryExperienceFilter(experience, "karaoke")) counts.karaoke += 1;
+      if (matchesDirectoryExperienceFilter(experience, "trivia")) counts.trivia += 1;
+      if (matchesDirectoryExperienceFilter(experience, "bingo")) counts.bingo += 1;
+      if (matchesDirectoryExperienceFilter(experience, "competitive")) counts.competitive += 1;
+      if (matchesDirectoryExperienceFilter(experience, "first_timer_boost")) counts.first_timer_boost += 1;
+      if (matchesDirectoryExperienceFilter(experience, "audience_voting")) counts.audience_voting += 1;
     });
     return counts;
   }, [filteredByHost]);
@@ -1402,7 +1421,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
     }
     if (beauRocksFilter === "elevated") next.push("Official: BeauRocks");
     if (officialRoomFilter === "official") next.push("Room: Official only");
-    if (roomAccessFilter === "joinable") next.push("Access: Joinable by code");
+    if (roomAccessFilter === "joinable") next.push("Access: Join-ready rooms");
     if (experienceFilter !== "all") {
       const label = EXPERIENCE_FILTER_OPTIONS.find((option) => option.id === experienceFilter)?.label || experienceFilter;
       next.push(`Experience: ${label}`);
@@ -1649,7 +1668,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
                 });
               }}
             >
-              Joinable by code
+              Join-ready rooms
               {joinableRoomCount > 0 && <span className="mk3-filter-chip-count"> ({joinableRoomCount})</span>}
             </button>
             <button
@@ -1813,7 +1832,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
               });
             }}
           >
-            Joinable by code
+            Join-ready rooms
             {joinableRoomCount > 0 && <span className="mk3-filter-chip-count"> ({joinableRoomCount})</span>}
           </button>
         </div>
@@ -1884,12 +1903,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
           <h1>Find karaoke rooms, recurring nights, and venues you can trust.</h1>
           <p>
             Use Now or Tonight for time-sensitive plans, browse the full directory for recurring venues,
-            or jump directly into a public BeauRocks room by code.
+            or open a public BeauRocks room and see its entry requirements before joining.
           </p>
           <div className="mk3-discover-radar-meta">
             <span>{activeRegionLabel}</span>
             <span>{directoryUpdatedLabel}</span>
-            <span>{joinableRoomCount} joinable rooms</span>
+            <span>{joinableRoomCount} join-ready rooms</span>
           </div>
           <div className="mk3-rebuild-action-row mk3-discover-radar-actions">
             <button
@@ -1904,7 +1923,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
                 });
               }}
             >
-              Show Joinable Rooms
+              Show Join-Ready Rooms
             </button>
             <button
               type="button"
@@ -1945,11 +1964,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
           </article>
           <article className="mk3-discover-radar-panel-card">
             <span>Fast entry</span>
-            <strong>{joinableRoomCount > 0 ? `${joinableRoomCount} rooms open by code` : "Join by code when a room is live"}</strong>
-            <p>Guests can move straight into an active room without a long onboarding flow.</p>
+            <strong>{joinableRoomCount > 0 ? `${joinableRoomCount} rooms ready for entry` : "Open a live room to see how to enter"}</strong>
+            <p>Open rooms use the room code; gated rooms clearly ask for an account or separate guest passcode.</p>
           </article>
         </div>
       </section>
+
+      <PublicChartsTeaser navigate={navigate} />
 
       {!!discoverHeroListings.length && (
         <section className="mk3-discover-live-rail mk3-zone">
@@ -1966,7 +1987,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
                 <div className="mk3-discover-live-rail-topline">
                   <span className="mk3-chip">{item.typeLabel}</span>
                   {item.isBeauRocksElevated && <span className="mk3-chip mk3-chip-elevated">Official spotlight</span>}
-                  {isJoinableRoomListing(item) && <span className="mk3-chip mk3-chip-powered">Join by code</span>}
+                  {isJoinableRoomListing(item) && <span className="mk3-chip mk3-chip-powered">{item.requiresGuestPasscode ? "Guest passcode" : "Join by code"}</span>}
                 </div>
                 <div className="mk3-discover-live-card-body">
                   <div className="mk3-discover-live-card-topline">
@@ -2032,7 +2053,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
                 <strong>{visibleListings.length}</strong>
               </article>
               <article>
-                <span>Joinable</span>
+                <span>Join-ready</span>
                 <strong>{joinableRoomCount}</strong>
               </article>
               <article>

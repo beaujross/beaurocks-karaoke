@@ -79,6 +79,7 @@ const useHostLaunchFlow = ({
         const requestIdOverride = typeof options?.requestId === 'string' ? options.requestId.trim() : '';
         const roomNameOverride = typeof options?.roomName === 'string' ? options.roomName.trim() : '';
         const preferredRoomCode = typeof options?.preferredRoomCode === 'string' ? options.preferredRoomCode.trim().toUpperCase() : '';
+        const audienceJoinPasscode = typeof options?.audienceJoinPasscode === 'string' ? options.audienceJoinPasscode.trim().toUpperCase() : '';
         const coHostUids = Array.from(new Set((Array.isArray(options?.coHostUids) ? options.coHostUids : [])
             .map((entry) => String(entry || '').trim())
             .filter(Boolean)));
@@ -113,6 +114,7 @@ const useHostLaunchFlow = ({
                 logoUrl: nextLogoUrl,
                 preferredRoomCode,
                 roomName: nextRoomName,
+                audienceJoinPasscode,
                 coHostUids,
                 nightPresetId: initialNightPresetId || (hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual'),
                 nightPresetPayload: initialNightPresetPayload,

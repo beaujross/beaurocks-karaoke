@@ -17,6 +17,7 @@ export const MARKETING_CANONICAL_ROUTE_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.demoAuto]: "/auto-demo",
   [MARKETING_ROUTE_PAGES.changelog]: "/changelog",
   [MARKETING_ROUTE_PAGES.discover]: "/discover",
+  [MARKETING_ROUTE_PAGES.charts]: "/charts",
   [MARKETING_ROUTE_PAGES.join]: "/join",
   [MARKETING_ROUTE_PAGES.forVenues]: "/for-venues",
   [MARKETING_ROUTE_PAGES.forPerformers]: "/for-performers",
@@ -68,6 +69,12 @@ export const MARKETING_ROUTE_OWNERSHIP = Object.freeze({
     owner: "Directory",
     audience: "public",
     intent: "Find public karaoke listings",
+  },
+  [MARKETING_ROUTE_PAGES.charts]: {
+    zone: MARKETING_IA_ZONES.utility,
+    owner: "Community/Growth",
+    audience: "public",
+    intent: "Browse qualified public karaoke charts",
   },
   [MARKETING_ROUTE_PAGES.join]: {
     zone: MARKETING_IA_ZONES.utility,
@@ -158,11 +165,13 @@ export const MARKETING_ROUTE_OWNERSHIP = Object.freeze({
 export const MARKETING_NAV_CONFIG = Object.freeze({
   publicPrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
+    navItem(MARKETING_ROUTE_PAGES.charts, "Charts"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
   publicSecondary: Object.freeze([]),
   homePrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
+    navItem(MARKETING_ROUTE_PAGES.charts, "Charts"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
   homeSecondary: Object.freeze([]),
@@ -218,6 +227,7 @@ export const MARKETING_ZERO_BREAK_REDIRECT_PLAN = Object.freeze([
   Object.freeze({ from: "/marketing?page=for_fans", to: "/", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=for_hosts", to: "/for-hosts", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=discover", to: "/discover", strategy: "alias_keep_live" }),
+  Object.freeze({ from: "/marketing?page=charts", to: "/charts", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=join", to: "/join", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=host_access", to: "/host-access", strategy: "alias_keep_live" }),
 ]);

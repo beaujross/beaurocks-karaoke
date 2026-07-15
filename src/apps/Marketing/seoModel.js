@@ -23,6 +23,7 @@ export const SeoRouteRecordShape = Object.freeze({
 const STATIC_SOCIAL_CARD_PATHS = Object.freeze({
   default: "/images/marketing/CLEAN 1.png",
   [MARKETING_ROUTE_PAGES.discover]: "/images/marketing/app-landing-live.png",
+  [MARKETING_ROUTE_PAGES.charts]: "/images/marketing/CLEAN 1.png",
   [MARKETING_ROUTE_PAGES.demo]: "/images/marketing/tv-surface-live.png",
   [MARKETING_ROUTE_PAGES.demoAuto]: "/images/marketing/app-landing-live.png",
   [MARKETING_ROUTE_PAGES.changelog]: "/images/marketing/CLEAN 1.png",
@@ -40,6 +41,7 @@ const STATIC_SOCIAL_CARD_PATHS = Object.freeze({
 
 const PAGE_TITLE_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.discover]: "Setlist Karaoke Finder | BeauRocks Karaoke",
+  [MARKETING_ROUTE_PAGES.charts]: "Global Karaoke Charts | BeauRocks Karaoke",
   [MARKETING_ROUTE_PAGES.demo]: "How It Works | BeauRocks Karaoke",
   [MARKETING_ROUTE_PAGES.demoAuto]: "Demo | BeauRocks Karaoke",
   [MARKETING_ROUTE_PAGES.changelog]: "Product Changelog | BeauRocks Karaoke",
@@ -56,6 +58,7 @@ const PAGE_TITLE_MAP = Object.freeze({
 
 const PAGE_DESCRIPTION_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.discover]: "Find karaoke nights by city, host, venue, and time window with BeauRocks Setlist Finder.",
+  [MARKETING_ROUTE_PAGES.charts]: "Explore qualified BeauRocks karaoke charts across singers, canonical songs, and public hosted nights.",
   [MARKETING_ROUTE_PAGES.demo]: "Understand how BeauRocks keeps the host, TV, audience, and singer surfaces in sync across one room moment.",
   [MARKETING_ROUTE_PAGES.demoAuto]: "See BeauRocks in action through a product-faithful walkthrough of the host, TV, and audience room experience.",
   [MARKETING_ROUTE_PAGES.changelog]: "Release updates and product changes across host, audience, and public TV experiences.",

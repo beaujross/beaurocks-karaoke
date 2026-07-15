@@ -28,6 +28,7 @@ Program closeout does not mean every long-term workstream is finished. The corre
 | Persona, brand, and design governance | Closed for this program | CTO/CPO/CMO/persona scorecards and branded 10-slide PDF with current screenshots | continue as a gate on every new slice |
 | YouTube event readiness | Product closed; submission nearly ready | compliant fallback, preflight, Quotas API evidence, cooldown capture, permanent-delete capture | Console screenshot, contact/legal confirmation, and approval of the proposed request amount |
 | Deployment and QA | Runtime closed; source checkpoint open | full regression/lint/build/rules/callable gates and authenticated production acceptance | commit and push the deployed program state so rollback and audit attribution map to Git |
+| Discovery and public charts | Local implementation complete; release open | server-owned sanitized Global/Song/Public Room projections, canonical-song grouping, account chart identity, `/charts`, Discover teaser, Admin repair/rebuild, and approved-host launch preflight | authenticated persona QA, then coordinated Functions/rules/indexes/Hosting release |
 
 ## YouTube Request Sizing
 
@@ -75,6 +76,17 @@ Do not change balance-read authority until all published readiness conditions pa
 
 Current production evidence remains intentionally below that threshold. This is a safe guardrail, not an unfinished deployment.
 
+### Gate 4: Public chart launch
+
+- record a fresh `launch_v1` chart-era boundary; do not seed historical performances;
+- include only signed-in member performances recorded by an approved room owner under the versioned qualification contract;
+- keep guests room-only and keep raw performance history self-readable;
+- group song charts by canonical song regardless of backing rendition;
+- publish night aggregates only for approved public directory listings;
+- verify public-name and anonymous identity modes without adding a room-entry prompt;
+- prove retry idempotency and public-to-private cleanup in emulator tests;
+- deploy Functions, Firestore rules, and Hosting together, then smoke `/charts`, Discover, profile identity, and one real qualifying result.
+
 ## Success Measurement For The Next Real Events
 
 Capture these measures without adding new Host controls:
@@ -99,11 +111,12 @@ The following are legitimate roadmap extensions, not closeout blockers:
 - deeper Pop Trivia and voice-game recap mechanics;
 - further room-setup visual reduction after observed host-behavior data;
 - broader provider/catalog schemas.
+- shareable singer/song/night chart detail pages, weekly seasons, and richer chart filters until the base projection has real-event evidence.
 
 ## Recommended Immediate Sequence
 
-1. Package the deployed code, tests, contracts, evidence, and closeout docs into a clean Git checkpoint.
-2. Capture the Google Cloud Console quota screenshot.
-3. Confirm contact/legal identity and the `1,000/day` request amount.
-4. Submit the YouTube audit/quota-extension packet.
-5. Run the next real event with the existing guarded contracts and collect the success measurements above.
+1. Run the authenticated chart persona QA matrix and confirm the Admin launch preflight is green in production.
+2. Coordinate the chart Functions, rules, indexes, and Hosting release, then complete the production smoke.
+4. Package the deployed code, tests, contracts, evidence, and closeout docs into a clean Git checkpoint.
+5. Capture the Google Cloud Console quota screenshot, confirm contact/legal identity and the `1,000/day` request amount, and submit the packet.
+6. Run the next real event with the guarded contracts and collect the success measurements above.

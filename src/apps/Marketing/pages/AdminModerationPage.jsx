@@ -49,6 +49,12 @@ const AdminModerationPage = ({ session, pendingHostApplicationsCount = 0, onHost
   const [hostApplications, setHostApplications] = useState([]);
   const [hostApplicationFilter, setHostApplicationFilter] = useState("pending");
   const [hostApplicationLoading, setHostApplicationLoading] = useState(false);
+  const [chartResultId, setChartResultId] = useState("");
+  const [chartRepairReason, setChartRepairReason] = useState("");
+  const [chartOperationBusy, setChartOperationBusy] = useState(false);
+  const [chartOperationStatus, setChartOperationStatus] = useState("");
+  const [chartRepairPreview, setChartRepairPreview] = useState(null);
+  const [chartLaunchPreview, setChartLaunchPreview] = useState(null);
 
   const refreshQueue = async () => {
     if (!canModerate) return;
@@ -229,6 +235,52 @@ const AdminModerationPage = ({ session, pendingHostApplicationsCount = 0, onHost
       setStatus(String(error?.message || "Claim resolution failed."));
     } finally {
       setActionBusyId("");
+    }
+  };
+
+  const previewChartLaunch = async () => {
+    if (!canManageHostAccess) return;
+    setChartOperationBusy(true);
+    setChartOperationStatus("");
+    try {
+      const result = await directoryActions.previewPublicChartLaunch();
+      setChartLaunchPreview(result || null);
+      setChartOperationStatus(result?.canLaunch
+        ? "Chart launch preflight passed."
+        : `Chart launch blocked by ${result?.unapprovedHostCount || 0} reachable host(s) without workspace access.`);
+    } catch (error) {
+      setChartOperationStatus(String(error?.message || "Chart launch preflight failed."));
+    } finally {
+      setChartOperationBusy(false);
+    }
+  };
+
+  const runChartRepair = async ({ apply = false } = {}) => {
+    if (!canManageHostAccess || !chartResultId.trim()) return;
+    if (apply && chartRepairPreview?.resultId !== chartResultId.trim()) {
+      setChartOperationStatus("Preview this exact result before removing it.");
+      return;
+    }
+    if (apply && !window.confirm("Remove this result from public charts and rebuild affected aggregates?")) return;
+    setChartOperationBusy(true);
+    setChartOperationStatus("");
+    try {
+      const result = await directoryActions.moderatePublicChartResult({
+        resultId: chartResultId.trim(),
+        reason: chartRepairReason.trim() || "admin_support_review",
+        apply,
+      });
+      if (apply) {
+        setChartOperationStatus("Result removed and affected chart aggregates rebuilt.");
+        setChartRepairPreview(null);
+      } else {
+        setChartRepairPreview(result || null);
+        setChartOperationStatus("Dry-run complete. Review the affected member, song, and room before applying.");
+      }
+    } catch (error) {
+      setChartOperationStatus(String(error?.message || "Chart result operation failed."));
+    } finally {
+      setChartOperationBusy(false);
     }
   };
 
@@ -512,6 +564,68 @@ const AdminModerationPage = ({ session, pendingHostApplicationsCount = 0, onHost
           </>
         ) : (
           <div className="mk3-status">Directory admin role required to manage host approvals.</div>
+        )}
+        <hr className="mk3-divider" />
+        <h4>Public Chart Operations</h4>
+        <p>Check launch readiness or remove a disputed result. Result removal is dry-run first and rebuilds affected aggregates.</p>
+        {canManageHostAccess ? (
+          <>
+            <button type="button" onClick={previewChartLaunch} disabled={chartOperationBusy}>
+              Check Chart Launch Readiness
+            </button>
+            {chartLaunchPreview && (
+              <div className="mk3-status">
+                <strong>{chartLaunchPreview.canLaunch ? "Ready" : "Blocked"}</strong>
+                <span>
+                  {chartLaunchPreview.activeRoomCount || 0} rooms active in 30 days | {chartLaunchPreview.activeHostCount || 0} reachable hosts | {chartLaunchPreview.unapprovedHostCount || 0} without access | {chartLaunchPreview.orphanedHostCount || 0} orphaned
+                </span>
+              </div>
+            )}
+            <label>
+              Public Result ID
+              <input
+                value={chartResultId}
+                onChange={(event) => {
+                  setChartResultId(event.target.value);
+                  setChartRepairPreview(null);
+                }}
+                placeholder="48-character result ID"
+              />
+            </label>
+            <label>
+              Removal reason
+              <textarea
+                value={chartRepairReason}
+                onChange={(event) => setChartRepairReason(event.target.value)}
+                placeholder="Support review or correction notes"
+              />
+            </label>
+            <div className="mk3-actions-inline">
+              <button
+                type="button"
+                onClick={() => runChartRepair({ apply: false })}
+                disabled={chartOperationBusy || !chartResultId.trim()}
+              >
+                Preview Removal
+              </button>
+              <button
+                type="button"
+                onClick={() => runChartRepair({ apply: true })}
+                disabled={chartOperationBusy || chartRepairPreview?.resultId !== chartResultId.trim()}
+              >
+                Remove + Rebuild
+              </button>
+            </div>
+            {chartRepairPreview && (
+              <div className="mk3-status">
+                <strong>Dry-run ready</strong>
+                <span>Member {chartRepairPreview.affectedMemberKey || "none"} | Song {chartRepairPreview.affectedSongId || "none"} | Room {chartRepairPreview.affectedRoomListingId || "none"}</span>
+              </div>
+            )}
+            {chartOperationStatus && <div className="mk3-status">{chartOperationStatus}</div>}
+          </>
+        ) : (
+          <div className="mk3-status">Directory admin role required for public chart operations.</div>
         )}
         <hr className="mk3-divider" />
         <h4>External Ingestion</h4>

@@ -45,6 +45,7 @@ import {
     ensureAppCheckToken,
     assertRoomHostAccess,
     upsertHostRoomDiscoveryListing,
+    setHostNightOccurrenceStatus,
     permanentlyDeleteHostRoom,
     removeHostRoomDiscoveryListing,
     ensureOrganization,
@@ -6256,6 +6257,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [audienceBrandTheme, setAudienceBrandTheme] = useState(() => normalizeAudienceBrandTheme({}));
     const [audienceFeatureAccess, setAudienceFeatureAccess] = useState(() => normalizeAudienceFeatureAccess({}));
     const [audienceJoinPolicy, setAudienceJoinPolicy] = useState(() => normalizeAudienceJoinPolicy({}));
+    const [audienceJoinPasscode, setAudienceJoinPasscode] = useState('');
     const audienceBrandThemePresetMatch = useMemo(
         () => matchAudienceBrandThemePreset(audienceBrandTheme),
         [audienceBrandTheme]
@@ -10803,6 +10805,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAudienceBrandTheme(normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}));
         setAudienceFeatureAccess(normalizeAudienceFeatureAccess(room?.audienceFeatureAccess || {}));
         setAudienceJoinPolicy(normalizeAudienceJoinPolicy(room?.audienceJoinPolicy || {}));
+        setAudienceJoinPasscode('');
         const normalizedProgramMode = normalizeRunOfShowProgramMode(room?.programMode);
         const normalizedRunOfShowEnabled = room?.runOfShowEnabled === true || normalizedProgramMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow;
         const normalizedDirector = normalizeRunOfShowDirector(room?.runOfShowDirector || {});
@@ -12859,6 +12862,46 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             clearRoomManagerBusy();
         }
     };
+    const setRoomOccurrenceStatus = async (roomItem = {}, action = 'cancel') => {
+        const normalizedCode = String(roomItem?.code || '').trim().toUpperCase();
+        const occurrenceId = String(roomItem?.occurrenceId || '').trim();
+        const nightSeriesId = String(roomItem?.nightSeriesId || '').trim();
+        if (!normalizedCode || !occurrenceId || !nightSeriesId) {
+            toast('This room does not have an editable weekly occurrence yet.');
+            return;
+        }
+        const safeAction = action === 'reinstate' ? 'reinstate' : 'cancel';
+        const approved = confirmRoomManagerAction({
+            actionName: safeAction === 'cancel' ? 'skip this weekly occurrence' : 'reinstate this weekly occurrence',
+            roomCode: normalizedCode,
+            requireTypedCode: false
+        });
+        if (!approved) return;
+        setRoomManagerBusy(normalizedCode, safeAction === 'cancel' ? 'skip_occurrence' : 'reinstate_occurrence');
+        setRoomManagerError('');
+        try {
+            const result = await runWithAppCheckWarmup(
+                () => setHostNightOccurrenceStatus({
+                    roomCode: normalizedCode,
+                    nightSeriesId,
+                    occurrenceId,
+                    action: safeAction,
+                }),
+                { scope: 'setHostNightOccurrenceStatus' }
+            );
+            const nextStartsAtMs = Number(result?.nextOccurrence?.startsAtMs || 0);
+            const nextLabel = nextStartsAtMs > 0 ? new Date(nextStartsAtMs).toLocaleString() : '';
+            toast(safeAction === 'cancel'
+                ? `Skipped this occurrence.${nextLabel ? ` Next: ${nextLabel}.` : ''}`
+                : `Occurrence reinstated.${nextLabel ? ` Next: ${nextLabel}.` : ''}`);
+        } catch (error) {
+            hostLogger.warn('Recurring occurrence update failed', { roomCode: normalizedCode, occurrenceId, action: safeAction, error });
+            setRoomManagerError('Could not update this weekly occurrence.');
+            toast('Occurrence update failed.');
+        } finally {
+            clearRoomManagerBusy();
+        }
+    };
     const resetRoomToCurrentTemplate = async (roomItem = {}) => {
         const normalizedCode = String(roomItem?.code || '').trim().toUpperCase();
         const templateId = String(roomItem?.currentTemplateId || '').trim();
@@ -13800,6 +13843,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
     const saveApiKeys = async () => { 
         localStorage.setItem('bross_host_name', hostName || 'Host');
+        const nextJoinPasscode = String(audienceJoinPasscode || '').trim().toUpperCase();
+        const nextJoinMode = normalizeAudienceJoinPolicy(audienceJoinPolicy).accessMode;
+        const savedJoinMode = normalizeAudienceJoinPolicy(room?.audienceJoinPolicy || {}).accessMode;
+        if (
+            nextJoinMode === AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired
+            && savedJoinMode !== AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired
+            && nextJoinPasscode.length < 4
+        ) {
+            toast('Enter a 4-24 character guest passcode before requiring passcode entry.');
+            return;
+        }
+        if (nextJoinPasscode && nextJoinPasscode.length < 4) {
+            toast('Guest passcode must be at least 4 letters or numbers.');
+            return;
+        }
         try {
             if (roomCode) {
                 const nextEventCredits = buildProvisionEventCreditsPayload(eventCreditsConfig);
@@ -13844,6 +13902,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
                     audienceFeatureAccess: normalizeAudienceFeatureAccess(audienceFeatureAccess),
                     audienceJoinPolicy: normalizeAudienceJoinPolicy(audienceJoinPolicy),
+                    ...(String(audienceJoinPasscode || '').trim() ? { audienceJoinPasscode: String(audienceJoinPasscode).trim().toUpperCase() } : {}),
                     chatShowOnTv: !!chatShowOnTv,
                     chatTvMode: chatTvMode || 'auto',
                     marqueeEnabled: !!marqueeEnabled,
@@ -13865,6 +13924,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         firstTimeBoost: !!queueFirstTimeBoost
                     }
                 });
+                setAudienceJoinPasscode('');
                 if (room?.publicRoom) {
                     await runWithAppCheckWarmup(
                         () => upsertHostRoomDiscoveryListing({
@@ -15768,6 +15828,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await updateRoom(roomPatch);
             roomClosed = true;
 
+            const publicRecapAllowed = room?.publicRoom === true
+                || room?.discover?.publicRoom === true
+                || String(room?.discover?.visibility || '').trim().toLowerCase() === 'public';
+            if (!publicRecapAllowed) {
+                toast('Room closed. Recap saved privately.');
+                return;
+            }
             const publishedRecap = await publishPublicRoomRecap({
                 roomCode,
                 origin: audienceBase || (typeof window !== 'undefined' ? window.location.origin : ''),
@@ -19641,6 +19708,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hasRequestedLaunchRoomCode={hasRequestedLaunchRoomCode}
                 runLandingRoomCleanup={runLandingRoomCleanup}
                 setRoomPlannedStart={setRoomPlannedStart}
+                setRoomOccurrenceStatus={setRoomOccurrenceStatus}
                 setRoomDiscoverability={setRoomDiscoverability}
                 setRoomArchivedState={setRoomArchivedState}
                 resetRoomToCurrentTemplate={resetRoomToCurrentTemplate}
@@ -20066,6 +20134,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             audienceShellVariant: String(room.audienceShellVariant || '').trim().toLowerCase() === 'classic' ? 'classic' : 'streamlined',
             audienceBrandTheme: normalizeAudienceBrandTheme(room.audienceBrandTheme || {}),
             audienceFeatureAccess: normalizeAudienceFeatureAccess(room.audienceFeatureAccess || {}),
+            audienceJoinPolicy: normalizeAudienceJoinPolicy(room.audienceJoinPolicy || {}),
             chatShowOnTv: !!room.chatShowOnTv,
             chatTvMode: room.chatTvMode || 'auto',
             marqueeEnabled: !!room.marqueeEnabled,
@@ -20089,7 +20158,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
     })();
     const hasPendingRoomSettings = !!persistedRoomSettingsPayload
-        && JSON.stringify(draftRoomSettingsPayload) !== JSON.stringify(persistedRoomSettingsPayload);
+        && (
+            JSON.stringify(draftRoomSettingsPayload) !== JSON.stringify(persistedRoomSettingsPayload)
+            || !!String(audienceJoinPasscode || '').trim()
+        );
     const showSaveAction = canSaveRoomSettings || hasPendingRoomSettings;
     const hostSettingsRuntimeRole = HOST_SETTINGS_RUNTIME_ROLES.host;
     const hostSettingsWorkspaceRole = hostPermissionLevel === 'owner'
@@ -24283,6 +24355,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="host-form-helper mt-2">
                                     {(AUDIENCE_JOIN_ACCESS_OPTIONS.find((option) => option.id === audienceJoinPolicy.accessMode) || AUDIENCE_JOIN_ACCESS_OPTIONS[0]).description}
                                 </div>
+                                {audienceJoinPolicy.accessMode === AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired ? (
+                                    <label className="mt-3 block max-w-md">
+                                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-400">Guest passcode</div>
+                                        <input
+                                            type="password"
+                                            value={audienceJoinPasscode}
+                                            onChange={(event) => setAudienceJoinPasscode(String(event.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24))}
+                                            placeholder="Enter 4-24 letters or numbers"
+                                            minLength={4}
+                                            maxLength={24}
+                                            autoComplete="new-password"
+                                            className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+                                        />
+                                        <div className="host-form-helper mt-2">Leave blank to keep the existing passcode. Enter a new value to set or rotate it. The passcode is never written into the public room document.</div>
+                                    </label>
+                                ) : null}
                             </div>
                             <div className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
                                 <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Guest song requests</div>

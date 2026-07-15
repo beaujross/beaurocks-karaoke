@@ -17,6 +17,7 @@ process.env.GCLOUD_PROJECT = PROJECT_ID;
 
 const db = admin.firestore();
 const roomRef = db.doc(`${ROOT}/rooms/${ROOM_CODE}`);
+const privateAccessRef = db.doc(`room_private_access/${ROOM_CODE}`);
 
 const requestFor = (uid, updates = {}) => ({
   auth: uid ? { uid } : null,
@@ -32,6 +33,7 @@ const requestFor = (uid, updates = {}) => ({
 });
 
 async function resetRoom() {
+  await privateAccessRef.delete().catch(() => undefined);
   await roomRef.set({
     hostUid: HOST_UID,
     hostUids: [HOST_UID],
@@ -72,6 +74,47 @@ async function runCase(name, fn) {
 
 async function run() {
   const checks = [
+    ["host can require, rotate, and remove a guest passcode without exposing it on the room", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        audienceJoinPolicy: { accessMode: "passcode_required" },
+        audienceJoinPasscode: "PARTY7",
+      }));
+      assert.equal(result.ok, true);
+      assert.equal(result.passcodeConfigured, true);
+      assert.deepEqual(result.updatedKeys, ["audienceJoinPolicy"]);
+
+      const roomSnap = await roomRef.get();
+      const accessSnap = await privateAccessRef.get();
+      assert.equal(roomSnap.get("audienceJoinPolicy.accessMode"), "passcode_required");
+      assert.equal(roomSnap.get("audienceJoinPasscode"), undefined);
+      assert.equal(accessSnap.exists, true);
+      assert.equal(accessSnap.get("roomCode"), ROOM_CODE);
+      assert.ok(String(accessSnap.get("salt") || "").length > 0);
+      assert.match(String(accessSnap.get("hash") || ""), /^[a-f0-9]{64}$/);
+      assert.notEqual(accessSnap.get("hash"), "PARTY7");
+
+      const firstHash = accessSnap.get("hash");
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        audienceJoinPasscode: "NEWCODE9",
+      }));
+      assert.notEqual((await privateAccessRef.get()).get("hash"), firstHash);
+
+      const openResult = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        audienceJoinPolicy: { accessMode: "anonymous_allowed" },
+      }));
+      assert.equal(openResult.passcodeConfigured, false);
+      assert.equal((await privateAccessRef.get()).exists, false);
+    }],
+
+    ["host cannot enable passcode admission without setting a passcode", async () => {
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          audienceJoinPolicy: { accessMode: "passcode_required" },
+        })),
+        "failed-precondition"
+      );
+    }],
+
     ["host can update allowed root keys", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         activeMode: "bingo",

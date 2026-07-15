@@ -28,6 +28,7 @@ test("hostLaunchHelpers preserves venue linkage for selected venues", () => {
   );
 
   assert.equal(payload.publicRoom, true);
+  assert.equal(payload.recurringRule, "one_time");
   assert.equal(payload.title, "The Mint");
   assert.equal(payload.venueId, "venue_mint");
   assert.equal(payload.venueSource, "selected");

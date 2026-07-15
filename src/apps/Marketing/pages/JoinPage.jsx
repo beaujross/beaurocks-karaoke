@@ -33,6 +33,8 @@ const JoinPage = ({ navigate, id = "" }) => {
   });
   const isActiveJoinTarget = !previewHasPublicRecap
     && (preview?.previewType === "active_room" || preview?.previewType === "directory_session");
+  const previewRequiresPasscode = preview?.requiresGuestPasscode === true
+    || String(preview?.joinAccessMode || "").trim().toLowerCase() === "passcode_required";
   const heroTitle = preview?.title || `Room ${resolvedJoinCode || "Code"}`;
   const heroTimeLabel = preview?.startsAtMs ? formatDateTime(preview.startsAtMs) : "";
   const heroContextLabel = previewHasPublicRecap
@@ -122,7 +124,9 @@ const JoinPage = ({ navigate, id = "" }) => {
                 : previewHasPublicRecap
                   ? "This public event has wrapped. Open the recap to see how the room played."
                   : isActiveJoinTarget
-                  ? "This room is live now. Step in and head straight to song search."
+                  ? previewRequiresPasscode
+                    ? "This private room is live. Continue to the audience app, then enter the separate guest passcode from the host."
+                    : "This room is live now. Step in and head straight to song search."
                   : "This room code is ready. If the room is live, you can move straight into the audience experience."}
             </p>
             <div className="mk3-status">
@@ -130,6 +134,7 @@ const JoinPage = ({ navigate, id = "" }) => {
               {heroTimeLabel ? <span>{heroTimeLabel}</span> : null}
               <span>{heroContextLabel}</span>
               <span>Room code {resolvedJoinCode}</span>
+              {previewRequiresPasscode ? <span>Separate guest passcode required in the audience app</span> : null}
             </div>
             {loading ? <div className="mk3-status">Loading the room details...</div> : null}
             {status && !loading ? (
@@ -159,7 +164,7 @@ const JoinPage = ({ navigate, id = "" }) => {
           <>
             <div className="mk3-chip">join private room</div>
             <h2>Enter Room Code</h2>
-            <p>Private rooms stay off the public pages. If you have the code, you are basically at the velvet rope already. Most BeauRocks rooms use a 4-character code.</p>
+            <p>Private rooms stay off public pages. The room code locates an unlisted room; a host can also require a separate guest passcode before a new guest is admitted. Most BeauRocks room codes use 4 characters.</p>
             <form className="mk3-actions-block" onSubmit={onSubmit}>
               <label>
                 Room Code

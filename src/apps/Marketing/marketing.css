@@ -6104,6 +6104,9 @@
 }
 
 .mk3-day-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
   border-radius: 999px;
   border: 1px solid rgba(255, 214, 106, 0.28);
   background: rgba(23, 18, 43, 0.85);
@@ -20827,5 +20830,337 @@
 
   .mk3-fans-hero-simplified-copy h1 {
     font-size: clamp(2.4rem, 12vw, 3.6rem);
+  }
+}
+.mk3-charts-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.mk3-charts-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: end;
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  border: 1px solid rgba(89, 229, 255, 0.22);
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(255, 65, 166, 0.2), transparent 38%),
+    linear-gradient(145deg, rgba(8, 18, 36, 0.96), rgba(13, 8, 29, 0.94));
+}
+
+.mk3-charts-hero h1 {
+  max-width: 760px;
+  margin: 0.4rem 0 0.6rem;
+  font-size: clamp(2rem, 5vw, 4.4rem);
+  line-height: 0.98;
+}
+
+.mk3-charts-hero p {
+  max-width: 700px;
+  margin: 0;
+  color: #b8c8de;
+}
+
+.mk3-charts-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(82px, 1fr));
+  gap: 0.5rem;
+}
+
+.mk3-charts-hero-stats article {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 86px;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  background: rgba(2, 8, 20, 0.66);
+  text-align: center;
+}
+
+.mk3-charts-hero-stats strong {
+  color: #79efff;
+  font-size: 1.5rem;
+}
+
+.mk3-charts-hero-stats span {
+  color: #91a5c0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mk3-charts-tabs {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  width: fit-content;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(3, 9, 21, 0.82);
+}
+
+.mk3-charts-tabs button {
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #9db0c9;
+}
+
+.mk3-charts-tabs button.active {
+  background: linear-gradient(135deg, #44e8ff, #ff53ac);
+  color: #07101d;
+  font-weight: 800;
+}
+
+.mk3-chart-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.mk3-chart-row {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) auto auto;
+  gap: 0.85rem;
+  align-items: center;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 1rem;
+  background: linear-gradient(120deg, rgba(8, 18, 35, 0.9), rgba(8, 10, 24, 0.88));
+}
+
+.mk3-chart-row.is-song {
+  grid-template-columns: 2.5rem 3.5rem minmax(0, 1fr) auto auto;
+}
+
+.mk3-chart-row.is-night {
+  grid-template-columns: 2.5rem minmax(180px, 1fr) minmax(150px, 0.65fr) auto auto;
+}
+
+.mk3-chart-rank {
+  display: grid;
+  place-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 50%;
+  background: rgba(105, 232, 255, 0.1);
+  color: #7deeff;
+  font-weight: 900;
+}
+
+.mk3-chart-row:nth-child(1) .mk3-chart-rank {
+  background: rgba(255, 207, 84, 0.16);
+  color: #ffd56b;
+}
+
+.mk3-chart-identity,
+.mk3-chart-score,
+.mk3-chart-night-best {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.mk3-chart-identity strong,
+.mk3-chart-night-best strong {
+  overflow: hidden;
+  color: #f6f9ff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk3-chart-identity span,
+.mk3-chart-score span,
+.mk3-chart-night-best span {
+  color: #8296b2;
+  font-size: 0.78rem;
+}
+
+.mk3-chart-score {
+  min-width: 5rem;
+  text-align: right;
+}
+
+.mk3-chart-score strong {
+  color: #ff78bc;
+  font-size: 1.15rem;
+}
+
+.mk3-chart-art {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: rgba(255, 81, 169, 0.12);
+  color: #ff70b7;
+  font-size: 1.35rem;
+}
+
+.mk3-chart-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mk3-chart-night-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.mk3-chart-report {
+  color: #72849d;
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.mk3-chart-report:hover {
+  color: #8deeff;
+  text-decoration: underline;
+}
+
+.mk3-charts-empty {
+  display: grid;
+  justify-items: start;
+  gap: 0.35rem;
+  padding: 2rem;
+  border: 1px dashed rgba(126, 234, 255, 0.24);
+  border-radius: 1.25rem;
+  color: #9db0c9;
+}
+
+.mk3-charts-empty strong {
+  color: #eef8ff;
+  font-size: 1.2rem;
+}
+
+.mk3-charts-empty button {
+  margin-top: 0.65rem;
+}
+
+.mk3-charts-footnote {
+  color: #7487a2;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.mk3-discover-chart-teaser {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.75fr) minmax(260px, 1.25fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(255, 89, 177, 0.2);
+  border-radius: 1.1rem;
+  background: linear-gradient(110deg, rgba(31, 9, 35, 0.78), rgba(4, 19, 34, 0.82));
+}
+
+.mk3-discover-chart-teaser > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.mk3-discover-chart-teaser > div span {
+  color: #ff76bb;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.mk3-discover-chart-teaser > div strong {
+  color: #f5f9ff;
+}
+
+.mk3-discover-chart-teaser ol {
+  display: flex;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mk3-discover-chart-teaser li {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.75rem;
+  background: rgba(3, 10, 22, 0.62);
+}
+
+.mk3-discover-chart-teaser li b {
+  color: #78edff;
+}
+
+.mk3-discover-chart-teaser li span {
+  overflow: hidden;
+  max-width: 120px;
+  color: #c7d3e5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk3-discover-chart-teaser li strong {
+  color: #ff82c1;
+  font-size: 0.8rem;
+}
+
+.mk3-profile-chart-settings {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(160px, 0.8fr));
+  gap: 0.8rem;
+  align-items: end;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid rgba(93, 231, 255, 0.14);
+  border-radius: 1rem;
+  background: rgba(5, 14, 28, 0.56);
+}
+
+.mk3-profile-chart-settings h3,
+.mk3-profile-chart-settings p {
+  margin: 0;
+}
+
+.mk3-profile-chart-settings p {
+  margin-top: 0.25rem;
+  color: #8498b4;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 860px) {
+  .mk3-charts-hero,
+  .mk3-discover-chart-teaser,
+  .mk3-profile-chart-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .mk3-chart-row,
+  .mk3-chart-row.is-song,
+  .mk3-chart-row.is-night {
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+  }
+
+  .mk3-chart-row.is-song .mk3-chart-art {
+    display: none;
+  }
+
+  .mk3-chart-night-best {
+    grid-column: 2 / -1;
+  }
+
+  .mk3-chart-report {
+    grid-column: 2;
+  }
+
+  .mk3-discover-chart-teaser ol {
+    display: grid;
   }
 }

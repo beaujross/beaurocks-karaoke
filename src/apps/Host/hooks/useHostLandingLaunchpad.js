@@ -227,7 +227,7 @@ const useHostLandingLaunchpad = ({
         setVenueSearchError('');
     }, [setQuickLaunchDiscovery]);
 
-    const handleStartLauncherRoom = useCallback(async ({ openNightSetup = false, launchTarget = 'stage', nightPresetPayload = null } = {}) => {
+    const handleStartLauncherRoom = useCallback(async ({ openNightSetup = false, launchTarget = 'stage', nightPresetPayload = null, audienceJoinPasscode = '' } = {}) => {
         if (primaryLaunchDisabled) return;
         if (!launchRoomNameValue) {
             toast('Add a room name before starting.');
@@ -255,6 +255,7 @@ const useHostLandingLaunchpad = ({
             nightPresetId: resolvedLaunchPresetId,
             nightPresetPayload: nightPresetPayload || buildHostNightPresetConfig(selectedLaunchPreset),
             preferredRoomCode: hasRequestedLaunchRoomCode ? requestedLaunchRoomCodeCandidate : '',
+            audienceJoinPasscode,
             openNightSetup,
         });
         if (!result?.roomCode || openNightSetup) return;

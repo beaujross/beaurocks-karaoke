@@ -100,6 +100,11 @@ const useHostRoomManager = ({
                                 currentTemplateId: String(templateMeta.currentTemplateId || '').trim(),
                                 currentTemplateName: String(templateMeta.currentTemplateName || '').trim(),
                                 discoverStartsAtMs: getTimestampMs(discover.startsAtMs),
+                                discoverEndsAtMs: getTimestampMs(discover.endsAtMs),
+                                recurringRule: String(discover.recurringRule || '').trim().toLowerCase(),
+                                nightSeriesId: String(discover.nightSeriesId || '').trim(),
+                                occurrenceId: String(discover.occurrenceId || '').trim(),
+                                recurrenceTimezone: String(discover.recurrenceTimezone || '').trim(),
                                 virtualOnly: discover.virtualOnly === true,
                             };
                         })

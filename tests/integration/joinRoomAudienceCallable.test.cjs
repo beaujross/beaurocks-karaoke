@@ -1,6 +1,11 @@
 const assert = require("node:assert/strict");
 const admin = require("../../functions/node_modules/firebase-admin");
-const { joinRoomAudience, claimTimedLobbyCredits, submitAudienceEmailCapture } = require("../../functions/index.js");
+const {
+  joinRoomAudience,
+  updateAudienceIdentity,
+  claimTimedLobbyCredits,
+  submitAudienceEmailCapture,
+} = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const APP_ID = "bross-app";
@@ -24,6 +29,7 @@ const auctionSongRef = db.doc(`${ROOT}/karaoke_songs/self_serve_song_1`);
 const userRef = db.doc(`users/${USER_UID}`);
 const secondUserRef = db.doc(`users/${SECOND_UID}`);
 const eventConfigRef = db.doc(`room_event_credit_configs/${ROOM_CODE}`);
+const privateAccessRef = db.doc(`room_private_access/${ROOM_CODE}`);
 const grantRef = db.doc(`room_event_credit_grants/${ROOM_CODE}_aahf_kickoff_${USER_UID}_general_admission`);
 const entitlementRef = db.doc(`event_attendee_entitlements/givebutter_order123`);
 const entitlementGrantRef = db.doc(`room_event_credit_grants/${ROOM_CODE}_aahf_kickoff_${USER_UID}_givebutter_order123`);
@@ -41,7 +47,7 @@ const requestFor = (uid, data = {}) => ({
 });
 
 async function resetState() {
-  const docs = [roomUserRef, secondRoomUserRef, roomRef, auctionSongRef, userRef, secondUserRef, eventConfigRef, grantRef, entitlementRef, entitlementGrantRef, supportPurchaseRef, contactRef];
+  const docs = [roomUserRef, secondRoomUserRef, roomRef, auctionSongRef, userRef, secondUserRef, eventConfigRef, privateAccessRef, grantRef, entitlementRef, entitlementGrantRef, supportPurchaseRef, contactRef];
   for (const ref of docs) {
     try {
       await ref.delete();
@@ -101,6 +107,9 @@ async function run() {
       const result = await joinRoomAudience.run(requestFor(USER_UID, {
         roomCode: ROOM_CODE,
         name: "Audience Guest Name That Is Long",
+        __token: {
+          firebase: { sign_in_provider: "password" },
+        },
         avatar: "🎤",
       }));
 
@@ -117,11 +126,15 @@ async function run() {
       assert.equal(snap.get("vipLevel"), 2);
       assert.equal(snap.get("fameLevel"), 4);
       assert.equal(snap.get("totalFamePoints"), 345);
+      assert.equal(snap.get("leaderboardAccountEligible"), true);
+      assert.equal(snap.get("leaderboardAuthProvider"), "password");
       assert.equal(snap.get("points"), 100);
       assert.equal(snap.get("totalEmojis"), 0);
       assert.equal(snap.get("visits"), 1);
       assert.ok(snap.get("lastSeen"));
       assert.ok(snap.get("lastActiveAt"));
+      const accountSnap = await userRef.get();
+      assert.equal(accountSnap.get("leaderboardAccountEligible"), true);
     }],
 
     ["audience join requires auth", async () => {
@@ -129,6 +142,34 @@ async function run() {
         () => joinRoomAudience.run(requestFor("", { roomCode: ROOM_CODE, name: "Guest" })),
         "unauthenticated"
       );
+    }],
+
+    ["account upgrade refreshes room and account chart eligibility without rejoining", async () => {
+      await joinRoomAudience.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        name: "Room Guest",
+        __token: {
+          firebase: { sign_in_provider: "anonymous" },
+        },
+      }));
+
+      await updateAudienceIdentity.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        name: "BeauRocks Member",
+        avatar: "🎤",
+        __token: {
+          firebase: { sign_in_provider: "password" },
+        },
+      }));
+
+      const [roomUserSnap, accountSnap] = await Promise.all([
+        roomUserRef.get(),
+        userRef.get(),
+      ]);
+      assert.equal(roomUserSnap.get("leaderboardAccountEligible"), true);
+      assert.equal(roomUserSnap.get("leaderboardAuthProvider"), "password");
+      assert.equal(accountSnap.get("leaderboardAccountEligible"), true);
+      assert.equal(accountSnap.get("leaderboardAuthProvider"), "password");
     }],
 
     ["audience join rejects missing room", async () => {
@@ -155,6 +196,47 @@ async function run() {
         })),
         "failed-precondition"
       );
+    }],
+
+    ["audience join enforces a separate guest passcode for new members", async () => {
+      const crypto = require("node:crypto");
+      const passcode = "PARTY7";
+      const salt = crypto.randomBytes(16).toString("hex");
+      const hash = crypto.scryptSync(passcode, salt, 32).toString("hex");
+      await roomRef.set({
+        audienceJoinPolicy: {
+          accessMode: "passcode_required",
+        },
+      }, { merge: true });
+      await privateAccessRef.set({
+        roomCode: ROOM_CODE,
+        salt,
+        hash,
+        hashVersion: 1,
+      });
+
+      await expectHttpsError(
+        () => joinRoomAudience.run(requestFor(USER_UID, { roomCode: ROOM_CODE, name: "Guest" })),
+        "permission-denied"
+      );
+      await expectHttpsError(
+        () => joinRoomAudience.run(requestFor(USER_UID, { roomCode: ROOM_CODE, name: "Guest", passcode: "WRONG1" })),
+        "permission-denied"
+      );
+
+      const result = await joinRoomAudience.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        name: "Guest",
+        passcode,
+      }));
+      assert.equal(result.ok, true);
+      assert.equal((await roomUserRef.get()).exists, true);
+
+      const rejoin = await joinRoomAudience.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        name: "Guest",
+      }));
+      assert.equal(rejoin.ok, true);
     }],
 
     ["audience join applies event general-admission grant once", async () => {
@@ -242,6 +324,7 @@ async function run() {
       assert.equal(Number(refreshedSnap.get("visits")), 2);
       assert.equal(String(refreshedSnap.get("name")), "Guest Reloaded");
       assert.equal(String(refreshedSnap.get("participantIdentityType")), "anon_device");
+      assert.equal(refreshedSnap.get("leaderboardAccountEligible"), false);
       assert.ok(String(refreshedSnap.get("participantKey") || "").startsWith("anon_device:"));
 
       const joinGrantSnaps = await db.collection("room_join_grants").where("roomCode", "==", ROOM_CODE).get();

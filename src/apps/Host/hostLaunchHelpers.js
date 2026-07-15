@@ -43,6 +43,7 @@ export const DEFAULT_QUICK_LAUNCH_DISCOVERY = Object.freeze({
     city: '',
     state: '',
     timezone: '',
+    recurringRule: 'one_time',
     lat: '',
     lng: ''
 });
@@ -485,6 +486,7 @@ export const buildProvisionDiscoveryPayload = (draft = {}, options = {}) => {
         city: String(nextDraft?.city || '').trim(),
         state: String(nextDraft?.state || '').trim(),
         timezone: String(nextDraft?.timezone || options?.timezone || '').trim(),
+        recurringRule: String(nextDraft?.recurringRule || 'one_time').trim().toLowerCase() === 'weekly' ? 'weekly' : 'one_time',
         lat: rawLat,
         lng: rawLng,
         location: hasCoords ? { lat, lng } : {},

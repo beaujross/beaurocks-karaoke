@@ -540,6 +540,12 @@ const upsertHostRoomDiscoveryListing = async (payload = {}) => {
   return data || null;
 };
 
+const setHostNightOccurrenceStatus = async (payload = {}) => {
+  await requireAppCheckToken("setHostNightOccurrenceStatus");
+  const data = await callFunction("setHostNightOccurrenceStatus", payload || {});
+  return data || null;
+};
+
 const updateDirectoryListing = async (payload = {}) => {
   await requireAppCheckToken("updateDirectoryListing");
   const data = await callFunction("updateDirectoryListing", payload || {});
@@ -579,6 +585,18 @@ const listModerationQueue = async (payload = {}) => {
 const resolveModerationItem = async (payload = {}) => {
   await requireAppCheckToken("resolveModerationItem");
   const data = await callFunction("resolveModerationItem", payload || {});
+  return data || null;
+};
+
+const moderatePublicChartResult = async (payload = {}) => {
+  await requireAppCheckToken("moderatePublicChartResult");
+  const data = await callFunction("moderatePublicChartResult", payload || {});
+  return data || null;
+};
+
+const previewPublicChartLaunch = async (payload = {}) => {
+  await requireAppCheckToken("previewPublicChartLaunch");
+  const data = await callFunction("previewPublicChartLaunch", payload || {});
   return data || null;
 };
 
@@ -1244,6 +1262,7 @@ export {
   upsertDirectoryProfile,
   submitDirectoryListing,
   upsertHostRoomDiscoveryListing,
+  setHostNightOccurrenceStatus,
   updateDirectoryListing,
   followDirectoryEntity,
   unfollowDirectoryEntity,
@@ -1251,6 +1270,8 @@ export {
   submitDirectoryReview,
   listModerationQueue,
   resolveModerationItem,
+  moderatePublicChartResult,
+  previewPublicChartLaunch,
   runExternalDirectoryIngestion,
   submitDirectoryClaimRequest,
   resolveDirectoryClaimRequest,

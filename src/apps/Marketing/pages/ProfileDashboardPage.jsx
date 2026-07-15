@@ -9,6 +9,7 @@ import {
 import { formatDateTime } from "./shared";
 import {
   collectFollowedHostIds,
+  collectFollowedVenueIds,
 } from "../dashboardUtils";
 
 const toNameParts = (value = "") => {
@@ -48,9 +49,13 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     state: "",
     country: "US",
     visibility: "public",
+    chartName: "",
+    chartVisibility: "public",
   });
   const [followedHostProfiles, setFollowedHostProfiles] = useState([]);
   const [followedHostsLoading, setFollowedHostsLoading] = useState(false);
+  const [followedVenues, setFollowedVenues] = useState([]);
+  const [followedVenuesLoading, setFollowedVenuesLoading] = useState(false);
   const [moderationQueue, setModerationQueue] = useState([]);
   const [moderationLoading, setModerationLoading] = useState(false);
   const [moderationStatus, setModerationStatus] = useState("");
@@ -121,6 +126,8 @@ const ProfileDashboardPage = ({ session, navigate }) => {
       state: profile.state || "",
       country: profile.country || "US",
       visibility: profile.visibility || "public",
+      chartName: profile.chartName || profile.displayName || "",
+      chartVisibility: profile.chartVisibility === "anonymous" ? "anonymous" : "public",
     });
   }, [profile]);
 
@@ -150,6 +157,10 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     () => collectFollowedHostIds(history.follows),
     [history.follows]
   );
+  const followedVenueIds = useMemo(
+    () => collectFollowedVenueIds(history.follows),
+    [history.follows]
+  );
 
   useEffect(() => {
     if (!canUseDashboard || !followedHostIds.length) {
@@ -177,6 +188,33 @@ const ProfileDashboardPage = ({ session, navigate }) => {
       cancelled = true;
     };
   }, [canUseDashboard, followedHostIds]);
+
+  useEffect(() => {
+    if (!canUseDashboard || !followedVenueIds.length) {
+      setFollowedVenues([]);
+      setFollowedVenuesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setFollowedVenuesLoading(true);
+    (async () => {
+      const docs = await Promise.all(
+        followedVenueIds.slice(0, 12).map(async (venueId) => {
+          try {
+            return await fetchEntityDoc({ collectionName: "venues", id: venueId });
+          } catch {
+            return null;
+          }
+        })
+      );
+      if (cancelled) return;
+      setFollowedVenues(docs.filter(Boolean));
+      setFollowedVenuesLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canUseDashboard, followedVenueIds]);
 
   const hostNameById = useMemo(() => {
     const next = new Map();
@@ -381,6 +419,31 @@ const ProfileDashboardPage = ({ session, navigate }) => {
           </label>
         </div>
 
+        <div className="mk3-profile-chart-settings">
+          <div>
+            <h3>Chart Identity</h3>
+            <p>Your signed-in scores count automatically. Choose how your identity appears.</p>
+          </div>
+          <label>
+            Chart Name
+            <input
+              value={form.chartName}
+              onChange={(e) => setForm((prev) => ({ ...prev, chartName: e.target.value }))}
+              placeholder={profile?.displayName || inferredFirstName || "Your BeauRocks name"}
+            />
+          </label>
+          <label>
+            On Public Charts
+            <select
+              value={form.chartVisibility}
+              onChange={(e) => setForm((prev) => ({ ...prev, chartVisibility: e.target.value }))}
+            >
+              <option value="public">Show my chart name</option>
+              <option value="anonymous">Show as BeauRocks Singer</option>
+            </select>
+          </label>
+        </div>
+
         {!!profile?.displayName && <div className="mk3-status">Public profile name: {profile.displayName}</div>}
         {!!profile?.handle && <div className="mk3-status">Public handle: @{profile.handle}</div>}
         <div className="mk3-status">
@@ -427,6 +490,22 @@ const ProfileDashboardPage = ({ session, navigate }) => {
           {!followedHostsLoading && !followedHostProfiles.length && (
             <div className="mk3-status">
               <span>Follow hosts in the Setlist Finder to pin them here for quick profile access.</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mk3-sub-list compact">
+          <h3>Followed Venues</h3>
+          {followedVenuesLoading && <div className="mk3-status">Loading venues...</div>}
+          {!followedVenuesLoading && followedVenues.map((item) => (
+            <button key={item.id} type="button" className="mk3-list-row" onClick={() => navigate("venue", item.id)}>
+              <span>{item.title || item.venueName || item.id}</span>
+              <span>{item.city ? `${item.city}, ${item.state || ""}`.replace(/,\s*$/, "") : "Open venue"}</span>
+            </button>
+          ))}
+          {!followedVenuesLoading && !followedVenues.length && (
+            <div className="mk3-status">
+              <span>Follow a venue to keep its karaoke schedule close even when hosts rotate.</span>
             </div>
           )}
         </div>

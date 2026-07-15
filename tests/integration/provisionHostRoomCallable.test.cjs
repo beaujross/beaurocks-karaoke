@@ -41,6 +41,8 @@ async function deleteCollection(pathSegments = []) {
 
 async function resetState() {
   await deleteCollection(["room_sessions"]);
+  await deleteCollection(["night_series"]);
+  await deleteCollection(["night_occurrences"]);
   await deleteCollection(["organizations"]);
   await deleteCollection(["users"]);
   await deleteCollection(["room_event_credit_configs"]);
@@ -161,6 +163,7 @@ async function run() {
             title: "Friday House Karaoke",
             venueId: "venue_house",
             venueSource: "selected",
+            recurringRule: "weekly",
             city: "Seattle",
             state: "WA",
             startsAtMs: Date.now() + (60 * 60 * 1000),
@@ -181,11 +184,25 @@ async function run() {
       assert.equal(String(listingSnap.get("visibility")), "public");
       assert.equal(String(listingSnap.get("venueId")), "venue_house");
       assert.deepEqual(listingSnap.get("hostUids"), [HOST_UID, CO_HOST_UID]);
+      assert.equal(String(listingSnap.get("recurringRule")), "weekly");
+      assert.match(String(listingSnap.get("nightSeriesId")), /^night_[a-f0-9]{20}$/);
+      assert.match(String(listingSnap.get("occurrenceId")), /^occ_[a-f0-9]{18}_[0-9]{8}$/);
+      assert.equal(String(listingSnap.get("identityLinks.venueId")), "venue_house");
+
+      const seriesId = String(listingSnap.get("nightSeriesId"));
+      const seriesSnap = await db.doc(`night_series/${seriesId}`).get();
+      assert.equal(seriesSnap.exists, true);
+      assert.equal(seriesSnap.get("active"), true);
+      const occurrencesSnap = await db.collection("night_occurrences")
+        .where("seriesId", "==", seriesId)
+        .get();
+      assert.equal(occurrencesSnap.size >= 12, true);
 
       const roomSnap = await db.doc(`${ROOT}/rooms/${result.roomCode}`).get();
       assert.equal(roomSnap.exists, true);
       assert.equal(String(roomSnap.get("discover.listingId")), listingId);
       assert.equal(!!roomSnap.get("discover.publicRoom"), true);
+      assert.equal(String(roomSnap.get("discover.occurrenceId")), String(listingSnap.get("occurrenceId")));
       assert.equal(String(roomSnap.get("roomName")), "Friday House Karaoke");
     }],
 

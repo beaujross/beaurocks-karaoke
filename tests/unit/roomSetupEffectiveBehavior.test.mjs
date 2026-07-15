@@ -58,6 +58,18 @@ test('crowd domain explains the effective guest entry policy', () => {
     assert.equal(crowd.details.find((detail) => detail.label === 'Guest entry').value, 'Email entry');
 });
 
+test('crowd domain distinguishes a guest passcode from the room locator code', () => {
+    const contract = resolveRoomSetupEffectiveBehavior({
+        effectiveRoom: {
+            ...BASE_BEHAVIOR,
+            audienceJoinPolicy: { accessMode: 'passcode_required' },
+        },
+    });
+    const crowd = contract.domains.find((domain) => domain.key === 'crowd_experience');
+
+    assert.equal(crowd.details.find((detail) => detail.label === 'Guest entry').value, 'Room code + guest passcode');
+});
+
 test('room setup behavior applies provisioning, mission, and direct exceptions in order with provenance', () => {
     const room = structuredClone(BASE_BEHAVIOR);
     const mission = {

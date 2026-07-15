@@ -284,7 +284,7 @@ const LegalPageShell = ({ eyebrow = 'BeauRocks Karaoke', title = '', children })
 
 const KaraokeTerms = () => (
     <LegalPageShell title="Terms Of Service">
-        <p>Last updated: 2026-05-02</p>
+        <p>Last updated: 2026-07-14</p>
         <p>This application uses YouTube API Services. By using BeauRocks Karaoke, you also agree to the <a href={YOUTUBE_TERMS_URL} target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">YouTube Terms of Service</a> and acknowledge that Google may process data as described in the <a href={GOOGLE_PRIVACY_URL} target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">Google Privacy Policy</a>.</p>
         <p>These terms apply to the BeauRocks Karaoke experience, including host, singer, and TV surfaces of the Service. By using the Service, you agree to these terms and our <a href={getLegalRoutePath('privacy')} className="text-cyan-200 underline underline-offset-4">Privacy Policy</a>.</p>
         <div>
@@ -294,6 +294,10 @@ const KaraokeTerms = () => (
         <div>
             <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">User Content And Conduct</h2>
             <p className="mt-2">You are responsible for names, messages, photos, drawings, and other content you submit. BeauRocks may remove content or restrict access if needed to keep the Service safe, lawful, and operational.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Accounts And Charts</h2>
+            <p className="mt-2">Guests can participate in room standings. When a singer uses a BeauRocks account at a night run by an approved BeauRocks host, eligible completed performances automatically enter BeauRocks song and global charts under the singer's BeauRocks name. Charts are for entertainment, and BeauRocks may review, correct, or remove disputed or invalid results.</p>
         </div>
         <div>
             <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Third-Party Services</h2>
@@ -312,12 +316,16 @@ const KaraokeTerms = () => (
 
 const KaraokePrivacy = () => (
     <LegalPageShell title="Privacy Policy">
-        <p>Last updated: 2026-05-02</p>
+        <p>Last updated: 2026-07-14</p>
         <p>This application uses YouTube API Services. Google may collect and process data as described in the <a href={GOOGLE_PRIVACY_URL} target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">Google Privacy Policy</a>.</p>
         <p>We collect only the information needed to operate BeauRocks Karaoke, including room participation data, host setup data, submitted content, and limited operational analytics.</p>
         <div>
             <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">What We Collect</h2>
-            <p className="mt-2">Depending on how you use the Service, we may collect account identifiers, room codes, display names, host settings, karaoke requests, uploaded media, moderation data, and basic operational telemetry.</p>
+            <p className="mt-2">Depending on how you use the Service, we may collect account identifiers, room codes, display names, host settings, karaoke requests, songs performed, scores, applause and room activity, uploaded media, moderation data, and basic operational telemetry.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Performances And Charts</h2>
+            <p className="mt-2">Display names and scores may appear inside the room during an event. Guest performances stay out of global charts. When a singer uses a BeauRocks account at an approved BeauRocks-hosted night, the singer's BeauRocks name, song, score, and chart position may appear on public BeauRocks charts. Contact us to dispute, correct, or remove a public result.</p>
         </div>
         <div>
             <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">YouTube API Data</h2>
@@ -338,7 +346,7 @@ const KaraokePrivacy = () => (
 
 const KaraokeDataDeletion = () => (
     <LegalPageShell title="Data Deletion">
-        <p>Last updated: 2026-05-02</p>
+        <p>Last updated: 2026-07-14</p>
         <p>You can request deletion of personal data associated with your use of BeauRocks Karaoke by emailing <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="text-cyan-200 underline underline-offset-4">{LEGAL_CONTACT_EMAIL}</a>.</p>
         <div>
             <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">What To Include</h2>
@@ -346,7 +354,7 @@ const KaraokeDataDeletion = () => (
         </div>
         <div>
             <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Room Deletion</h2>
-            <p className="mt-2">When an authorized host or workspace admin permanently deletes a room, the room record, room-scoped activity data, and the room host library are removed as part of the deletion process.</p>
+            <p className="mt-2">When an authorized host or workspace admin permanently deletes a room, the room record, room-scoped activity data, public recap artifact, and room host library are removed as part of the deletion process. Singers can also contact us to request removal of associated account performance or chart records.</p>
         </div>
         <div>
             <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">YouTube Data</h2>

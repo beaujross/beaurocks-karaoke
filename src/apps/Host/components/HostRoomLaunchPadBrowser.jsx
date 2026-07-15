@@ -208,6 +208,7 @@ const HostRoomLaunchPadBrowser = ({
     togglePinnedRoom,
     setRoomArchivedState,
     setRoomDiscoverability,
+    setRoomOccurrenceStatus,
     runLandingRoomCleanup,
     resetRoomToCurrentTemplate,
     seedAahfKickoffRoom,
@@ -247,6 +248,11 @@ const HostRoomLaunchPadBrowser = ({
     const selectedPresetBaseId = selectedLaunchPreset?.basePresetId || selectedLaunchPreset?.id || 'casual';
     const selectedPresetJoinPolicy = normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {});
     const [launchJoinAccessMode, setLaunchJoinAccessMode] = useState(selectedPresetJoinPolicy.accessMode || AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed);
+    const [launchJoinPasscode, setLaunchJoinPasscode] = useState('');
+    const normalizedLaunchJoinPasscode = String(launchJoinPasscode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
+    const launchNeedsPasscode = launchJoinAccessMode === AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired;
+    const launchPasscodeValid = !launchNeedsPasscode || normalizedLaunchJoinPasscode.length >= 4;
+    const roomLaunchDisabled = launchDisabled || !launchPasscodeValid;
     const selectedPresetImpactRows = useMemo(
         () => buildPresetImpactRows(selectedLaunchPreset || {}, launchJoinAccessMode),
         [launchJoinAccessMode, selectedLaunchPreset]
@@ -320,6 +326,7 @@ const HostRoomLaunchPadBrowser = ({
         discoveryListingEnabled ? 'Discoverable' : 'Private link',
         hasLaunchStartTime ? `Starts ${launchStartSummary}` : 'Starts now',
         selectedJoinOption?.label,
+        launchNeedsPasscode ? 'Separate guest passcode' : '',
         selectedEconomyOption?.label,
     ].filter(Boolean);
     const applyLaunchEconomy = (mode = 'standard') => {
@@ -736,6 +743,26 @@ const HostRoomLaunchPadBrowser = ({
                                             </div>
                                         ) : null}
 
+                                        {selectedRoom.recurringRule === 'weekly' && selectedRoom.occurrenceId ? (
+                                            <div className="mt-3 rounded-xl border border-cyan-300/20 bg-cyan-500/8 px-3 py-3">
+                                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/66">Weekly night</div>
+                                                <div className="mt-1 text-sm text-cyan-50">
+                                                    Next occurrence: {formatRoomSchedule(selectedRoom) || 'Schedule pending'}
+                                                </div>
+                                                <div className="mt-1 text-xs text-cyan-100/58">Skip only this date; the following week stays scheduled.</div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRoomOccurrenceStatus?.(selectedRoom, 'cancel')}
+                                                    disabled={joiningRoom || roomManagerBusyCode === selectedRoom.code || selectedRoom.archived}
+                                                    className={'mt-3 rounded-full border border-amber-300/30 bg-amber-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-amber-100 ' + ((joiningRoom || roomManagerBusyCode === selectedRoom.code || selectedRoom.archived) ? 'cursor-not-allowed opacity-60' : '')}
+                                                >
+                                                    {roomManagerBusyCode === selectedRoom.code && roomManagerBusyAction === 'skip_occurrence'
+                                                        ? 'Skipping'
+                                                        : 'Skip This Week'}
+                                                </button>
+                                            </div>
+                                        ) : null}
+
                                         <details className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/8 px-3 py-3">
                                             <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-rose-100/70">More room actions</summary>
                                             <div className="mt-3 text-sm text-rose-50/88">Archive rooms you want to keep, reset closed rooms you want to reuse, or permanently delete archived rooms you no longer need.</div>
@@ -938,7 +965,7 @@ const HostRoomLaunchPadBrowser = ({
                                 <section className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-3">
                                     <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Step 2 - Guest entry</div>
                                     <div className="mt-1 text-sm text-cyan-100/66">Decide when the room appears and how easily guests can get in.</div>
-                                    <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                                    <div className="mt-3 grid gap-3 lg:grid-cols-4">
                                         <label className="block lg:col-span-1">
                                             <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Start</div>
                                             <input type="datetime-local" value={String(quickLaunchDiscovery?.roomStartsAtLocal || '')} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, roomStartsAtLocal: e.target.value }))} className={inputClass} />
@@ -958,7 +985,22 @@ const HostRoomLaunchPadBrowser = ({
                                             </select>
                                             <div className="mt-2 text-xs text-cyan-100/58">{selectedJoinOption?.description}</div>
                                         </label>
+                                        <label className="block lg:col-span-1">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Repeats</div>
+                                            <select value={String(quickLaunchDiscovery?.recurringRule || 'one_time')} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, recurringRule: e.target.value }))} className={inputClass}>
+                                                <option value="one_time">One-time room</option>
+                                                <option value="weekly">Weekly night</option>
+                                            </select>
+                                            <div className="mt-2 text-xs text-cyan-100/58">Weekly nights keep one identity across future room sessions.</div>
+                                        </label>
                                     </div>
+                                    {launchNeedsPasscode ? (
+                                        <label className="mt-3 block max-w-md">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Guest passcode</div>
+                                            <input type="password" value={launchJoinPasscode} onChange={(e) => setLaunchJoinPasscode(String(e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24))} placeholder="4-24 letters or numbers" minLength={4} maxLength={24} autoComplete="new-password" className={inputClass} />
+                                            <div className={`mt-2 text-xs ${launchPasscodeValid ? 'text-cyan-100/58' : 'text-amber-200'}`}>The room code locates the room. This separate passcode admits a new guest and is stored only as a server-side hash.</div>
+                                        </label>
+                                    ) : null}
                                 </section>
 
                                 <section className={`${showAdvancedSetup ? '' : 'hidden'} rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3`} data-launch-operating-model>
@@ -1092,12 +1134,12 @@ const HostRoomLaunchPadBrowser = ({
                                 </section>
 
                                 <div className="grid gap-2">
-                                    <button type="button" data-host-create-room-primary="true" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview })} disabled={launchDisabled} className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full justify-center px-4 py-3 text-[11px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</button>
+                                    <button type="button" data-host-create-room-primary="true" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full justify-center px-4 py-3 text-[11px] uppercase tracking-[0.18em] ${roomLaunchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</button>
                                     <details className="rounded-xl border border-white/10 bg-black/18 px-3 py-2">
                                         <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.16em] text-cyan-100/62">Planning ahead?</summary>
                                         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                                             <div className="text-sm text-cyan-100/66">Create the room and open the Show Plan when you want to sequence moments before guests arrive.</div>
-                                            <button type="button" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'show', nightPresetPayload: launchPresetPayloadPreview })} disabled={launchDisabled} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>Create + Prepare Room</button>
+                                            <button type="button" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'show', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${roomLaunchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>Create + Prepare Room</button>
                                         </div>
                                     </details>
                                     <div className="text-xs text-cyan-100/58">Room creation stays focused on launch decisions. Use the host panel for detailed room settings, rewards tuning, and show planning.</div>

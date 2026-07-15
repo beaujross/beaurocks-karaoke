@@ -19,6 +19,7 @@ import { getMarketingNavModel } from "./iaModel";
 import "./marketing.css";
 
 const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
+const ChartsPage = lazy(() => import("./pages/ChartsPage"));
 const DemoExperiencePage = lazy(() => import("./pages/DemoExperiencePage"));
 const ChangelogPage = lazy(() => import("./pages/ChangelogPage"));
 const VenuePage = lazy(() => import("./pages/VenuePage"));
@@ -88,6 +89,7 @@ const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
   if (safe === "home") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "discover") return MARKETING_ROUTE_PAGES.discover;
+  if (safe === "charts") return MARKETING_ROUTE_PAGES.charts;
   if (safe === "demo") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "demo_auto" || safe === "demo-auto" || safe === "auto-demo") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "changelog") return MARKETING_ROUTE_PAGES.changelog;
@@ -944,6 +946,7 @@ const MarketingSite = () => {
       onHostLogin: () => openMarketingHostAccess(hasFullAccount ? "fans_home_host_dashboard" : "fans_home_host_login"),
     };
     if (activePage === MARKETING_ROUTE_PAGES.discover) return <DiscoverPage {...pageProps} />;
+    if (activePage === MARKETING_ROUTE_PAGES.charts) return <ChartsPage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.demo) return <DemoExperiencePage {...pageProps} demoMode="abstract" />;
     if (activePage === MARKETING_ROUTE_PAGES.demoAuto) return <DemoExperiencePage {...pageProps} demoMode="auto" />;
     if (activePage === MARKETING_ROUTE_PAGES.changelog) return <ChangelogPage {...pageProps} />;
@@ -1382,6 +1385,12 @@ const MarketingSite = () => {
                   onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "footer_discover" }))}
                 >
                   Discover
+                </a>
+                <a
+                  href={buildHref(MARKETING_ROUTE_PAGES.charts, "", withCampaignParams({ utm_content: "footer_charts" }))}
+                  onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.charts, "", withCampaignParams({ utm_content: "footer_charts" }))}
+                >
+                  Charts
                 </a>
                 <a
                   href={buildHref(MARKETING_ROUTE_PAGES.forVenues, "", withCampaignParams({ utm_content: "footer_list_night" }))}

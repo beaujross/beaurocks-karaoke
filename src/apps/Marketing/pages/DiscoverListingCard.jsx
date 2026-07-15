@@ -33,6 +33,22 @@ const splitDetailTokens = (value = "") =>
     .map((token) => token.trim())
     .filter(Boolean);
 
+const DISCOVERY_BADGE_ICONS = Object.freeze({
+  "Trivia Night": "fa-circle-question",
+  "Music Bingo": "fa-table-cells",
+  "Karaoke + Pop Trivia": "fa-microphone-lines",
+  "Competitive Scoring": "fa-trophy",
+  "First-Timer Boost": "fa-hand-sparkles",
+  "Fair Rotation": "fa-rotate",
+  "Audience Voting": "fa-check-to-slot",
+  "Would You Rather": "fa-code-branch",
+  "Guest Passcode": "fa-key",
+  "Live Join": "fa-link",
+  "Interactive TV": "fa-tv",
+  "Recap Ready": "fa-camera-retro",
+  "Virtual": "fa-globe",
+});
+
 const DiscoverListingCard = ({
   entry,
   detailsHref = "#",
@@ -61,7 +77,7 @@ const DiscoverListingCard = ({
     ...(Array.isArray(entry?.cadenceBadges) ? entry.cadenceBadges : []),
     ...(hasPublicRecap ? ["Recap Ready"] : []),
     ...(entry?.virtualOnly ? ["Virtual"] : []),
-  ])).filter(Boolean).slice(0, 1);
+  ])).filter(Boolean).slice(0, 3);
   const roomCode = cleanText(entry?.roomCode);
   const subtitle = cleanText(entry?.subtitle);
   const hostName = cleanText(entry?.hostName);
@@ -107,7 +123,7 @@ const DiscoverListingCard = ({
     }
     if (isJoinableRoomSession) {
       return {
-        label: "Join room",
+        label: entry?.requiresGuestPasscode ? "Enter private room" : "Join room",
         onClick: () => onJoinRoom?.(entry),
         disabled: false,
       };
@@ -184,7 +200,7 @@ const DiscoverListingCard = ({
       <div className="mk3-discover-body">
         {isRoomSession && (
           <div className="mk3-discover-room-kicker">
-            <span>{hasPublicRecap ? "Past event" : isJoinableRoomSession ? "Live room" : "Room session"}</span>
+            <span>{hasPublicRecap ? "Past event" : entry?.requiresGuestPasscode ? "Passcode-gated room" : isJoinableRoomSession ? "Live room" : "Room session"}</span>
             {roomCode && <strong>{roomCode}</strong>}
           </div>
         )}
@@ -195,7 +211,10 @@ const DiscoverListingCard = ({
         {!!highlightBadges.length && (
           <div className="mk3-day-badge-row">
             {highlightBadges.map((badge) => (
-              <span key={`${entry.key}_${badge}`} className="mk3-day-badge">{badge}</span>
+              <span key={`${entry.key}_${badge}`} className="mk3-day-badge">
+                {DISCOVERY_BADGE_ICONS[badge] ? <i className={`fa-solid ${DISCOVERY_BADGE_ICONS[badge]}`} aria-hidden="true"></i> : null}
+                <span>{badge}</span>
+              </span>
             ))}
           </div>
         )}

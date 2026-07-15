@@ -31,11 +31,15 @@ const {
   getMyHostAccessStatus,
   getMyDirectoryAccess,
   upsertHostRoomDiscoveryListing,
+  setHostNightOccurrenceStatus,
+  removeHostRoomDiscoveryListing,
   submitCatalogContribution,
   listCatalogContributionQueue,
   resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
   logPerformance,
+  moderatePublicChartResult,
+  previewPublicChartLaunch,
 } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
@@ -70,6 +74,8 @@ async function resetState() {
     "venues",
     "karaoke_events",
     "room_sessions",
+    "night_series",
+    "night_occurrences",
     "follows",
     "checkins",
     "checkin_totals",
@@ -88,6 +94,10 @@ async function resetState() {
     "performances",
     "song_hall_of_fame",
     "song_hall_of_fame_weeks",
+    "public_chart_members",
+    "public_chart_songs",
+    "public_chart_nights",
+    "public_chart_moderation_events",
     "users",
     "marketing_private_access",
     "marketing_private_invites",
@@ -191,6 +201,54 @@ async function run() {
       assert.equal(adminAccess.isAdmin, true);
     }],
 
+    ["previewPublicChartLaunch blocks reachable unapproved recent hosts and reports orphaned owners", async () => {
+      await expectHttpsError(
+        () => previewPublicChartLaunch.run(requestFor(MOD_UID)),
+        "permission-denied"
+      );
+      const auth = admin.auth();
+      const originalGetUser = auth.getUser;
+      auth.getUser = async (uid) => ({
+        uid,
+        email: uid + "@test.local",
+        emailVerified: true,
+      });
+      await db.doc("artifacts/bross-app/public/data/rooms/PREF1").set({
+        hostUid: OTHER_UID,
+        hostUids: [OTHER_UID],
+        archivedStatus: "active",
+        publicRoom: true,
+        updatedAt: admin.firestore.Timestamp.now(),
+      });
+      const blocked = await previewPublicChartLaunch.run(requestFor(ADMIN_UID));
+      assert.equal(blocked.canLaunch, false);
+      assert.equal(blocked.gateScope, "rooms_with_activity_in_last_30_days");
+      assert.equal(blocked.activeRoomCount, 1);
+      assert.deepEqual(blocked.unapprovedHostUids, [OTHER_UID]);
+
+      await db.doc(`host_access_approvals/${OTHER_UID}`).set({
+        uid: OTHER_UID,
+        hostApprovalEnabled: true,
+      });
+      const ready = await previewPublicChartLaunch.run(requestFor(ADMIN_UID));
+      assert.equal(ready.canLaunch, true);
+      assert.equal(ready.chartEra, "launch_v1");
+      assert.equal(ready.publicRoomCount, 1);
+      assert.equal(ready.unapprovedHostCount, 0);
+
+      await db.collection("host_access_approvals").doc(OTHER_UID).delete();
+      auth.getUser = async () => {
+        const error = new Error("User not found");
+        error.code = "auth/user-not-found";
+        throw error;
+      };
+      const orphaned = await previewPublicChartLaunch.run(requestFor(ADMIN_UID));
+      assert.equal(orphaned.canLaunch, true);
+      assert.equal(orphaned.orphanedHostCount, 1);
+      assert.deepEqual(orphaned.orphanedHostUids, [OTHER_UID]);
+      auth.getUser = originalGetUser;
+    }],
+
     ["setHostApprovalStatus email grant writes host approval invite only", async () => {
       const inviteEmail = "invitee@beaurocks.app";
       const grant = await setHostApprovalStatus.run(
@@ -270,6 +328,10 @@ async function run() {
         hostUid: USER_UID,
         hostUids: [USER_UID],
         hostName: "Demo Host",
+        hostNightPreset: "competition",
+        showScoring: true,
+        queueSettings: { rotation: "round_robin", firstTimeBoost: true },
+        audienceJoinPolicy: { accessMode: "passcode_required" },
       }, { merge: true });
       const result = await upsertHostRoomDiscoveryListing.run(
         requestFor(USER_UID, {
@@ -279,6 +341,9 @@ async function run() {
             title: "House Karaoke Friday",
             city: "Seattle",
             state: "WA",
+            venueId: "venue_demo_house",
+            venueName: "Demo House",
+            recurringRule: "weekly",
             startsAtMs: Date.now() + 3600000,
             location: { lat: 47.6062, lng: -122.3321 },
           },
@@ -291,6 +356,57 @@ async function run() {
       assert.equal(String(sessionSnap.get("roomCode")), "DEMO1");
       assert.equal(String(sessionSnap.get("visibility")), "public");
       assert.equal(String(sessionSnap.get("status")), "approved");
+      assert.equal(String(sessionSnap.get("recurringRule")), "weekly");
+      assert.match(String(sessionSnap.get("nightSeriesId")), /^night_[a-f0-9]{20}$/);
+      assert.match(String(sessionSnap.get("occurrenceId")), /^occ_[a-f0-9]{18}_[0-9]{8}$/);
+      assert.equal(Number(sessionSnap.get("nextOccurrenceAtMs")) > Date.now(), true);
+      assert.equal(String(sessionSnap.get("identityLinks.venueId")), "venue_demo_house");
+      assert.equal(String(sessionSnap.get("joinAccessMode")), "passcode_required");
+      assert.equal(sessionSnap.get("requiresGuestPasscode"), true);
+      assert.equal(String(sessionSnap.get("experienceProfile.intensity")), "competitive");
+      assert.equal(sessionSnap.get("experienceProfile.mechanics.firstTimerBoost"), true);
+      const seriesId = String(sessionSnap.get("nightSeriesId"));
+      const seriesSnap = await db.doc(`night_series/${seriesId}`).get();
+      assert.equal(seriesSnap.exists, true);
+      assert.equal(seriesSnap.get("active"), true);
+      assert.equal(String(seriesSnap.get("sourceListingId")), result.listingId);
+      const occurrencesSnap = await db.collection("night_occurrences")
+        .where("seriesId", "==", seriesId)
+        .get();
+      assert.equal(occurrencesSnap.size >= 12, true);
+      const originalOccurrenceId = String(sessionSnap.get("occurrenceId"));
+      await expectHttpsError(
+        () => setHostNightOccurrenceStatus.run(
+          requestFor(OTHER_UID, {
+            roomCode: "DEMO1",
+            occurrenceId: originalOccurrenceId,
+            action: "cancel",
+          })
+        ),
+        "permission-denied"
+      );
+      const cancelled = await setHostNightOccurrenceStatus.run(
+        requestFor(USER_UID, {
+          roomCode: "DEMO1",
+          occurrenceId: originalOccurrenceId,
+          action: "cancel",
+        })
+      );
+      assert.equal(cancelled.ok, true);
+      assert.notEqual(String(cancelled.nextOccurrence?.occurrenceId || ""), originalOccurrenceId);
+      const cancelledSnap = await db.doc(`night_occurrences/${originalOccurrenceId}`).get();
+      assert.equal(String(cancelledSnap.get("status")), "cancelled");
+      const shiftedSessionSnap = await db.doc(`room_sessions/${result.listingId}`).get();
+      assert.notEqual(String(shiftedSessionSnap.get("occurrenceId")), originalOccurrenceId);
+      const reinstated = await setHostNightOccurrenceStatus.run(
+        requestFor(USER_UID, {
+          roomCode: "DEMO1",
+          occurrenceId: originalOccurrenceId,
+          action: "reinstate",
+        })
+      );
+      assert.equal(reinstated.ok, true);
+      assert.equal(String(reinstated.nextOccurrence?.occurrenceId || ""), originalOccurrenceId);
       const discoverResult = await listDirectoryDiscover.run(
         requestFor("", { search: "house karaoke friday", listingType: "room_session", limit: 20 })
       );
@@ -298,6 +414,31 @@ async function run() {
         discoverResult.items.some((item) => item.id === result.listingId && item.sourceType === "host_room"),
         true
       );
+      await db.doc(`public_chart_nights/${result.listingId}`).set({
+        listingId: result.listingId,
+        rankScore: 500,
+      });
+      const privateResult = await removeHostRoomDiscoveryListing.run(
+        requestFor(USER_UID, { roomCode: "DEMO1" })
+      );
+      assert.equal(privateResult.ok, true);
+      assert.equal(privateResult.visibility, "private");
+      const privateSessionSnap = await db.doc(`room_sessions/${result.listingId}`).get();
+      assert.equal(privateSessionSnap.exists, true);
+      assert.equal(String(privateSessionSnap.get("visibility")), "private");
+      assert.equal((await db.doc(`public_chart_nights/${result.listingId}`).get()).exists, false);
+      const hiddenDiscoverResult = await listDirectoryDiscover.run(
+        requestFor("", { search: "house karaoke friday", listingType: "room_session", limit: 20 })
+      );
+      assert.equal(hiddenDiscoverResult.items.some((item) => item.id === result.listingId), false);
+      const privatePreview = await previewDirectoryRoomSessionByCode.run(
+        requestFor("", { roomCode: "DEMO1" })
+      );
+      assert.equal(privatePreview.ok, true);
+      assert.equal(String(privatePreview.session.visibility), "private");
+      const privateSeriesSnap = await db.doc(`night_series/${seriesId}`).get();
+      assert.equal(privateSeriesSnap.get("active"), true);
+      assert.equal(String(privateSeriesSnap.get("visibility")), "private");
       await db.doc("artifacts/bross-app/public/data/rooms/DEMO2").set({
         hostUid: USER_UID,
         hostUids: [USER_UID],
@@ -325,13 +466,25 @@ async function run() {
 
     ["upsertDirectoryProfile writes profile for caller", async () => {
       const result = await upsertDirectoryProfile.run(
-        requestFor(USER_UID, { profile: { displayName: "Neon Host", roles: ["host"] } })
+        requestFor(USER_UID, {
+          profile: {
+            displayName: "Neon Host",
+            chartName: "Neon Voice",
+            chartVisibility: "anonymous",
+            roles: ["host"],
+          },
+        })
       );
       assert.equal(result.ok, true);
       const snap = await db.doc(`directory_profiles/${USER_UID}`).get();
       assert.equal(snap.exists, true);
       assert.equal(snap.get("displayName"), "Neon Host");
+      assert.equal(snap.get("chartName"), "Neon Voice");
+      assert.equal(snap.get("chartVisibility"), "anonymous");
       assert.deepEqual(snap.get("roles"), ["fan"]);
+      const userSnap = await db.doc(`users/${USER_UID}`).get();
+      assert.equal(userSnap.get("leaderboardProfile.displayName"), "Neon Voice");
+      assert.equal(userSnap.get("leaderboardProfile.visibility"), "anonymous");
     }],
 
     ["upsertDirectoryProfile preserves existing server-assigned roles", async () => {
@@ -491,6 +644,10 @@ async function run() {
         roles: ["host"],
         status: "approved",
       });
+      await db.doc(`host_access_approvals/${USER_UID}`).set({
+        uid: USER_UID,
+        hostApprovalEnabled: true,
+      });
       const song = await ensureSong.run(
         requestFor(USER_UID, { title: "Don't Stop Believin'", artist: "Journey" })
       );
@@ -502,9 +659,63 @@ async function run() {
           label: "YouTube Karaoke",
         })
       );
+      const performanceId = "performance_roomx_1";
+      await db.doc(`directory_profiles/${USER_UID}`).set({
+        uid: USER_UID,
+        displayName: "Beau",
+        chartName: "Beau On The Mic",
+        chartVisibility: "public",
+        visibility: "public",
+        status: "approved",
+      }, { merge: true });
+      await db.doc("room_sessions/room_roomx").set({
+        roomCode: "ROOMX",
+        title: "Friday Spotlight",
+        venueName: "Demo House",
+        hostName: "Host User",
+        city: "Seattle",
+        state: "WA",
+        status: "approved",
+        visibility: "public",
+      });
+      await db.doc(`artifacts/bross-app/public/data/rooms/ROOMX`).set({
+        hostUid: USER_UID,
+        hostUids: [USER_UID],
+        discover: {
+          listingId: "room_roomx",
+          publicRoom: true,
+          visibility: "public",
+        },
+        lastPerformance: {
+          id: performanceId,
+          songTitle: "Journey - Don't Stop Believin' (Karaoke Version)",
+          artist: "Sing King Karaoke",
+          singerName: "Beau",
+          singerUid: USER_UID,
+          applauseScore: 88,
+          hypeScore: 22,
+          hostBonus: 10,
+        },
+      });
+      await db.doc(`artifacts/bross-app/public/data/room_users/ROOMX_${USER_UID}`).set({
+        roomCode: "ROOMX",
+        uid: USER_UID,
+        name: "Beau",
+        leaderboardAccountEligible: true,
+      });
+      await db.doc(`users/${USER_UID}`).set({
+        uid: USER_UID,
+        name: "Beau",
+        leaderboardAccountEligible: true,
+        leaderboardProfile: {
+          displayName: "Beau On The Mic",
+          visibility: "public",
+        },
+      }, { merge: true });
       const result = await logPerformance.run(
         requestFor(USER_UID, {
           roomCode: "ROOMX",
+          performanceId,
           songTitle: "Journey - Don't Stop Believin' (Karaoke Version)",
           artist: "Sing King Karaoke",
           singerName: "Beau",
@@ -521,17 +732,177 @@ async function run() {
       assert.equal(result.songId, song.songId);
       assert.equal(result.canonicalSongId, song.songId);
       assert.equal(result.trackId, track.trackId);
+      assert.equal(result.globalLeaderboardEligible, true);
+      assert.equal(result.leaderboardEligibility, "qualified_member");
+      assert.equal(result.duplicate, false);
+
+      const retryResult = await logPerformance.run(
+        requestFor(USER_UID, {
+          roomCode: "ROOMX",
+          performanceId,
+          songTitle: "Journey - Don't Stop Believin' (Karaoke Version)",
+          artist: "Sing King Karaoke",
+          singerName: "Beau",
+          mediaUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          trackSource: "youtube",
+          canonicalSongId: song.songId,
+          backingCandidateId: `${song.songId}__youtube__dQw4w9WgXcQ`,
+          providerTrackId: "dQw4w9WgXcQ",
+          applauseScore: 88,
+          hypeScore: 22,
+          hostBonus: 10,
+        })
+      );
+      assert.equal(retryResult.duplicate, true);
+      assert.equal(retryResult.totalScore, 120);
 
       const performanceSnap = await db.collection("performances").where("canonicalSongId", "==", song.songId).get();
-      assert.equal(performanceSnap.empty, false);
+      assert.equal(performanceSnap.size, 1);
       assert.equal(performanceSnap.docs[0].get("backingCandidateId"), `${song.songId}__youtube__dQw4w9WgXcQ`);
       assert.equal(performanceSnap.docs[0].get("providerTrackId"), "dQw4w9WgXcQ");
+      assert.equal(performanceSnap.docs[0].get("projectionVersion"), 1);
 
       const hallOfFameSnap = await db.doc(`song_hall_of_fame/${song.songId}`).get();
       assert.equal(hallOfFameSnap.exists, true);
       assert.equal(hallOfFameSnap.get("canonicalSongId"), song.songId);
       assert.equal(hallOfFameSnap.get("songTitle"), "Don't Stop Believin'");
       assert.equal(hallOfFameSnap.get("artist"), "Journey");
+      assert.equal(hallOfFameSnap.get("globalLeaderboardEligible"), true);
+      assert.equal(hallOfFameSnap.get("singerUid"), undefined);
+
+      const memberChartsSnap = await db.collection("public_chart_members").get();
+      assert.equal(memberChartsSnap.size, 1);
+      assert.equal(memberChartsSnap.docs[0].get("displayName"), "Beau On The Mic");
+      assert.equal(memberChartsSnap.docs[0].get("performanceCount"), 1);
+      assert.equal(memberChartsSnap.docs[0].get("rankScore"), 120);
+      assert.equal(memberChartsSnap.docs[0].get("profileUid"), undefined);
+      const publicSongSnap = await db.doc(`public_chart_songs/${song.songId}`).get();
+      assert.equal(publicSongSnap.exists, true);
+      assert.equal(publicSongSnap.get("canonicalSongId"), song.songId);
+      assert.equal(publicSongSnap.get("displayName"), "Beau On The Mic");
+      assert.equal(publicSongSnap.get("resultId"), performanceSnap.docs[0].id);
+      assert.equal(publicSongSnap.get("profileUid"), undefined);
+      const publicNightSnap = await db.doc("public_chart_nights/room_roomx").get();
+      assert.equal(publicNightSnap.exists, true);
+      assert.equal(publicNightSnap.get("title"), "Friday Spotlight");
+      assert.equal(publicNightSnap.get("performanceCount"), 1);
+      assert.equal(publicNightSnap.get("rankScore"), 120);
+      assert.equal(publicNightSnap.get("topProfileUid"), undefined);
+
+      await assert.rejects(
+        () => moderatePublicChartResult.run(requestFor(USER_UID, {
+          resultId: performanceSnap.docs[0].id,
+          apply: true,
+        })),
+        (error) => error?.code === "permission-denied"
+      );
+      const repairPreview = await moderatePublicChartResult.run(requestFor(ADMIN_UID, {
+        resultId: performanceSnap.docs[0].id,
+        reason: "integration_preview",
+      }));
+      assert.equal(repairPreview.dryRun, true);
+      assert.equal(repairPreview.affectedSongId, song.songId);
+      assert.equal((await db.doc(`public_chart_songs/${song.songId}`).get()).exists, true);
+
+      const repairResult = await moderatePublicChartResult.run(requestFor(ADMIN_UID, {
+        resultId: performanceSnap.docs[0].id,
+        reason: "integration_removal",
+        apply: true,
+      }));
+      assert.equal(repairResult.applied, true);
+      assert.equal(repairResult.remainingMemberPerformances, 0);
+      assert.equal((await db.collection("public_chart_members").get()).empty, true);
+      assert.equal((await db.doc(`public_chart_songs/${song.songId}`).get()).exists, false);
+      assert.equal((await db.doc("public_chart_nights/room_roomx").get()).exists, false);
+      assert.equal((await db.doc(`song_hall_of_fame/${song.songId}`).get()).exists, false);
+      assert.equal((await db.doc(`performances/${performanceSnap.docs[0].id}`).get()).get("publicChartStatus"), "removed");
+      assert.equal((await db.collection("public_chart_moderation_events").get()).size, 1);
+    }],
+
+    ["logPerformance keeps guests in room history without entering global charts", async () => {
+      await db.doc(`host_access_approvals/${HOST_UID}`).set({
+        uid: HOST_UID,
+        hostApprovalEnabled: true,
+      });
+      const performanceId = "performance_guest_1";
+      await db.doc(`artifacts/bross-app/public/data/rooms/GUEST1`).set({
+        hostUid: HOST_UID,
+        hostUids: [HOST_UID],
+        lastPerformance: {
+          id: performanceId,
+          songTitle: "Dreams",
+          artist: "Fleetwood Mac",
+          singerName: "Room Guest",
+          singerUid: OTHER_UID,
+          applauseScore: 40,
+          hypeScore: 20,
+          hostBonus: 5,
+        },
+      });
+      await db.doc(`artifacts/bross-app/public/data/room_users/GUEST1_${OTHER_UID}`).set({
+        roomCode: "GUEST1",
+        uid: OTHER_UID,
+        name: "Room Guest",
+        leaderboardAccountEligible: false,
+      });
+      await db.doc(`users/${OTHER_UID}`).set({
+        uid: OTHER_UID,
+        name: "Room Guest",
+        leaderboardAccountEligible: false,
+      });
+
+      const result = await logPerformance.run(requestFor(HOST_UID, {
+        roomCode: "GUEST1",
+        performanceId,
+        songTitle: "Dreams",
+        artist: "Fleetwood Mac",
+        singerName: "Room Guest",
+        singerUid: OTHER_UID,
+        applauseScore: 40,
+        hypeScore: 20,
+        hostBonus: 5,
+      }));
+
+      assert.equal(result.globalLeaderboardEligible, false);
+      assert.equal(result.leaderboardEligibility, "room_only_guest");
+      const performanceSnap = await db.collection("performances").where("performanceId", "==", performanceId).get();
+      assert.equal(performanceSnap.size, 1);
+      assert.equal(performanceSnap.docs[0].get("globalLeaderboardEligible"), false);
+      const hallSnap = await db.collection("song_hall_of_fame").limit(1).get();
+      assert.equal(hallSnap.empty, true);
+      assert.equal((await db.collection("public_chart_members").get()).empty, true);
+      assert.equal((await db.collection("public_chart_songs").get()).empty, true);
+      assert.equal((await db.collection("public_chart_nights").get()).empty, true);
+    }],
+
+    ["logPerformance rejects an approved host who does not own the room", async () => {
+      await db.doc(`host_access_approvals/${USER_UID}`).set({
+        uid: USER_UID,
+        hostApprovalEnabled: true,
+      });
+      await db.doc(`artifacts/bross-app/public/data/rooms/LOCKED1`).set({
+        hostUid: HOST_UID,
+        hostUids: [HOST_UID],
+        lastPerformance: {
+          id: "performance_locked_1",
+          songTitle: "Dreams",
+          artist: "Fleetwood Mac",
+          singerName: "Singer",
+          applauseScore: 40,
+        },
+      });
+
+      await assert.rejects(
+        () => logPerformance.run(requestFor(USER_UID, {
+          roomCode: "LOCKED1",
+          performanceId: "performance_locked_1",
+          songTitle: "Dreams",
+          artist: "Fleetwood Mac",
+        })),
+        (error) => String(error?.code || "").includes("permission-denied"),
+      );
+      const performanceSnap = await db.collection("performances").limit(1).get();
+      assert.equal(performanceSnap.empty, true);
     }],
 
     ["submitCatalogContribution queues pending request", async () => {
@@ -682,6 +1053,9 @@ async function run() {
             state: "WA",
             region: "wa_seattle",
             startsAtMs: Date.now() + 3600000,
+            endsAtMs: Date.now() + (5 * 3600000),
+            timezone: "America/Los_Angeles",
+            recurringRule: "Every Friday",
           },
         })
       );
@@ -697,6 +1071,16 @@ async function run() {
       const canonical = await db.doc(`karaoke_events/${resolved.entityId}`).get();
       assert.equal(canonical.exists, true);
       assert.equal(canonical.get("status"), "approved");
+      assert.equal(String(canonical.get("recurringRule")), "weekly");
+      const seriesId = String(canonical.get("nightSeriesId") || "");
+      assert.match(seriesId, /^night_[a-f0-9]{20}$/);
+      const seriesSnap = await db.doc(`night_series/${seriesId}`).get();
+      assert.equal(seriesSnap.exists, true);
+      assert.equal(String(seriesSnap.get("sourceCollection")), "karaoke_events");
+      const occurrencesSnap = await db.collection("night_occurrences")
+        .where("seriesId", "==", seriesId)
+        .get();
+      assert.equal(occurrencesSnap.size >= 12, true);
     }],
 
     ["non-moderator cannot list moderation queue", async () => {

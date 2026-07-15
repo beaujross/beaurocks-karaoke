@@ -109,11 +109,11 @@ const HostPage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEnt
   const listingGallery = hostImageCandidates.slice(0, 3);
   const hostExperienceSource = {
     ...profile,
-    ...(sessions[0] || events[0] || {}),
     title: hostName,
-    description: profile.bio || events[0]?.description || sessions[0]?.description || "",
+    description: profile.bio || "",
     hostName,
     imageUrl: heroImage,
+    ...(sessions.length ? { hasBeauRocksHostAccount: true } : {}),
   };
   const hostModernized = !!hostExperienceSource?.isOfficialBeauRocksRoom
     || !!hostExperienceSource?.hasBeauRocksHostAccount
@@ -193,7 +193,7 @@ const HostPage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEnt
               }}
             >
               <span>{item.title}</span>
-              <span>{formatDateTime(item.startsAtMs)}</span>
+              <span>{[item.venueName, formatDateTime(item.startsAtMs)].filter(Boolean).join(" | ")}</span>
             </a>
           ))}
         </div>

@@ -542,6 +542,7 @@ const HostRoomLaunchPad = ({
     requestedLaunchRoomCodeCandidate,
     hasRequestedLaunchRoomCode,
     runLandingRoomCleanup,
+    setRoomOccurrenceStatus,
     setRoomDiscoverability,
     setRoomArchivedState,
     resetRoomToCurrentTemplate,
@@ -749,6 +750,7 @@ const HostRoomLaunchPad = ({
             togglePinnedRoom={togglePinnedRoom}
             setRoomArchivedState={setRoomArchivedState}
             setRoomDiscoverability={setRoomDiscoverability}
+            setRoomOccurrenceStatus={setRoomOccurrenceStatus}
             runLandingRoomCleanup={runLandingRoomCleanup}
             resetRoomToCurrentTemplate={resetRoomToCurrentTemplate}
             seedAahfKickoffRoom={seedAahfKickoffRoom}

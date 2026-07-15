@@ -55,3 +55,16 @@ export const collectFollowedHostIds = (follows = []) => {
   return ids;
 };
 
+export const collectFollowedVenueIds = (follows = []) => {
+  const seen = new Set();
+  const ids = [];
+  (Array.isArray(follows) ? follows : []).forEach((entry) => {
+    if (String(entry?.targetType || "") !== "venue") return;
+    const id = String(entry?.targetId || "").trim();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    ids.push(id);
+  });
+  return ids;
+};
+

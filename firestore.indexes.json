@@ -201,6 +201,28 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "venueId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibility",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startsAtMs",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "room_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "hostUid",
           "order": "ASCENDING"
         },
