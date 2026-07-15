@@ -38,3 +38,7 @@ functions/.env*
 tmp/
 artifacts/
 .secrets/
+
+# Signed-in Google Cloud quota evidence is uploaded directly to Google.
+docs/compliance/evidence/2026-07-15-youtube-form/01-google-cloud-youtube-quotas-address-bar.png
+docs/compliance/evidence/2026-07-15-youtube-form/01b-google-cloud-youtube-general-quota-address-bar.png

@@ -5,10 +5,11 @@ The public/product captures below were generated from isolated production browse
 Required filenames:
 
 1. `01-google-cloud-youtube-quotas-address-bar.png`
-   - status: owner capture required
+   - status: captured from the signed-in project-owner session and reviewed 2026-07-15
    - Google Cloud Console
    - project `beaurocks-karaoke-v2` / `426849563936`
-   - show Search Queries `100/day` and general Queries `10,000/day`
+   - shows Search Queries `100/day`
+   - supplemental `01b-google-cloud-youtube-general-quota-address-bar.png` shows general Queries `10,000/day`; both images are unaltered browser-window captures with the address bar visible
 2. `02-privacy-policy-address-bar.png`
    - status: captured and reviewed 2026-07-15
    - https://beaurocks.app/karaoke/privacy
