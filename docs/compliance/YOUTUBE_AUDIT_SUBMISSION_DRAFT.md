@@ -7,12 +7,12 @@ Last updated: 2026-07-14
 This draft supports the YouTube Data API compliance audit and quota-extension request. The current product behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`); the production callable is active. The permanent-delete evidence was captured on the earlier production checkpoint and remains independently verified.
 
 Do not submit yet if the following are still missing:
-- Google Cloud Console quota presentation screenshot from the live project
+- current-form address-bar presentation captures from `docs/compliance/evidence/2026-07-15-youtube-form/`
 - final business/contact confirmation
 - final confirmation of the proposed `1,000 Search Queries/day` request
 
 
-Controlled cooldown and permanent-delete evidence are complete. Authenticated Quotas API evidence and the production usage-ledger baseline are captured. The remaining hard evidence item is the Google Cloud Console presentation screenshot; business/contact and final request-amount confirmation remain open.
+Controlled cooldown and permanent-delete evidence are complete. Authenticated Quotas API evidence and the production usage-ledger baseline are captured. The remaining hard evidence items are the current form's address-bar presentation captures; business/contact and final request-amount confirmation remain open.
 
 ## Product Summary
 
@@ -129,7 +129,7 @@ Already captured:
 
 Still required before submission:
 
-- Google Cloud Console presentation screenshot for the live project
+- current-form address-bar captures for Cloud quota, Privacy, policy-link context, Terms, and player/embed context
 - final business/contact confirmation
 - final confirmation of the proposed `1,000 Search Queries/day` request
 - optional authenticated live-room host screenshot only if reviewers request proof beyond the captured packet
@@ -142,8 +142,8 @@ The deterministic public-page and QA product screenshots are already captured. T
 
 Minimum live evidence still needed:
 
-- Google Cloud YouTube Data API quota page for the live project
-- optional authenticated host screenshot only if reviewers ask for proof beyond the captured packet
+- the five current-form presentation captures listed in `docs/compliance/evidence/2026-07-15-youtube-form/README.md`
+- optional authenticated curator/dashboard screenshot if reviewers ask for proof beyond the required captures
 
 Current note:
 - public legal routes are deployed and verified
@@ -164,7 +164,7 @@ Current note:
 
 ## Remaining Submission Blockers
 
-- Google Cloud Console quota presentation screenshot
+- current-form address-bar presentation captures
 - final business/contact confirmation
 - final confirmation of the proposed `1,000 Search Queries/day` request
 - final audit narrative read-through completed against deployed release `1784078708909000` (version `5bc48c15cd873eac`)

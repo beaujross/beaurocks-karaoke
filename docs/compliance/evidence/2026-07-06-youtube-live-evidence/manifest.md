@@ -28,8 +28,7 @@ Room code, if applicable:
 
 ## Files To Add
 
-- `google-cloud-youtube-quotas.png`: official Google Cloud YouTube Data API quota page for the live project.
-- `google-cloud-youtube-search-list-quota.png`: method-specific quota detail, if captured.
+- Current-form address-bar captures are tracked in `docs/compliance/evidence/2026-07-15-youtube-form/README.md`.
 - `live-host-youtube-surface.png`: optional authenticated live host evidence.
 
 ## Notes

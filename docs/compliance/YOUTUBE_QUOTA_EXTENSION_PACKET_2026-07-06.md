@@ -1,7 +1,7 @@
 # YouTube Quota Extension Packet
 
 Date: 2026-07-06
-Status: Production event-readiness behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`), and authenticated quota, controlled cooldown, permanent-delete, and request-sizing evidence are captured. The room-deletion evidence remains tied to its original 2026-07-13 production checkpoint. Not ready to submit until the Google Cloud Console presentation screenshot and final business/contact/request approval are attached.
+Status: Production event-readiness behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`), and authenticated quota, controlled cooldown, permanent-delete, and request-sizing evidence are captured. The room-deletion evidence remains tied to its original 2026-07-13 production checkpoint. Not ready to submit until the live form's five address-bar presentation captures and final business/contact/request approval are attached.
 
 ## Executive Summary
 
@@ -179,9 +179,9 @@ The capture script, `scripts/qa/youtube-audit-product-evidence-screenshots.mjs`,
 
 ## Screenshots To Capture Before Submission
 
-Required screenshots:
+Required presentation screenshots:
 
-- Google Cloud Console YouTube Data API quota page for the live project
+- the five address-bar captures listed in `docs/compliance/evidence/2026-07-15-youtube-form/README.md`
 - `quota-exhaustion-fallback.png` (captured)
 - `room-permanent-delete-confirmation.png` and `room-permanent-delete-success.png` (captured)
 - authenticated production host session for the live audit room, if reviewers request live-room evidence beyond the QA product-surface packet
@@ -219,7 +219,7 @@ No known code blocker remains for the quota-mitigation story.
 
 Submission still requires:
 
-- Google Cloud Console quota screenshot from the live project (the authenticated Quotas API now independently confirms 100 Search Queries/day and 10,000 general units/day)
+- current-form Cloud quota, Privacy, policy-link, Terms, and player/embed captures (the authenticated Quotas API independently confirms 100 Search Queries/day and 10,000 general units/day)
 - authenticated live-room product screenshots only if reviewers require evidence beyond the captured QA product-surface packet
 - confirmation of final business/contact details
 - confirmation that `1,000 Search Queries/day` is the approved request amount
@@ -227,7 +227,7 @@ Submission still requires:
 
 ## Recommended Submission Sequence
 
-1. Capture the Google Cloud Console presentation screenshot; retain the captured Quotas API, controlled cooldown, and permanent-delete artifacts.
+1. Capture the five current-form address-bar presentation screenshots; retain the captured Quotas API, controlled cooldown, and permanent-delete artifacts.
 2. Confirm final business/contact details and approve the proposed `1,000 Search Queries/day` request.
 3. Review this packet against deployed behavior.
 4. Submit the YouTube API Services Audit and Quota Extension Form.

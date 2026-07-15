@@ -6,9 +6,9 @@ Current Hosting version: `5bc48c15cd873eac`
 
 ## Executive Decision
 
-The technical packet is ready. Do not submit until these four human-owned items are complete:
+The technical packet is ready. Do not submit until the five required address-bar presentation captures and three confirmation items are complete:
 
-1. Capture the Google Cloud YouTube Data API Quotas page as `docs/compliance/evidence/2026-07-06-youtube-live-evidence/google-cloud-youtube-quotas.png`.
+1. Capture the five required files in `docs/compliance/evidence/2026-07-15-youtube-form/` using the included README.
 2. Confirm `hello@beaurocks.app` as the audit/legal contact.
 3. Confirm the final legal operator name and `BeauRocks Karaoke` product naming used on Terms, Privacy, and deletion pages.
 4. Approve the proposed request of `1,000 Search Queries/day`.
@@ -46,6 +46,9 @@ The strict command exits `2` while a human-owned item remains. It never stores c
 
 ## Submission Files
 
+- Field-by-field form guide: `docs/compliance/YOUTUBE_QUOTA_FORM_FIELD_GUIDE_2026-07-15.md`
+- Email templates: `docs/compliance/YOUTUBE_QUOTA_EMAIL_TEMPLATES_2026-07-15.md`
+- Current-form screenshot folder: `docs/compliance/evidence/2026-07-15-youtube-form/`
 - Reviewer narrative: `docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md`
 - Quota request packet: `docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md`
 - Checklist: `docs/compliance/YOUTUBE_AUDIT_PACKET_CHECKLIST.md`

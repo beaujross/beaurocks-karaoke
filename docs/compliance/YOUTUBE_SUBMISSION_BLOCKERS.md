@@ -28,7 +28,7 @@ The repo now has the core YouTube compliance hardening in place:
 - desktop and mobile legal-page screenshots were captured under `docs/compliance/evidence/2026-07-06-youtube-audit/`
 - QA product-surface screenshots were captured under `docs/compliance/evidence/2026-07-06-youtube-product-audit/`
 
-The controlled quota-exhaustion/cooldown evidence and live room permanent-delete evidence are complete. Authenticated Quotas API evidence confirms the live project assignment. The remaining blockers are the Google Cloud Console presentation screenshot, final business/contact confirmation, and final submission assembly. No known code blocker remains for the quota-mitigation story.
+The controlled quota-exhaustion/cooldown evidence and live room permanent-delete evidence are complete. Authenticated Quotas API evidence confirms the live project assignment. The remaining blockers are the current form's five address-bar presentation captures, final business/contact confirmation, and final submission assembly. No known code blocker remains for the quota-mitigation story.
 
 ## Resolved: Public Legal Pages Are Deployed And Verified
 
@@ -86,7 +86,7 @@ Verification result:
 
 Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capture steps and filenames.
 
-## Blocker 4: Google Cloud Console Presentation Screenshot
+## Blocker 4: Current-Form Presentation Captures
 
 Current repo state:
 
@@ -101,6 +101,8 @@ Why this still blocks submission:
 Minimum acceptance criteria:
 
 - capture the Google Cloud Console YouTube Data API quota page showing the same assigned limits
+- capture production Privacy, policy-link context, Terms, and player/embed evidence with the real browser address bar visible
+- use at least 1280×720 readable PNG/JPEG/PDF evidence under the form's upload limit
 - be ready to explain that the in-app counter is an operational request counter, not the official quota ledger
 
 ## Resolved: Final Submission Narrative Checked Against Live Behavior
@@ -142,7 +144,7 @@ These are no longer the main blockers in the codebase:
 
 ## Recommended Submission Sequence
 
-1. Capture the Google Cloud Console quota presentation screenshot; retain the completed API, cooldown, and permanent-delete evidence.
+1. Capture the five current-form presentation screenshots; retain the completed API, cooldown, and permanent-delete evidence.
 2. Confirm final business/contact details.
 3. Confirm the proposed `1,000 Search Queries/day` allocation and review `docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md` and the submission draft against the live product once.
 4. Only then submit the audit/quota-extension request.

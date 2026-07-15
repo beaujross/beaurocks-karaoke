@@ -43,16 +43,16 @@ Verified HTTP 200 without login on 2026-07-06. Desktop and mobile screenshots ar
 - controlled production cooldown screenshot and evidence note
 - live disposable-room permanent-delete confirmation, success, hashes, and independent absence checks
 
-## Remaining Screenshot To Capture
+## Remaining Screenshots To Capture
 
-- Google Cloud Quotas page for the live YouTube Data API project
+- the five current-form address-bar captures listed in `docs/compliance/evidence/2026-07-15-youtube-form/README.md`
 - authenticated live-room host screenshot only if reviewers require evidence beyond the QA product-surface packet
 
 Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capture steps and filenames.
 
 ## Technical Evidence To Prepare
 
-- Google Cloud Quotas page screenshot from the live project
+- current-form Cloud quota, Privacy, policy-link context, Terms, and player/embed captures
 - list of YouTube Data API methods currently used
 - explanation of the separate `search.list` bucket and the lower-cost `videos.list` refresh path
 - explanation of server-side and client-side caching

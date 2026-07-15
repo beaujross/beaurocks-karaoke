@@ -9,6 +9,7 @@ const CURRENT_HOSTING_VERSION = "5bc48c15cd873eac";
 
 const checks = [];
 const humanBlockers = [];
+const humanArtifactCheckNames = new Set();
 
 const record = (name, pass, detail) => {
   checks.push({ name, pass: pass === true, detail });
@@ -126,12 +127,39 @@ if (LIVE) {
   }
 }
 
-const consoleScreenshot = "docs/compliance/evidence/2026-07-06-youtube-live-evidence/google-cloud-youtube-quotas.png";
-if (!(await verifyArtifact(consoleScreenshot, 10_000))) {
-  humanBlockers.push({
+const presentationCaptures = [
+  {
     id: "console_quota_screenshot",
-    action: "Capture the live Google Cloud YouTube Data API Quotas page at the documented filename.",
-  });
+    path: "docs/compliance/evidence/2026-07-15-youtube-form/01-google-cloud-youtube-quotas-address-bar.png",
+    action: "Capture the live Google Cloud YouTube Data API Quotas page with the address bar visible.",
+  },
+  {
+    id: "privacy_screenshot",
+    path: "docs/compliance/evidence/2026-07-15-youtube-form/02-privacy-policy-address-bar.png",
+    action: "Capture the production Privacy Policy with the address bar and YouTube/Google disclosures visible.",
+  },
+  {
+    id: "policy_context_screenshot",
+    path: "docs/compliance/evidence/2026-07-15-youtube-form/03-host-youtube-policy-links-address-bar.png",
+    action: "Capture the production Host YouTube policy-link context with the address bar visible.",
+  },
+  {
+    id: "terms_screenshot",
+    path: "docs/compliance/evidence/2026-07-15-youtube-form/04-terms-address-bar.png",
+    action: "Capture the production Terms page with the address bar and YouTube policy links visible.",
+  },
+  {
+    id: "player_screenshot",
+    path: "docs/compliance/evidence/2026-07-15-youtube-form/05-youtube-player-address-bar.png",
+    action: "Capture the production YouTube player/embed context with the address bar visible.",
+  },
+];
+for (const capture of presentationCaptures) {
+  const checkName = `artifact:${capture.path}`;
+  humanArtifactCheckNames.add(checkName);
+  if (!(await verifyArtifact(capture.path, 10_000))) {
+    humanBlockers.push({ id: capture.id, action: capture.action });
+  }
 }
 
 if (process.env.YOUTUBE_AUDIT_CONTACT_CONFIRMED !== "1") {
@@ -153,7 +181,7 @@ if (String(process.env.YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED || "") !== "1000") 
   });
 }
 
-const technicalFailures = checks.filter((item) => !item.pass && item.name !== `artifact:${consoleScreenshot}`);
+const technicalFailures = checks.filter((item) => !item.pass && !humanArtifactCheckNames.has(item.name));
 const result = {
   ok: technicalFailures.length === 0 && humanBlockers.length === 0,
   technicalReady: technicalFailures.length === 0,
