@@ -1,7 +1,7 @@
 # Usage Control Contract
 
 Last updated: 2026-07-22
-Status: Slice 06.1 prepaid-capacity foundation; checkout and auto-refill disabled
+Status: Slice 06.2 reversible prepaid accounting and Host receipts; checkout and auto-refill disabled
 
 ## Decision
 
@@ -71,7 +71,15 @@ The monthly maximum can now be the entitled Host plan hard limit plus server-own
 
 The server-owned aggregate is `organizations/{orgId}/usage_capacity/{YYYYMM}`. Signed Stripe fulfillment writes an append-only entry at `organizations/{orgId}/additional_usage_ledger/{stripeCheckoutSessionId}` and increments the aggregate in one transaction. Grant validation requires an enabled commercial policy and pack, a paid checkout, exact amount and currency, a valid Workspace and UTC period, and capacity only for known meters. Checkout Session identity prevents duplicate grant on webhook replay.
 
-The production catalog is intentionally empty. `checkoutEnabled` and `autoRefillEnabled` are false, no client checkout function or purchase button exists, and no unvalidated price is public. Capacity is ignored unless the Workspace has an entitled Host plan. Refund, chargeback, receipt, pre-event estimate, first-pack economics, and capped auto-refill work remain required before Gate C3.
+The production catalog is intentionally empty. `checkoutEnabled` and `autoRefillEnabled` are false, no client checkout function or purchase button exists, and no unvalidated price is public. Capacity is ignored unless the Workspace has an entitled Host plan. Pre-event estimate, first-pack economics, expiration, and capped auto-refill work remain required before Gate C3.
+
+### Slice 06.2 reversible accounting and receipts
+
+Signed Stripe `charge.refunded` and `charge.dispute.created` events can now append immutable adjustment entries and revoke only capacity that remains from the mapped purchase. A server-only grant-state projection prevents retries or overlapping refund and chargeback events from revoking the same capacity twice. It also converts Stripe's cumulative refunded amount into the incremental amount recorded by each partial-refund entry. The original purchase ledger entry is never edited. Unmapped refunds are ignored as another Stripe product.
+
+The conservative pre-launch policy revokes all remaining capacity after any refund, including a partial refund. Money > Billing & Usage states this rule and exposes a sanitized, period-scoped `Receipts & adjustments` history to Workspace owners and admins through a callable. Direct client access to the ledger, grant state, capacity aggregate, and Payment Intent mapping remains denied.
+
+This sub-slice does not enable a pack, price, checkout action, purchase button, auto-refill, postpaid use, or new client Firestore permission. Gate C3 remains open until the customer-facing unit, economics, expiration, pre-event estimate, auto-refill cap, and cohort are approved.
 
 ## Host warnings
 
@@ -106,3 +114,6 @@ Variable-cost degradation must not disable queue management, Host override, exis
 - Slice 06.1 provider revisions are `youtubesearch-00148-lif`, `youtubeplaylist-00147-cep`, `youtubestatus-00148-dah`, `youtuberefreshindexentries-00045-tex`, `youtubedetails-00147-vav`, `geminigenerate-00146-nev`, `applemusiclyrics-00151-bec`, `resolvequeuesonglyrics-00109-kam`, `autoapplelyrics-00147-vav`, `autopoptrivia-00093-xaf`, `backfillpoptriviaonroomenable-00093-yiy`, and `recoverpendingpoptrivia-00093-ced`.
 - Hosting release `1784711753917000`, version `23346e2878422268`, serves `HostApp-C2KTSASp.js`. Live smoke returned HTTP 200 across index, entry, main, and Host assets and found the Additional usage readiness, disabled-purchase, and no-uncapped-overage copy.
 - Slice 06.1 did not enable a pack, price, checkout function, purchase button, auto-refill, postpaid usage, Firestore rule, or payment configuration. Gate C3 remains open.
+- Slice 06.2 revisions are `stripewebhook-00148-vid` and `listmyadditionalusagetransactions-00001-vin`, both Ready at 100% traffic.
+- Hosting release `1784731848817000`, version `58186aa686fa2c10`, serves `HostApp-CMn_LT5b.js`. Live smoke returned HTTP 200 for the index, entry, and Host assets and found the receipt, refresh, conservative-revocation, and empty-state copy.
+- Slice 06.2 did not enable a pack, price, checkout function, purchase button, auto-refill, postpaid usage, client Firestore permission, or payment configuration. Gate C3 remains open.

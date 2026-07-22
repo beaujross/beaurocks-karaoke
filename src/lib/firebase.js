@@ -894,6 +894,12 @@ const permanentlyDeleteHostRoom = async (payload = {}) => {
   return data || null;
 };
 
+const listMyAdditionalUsageTransactions = async (opts = {}) => {
+  await requireAppCheckToken("listMyAdditionalUsageTransactions");
+  const data = await callFunction("listMyAdditionalUsageTransactions", opts || {});
+  return data || null;
+};
+
 const manageMyUsageControls = async (payload = {}) => {
   await requireAppCheckToken("manageMyUsageControls");
   const data = await callFunction("manageMyUsageControls", payload || {});
@@ -1334,6 +1340,7 @@ export {
   getMyUsageInvoiceDraft,
   saveMyUsageInvoiceDraft,
   listMyUsageInvoices,
+  listMyAdditionalUsageTransactions,
   listHostSettingsAuditEntries,
   assertRoomHostAccess,
   recordRoomCostObservation,

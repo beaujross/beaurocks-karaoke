@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const {
   ADDITIONAL_USAGE_REASON_CODES,
+  buildAdditionalUsageRevocation,
   buildAdditionalUsageSummary,
   buildVerifiedAdditionalUsageGrant,
   resolveAdditionalCapacityUnits,
@@ -82,6 +83,39 @@ test("revocations reduce current capacity without rewriting historical grants", 
   };
   assert.equal(resolveAdditionalCapacityUnits({ capacityDocument, meterId: "youtube_data_request" }), 700);
   assert.equal(resolveMaximumUsageHardLimit({ planHardLimit: 25000, additionalUnits: 700 }), 25700);
+});
+
+test("refund and chargeback adjustments revoke only the grant's remaining capacity", () => {
+  const grant = {
+    capacityByMeter: {
+      youtube_data_request: 500,
+      ai_generate_content: 25,
+    },
+  };
+  const first = buildAdditionalUsageRevocation({
+    grant,
+    grantState: { revokedByMeter: { youtube_data_request: 100 } },
+    adjustmentType: "refund",
+  });
+  assert.equal(first.ok, true);
+  assert.equal(first.applied, true);
+  assert.deepEqual(first.capacityByMeter, {
+    youtube_data_request: 400,
+    ai_generate_content: 25,
+  });
+  assert.deepEqual(first.nextRevokedByMeter, {
+    youtube_data_request: 500,
+    ai_generate_content: 25,
+  });
+
+  const overlappingDispute = buildAdditionalUsageRevocation({
+    grant,
+    grantState: { revokedByMeter: first.nextRevokedByMeter },
+    adjustmentType: "chargeback",
+  });
+  assert.equal(overlappingDispute.ok, true);
+  assert.equal(overlappingDispute.applied, false);
+  assert.deepEqual(overlappingDispute.capacityByMeter, {});
 });
 
 test("Host summary is bounded to known meters and advertises disabled rails honestly", () => {

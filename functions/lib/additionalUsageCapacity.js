@@ -11,6 +11,16 @@ const ADDITIONAL_USAGE_REASON_CODES = Object.freeze({
   invalidPeriod: "additional_usage_invalid_period",
   invalidOrganization: "additional_usage_invalid_organization",
   invalidCapacity: "additional_usage_invalid_capacity",
+  invalidAdjustmentType: "additional_usage_invalid_adjustment_type",
+  invalidPaymentReference: "additional_usage_invalid_payment_reference",
+  paymentReferenceConflict: "additional_usage_payment_reference_conflict",
+  grantStateMissing: "additional_usage_grant_state_missing",
+  alreadyFullyRevoked: "additional_usage_already_fully_revoked",
+});
+
+const ADDITIONAL_USAGE_ADJUSTMENT_TYPES = Object.freeze({
+  refund: "refund",
+  chargeback: "chargeback",
 });
 
 const toWholeNumber = (value, fallback = 0) => {
@@ -136,8 +146,50 @@ const buildVerifiedAdditionalUsageGrant = ({
   };
 };
 
+const buildAdditionalUsageRevocation = ({
+  grant = {},
+  grantState = {},
+  adjustmentType = "",
+} = {}) => {
+  const safeAdjustmentType = String(adjustmentType || "").trim().toLowerCase();
+  if (!Object.values(ADDITIONAL_USAGE_ADJUSTMENT_TYPES).includes(safeAdjustmentType)) {
+    return rejectGrant(ADDITIONAL_USAGE_REASON_CODES.invalidAdjustmentType);
+  }
+  const grantedCapacity = normalizeCapacityByMeter(
+    grant?.capacityByMeter,
+    Object.keys(grant?.capacityByMeter || {}),
+  );
+  if (!Object.keys(grantedCapacity).length) {
+    return rejectGrant(ADDITIONAL_USAGE_REASON_CODES.invalidCapacity);
+  }
+  const alreadyRevoked = normalizeCapacityByMeter(
+    grantState?.revokedByMeter,
+    Object.keys(grantedCapacity),
+  );
+  const capacityByMeter = {};
+  Object.entries(grantedCapacity).forEach(([meterId, grantedUnits]) => {
+    const remaining = Math.max(0, grantedUnits - toWholeNumber(alreadyRevoked[meterId], 0));
+    if (remaining > 0) capacityByMeter[meterId] = remaining;
+  });
+  return {
+    ok: true,
+    reasonCode: "",
+    adjustmentType: safeAdjustmentType,
+    applied: Object.keys(capacityByMeter).length > 0,
+    capacityByMeter,
+    nextRevokedByMeter: Object.fromEntries(
+      Object.entries(grantedCapacity).map(([meterId, grantedUnits]) => [
+        meterId,
+        Math.min(grantedUnits, toWholeNumber(alreadyRevoked[meterId], 0) + toWholeNumber(capacityByMeter[meterId], 0)),
+      ]),
+    ),
+  };
+};
+
 module.exports = {
+  ADDITIONAL_USAGE_ADJUSTMENT_TYPES,
   ADDITIONAL_USAGE_REASON_CODES,
+  buildAdditionalUsageRevocation,
   buildAdditionalUsageSummary,
   buildVerifiedAdditionalUsageGrant,
   isUsagePeriodKey,

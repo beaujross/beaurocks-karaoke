@@ -37,6 +37,10 @@ const stripeEventRef = db.doc(`${ROOT}/stripe_events/${CHECKOUT_ID}`);
 const userRef = db.doc(`users/${BUYER_UID}`);
 
 async function resetState() {
+  await deleteCollection(db, ["organizations", ORG_ID, "additional_usage_ledger"]);
+  await deleteCollection(db, ["organizations", ORG_ID, "additional_usage_grant_state"]);
+  await deleteCollection(db, ["organizations", ORG_ID, "usage_capacity"]);
+  await deleteCollection(db, ["additional_usage_payment_refs"]);
   await deleteCollection(db, ["activities"]);
   await deleteCollection(db, ["artifacts", APP_ID, "public", "data", "rooms"]);
   await deleteCollection(db, ["artifacts", APP_ID, "public", "data", "room_users"]);
@@ -187,6 +191,152 @@ async function run() {
       assert.equal(ledgerSnap.exists, false);
       const subscriptionSnap = await db.doc(`organizations/${ORG_ID}/subscription/current`).get();
       assert.equal(subscriptionSnap.exists, false);
+    }],
+    ["revokes remaining capacity once across refund and overlapping chargeback events", async () => {
+      const period = "202607";
+      const sessionId = "cs_additional_usage_paid";
+      const paymentIntentId = "pi_additional_usage_paid";
+      await db.doc(`organizations/${ORG_ID}`).set({ orgId: ORG_ID, ownerUid: HOST_UID });
+      await db.doc(`organizations/${ORG_ID}/additional_usage_ledger/${sessionId}`).set({
+        schemaVersion: 1,
+        orgId: ORG_ID,
+        period,
+        entryType: "purchase_grant",
+        packId: "extra_night_test",
+        label: "Extra private karaoke night",
+        amountCents: 1200,
+        currency: "usd",
+        paymentStatus: "paid",
+        capacityByMeter: { youtube_data_request: 500, ai_generate_content: 25 },
+        stripeSessionId: sessionId,
+        stripePaymentIntentId: paymentIntentId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      await db.doc(`organizations/${ORG_ID}/additional_usage_grant_state/${sessionId}`).set({
+        schemaVersion: 1,
+        orgId: ORG_ID,
+        period,
+        stripeSessionId: sessionId,
+        capacityByMeter: { youtube_data_request: 500, ai_generate_content: 25 },
+        revokedByMeter: {},
+        refundedAmountCents: 0,
+        status: "active",
+      });
+      await db.doc(`organizations/${ORG_ID}/usage_capacity/${period}`).set({
+        schemaVersion: 1,
+        orgId: ORG_ID,
+        period,
+        meters: {
+          youtube_data_request: { granted: 500, revoked: 0 },
+          ai_generate_content: { granted: 25, revoked: 0 },
+        },
+      });
+      await db.doc(`additional_usage_payment_refs/${paymentIntentId}`).set({
+        schemaVersion: 1,
+        orgId: ORG_ID,
+        period,
+        stripeSessionId: sessionId,
+        stripePaymentIntentId: paymentIntentId,
+      });
+
+      const refundEvent = {
+        id: "evt_additional_usage_refund",
+        type: "charge.refunded",
+        object: "event",
+        data: {
+          object: {
+            id: "ch_additional_usage_paid",
+            object: "charge",
+            payment_intent: paymentIntentId,
+            amount: 1200,
+            amount_refunded: 600,
+            currency: "usd",
+          },
+        },
+      };
+      const first = await invokeStripeWebhook(refundEvent);
+      const replay = await invokeStripeWebhook(refundEvent);
+      assert.equal(first.body.additionalUsageAdjustment, true);
+      assert.equal(first.body.adjustmentType, "refund");
+      assert.equal(first.body.applied, true);
+      assert.equal(replay.body.duplicate, true);
+
+      const capacityAfterRefund = await db.doc(`organizations/${ORG_ID}/usage_capacity/${period}`).get();
+      assert.equal(capacityAfterRefund.get("meters.youtube_data_request.granted"), 500);
+      assert.equal(capacityAfterRefund.get("meters.youtube_data_request.revoked"), 500);
+      assert.equal(capacityAfterRefund.get("meters.ai_generate_content.revoked"), 25);
+      const purchaseAfterRefund = await db.doc(`organizations/${ORG_ID}/additional_usage_ledger/${sessionId}`).get();
+      assert.equal(purchaseAfterRefund.get("entryType"), "purchase_grant");
+      assert.equal(purchaseAfterRefund.get("capacityByMeter.youtube_data_request"), 500);
+      assert.equal(purchaseAfterRefund.get("revokedByMeter"), undefined);
+
+      const secondRefund = await invokeStripeWebhook({
+        ...refundEvent,
+        id: "evt_additional_usage_refund_two",
+        data: {
+          object: {
+            ...refundEvent.data.object,
+            amount_refunded: 1200,
+          },
+        },
+      });
+      assert.equal(secondRefund.body.additionalUsageAdjustment, true);
+      assert.equal(secondRefund.body.applied, false);
+      assert.equal(secondRefund.body.reasonCode, "additional_usage_already_fully_revoked");
+      const secondRefundEntry = await db.doc(`organizations/${ORG_ID}/additional_usage_ledger/evt_additional_usage_refund_two`).get();
+      assert.equal(secondRefundEntry.get("adjustmentAmountCents"), 600);
+      assert.equal(secondRefundEntry.get("stripeCumulativeRefundAmountCents"), 1200);
+      const grantStateAfterRefunds = await db.doc(`organizations/${ORG_ID}/additional_usage_grant_state/${sessionId}`).get();
+      assert.equal(grantStateAfterRefunds.get("refundedAmountCents"), 1200);
+
+      const dispute = await invokeStripeWebhook({
+        id: "evt_additional_usage_dispute",
+        type: "charge.dispute.created",
+        object: "event",
+        data: {
+          object: {
+            id: "dp_additional_usage_paid",
+            object: "dispute",
+            charge: "ch_additional_usage_paid",
+            payment_intent: paymentIntentId,
+            amount: 1200,
+            currency: "usd",
+          },
+        },
+      });
+      assert.equal(dispute.body.additionalUsageAdjustment, true);
+      assert.equal(dispute.body.adjustmentType, "chargeback");
+      assert.equal(dispute.body.applied, false);
+      assert.equal(dispute.body.reasonCode, "additional_usage_already_fully_revoked");
+      const capacityAfterDispute = await db.doc(`organizations/${ORG_ID}/usage_capacity/${period}`).get();
+      assert.equal(capacityAfterDispute.get("meters.youtube_data_request.revoked"), 500);
+      assert.equal(capacityAfterDispute.get("meters.ai_generate_content.revoked"), 25);
+      const disputeEntry = await db.doc(`organizations/${ORG_ID}/additional_usage_ledger/evt_additional_usage_dispute`).get();
+      assert.equal(disputeEntry.get("entryType"), "capacity_adjustment");
+      assert.equal(disputeEntry.get("applied"), false);
+    }],
+    ["ignores refunds that are not mapped to an Additional usage purchase", async () => {
+      const response = await invokeStripeWebhook({
+        id: "evt_unrelated_refund",
+        type: "charge.refunded",
+        object: "event",
+        data: {
+          object: {
+            id: "ch_unrelated_refund",
+            object: "charge",
+            payment_intent: "pi_unrelated_refund",
+            amount: 500,
+            amount_refunded: 500,
+            currency: "usd",
+          },
+        },
+      });
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.body.additionalUsageAdjustment, false);
+      assert.equal(response.body.ignored, true);
+      assert.equal(response.body.reasonCode, "not_additional_usage");
+      const ledgerSnap = await db.doc(`organizations/${ORG_ID}/additional_usage_ledger/evt_unrelated_refund`).get();
+      assert.equal(ledgerSnap.exists, false);
     }],
     ["projects an active Host subscription idempotently with Room creation enabled", async () => {
       const subscriptionEvent = {

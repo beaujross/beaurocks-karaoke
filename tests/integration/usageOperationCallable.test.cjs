@@ -4,7 +4,13 @@ process.env.YOUTUBE_API_KEY = "integration-test-key";
 process.env.GEMINI_API_KEY = "integration-test-gemini-key";
 
 const admin = require("../../functions/node_modules/firebase-admin");
-const { geminiGenerate, getMyUsageSummary, manageMyUsageControls, youtubeSearch } = require("../../functions/index.js");
+const {
+  geminiGenerate,
+  getMyUsageSummary,
+  listMyAdditionalUsageTransactions,
+  manageMyUsageControls,
+  youtubeSearch,
+} = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const APP_ID = "bross-app";
@@ -225,6 +231,25 @@ const run = async () => {
     assert.equal(expandedSummary.additionalUsage.autoRefillEnabled, false);
     assert.equal(expandedSummary.additionalUsage.meters.youtube_data_request.active, 10);
     assert.equal(expandedSummary.meters.youtube_data_request.maximumHardLimit, 25010);
+    await db.doc(`organizations/${ORG_ID}/additional_usage_ledger/cs_usage_receipt_test`).set({
+      schemaVersion: 1,
+      orgId: ORG_ID,
+      period,
+      entryType: "purchase_grant",
+      packId: "extra_night_test",
+      label: "Extra private karaoke night",
+      amountCents: 1200,
+      currency: "usd",
+      paymentStatus: "paid",
+      capacityByMeter: { youtube_data_request: 10, unknown_meter: 999 },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    const receipts = await listMyAdditionalUsageTransactions.run(requestFor({ period, limit: 10 }));
+    assert.equal(receipts.count, 1);
+    assert.equal(receipts.transactions[0].entryType, "purchase_grant");
+    assert.equal(receipts.transactions[0].label, "Extra private karaoke night");
+    assert.equal(receipts.transactions[0].amountCents, 1200);
+    assert.deepEqual(receipts.transactions[0].capacityByMeter, { youtube_data_request: 10 });
 
     await db.doc("platform_controls/usage").set({
       schemaVersion: 1,

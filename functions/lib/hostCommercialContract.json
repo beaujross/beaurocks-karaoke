@@ -238,6 +238,11 @@
     "allowanceLedger": "append_only",
     "overspendProtection": "transactional_workspace_reservation",
     "refundPolicy": "future_capacity_adjustment_no_history_rewrite",
+    "refundAdjustmentMode": "revoke_remaining_grant_on_any_refund_or_chargeback",
+    "adjustmentEvents": [
+      "charge.refunded",
+      "charge.dispute.created"
+    ],
     "packs": {}
   },
   "moneyRails": {

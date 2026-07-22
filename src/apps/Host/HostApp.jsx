@@ -57,6 +57,7 @@ import {
     recordRoomCostObservation,
     saveMyUsageInvoiceDraft,
     listMyUsageInvoices,
+    listMyAdditionalUsageTransactions,
     manageHostSettingsDefaults,
     updateRoomAsHost,
     publishPublicRoomRecap,
@@ -6618,6 +6619,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [invoiceSaveLoading, setInvoiceSaveLoading] = useState(false);
     const [invoiceHistoryLoading, setInvoiceHistoryLoading] = useState(false);
     const [invoiceHistory, setInvoiceHistory] = useState([]);
+    const [additionalUsageTransactions, setAdditionalUsageTransactions] = useState([]);
+    const [additionalUsageTransactionsLoading, setAdditionalUsageTransactionsLoading] = useState(false);
+    const [additionalUsageTransactionsError, setAdditionalUsageTransactionsError] = useState('');
     const [invoiceCustomerName, setInvoiceCustomerName] = useState('');
     const [invoiceIncludeBasePlan, setInvoiceIncludeBasePlan] = useState(false);
     const [invoiceTaxRatePercent, setInvoiceTaxRatePercent] = useState('0');
@@ -7278,6 +7282,36 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         })();
         return () => { cancelled = true; };
     }, [canManageUsageControls, orgContext?.orgId, roomCode, uid]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!uid || !orgContext?.orgId || !canManageUsageControls) {
+            setAdditionalUsageTransactions([]);
+            setAdditionalUsageTransactionsLoading(false);
+            setAdditionalUsageTransactionsError('');
+            return () => { cancelled = true; };
+        }
+        (async () => {
+            setAdditionalUsageTransactionsLoading(true);
+            setAdditionalUsageTransactionsError('');
+            try {
+                const payload = await listMyAdditionalUsageTransactions({
+                    period: selectedUsagePeriod,
+                    limit: 40
+                });
+                if (cancelled) return;
+                setAdditionalUsageTransactions(Array.isArray(payload?.transactions) ? payload.transactions : []);
+            } catch (error) {
+                if (cancelled) return;
+                hostLogger.error('Additional usage receipt sync failed', error);
+                setAdditionalUsageTransactions([]);
+                setAdditionalUsageTransactionsError('Could not load Additional usage receipts.');
+            } finally {
+                if (!cancelled) setAdditionalUsageTransactionsLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [canManageUsageControls, orgContext?.orgId, selectedUsagePeriod, uid]);
 
     useEffect(() => {
         if ((invoiceCustomerName || '').trim()) return;
@@ -17103,6 +17137,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setInvoiceHistoryLoading(false);
         }
     };
+    const refreshAdditionalUsageTransactions = async (showToast = false) => {
+        if (!canManageUsageControls) {
+            setAdditionalUsageTransactions([]);
+            return [];
+        }
+        setAdditionalUsageTransactionsLoading(true);
+        setAdditionalUsageTransactionsError('');
+        try {
+            const payload = await listMyAdditionalUsageTransactions({
+                period: selectedUsagePeriod,
+                limit: 40
+            });
+            const items = Array.isArray(payload?.transactions) ? payload.transactions : [];
+            setAdditionalUsageTransactions(items);
+            if (showToast) toast('Additional usage receipts refreshed');
+            return items;
+        } catch (error) {
+            hostLogger.error('Additional usage receipt refresh failed', error);
+            setAdditionalUsageTransactionsError('Could not load Additional usage receipts.');
+            if (showToast) toast('Could not load Additional usage receipts');
+            return [];
+        } finally {
+            setAdditionalUsageTransactionsLoading(false);
+        }
+    };
     const saveInvoiceDraftSnapshot = async () => {
         if (!canUseInvoiceDrafts) {
             toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS)} is not available on this plan.`);
@@ -26085,6 +26144,66 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         : 'Your current plan and Workspace ceiling remain authoritative.'}
                                                 </div>
                                             </div>
+                                        </div>
+                                        <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-2">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div>
+                                                    <div className="text-[10px] uppercase tracking-widest text-zinc-500">Receipts & adjustments</div>
+                                                    <div className="mt-1 text-[11px] text-zinc-500">Purchases, refunds, and chargebacks remain separate immutable entries.</div>
+                                                    <div className="mt-1 text-[11px] text-zinc-500">Any refund or chargeback revokes the remaining capacity from that purchase.</div>
+                                                </div>
+                                                {canManageUsageControls && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => refreshAdditionalUsageTransactions(true)}
+                                                        disabled={additionalUsageTransactionsLoading}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${additionalUsageTransactionsLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {additionalUsageTransactionsLoading ? 'Refreshing...' : 'Refresh receipts'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {additionalUsageTransactionsError && (
+                                                <div className="text-xs text-rose-200">{additionalUsageTransactionsError}</div>
+                                            )}
+                                            {!additionalUsageTransactionsLoading && additionalUsageTransactions.length === 0 && !additionalUsageTransactionsError && (
+                                                <div className="text-xs text-zinc-500">No Additional usage purchases or adjustments for this period.</div>
+                                            )}
+                                            {additionalUsageTransactions.length > 0 && (
+                                                <div className="divide-y divide-zinc-800 rounded border border-zinc-800 overflow-hidden">
+                                                    {additionalUsageTransactions.map((transaction) => {
+                                                        const isAdjustment = transaction.entryType === 'capacity_adjustment';
+                                                        const amountCents = isAdjustment
+                                                            ? Number(transaction.adjustmentAmountCents || 0)
+                                                            : Number(transaction.amountCents || 0);
+                                                        const capacityLabel = Object.entries(transaction.capacityByMeter || {})
+                                                            .map(([meterId, units]) => `${usageSummary?.meters?.[meterId]?.label || meterId}: ${isAdjustment ? '-' : '+'}${Number(units || 0).toLocaleString()}`)
+                                                            .join(' · ');
+                                                        return (
+                                                            <div key={`additional-usage-transaction-${transaction.transactionId}`} className="grid grid-cols-1 gap-2 bg-zinc-950/50 px-3 py-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                                                                <div className="min-w-0">
+                                                                    <div className="text-xs font-semibold text-zinc-100">
+                                                                        {isAdjustment
+                                                                            ? transaction.adjustmentType === 'chargeback' ? 'Chargeback adjustment' : 'Refund adjustment'
+                                                                            : transaction.label || 'Additional usage purchase'}
+                                                                    </div>
+                                                                    <div className="mt-0.5 text-[11px] text-zinc-500">
+                                                                        {capacityLabel || (transaction.applied === false ? 'No remaining capacity to revoke.' : 'Capacity details unavailable.')}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-left md:text-right">
+                                                                    <div className={`text-xs font-semibold ${isAdjustment ? 'text-amber-200' : 'text-emerald-200'}`}>
+                                                                        {isAdjustment ? '-' : ''}{formatUsdFromCents(amountCents)}
+                                                                    </div>
+                                                                    <div className="mt-0.5 text-[10px] text-zinc-500">
+                                                                        {transaction.createdAtMs ? new Date(transaction.createdAtMs).toLocaleString() : transaction.period || selectedUsagePeriod}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     {canManageUsageControls && (

@@ -1585,6 +1585,10 @@ async function run() {
         "organizations/org_host-uid/usage_controls/current",
         "organizations/org_host-uid/usage_room_controls/ROOM1",
         "organizations/org_host-uid/usage_operations/202607:operation-one",
+        "organizations/org_host-uid/usage_capacity/202607",
+        "organizations/org_host-uid/additional_usage_ledger/receipt-one",
+        "organizations/org_host-uid/additional_usage_grant_state/grant-one",
+        "additional_usage_payment_refs/pi_server_only",
       ];
       for (const protectedPath of protectedPaths) {
         await assertFails(db.doc(protectedPath).get());

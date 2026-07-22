@@ -46,8 +46,11 @@ const {
   resolveUsageControlDecision,
 } = require("./lib/usageCapabilityControl");
 const {
+  ADDITIONAL_USAGE_REASON_CODES,
   buildAdditionalUsageSummary,
+  buildAdditionalUsageRevocation,
   buildVerifiedAdditionalUsageGrant,
+  normalizeCapacityByMeter,
   resolveAdditionalCapacityUnits,
   resolveMaximumUsageHardLimit,
 } = require("./lib/additionalUsageCapacity");
@@ -166,6 +169,8 @@ const ORG_MEDIA_UPLOAD_SESSIONS_COLLECTION = "media_upload_sessions";
 const ORG_MEDIA_ASSETS_COLLECTION = "media_assets";
 const ORG_USAGE_CAPACITY_COLLECTION = "usage_capacity";
 const ORG_ADDITIONAL_USAGE_LEDGER_COLLECTION = "additional_usage_ledger";
+const ORG_ADDITIONAL_USAGE_GRANT_STATE_COLLECTION = "additional_usage_grant_state";
+const ADDITIONAL_USAGE_PAYMENT_REFS_COLLECTION = "additional_usage_payment_refs";
 const LEGACY_HOST_MEDIA_ASSETS_COLLECTION = "host_media_assets";
 const STRIPE_SUBSCRIPTIONS_COLLECTION = "stripe_subscriptions";
 const DEFAULT_BEAUROCKS_LOGO_URL = "/images/logo-library/beaurocks-logo-neon trasnparent.png";
@@ -23891,6 +23896,67 @@ exports.listMyUsageInvoices = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.listMyAdditionalUsageTransactions = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "list_my_additional_usage_transactions", { perMinute: 30, perHour: 240 });
+  const uid = requireAuth(request);
+  enforceAppCheckIfEnabled(request, "list_my_additional_usage_transactions");
+  const entitlements = await resolveUserEntitlements(uid);
+  const role = String(entitlements?.role || "").toLowerCase();
+  if (!["owner", "admin"].includes(role)) {
+    throw new HttpsError("permission-denied", "Only Workspace owners/admins can view Additional usage receipts.");
+  }
+  const orgId = String(entitlements?.orgId || "").trim();
+  if (!orgId) {
+    throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  }
+  const maxItems = clampNumber(request.data?.limit ?? 25, 1, 100, 25);
+  const requestedPeriod = request.data?.period
+    ? normalizeUsagePeriodKey(request.data.period)
+    : "";
+  if (request.data?.period && !requestedPeriod) {
+    throw new HttpsError("invalid-argument", "period must be in YYYYMM format.");
+  }
+  let ledgerQuery = orgsCollection()
+    .doc(orgId)
+    .collection(ORG_ADDITIONAL_USAGE_LEDGER_COLLECTION);
+  ledgerQuery = requestedPeriod
+    ? ledgerQuery.where("period", "==", requestedPeriod).limit(Math.min(100, maxItems * 3))
+    : ledgerQuery.orderBy("createdAt", "desc").limit(maxItems);
+  const snap = await ledgerQuery.get();
+  const transactions = snap.docs
+    .map((docSnap) => {
+      const data = docSnap.data() || {};
+      const capacityByMeter = normalizeCapacityByMeter(
+        data.capacityByMeter,
+        Object.keys(USAGE_METER_DEFINITIONS),
+      );
+      return {
+        transactionId: docSnap.id,
+        entryType: String(data.entryType || ""),
+        adjustmentType: String(data.adjustmentType || ""),
+        label: String(data.label || data.packId || "Additional usage"),
+        period: String(data.period || ""),
+        packId: String(data.packId || ""),
+        amountCents: toWholeNumber(data.amountCents, 0),
+        adjustmentAmountCents: toWholeNumber(data.adjustmentAmountCents, 0),
+        currency: String(data.currency || "usd").toUpperCase(),
+        paymentStatus: String(data.paymentStatus || ""),
+        applied: data.applied !== false,
+        reasonCode: String(data.reasonCode || ""),
+        capacityByMeter,
+        createdAtMs: valueToMillis(data.createdAt),
+      };
+    })
+    .sort((left, right) => Number(right.createdAtMs || 0) - Number(left.createdAtMs || 0))
+    .slice(0, maxItems);
+  return {
+    orgId,
+    period: requestedPeriod || null,
+    count: transactions.length,
+    transactions,
+  };
+});
+
 const pickProvisionRoomCode = async ({
   tx,
   rootRef = getRootRef(),
@@ -29132,24 +29198,35 @@ const fulfillVerifiedAdditionalUsageCheckout = async ({ event = {}, session = {}
   const grant = verification.grant;
   const eventId = sanitizeSecurityToken(event.id || session.id || "", 180);
   const sessionId = sanitizeSecurityToken(session.id || "", 180);
-  if (!eventId || !sessionId) {
-    return { ok: false, reasonCode: "additional_usage_invalid_payment_reference" };
+  const paymentIntentId = sanitizeSecurityToken(
+    typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id,
+    180,
+  );
+  const chargeId = sanitizeSecurityToken(session.payment_intent?.latest_charge || "", 180);
+  if (!eventId || !sessionId || !paymentIntentId) {
+    return { ok: false, reasonCode: ADDITIONAL_USAGE_REASON_CODES.invalidPaymentReference };
   }
   const orgRef = orgsCollection().doc(grant.orgId);
   const ledgerRef = orgRef.collection(ORG_ADDITIONAL_USAGE_LEDGER_COLLECTION).doc(sessionId);
+  const grantStateRef = orgRef.collection(ORG_ADDITIONAL_USAGE_GRANT_STATE_COLLECTION).doc(sessionId);
   const capacityRef = orgRef.collection(ORG_USAGE_CAPACITY_COLLECTION).doc(grant.period);
+  const paymentRef = admin.firestore().collection(ADDITIONAL_USAGE_PAYMENT_REFS_COLLECTION).doc(paymentIntentId);
   const now = admin.firestore.FieldValue.serverTimestamp();
 
   return admin.firestore().runTransaction(async (tx) => {
-    const [orgSnap, ledgerSnap] = await Promise.all([
+    const [orgSnap, ledgerSnap, paymentRefSnap] = await Promise.all([
       tx.get(orgRef),
       tx.get(ledgerRef),
+      tx.get(paymentRef),
     ]);
     if (!orgSnap.exists) {
-      return { ok: false, reasonCode: "additional_usage_invalid_organization" };
+      return { ok: false, reasonCode: ADDITIONAL_USAGE_REASON_CODES.invalidOrganization };
     }
     if (ledgerSnap.exists) {
       return { ok: true, duplicate: true, grant: ledgerSnap.data() || {} };
+    }
+    if (paymentRefSnap.exists) {
+      return { ok: false, reasonCode: ADDITIONAL_USAGE_REASON_CODES.paymentReferenceConflict };
     }
 
     tx.create(ledgerRef, {
@@ -29158,7 +29235,30 @@ const fulfillVerifiedAdditionalUsageCheckout = async ({ event = {}, session = {}
       checkoutType: "additional_usage",
       stripeEventId: eventId,
       stripeSessionId: sessionId,
+      stripePaymentIntentId: paymentIntentId,
+      stripeChargeId: chargeId || null,
       checkoutRequestId: sanitizeSecurityToken(metadata.checkoutRequestId || "", 180) || null,
+      createdAt: now,
+    });
+    tx.create(grantStateRef, {
+      schemaVersion: 1,
+      orgId: grant.orgId,
+      period: grant.period,
+      stripeSessionId: sessionId,
+      capacityByMeter: grant.capacityByMeter,
+      revokedByMeter: {},
+      refundedAmountCents: 0,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    tx.create(paymentRef, {
+      schemaVersion: 1,
+      orgId: grant.orgId,
+      period: grant.period,
+      stripeSessionId: sessionId,
+      stripePaymentIntentId: paymentIntentId,
+      stripeChargeId: chargeId || null,
       createdAt: now,
     });
     const meters = Object.fromEntries(
@@ -29176,6 +29276,152 @@ const fulfillVerifiedAdditionalUsageCheckout = async ({ event = {}, session = {}
       updatedAt: now,
     }, { merge: true });
     return { ok: true, duplicate: false, grant };
+  });
+};
+
+const readStripeObjectId = (value = null) => sanitizeSecurityToken(
+  typeof value === "string" ? value : value?.id,
+  180,
+);
+
+const resolveAdjustmentPaymentIntentId = async ({ stripe = null, source = {} } = {}) => {
+  const direct = readStripeObjectId(source?.payment_intent);
+  if (direct) return direct;
+  const chargeId = readStripeObjectId(source?.charge || source?.id);
+  if (!chargeId || !stripe?.charges?.retrieve) return "";
+  try {
+    const charge = await stripe.charges.retrieve(chargeId);
+    return readStripeObjectId(charge?.payment_intent);
+  } catch (error) {
+    console.warn("Could not resolve Additional usage payment intent from Stripe charge.", {
+      chargeId,
+      message: String(error?.message || error),
+    });
+    return "";
+  }
+};
+
+const applyAdditionalUsageCapacityAdjustment = async ({
+  event = {},
+  paymentIntentId = "",
+  adjustmentType = "refund",
+  source = {},
+} = {}) => {
+  const safePaymentIntentId = sanitizeSecurityToken(paymentIntentId, 180);
+  const eventId = sanitizeSecurityToken(event.id || "", 180);
+  if (!safePaymentIntentId || !eventId) {
+    return { ok: false, ignored: true, reasonCode: ADDITIONAL_USAGE_REASON_CODES.invalidPaymentReference };
+  }
+  const paymentRef = admin.firestore().collection(ADDITIONAL_USAGE_PAYMENT_REFS_COLLECTION).doc(safePaymentIntentId);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  return admin.firestore().runTransaction(async (tx) => {
+    const paymentRefSnap = await tx.get(paymentRef);
+    if (!paymentRefSnap.exists) {
+      return { ok: true, ignored: true, reasonCode: "not_additional_usage" };
+    }
+    const payment = paymentRefSnap.data() || {};
+    const orgId = String(payment.orgId || "").trim();
+    const period = normalizeUsagePeriodKey(payment.period || "");
+    const sessionId = sanitizeSecurityToken(payment.stripeSessionId || "", 180);
+    if (!orgId || !period || !sessionId) {
+      return { ok: false, ignored: true, reasonCode: ADDITIONAL_USAGE_REASON_CODES.invalidPaymentReference };
+    }
+    const orgRef = orgsCollection().doc(orgId);
+    const purchaseRef = orgRef.collection(ORG_ADDITIONAL_USAGE_LEDGER_COLLECTION).doc(sessionId);
+    const adjustmentRef = orgRef.collection(ORG_ADDITIONAL_USAGE_LEDGER_COLLECTION).doc(eventId);
+    const grantStateRef = orgRef.collection(ORG_ADDITIONAL_USAGE_GRANT_STATE_COLLECTION).doc(sessionId);
+    const capacityRef = orgRef.collection(ORG_USAGE_CAPACITY_COLLECTION).doc(period);
+    const [purchaseSnap, adjustmentSnap, grantStateSnap] = await Promise.all([
+      tx.get(purchaseRef),
+      tx.get(adjustmentRef),
+      tx.get(grantStateRef),
+    ]);
+    if (adjustmentSnap.exists) {
+      return { ok: true, duplicate: true, ignored: false };
+    }
+    if (!purchaseSnap.exists || !grantStateSnap.exists) {
+      return { ok: false, ignored: true, reasonCode: ADDITIONAL_USAGE_REASON_CODES.grantStateMissing };
+    }
+    const purchase = purchaseSnap.data() || {};
+    const grantState = grantStateSnap.data() || {};
+    const revocation = buildAdditionalUsageRevocation({
+      grant: purchase,
+      grantState,
+      adjustmentType,
+    });
+    if (!revocation.ok) return { ...revocation, ignored: true };
+    const reasonCode = revocation.applied ? "" : ADDITIONAL_USAGE_REASON_CODES.alreadyFullyRevoked;
+    const purchaseAmountCents = toWholeNumber(purchase.amountCents, 0);
+    const previousRefundedAmountCents = toWholeNumber(grantState.refundedAmountCents, 0);
+    const stripeCumulativeRefundAmountCents = revocation.adjustmentType === "refund"
+      ? Math.min(purchaseAmountCents, toWholeNumber(source?.amount_refunded, 0))
+      : 0;
+    const adjustmentAmountCents = revocation.adjustmentType === "refund"
+      ? Math.max(0, stripeCumulativeRefundAmountCents - previousRefundedAmountCents)
+      : toWholeNumber(source?.amount, 0);
+    tx.create(adjustmentRef, {
+      schemaVersion: 1,
+      orgId,
+      period,
+      entryType: "capacity_adjustment",
+      adjustmentType: revocation.adjustmentType,
+      label: purchase.label || purchase.packId || "Additional usage",
+      packId: purchase.packId || "",
+      purchaseTransactionId: sessionId,
+      stripeEventId: eventId,
+      stripeSessionId: sessionId,
+      stripePaymentIntentId: safePaymentIntentId,
+      stripeChargeId: readStripeObjectId(source?.charge || source?.id) || null,
+      amountCents: purchaseAmountCents,
+      adjustmentAmountCents,
+      stripeCumulativeRefundAmountCents: revocation.adjustmentType === "refund"
+        ? stripeCumulativeRefundAmountCents
+        : null,
+      currency: String(source?.currency || purchase.currency || "usd").trim().toLowerCase(),
+      paymentStatus: revocation.adjustmentType === "refund" ? "refunded" : "chargeback",
+      capacityByMeter: revocation.capacityByMeter,
+      applied: revocation.applied,
+      reasonCode,
+      createdAt: now,
+    });
+    tx.set(grantStateRef, {
+      revokedByMeter: revocation.nextRevokedByMeter,
+      status: "revoked",
+      lastAdjustmentType: revocation.adjustmentType,
+      lastAdjustmentEventId: eventId,
+      ...(revocation.adjustmentType === "refund"
+        ? { refundedAmountCents: Math.max(previousRefundedAmountCents, stripeCumulativeRefundAmountCents) }
+        : {}),
+      updatedAt: now,
+    }, { merge: true });
+    if (revocation.applied) {
+      const meters = Object.fromEntries(
+        Object.entries(revocation.capacityByMeter).map(([meterId, units]) => [
+          meterId,
+          { revoked: admin.firestore.FieldValue.increment(units) },
+        ]),
+      );
+      tx.set(capacityRef, {
+        meters,
+        adjustmentCount: admin.firestore.FieldValue.increment(1),
+        updatedAt: now,
+      }, { merge: true });
+    }
+    tx.set(paymentRef, {
+      lastAdjustmentType: revocation.adjustmentType,
+      lastAdjustmentEventId: eventId,
+      updatedAt: now,
+    }, { merge: true });
+    return {
+      ok: true,
+      ignored: false,
+      duplicate: false,
+      applied: revocation.applied,
+      reasonCode,
+      orgId,
+      period,
+    };
   });
 };
 
@@ -29396,6 +29642,28 @@ exports.stripeWebhook = onRequest(
         rootRef,
         roomCode,
       });
+    }
+
+    if (event.type === "charge.refunded" || event.type === "charge.dispute.created") {
+      const source = event.data.object || {};
+      const adjustmentType = event.type === "charge.refunded" ? "refund" : "chargeback";
+      const paymentIntentId = await resolveAdjustmentPaymentIntentId({ stripe, source });
+      const result = await applyAdditionalUsageCapacityAdjustment({
+        event,
+        paymentIntentId,
+        adjustmentType,
+        source,
+      });
+      res.json({
+        received: true,
+        additionalUsageAdjustment: result.ignored !== true,
+        adjustmentType,
+        applied: result.applied === true,
+        duplicate: result.duplicate === true,
+        ignored: result.ignored === true,
+        reasonCode: result.reasonCode || null,
+      });
+      return;
     }
 
     if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
