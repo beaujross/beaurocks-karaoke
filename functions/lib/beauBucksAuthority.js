@@ -7,6 +7,7 @@ const BEAUBUCKS_PAYMENT_REF_COLLECTION = 'beaurocks_payment_refs';
 const BEAUBUCKS_ADJUSTMENT_COLLECTION = 'beaurocks_payment_adjustments';
 const BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION = 'beaurocks_pending_payment_adjustments';
 const BEAUBUCKS_PENDING_ADJUSTMENT_EVENT_COLLECTION = 'beaurocks_pending_payment_adjustment_events';
+const BEAUBUCKS_PURCHASE_LIMIT_COLLECTION = 'beaurocks_beaubucks_purchase_limits';
 const BEAUBUCKS_AUTHORITY_SCHEMA_VERSION = 1;
 
 const token = (value = '') => String(value || '').trim();
@@ -35,6 +36,45 @@ const getBeauBucksPack = (packId = '', contract = commercialContract) => {
 const isBeauBucksCheckoutEnabled = (contract = commercialContract) => {
   const policy = getBeauBucksPolicy(contract);
   return policy.checkoutEnabled === true && token(policy.status) === 'active';
+};
+
+const getBeauBucksPurchaseLimit = (contract = commercialContract) => {
+  const source = getBeauBucksPolicy(contract)?.purchaseLimit || {};
+  const maxCompletedPurchasesPerBuyerPerRoom = whole(source.maxCompletedPurchasesPerBuyerPerRoom);
+  const reservationMinutes = whole(source.reservationMinutes);
+  if (!maxCompletedPurchasesPerBuyerPerRoom || reservationMinutes < 30 || reservationMinutes > 1440) return null;
+  return { maxCompletedPurchasesPerBuyerPerRoom, reservationMinutes };
+};
+
+const evaluateBeauBucksPurchaseReservation = ({
+  account = {},
+  limitState = {},
+  pack = {},
+  reservationId = '',
+  nowMs = Date.now(),
+  contract = commercialContract,
+} = {}) => {
+  const purchaseLimit = getBeauBucksPurchaseLimit(contract);
+  if (!purchaseLimit) return { allowed: false, reasonCode: 'beaubucks_purchase_limit_invalid' };
+  const packValue = whole(pack.beauBucks);
+  if (!packValue) return { allowed: false, reasonCode: 'beaubucks_pack_invalid' };
+  const completedFromProjection = Math.floor(whole(account.lifetimePurchased) / packValue);
+  const completedPurchases = Math.max(whole(limitState.completedPurchases), completedFromProjection);
+  if (completedPurchases >= purchaseLimit.maxCompletedPurchasesPerBuyerPerRoom) {
+    return { allowed: false, reasonCode: 'beaubucks_purchase_limit_reached', completedPurchases, purchaseLimit };
+  }
+  const activeReservationId = token(limitState.reservationId);
+  const reservationExpiresAtMs = whole(limitState.reservationExpiresAtMs);
+  if (activeReservationId && activeReservationId !== token(reservationId) && reservationExpiresAtMs > whole(nowMs)) {
+    return { allowed: false, reasonCode: 'beaubucks_purchase_in_progress', completedPurchases, purchaseLimit };
+  }
+  return {
+    allowed: true,
+    reasonCode: '',
+    completedPurchases,
+    purchaseLimit,
+    reservationExpiresAtMs: whole(nowMs) + (purchaseLimit.reservationMinutes * 60 * 1000),
+  };
 };
 
 const buildBeauBucksAccountId = ({ roomCode = '', uid = '' } = {}) =>
@@ -140,14 +180,17 @@ module.exports = {
   BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
   BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION,
   BEAUBUCKS_PENDING_ADJUSTMENT_EVENT_COLLECTION,
+  BEAUBUCKS_PURCHASE_LIMIT_COLLECTION,
   BEAUBUCKS_PAYMENT_REF_COLLECTION,
   buildBeauBucksAccountId,
   buildBeauBucksAdjustmentId,
   buildBeauBucksAdjustmentPlan,
   buildBeauBucksPaymentRefId,
   buildPendingBeauBucksAdjustmentState,
+  evaluateBeauBucksPurchaseReservation,
   getBeauBucksPack,
   getBeauBucksPolicy,
+  getBeauBucksPurchaseLimit,
   isBeauBucksCheckoutEnabled,
   validateBeauBucksCheckoutFulfillment,
 };

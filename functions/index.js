@@ -143,11 +143,13 @@ const {
   BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION,
   BEAUBUCKS_PENDING_ADJUSTMENT_EVENT_COLLECTION,
   BEAUBUCKS_PAYMENT_REF_COLLECTION,
+  BEAUBUCKS_PURCHASE_LIMIT_COLLECTION,
   buildBeauBucksAccountId,
   buildBeauBucksAdjustmentId,
   buildBeauBucksAdjustmentPlan,
   buildBeauBucksPaymentRefId,
   buildPendingBeauBucksAdjustmentState,
+  evaluateBeauBucksPurchaseReservation,
   getBeauBucksPack,
   getBeauBucksPolicy,
   isBeauBucksCheckoutEnabled,
@@ -21028,6 +21030,14 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
   const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
   const starterPackCandidate = checkoutEnabled ? getBeauBucksPack("beaubucks_starter_1200") : null;
   const starterPack = starterPackCandidate?.publicOffer === true ? starterPackCandidate : null;
+  const purchaseLimitRef = db.collection(BEAUBUCKS_PURCHASE_LIMIT_COLLECTION).doc(accountId);
+  const purchaseLimitSnap = starterPack ? await purchaseLimitRef.get() : null;
+  const purchaseReadiness = starterPack ? evaluateBeauBucksPurchaseReservation({
+    account: accountData,
+    limitState: purchaseLimitSnap?.exists ? (purchaseLimitSnap.data() || {}) : {},
+    pack: starterPack,
+    reservationId: "wallet-read",
+  }) : null;
   return {
     roomCode,
     currency: "beaubucks",
@@ -21044,7 +21054,10 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
         : !hostEnabledTonight
           ? "host_disabled"
           : "",
-    canPurchase: !!starterPack,
+    canPurchase: !!starterPack && purchaseReadiness?.allowed === true,
+    purchaseUnavailableReason: starterPack && purchaseReadiness?.allowed !== true
+      ? purchaseReadiness?.reasonCode || "purchase_unavailable"
+      : "",
     accountStatus: String(accountData.status || "active"),
     allowedSpendKinds: experienceEnabled ? [SPEND_KINDS.reaction] : [],
     pack: starterPack,
@@ -29529,28 +29542,56 @@ exports.createBeauBucksCheckout = onCall(
       throw new HttpsError("failed-precondition", "BeauBucks purchases are not enabled for this Room.");
     }
 
+    const db = admin.firestore();
+    const accountId = buildBeauBucksAccountId({ roomCode, uid: callerUid });
+    const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
+    const purchaseLimitRef = db.collection(BEAUBUCKS_PURCHASE_LIMIT_COLLECTION).doc(accountId);
+    const reservationId = crypto.randomUUID();
+    const reservation = await db.runTransaction(async (tx) => {
+      const [accountSnap, limitSnap] = await Promise.all([tx.get(accountRef), tx.get(purchaseLimitRef)]);
+      const result = evaluateBeauBucksPurchaseReservation({
+        account: accountSnap.exists ? (accountSnap.data() || {}) : {},
+        limitState: limitSnap.exists ? (limitSnap.data() || {}) : {},
+        pack,
+        reservationId,
+      });
+      if (!result.allowed) {
+        const message = result.reasonCode === "beaubucks_purchase_limit_reached"
+          ? "This Room's one-pack BeauBucks canary limit has already been used."
+          : result.reasonCode === "beaubucks_purchase_in_progress"
+            ? "A BeauBucks checkout is already in progress for this Room."
+            : "BeauBucks purchase limits are unavailable.";
+        throw new HttpsError("failed-precondition", message);
+      }
+      tx.set(purchaseLimitRef, {
+        schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+        accountId,
+        roomCode,
+        uid: callerUid,
+        completedPurchases: result.completedPurchases,
+        reservationId,
+        reservationExpiresAtMs: result.reservationExpiresAtMs,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return result;
+    });
+
     const origin = resolveOrigin(request.rawRequest, request.data?.origin);
     const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      line_items: [{
-        price_data: {
-          currency: pack.currency,
-          product_data: { name: `BeauRocks: ${pack.publicLabel}` },
-          unit_amount: pack.amountCents,
-        },
-        quantity: 1,
-      }],
-      metadata: {
-        checkoutType: "beaubucks_purchase",
-        roomCode,
-        buyerUid: callerUid,
-        packId: pack.id,
-        beauBucks: `${pack.beauBucks}`,
-        rewardScope: "room",
-      },
-      payment_intent_data: {
+    let session = null;
+    try {
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        expires_at: Math.floor(reservation.reservationExpiresAtMs / 1000),
+        line_items: [{
+          price_data: {
+            currency: pack.currency,
+            product_data: { name: `BeauRocks: ${pack.publicLabel}` },
+            unit_amount: pack.amountCents,
+          },
+          quantity: 1,
+        }],
         metadata: {
           checkoutType: "beaubucks_purchase",
           roomCode,
@@ -29558,29 +29599,65 @@ exports.createBeauBucksCheckout = onCall(
           packId: pack.id,
           beauBucks: `${pack.beauBucks}`,
           rewardScope: "room",
+          reservationId,
         },
-      },
-      success_url: `${origin}/?room=${encodeURIComponent(roomCode)}&beaubucks=success`,
-      cancel_url: `${origin}/?room=${encodeURIComponent(roomCode)}&beaubucks=cancel`,
-    });
+        payment_intent_data: {
+          metadata: {
+            checkoutType: "beaubucks_purchase",
+            roomCode,
+            buyerUid: callerUid,
+            packId: pack.id,
+            beauBucks: `${pack.beauBucks}`,
+            rewardScope: "room",
+            reservationId,
+          },
+        },
+        success_url: `${origin}/?room=${encodeURIComponent(roomCode)}&beaubucks=success`,
+        cancel_url: `${origin}/?room=${encodeURIComponent(roomCode)}&beaubucks=cancel`,
+      });
 
-    await rootRef.collection("stripe_checkouts").doc(session.id).set({
-      schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
-      checkoutType: "beaubucks_purchase",
-      sessionId: session.id,
-      roomCode,
-      buyerUid: callerUid,
-      packId: pack.id,
-      label: pack.publicLabel,
-      amountCents: pack.amountCents,
-      currency: pack.currency,
-      beauBucks: pack.beauBucks,
-      rewardScope: "room",
-      paymentStatus: String(session.payment_status || "").trim() || null,
-      checkoutStatus: "created",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
-    return { url: session.url, id: session.id };
+      await Promise.all([
+        rootRef.collection("stripe_checkouts").doc(session.id).set({
+          schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+          checkoutType: "beaubucks_purchase",
+          sessionId: session.id,
+          roomCode,
+          buyerUid: callerUid,
+          packId: pack.id,
+          label: pack.publicLabel,
+          amountCents: pack.amountCents,
+          currency: pack.currency,
+          beauBucks: pack.beauBucks,
+          rewardScope: "room",
+          reservationId,
+          reservationExpiresAtMs: reservation.reservationExpiresAtMs,
+          paymentStatus: String(session.payment_status || "").trim() || null,
+          checkoutStatus: "created",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true }),
+        purchaseLimitRef.set({
+          reservationSessionId: session.id,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true }),
+      ]);
+      return { url: session.url, id: session.id };
+    } catch (error) {
+      if (session?.id && stripe.checkout.sessions.expire) {
+        await stripe.checkout.sessions.expire(session.id).catch(() => {});
+      }
+      await db.runTransaction(async (tx) => {
+        const limitSnap = await tx.get(purchaseLimitRef);
+        if (limitSnap.exists && String(limitSnap.get("reservationId") || "") === reservationId) {
+          tx.set(purchaseLimitRef, {
+            reservationId: null,
+            reservationSessionId: null,
+            reservationExpiresAtMs: 0,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+      }).catch(() => {});
+      throw error;
+    }
   }
 );
 
@@ -29741,11 +29818,13 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
     const { pack, roomCode, buyerUid } = verification;
     const accountId = buildBeauBucksAccountId({ roomCode, uid: buyerUid });
     const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
-    const [purchaseSnap, paymentRefSnap, accountSnap, pendingAdjustmentSnap] = await Promise.all([
+    const purchaseLimitRef = db.collection(BEAUBUCKS_PURCHASE_LIMIT_COLLECTION).doc(accountId);
+    const [purchaseSnap, paymentRefSnap, accountSnap, pendingAdjustmentSnap, purchaseLimitSnap] = await Promise.all([
       tx.get(purchaseRef),
       tx.get(paymentRef),
       tx.get(accountRef),
       tx.get(pendingAdjustmentRef),
+      tx.get(purchaseLimitRef),
     ]);
     if (purchaseSnap.exists) {
       return { ok: true, duplicate: true, grant: purchaseSnap.data() || {} };
@@ -29754,6 +29833,7 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
       return { ok: false, reasonCode: "beaubucks_payment_reference_conflict" };
     }
     const account = accountSnap.exists ? (accountSnap.data() || {}) : {};
+    const purchaseLimitState = purchaseLimitSnap.exists ? (purchaseLimitSnap.data() || {}) : {};
     const balanceBefore = Math.max(0, Math.floor(Number(account.balance || 0) || 0));
     const grantedBalance = balanceBefore + pack.beauBucks;
     const pendingAdjustment = pendingAdjustmentSnap.exists ? (pendingAdjustmentSnap.data() || {}) : {};
@@ -29822,6 +29902,23 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
       unrecoveredBeauBucks: admin.firestore.FieldValue.increment(pendingPlan?.unrecoveredAmount || 0),
       lastEntryAt: now,
       createdAt: account.createdAt || now,
+      updatedAt: now,
+    }, { merge: true });
+    const completedPurchases = Math.max(
+      Math.floor(Number(purchaseLimitState.completedPurchases || 0) || 0),
+      Math.floor((Number(account.lifetimePurchased || 0) || 0) / pack.beauBucks),
+    ) + 1;
+    tx.set(purchaseLimitRef, {
+      schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+      accountId,
+      roomCode,
+      uid: buyerUid,
+      completedPurchases,
+      lifetimePurchaseCents: admin.firestore.FieldValue.increment(pack.amountCents),
+      lastCompletedSessionId: sessionId,
+      ...(String(purchaseLimitState.reservationId || "") === String(session.metadata?.reservationId || "")
+        ? { reservationId: null, reservationSessionId: null, reservationExpiresAtMs: 0 }
+        : {}),
       updatedAt: now,
     }, { merge: true });
     tx.create(paymentRef, {

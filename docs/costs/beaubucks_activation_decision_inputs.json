@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "status": "owner_review_checkout_disabled",
+  "publicPricing": false,
+  "productPolicy": {
+    "approvalStatus": "not_approved",
+    "balanceScope": "room",
+    "noCashValue": true,
+    "transferable": false,
+    "decisionRef": ""
+  },
+  "starterPack": {
+    "approvalStatus": "not_approved",
+    "packId": "beaubucks_starter_1200",
+    "publicLabel": "Starter 1,200 BeauBucks",
+    "amountCents": 500,
+    "currency": "usd",
+    "beauBucks": 1200,
+    "scope": "room",
+    "maxPurchasesPerBuyerPerRoom": 1,
+    "decisionRef": "",
+    "costEnvelope": {
+      "approvalStatus": "not_approved",
+      "maximumSpendOperationsPerPack": 600,
+      "minimumAuthorityWritesPerPack": 1800,
+      "decisionRef": ""
+    }
+  },
+  "customerPromises": {
+    "approvalStatus": "not_approved",
+    "roomScopedDisclosure": true,
+    "noCashValueDisclosure": true,
+    "nonTransferableDisclosure": true,
+    "reactionsOnlyDisclosure": true,
+    "expirationPolicy": "no_expiration_during_canary",
+    "refundPolicy": "contact_support_proportionate_unspent_reversal",
+    "termsUrl": "https://beaurocks.app/karaoke/terms",
+    "supportEmail": "hello@beaurocks.app",
+    "decisionRef": ""
+  },
+  "commercialOperations": {
+    "approvalStatus": "not_approved",
+    "merchantOfRecord": "BeauRocks",
+    "supportOwner": "",
+    "refundResponseSlaHours": 72,
+    "taxTreatmentStatus": "not_reviewed",
+    "accountingTreatmentStatus": "not_reviewed",
+    "reconciliationOwner": "",
+    "decisionRef": ""
+  },
+  "cohort": {
+    "approved": false,
+    "roomCodes": [],
+    "maxParticipants": 10,
+    "maxGrossSalesCents": 5000,
+    "durationDays": 14,
+    "manualRosterRequired": true,
+    "rollbackOwner": "",
+    "decisionRef": ""
+  },
+  "activation": {
+    "approved": false,
+    "approvedBy": "",
+    "decisionRef": ""
+  },
+  "notes": [
+    "Recommended values are proposals, not evidence of owner approval.",
+    "Updating this file does not enable checkout, publish a pack, allowlist a Room, or change production.",
+    "The first canary remains internal and rostered in addition to the server-enforced one-pack-per-buyer-per-Room limit.",
+    "The 1,200 BeauBucks pack permits at most 600 two-BB spends, requiring at least 1,800 authority writes across operation, account, and ledger records. Existing reaction delivery may add separate Room activity.",
+    "Legal, tax, and accounting judgments remain owner responsibilities; use professional review where appropriate."
+  ]
+}

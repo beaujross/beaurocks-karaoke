@@ -41,6 +41,7 @@ const userRef = db.doc(`users/${USER_UID}`);
 const checkoutRef = db.doc(`${ROOT}/stripe_checkouts/${SESSION_ID}`);
 const accountId = buildBeauBucksAccountId({ roomCode: ROOM_CODE, uid: USER_UID });
 const accountRef = db.doc(`beaurocks_ledger_accounts/${accountId}`);
+const purchaseLimitRef = db.doc(`beaurocks_beaubucks_purchase_limits/${accountId}`);
 
 const requestFor = (uid, data = {}) => ({
   auth: uid ? { uid } : null,
@@ -88,6 +89,7 @@ async function resetState() {
     ['beaurocks_payment_adjustments'],
     ['beaurocks_pending_payment_adjustments'],
     ['beaurocks_pending_payment_adjustment_events'],
+    ['beaurocks_beaubucks_purchase_limits'],
     ['beaurocks_spend_operations'],
     ['artifacts', APP_ID, 'public', 'data', 'rooms'],
     ['artifacts', APP_ID, 'public', 'data', 'room_users'],
@@ -181,6 +183,8 @@ async function run() {
   assert.equal(purchase.body.beauBucksCheckout, true);
   assert.equal(purchase.body.granted, true);
   assert.equal((await accountRef.get()).get('balance'), 1200);
+  assert.equal((await purchaseLimitRef.get()).get('completedPurchases'), 1);
+  assert.equal((await purchaseLimitRef.get()).get('lastCompletedSessionId'), SESSION_ID);
   assert.equal((await roomUserRef.get()).get('points'), 777);
   assert.equal((await userRef.get()).get('pointsBalance'), 999);
 

@@ -258,6 +258,10 @@
     "expirationPolicy": "no_expiration_during_canary_owner_review_required_for_general_release",
     "refundPolicy": "revoke_unspent_value_with_shortfall_evidence",
     "chargebackPolicy": "revoke_unspent_value_and_restrict_account",
+    "purchaseLimit": {
+      "maxCompletedPurchasesPerBuyerPerRoom": 1,
+      "reservationMinutes": 35
+    },
     "packs": {
       "beaubucks_starter_1200": {
         "id": "beaubucks_starter_1200",

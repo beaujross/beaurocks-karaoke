@@ -7,7 +7,9 @@ const {
   buildBeauBucksAccountId,
   buildBeauBucksAdjustmentPlan,
   buildPendingBeauBucksAdjustmentState,
+  evaluateBeauBucksPurchaseReservation,
   getBeauBucksPack,
+  getBeauBucksPurchaseLimit,
   isBeauBucksCheckoutEnabled,
   validateBeauBucksCheckoutFulfillment,
 } = require('../../functions/lib/beauBucksAuthority.js');
@@ -20,6 +22,36 @@ test('the first BeauBucks pack is room-scoped and production checkout fails clos
   });
   assert.equal(isBeauBucksCheckoutEnabled(), false);
   assert.equal(buildBeauBucksAccountId({ roomCode: 'ROOM1', uid: 'user-1' }), 'room1__user-1__beaubucks');
+});
+
+test('purchase reservations enforce one completed pack and one active checkout per buyer and Room', () => {
+  const pack = getBeauBucksPack('beaubucks_starter_1200');
+  assert.deepEqual(getBeauBucksPurchaseLimit(), {
+    maxCompletedPurchasesPerBuyerPerRoom: 1,
+    reservationMinutes: 35,
+  });
+  const available = evaluateBeauBucksPurchaseReservation({
+    account: {}, limitState: {}, pack, reservationId: 'reservation-1', nowMs: 1000,
+  });
+  assert.equal(available.allowed, true);
+  assert.equal(available.reservationExpiresAtMs, 2101000);
+  assert.equal(evaluateBeauBucksPurchaseReservation({
+    account: {},
+    limitState: { reservationId: 'reservation-other', reservationExpiresAtMs: 2101000 },
+    pack,
+    reservationId: 'reservation-1',
+    nowMs: 1000,
+  }).reasonCode, 'beaubucks_purchase_in_progress');
+  assert.equal(evaluateBeauBucksPurchaseReservation({
+    account: { lifetimePurchased: 1200 }, limitState: {}, pack, reservationId: 'reservation-1', nowMs: 1000,
+  }).reasonCode, 'beaubucks_purchase_limit_reached');
+  assert.equal(evaluateBeauBucksPurchaseReservation({
+    account: {},
+    limitState: { reservationId: 'expired', reservationExpiresAtMs: 999 },
+    pack,
+    reservationId: 'reservation-1',
+    nowMs: 1000,
+  }).allowed, true);
 });
 
 test('fulfillment accepts only a registered paid checkout with exact server pricing', () => {
