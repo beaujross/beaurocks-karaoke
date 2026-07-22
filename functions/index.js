@@ -13,10 +13,12 @@ const {
   BASE_CAPABILITIES,
   PLAN_DEFINITIONS,
   USAGE_METER_DEFINITIONS,
+  ADDITIONAL_USAGE_POLICY,
   ROOM_CREATE_CAPABILITY,
   getPlanDefinition,
   isEntitledStatus,
   isPublicHostPlan,
+  canUseAdditionalUsageCapacity,
   canCreateRoomForSubscription,
   buildCapabilitiesForPlan,
   resolveUsageMeterQuota,
@@ -43,6 +45,12 @@ const {
   resolveConfiguredHardLimit,
   resolveUsageControlDecision,
 } = require("./lib/usageCapabilityControl");
+const {
+  buildAdditionalUsageSummary,
+  buildVerifiedAdditionalUsageGrant,
+  resolveAdditionalCapacityUnits,
+  resolveMaximumUsageHardLimit,
+} = require("./lib/additionalUsageCapacity");
 const {
   normalizeCheckoutToken,
   buildSubscriptionCheckoutIdempotencyKey,
@@ -156,6 +164,8 @@ const POP_TRIVIA_CACHE_FIELD = "popTriviaSongCache";
 const ORGS_COLLECTION = "organizations";
 const ORG_MEDIA_UPLOAD_SESSIONS_COLLECTION = "media_upload_sessions";
 const ORG_MEDIA_ASSETS_COLLECTION = "media_assets";
+const ORG_USAGE_CAPACITY_COLLECTION = "usage_capacity";
+const ORG_ADDITIONAL_USAGE_LEDGER_COLLECTION = "additional_usage_ledger";
 const LEGACY_HOST_MEDIA_ASSETS_COLLECTION = "host_media_assets";
 const STRIPE_SUBSCRIPTIONS_COLLECTION = "stripe_subscriptions";
 const DEFAULT_BEAUROCKS_LOGO_URL = "/images/logo-library/beaurocks-logo-neon trasnparent.png";
@@ -4377,15 +4387,22 @@ const readOrganizationUsageSummary = async ({
   const orgRef = orgsCollection().doc(orgId);
   const usageRef = orgRef.collection("usage").doc(periodKey);
   const workspaceControlRef = orgRef.collection("usage_controls").doc(USAGE_WORKSPACE_CONTROL_DOC);
-  const [usageSnap, workspaceControlSnap] = await Promise.all([
+  const capacityRef = orgRef.collection(ORG_USAGE_CAPACITY_COLLECTION).doc(periodKey);
+  const [usageSnap, workspaceControlSnap, capacitySnap] = await Promise.all([
     usageRef.get(),
     workspaceControlRef.get(),
+    capacityRef.get(),
   ]);
   const usageData = normalizeUsageDocumentData(usageSnap.data() || {});
   const workspaceControlData = workspaceControlSnap.data() || {};
+  const capacityData = capacitySnap.data() || {};
   const meterData = usageData.meters || {};
   const meters = {};
   const workspaceMeterControls = {};
+  const additionalCapacityEligible = canUseAdditionalUsageCapacity({
+    planId: entitlements?.planId,
+    status: entitlements?.status,
+  });
   let estimatedOverageCents = 0;
 
   Object.keys(USAGE_METER_DEFINITIONS).forEach((meterId) => {
@@ -4394,16 +4411,25 @@ const readOrganizationUsageSummary = async ({
       planId: entitlements?.usagePlanId || entitlements?.planId || "free",
       status: entitlements?.usageStatus || entitlements?.status || "inactive",
     });
+    const additionalCapacity = additionalCapacityEligible
+      ? resolveAdditionalCapacityUnits({ capacityDocument: capacityData, meterId })
+      : 0;
+    const maximumHardLimit = resolveMaximumUsageHardLimit({
+      planHardLimit: planQuota.hardLimit,
+      additionalUnits: additionalCapacity,
+    });
     const effectiveHardLimit = resolveConfiguredHardLimit({
       control: workspaceControlData?.meters?.[meterId],
-      maximumHardLimit: planQuota.hardLimit,
-      fallbackHardLimit: planQuota.hardLimit,
+      maximumHardLimit,
+      fallbackHardLimit: maximumHardLimit,
     });
     const capacityQuota = { ...planQuota, hardLimit: effectiveHardLimit };
     workspaceMeterControls[meterId] = {
       hardLimit: effectiveHardLimit,
       planHardLimit: planQuota.hardLimit,
-      customized: effectiveHardLimit !== planQuota.hardLimit,
+      additionalCapacity,
+      maximumHardLimit,
+      customized: effectiveHardLimit !== maximumHardLimit,
     };
     const billingPlan = getPlanDefinition(entitlements?.planId || "free");
     const billingEligible = billingPlan?.tier === "host" && isEntitledStatus(entitlements?.status || "inactive");
@@ -4432,6 +4458,9 @@ const readOrganizationUsageSummary = async ({
       surfaces: meterBucket?.surfaces || {},
     });
     summary.billingEligible = billingEligible;
+    summary.planHardLimit = planQuota.hardLimit;
+    summary.additionalCapacity = additionalCapacity;
+    summary.maximumHardLimit = maximumHardLimit;
     meters[meterId] = summary;
     estimatedOverageCents += summary.estimatedOverageCents;
   });
@@ -4450,6 +4479,12 @@ const readOrganizationUsageSummary = async ({
         meters: workspaceMeterControls,
       },
     },
+    additionalUsage: buildAdditionalUsageSummary({
+      policy: ADDITIONAL_USAGE_POLICY,
+      capacityDocument: capacityData,
+      meterDefinitions: USAGE_METER_DEFINITIONS,
+      periodKey,
+    }),
     generatedAtMs: nowMs(),
     periodRange: getPeriodRangeForKey(periodKey),
   };
@@ -7596,8 +7631,13 @@ const reserveOrganizationUsageOperation = async ({
     planId: entitlements?.usagePlanId || entitlements?.planId || "free",
     status: entitlements?.usageStatus || entitlements?.status || "inactive",
   });
+  const additionalCapacityEligible = canUseAdditionalUsageCapacity({
+    planId: entitlements?.planId,
+    status: entitlements?.status,
+  });
   const orgRef = orgsCollection().doc(safeOrgId);
   const usageRef = orgRef.collection("usage").doc(periodKey);
+  const capacityRef = orgRef.collection(ORG_USAGE_CAPACITY_COLLECTION).doc(periodKey);
   const operationRef = orgRef.collection("usage_operations").doc(`${periodKey}:${safeOperationId}`);
   const platformControlRef = admin.firestore().collection("platform_controls").doc(USAGE_PLATFORM_CONTROL_DOC);
   const workspaceControlRef = orgRef.collection("usage_controls").doc(USAGE_WORKSPACE_CONTROL_DOC);
@@ -7626,13 +7666,15 @@ const reserveOrganizationUsageOperation = async ({
       };
     }
 
-    const [usageSnap, platformControlSnap, workspaceControlSnap, roomControlSnap] = await Promise.all([
+    const [usageSnap, capacitySnap, platformControlSnap, workspaceControlSnap, roomControlSnap] = await Promise.all([
       tx.get(usageRef),
+      tx.get(capacityRef),
       tx.get(platformControlRef),
       tx.get(workspaceControlRef),
       roomControlRef ? tx.get(roomControlRef) : Promise.resolve(null),
     ]);
     const usageData = normalizeUsageDocumentData(usageSnap.data() || {});
+    const capacityData = capacitySnap.data() || {};
     const meterData = usageData?.meters?.[meterId] || {};
     const lifecycle = normalizeUsageLifecycleCounts(meterData, meterData?.used);
     const roomMeterData = safeRoomCode ? meterData?.rooms?.[safeRoomCode] || {} : {};
@@ -7642,9 +7684,16 @@ const reserveOrganizationUsageOperation = async ({
     const roomControl = roomControlSnap?.data?.() || {};
     const platformCapabilityState = normalizeControlState(platformControl?.capabilities?.[safeCapabilityId]?.state);
     const workspaceCapabilityState = normalizeControlState(workspaceControl?.capabilities?.[safeCapabilityId]?.state);
+    const additionalCapacity = additionalCapacityEligible
+      ? resolveAdditionalCapacityUnits({ capacityDocument: capacityData, meterId })
+      : 0;
+    const maximumHardLimit = resolveMaximumUsageHardLimit({
+      planHardLimit: quota.hardLimit,
+      additionalUnits: additionalCapacity,
+    });
     const decision = resolveUsageControlDecision({
       units: safeUnits,
-      planHardLimit: quota.hardLimit,
+      planHardLimit: maximumHardLimit,
       workspaceControl: workspaceControl?.meters?.[meterId],
       roomControl: safeRoomCode ? roomControl?.meters?.[meterId] : null,
       workspaceExposure: lifecycle.settled + lifecycle.reserved,
@@ -7684,6 +7733,8 @@ const reserveOrganizationUsageOperation = async ({
       quotaSnapshot: {
         included: quota.included,
         planHardLimit: quota.hardLimit,
+        additionalCapacity,
+        maximumHardLimit,
         workspaceHardLimit: decision.workspaceHardLimit,
         roomHardLimit: decision.roomHardLimit,
         billableUnitRateCents: quota.billableUnitRateCents,
@@ -23483,33 +23534,50 @@ const USAGE_CAPABILITY_METERS = Object.freeze({
 
 const readMyUsageControls = async ({ orgId = "", entitlements = null, roomCode = "" } = {}) => {
   const safeRoomCode = normalizeRoomCode(roomCode || "");
+  const periodKey = getUsagePeriodKey();
   const orgRef = orgsCollection().doc(orgId);
   const workspaceRef = orgRef.collection("usage_controls").doc(USAGE_WORKSPACE_CONTROL_DOC);
+  const capacityRef = orgRef.collection(ORG_USAGE_CAPACITY_COLLECTION).doc(periodKey);
   const platformRef = admin.firestore().collection("platform_controls").doc(USAGE_PLATFORM_CONTROL_DOC);
   const roomRef = safeRoomCode ? orgRef.collection("usage_room_controls").doc(safeRoomCode) : null;
-  const [workspaceSnap, platformSnap, roomSnap] = await Promise.all([
+  const [workspaceSnap, capacitySnap, platformSnap, roomSnap] = await Promise.all([
     workspaceRef.get(),
+    capacityRef.get(),
     platformRef.get(),
     roomRef ? roomRef.get() : Promise.resolve(null),
   ]);
   const workspace = workspaceSnap.data() || {};
+  const capacity = capacitySnap.data() || {};
   const platform = platformSnap.data() || {};
   const room = roomSnap?.data?.() || {};
   const meters = {};
+  const additionalCapacityEligible = canUseAdditionalUsageCapacity({
+    planId: entitlements?.planId,
+    status: entitlements?.status,
+  });
   Object.keys(USAGE_METER_DEFINITIONS).forEach((meterId) => {
     const quota = resolveUsageMeterQuota({
       meterId,
       planId: entitlements?.usagePlanId || entitlements?.planId || "free",
       status: entitlements?.usageStatus || entitlements?.status || "inactive",
     });
+    const additionalCapacity = additionalCapacityEligible
+      ? resolveAdditionalCapacityUnits({ capacityDocument: capacity, meterId })
+      : 0;
+    const maximumHardLimit = resolveMaximumUsageHardLimit({
+      planHardLimit: quota.hardLimit,
+      additionalUnits: additionalCapacity,
+    });
     const workspaceHardLimit = resolveConfiguredHardLimit({
       control: workspace?.meters?.[meterId],
-      maximumHardLimit: quota.hardLimit,
-      fallbackHardLimit: quota.hardLimit,
+      maximumHardLimit,
+      fallbackHardLimit: maximumHardLimit,
     });
     meters[meterId] = {
       label: USAGE_METER_DEFINITIONS[meterId]?.label || meterId,
       planHardLimit: quota.hardLimit,
+      additionalCapacity,
+      maximumHardLimit,
       workspaceHardLimit,
       roomHardLimit: safeRoomCode && Object.prototype.hasOwnProperty.call(room?.meters?.[meterId] || {}, "hardLimit")
         ? resolveConfiguredHardLimit({
@@ -23538,6 +23606,7 @@ const readMyUsageControls = async ({ orgId = "", entitlements = null, roomCode =
   return {
     ok: true,
     orgId,
+    period: periodKey,
     roomCode: safeRoomCode,
     meters,
     capabilities,
@@ -23596,13 +23665,25 @@ exports.manageMyUsageControls = onCall({ cors: true }, async (request) => {
     planId: entitlements?.usagePlanId || entitlements?.planId || "free",
     status: entitlements?.usageStatus || entitlements?.status || "inactive",
   });
+  const capacitySnap = await orgRef.collection(ORG_USAGE_CAPACITY_COLLECTION).doc(getUsagePeriodKey()).get();
+  const additionalCapacityEligible = canUseAdditionalUsageCapacity({
+    planId: entitlements?.planId,
+    status: entitlements?.status,
+  });
+  const additionalCapacity = additionalCapacityEligible
+    ? resolveAdditionalCapacityUnits({ capacityDocument: capacitySnap.data() || {}, meterId })
+    : 0;
+  const maximumHardLimit = resolveMaximumUsageHardLimit({
+    planHardLimit: quota.hardLimit,
+    additionalUnits: additionalCapacity,
+  });
   const requestedHardLimit = Number(request.data?.hardLimit);
   if (action !== "clear_room_meter" && (!Number.isInteger(requestedHardLimit) || requestedHardLimit < 0)) {
     throw new HttpsError("invalid-argument", "hardLimit must be a non-negative whole number.");
   }
   if (action === "set_workspace_meter") {
-    if (requestedHardLimit > quota.hardLimit) {
-      throw new HttpsError("invalid-argument", "Workspace hard limit cannot exceed the plan maximum.");
+    if (requestedHardLimit > maximumHardLimit) {
+      throw new HttpsError("invalid-argument", "Workspace hard limit cannot exceed current plan and prepaid capacity.");
     }
     await workspaceRef.set({
       schemaVersion: 1,
@@ -23620,8 +23701,8 @@ exports.manageMyUsageControls = onCall({ cors: true }, async (request) => {
   const currentWorkspace = await workspaceRef.get();
   const workspaceHardLimit = resolveConfiguredHardLimit({
     control: currentWorkspace.data()?.meters?.[meterId],
-    maximumHardLimit: quota.hardLimit,
-    fallbackHardLimit: quota.hardLimit,
+    maximumHardLimit,
+    fallbackHardLimit: maximumHardLimit,
   });
   if (action === "set_room_meter" && requestedHardLimit > workspaceHardLimit) {
     throw new HttpsError("invalid-argument", "Room hard limit cannot exceed the Workspace hard limit.");
@@ -29032,6 +29113,72 @@ exports.createAppleMusicToken = onCall(
   }
 );
 
+const fulfillVerifiedAdditionalUsageCheckout = async ({ event = {}, session = {}, metadata = {} } = {}) => {
+  const verification = buildVerifiedAdditionalUsageGrant({
+    policy: ADDITIONAL_USAGE_POLICY,
+    allowedMeterIds: Object.keys(USAGE_METER_DEFINITIONS),
+    checkout: {
+      checkoutType: metadata.checkoutType,
+      paymentStatus: session.payment_status,
+      orgId: metadata.orgId,
+      periodKey: metadata.periodKey,
+      packId: metadata.packId,
+      amountCents: session.amount_total,
+      currency: session.currency,
+    },
+  });
+  if (!verification.ok) return verification;
+
+  const grant = verification.grant;
+  const eventId = sanitizeSecurityToken(event.id || session.id || "", 180);
+  const sessionId = sanitizeSecurityToken(session.id || "", 180);
+  if (!eventId || !sessionId) {
+    return { ok: false, reasonCode: "additional_usage_invalid_payment_reference" };
+  }
+  const orgRef = orgsCollection().doc(grant.orgId);
+  const ledgerRef = orgRef.collection(ORG_ADDITIONAL_USAGE_LEDGER_COLLECTION).doc(sessionId);
+  const capacityRef = orgRef.collection(ORG_USAGE_CAPACITY_COLLECTION).doc(grant.period);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  return admin.firestore().runTransaction(async (tx) => {
+    const [orgSnap, ledgerSnap] = await Promise.all([
+      tx.get(orgRef),
+      tx.get(ledgerRef),
+    ]);
+    if (!orgSnap.exists) {
+      return { ok: false, reasonCode: "additional_usage_invalid_organization" };
+    }
+    if (ledgerSnap.exists) {
+      return { ok: true, duplicate: true, grant: ledgerSnap.data() || {} };
+    }
+
+    tx.create(ledgerRef, {
+      ...grant,
+      entryType: "purchase_grant",
+      checkoutType: "additional_usage",
+      stripeEventId: eventId,
+      stripeSessionId: sessionId,
+      checkoutRequestId: sanitizeSecurityToken(metadata.checkoutRequestId || "", 180) || null,
+      createdAt: now,
+    });
+    const meters = Object.fromEntries(
+      Object.entries(grant.capacityByMeter).map(([meterId, units]) => [
+        meterId,
+        { granted: admin.firestore.FieldValue.increment(units) },
+      ]),
+    );
+    tx.set(capacityRef, {
+      schemaVersion: 1,
+      orgId: grant.orgId,
+      period: grant.period,
+      meters,
+      purchaseCount: admin.firestore.FieldValue.increment(1),
+      updatedAt: now,
+    }, { merge: true });
+    return { ok: true, duplicate: false, grant };
+  });
+};
+
 exports.stripeWebhook = onRequest(
   { secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET] },
   async (req, res) => {
@@ -29051,6 +29198,24 @@ exports.stripeWebhook = onRequest(
     if (event.type === "checkout.session.completed") {
       const session = event.data.object || {};
       const metadata = session.metadata || {};
+      const isAdditionalUsageCheckout = metadata.checkoutType === "additional_usage";
+      if (isAdditionalUsageCheckout) {
+        const result = await fulfillVerifiedAdditionalUsageCheckout({ event, session, metadata });
+        if (!result.ok) {
+          console.warn("Additional usage checkout was not granted.", {
+            eventId: String(event.id || ""),
+            reasonCode: String(result.reasonCode || "additional_usage_rejected"),
+          });
+        }
+        res.json({
+          received: true,
+          additionalUsageCheckout: true,
+          granted: result.ok === true,
+          duplicate: result.duplicate === true,
+          reasonCode: result.ok ? null : String(result.reasonCode || "additional_usage_rejected"),
+        });
+        return;
+      }
       const isSubscriptionCheckout =
         session.mode === "subscription"
         || metadata.checkoutType === "org_subscription"

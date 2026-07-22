@@ -154,6 +154,40 @@ async function run() {
   };
 
   const checks = [
+    ["refuses Additional usage grants while the owner-reviewed catalog is disabled", async () => {
+      await db.doc(`organizations/${ORG_ID}`).set({ orgId: ORG_ID, ownerUid: HOST_UID });
+      const response = await invokeStripeWebhook({
+        id: "evt_additional_usage_disabled",
+        type: "checkout.session.completed",
+        object: "event",
+        data: {
+          object: {
+            id: "cs_additional_usage_disabled",
+            object: "checkout.session",
+            mode: "payment",
+            amount_total: 1200,
+            currency: "usd",
+            payment_status: "paid",
+            metadata: {
+              checkoutType: "additional_usage",
+              orgId: ORG_ID,
+              periodKey: "202607",
+              packId: "unapproved_pack",
+            },
+          },
+        },
+      });
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.body.additionalUsageCheckout, true);
+      assert.equal(response.body.granted, false);
+      assert.equal(response.body.reasonCode, "additional_usage_checkout_disabled");
+      const capacitySnap = await db.doc(`organizations/${ORG_ID}/usage_capacity/202607`).get();
+      assert.equal(capacitySnap.exists, false);
+      const ledgerSnap = await db.doc(`organizations/${ORG_ID}/additional_usage_ledger/cs_additional_usage_disabled`).get();
+      assert.equal(ledgerSnap.exists, false);
+      const subscriptionSnap = await db.doc(`organizations/${ORG_ID}/subscription/current`).get();
+      assert.equal(subscriptionSnap.exists, false);
+    }],
     ["projects an active Host subscription idempotently with Room creation enabled", async () => {
       const subscriptionEvent = {
         id: "evt_host_subscription_active",

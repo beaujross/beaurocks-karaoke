@@ -6599,6 +6599,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         period: getCurrentUsagePeriodKey(),
         meters: {},
         totals: { estimatedOverageCents: 0 },
+        additionalUsage: null,
         loading: false,
         error: ''
     });
@@ -6841,6 +6842,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const usagePeriodOptions = useMemo(() => buildRecentUsagePeriods(12), []);
     const aiUsageMeter = useMemo(() => usageSummary?.meters?.ai_generate_content || null, [usageSummary?.meters]);
     const youtubeUsageMeter = useMemo(() => usageSummary?.meters?.youtube_data_request || null, [usageSummary?.meters]);
+    const additionalUsage = useMemo(() => usageSummary?.additionalUsage || null, [usageSummary?.additionalUsage]);
+    const activeAdditionalUsageMeters = useMemo(() => (
+        Object.values(additionalUsage?.meters || {}).filter((meter) => Number(meter?.active || 0) > 0)
+    ), [additionalUsage?.meters]);
     const youtubeUsageBreakdowns = useMemo(() => youtubeUsageMeter?.breakdowns || {}, [youtubeUsageMeter]);
     const usageHardLimitHits = useMemo(() => {
         return usageMeters.filter(meter => !!meter?.hardLimitReached);
@@ -7164,6 +7169,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 period: selectedUsagePeriod,
                 meters: {},
                 totals: { estimatedOverageCents: 0 },
+                additionalUsage: null,
                 loading: false,
                 error: ''
             });
@@ -7212,6 +7218,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     period: usage?.period || '',
                     meters: usage?.meters || {},
                     totals: usage?.totals || { estimatedOverageCents: 0 },
+                    additionalUsage: usage?.additionalUsage || null,
                     loading: false,
                     error: ''
                 });
@@ -16940,6 +16947,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 period: usage?.period || targetPeriod || '',
                 meters: usage?.meters || {},
                 totals: usage?.totals || { estimatedOverageCents: 0 },
+                additionalUsage: usage?.additionalUsage || null,
                 loading: false,
                 error: ''
             });
@@ -17231,6 +17239,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     period: usage?.period || selectedUsagePeriod || '',
                     meters: usage?.meters || {},
                     totals: usage?.totals || { estimatedOverageCents: 0 },
+                    additionalUsage: usage?.additionalUsage || null,
                     loading: false,
                     error: ''
                 });
@@ -26039,6 +26048,45 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                         </div>
                                     </div>
+                                    <div data-feature-id="additional-usage-readiness" className="rounded-xl border border-cyan-300/20 bg-cyan-500/5 p-3 space-y-3">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <div className="text-xs uppercase tracking-widest text-cyan-100/80">Additional usage</div>
+                                                <div className="mt-1 text-sm text-zinc-200">
+                                                    Prepaid Room capacity will be offered here after the first pack, price, and customer-facing allowance are approved.
+                                                </div>
+                                                <div className="mt-1 text-[11px] text-zinc-500">
+                                                    BeauRocks will not silently create an uncapped overage balance. Capacity is granted only after verified payment.
+                                                </div>
+                                            </div>
+                                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${additionalUsage?.checkoutEnabled ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`}>
+                                                {additionalUsage?.checkoutEnabled ? 'Purchases available' : 'Purchases not open'}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                                            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Checkout</div>
+                                                <div className="mt-1 font-semibold text-white">{additionalUsage?.checkoutEnabled ? 'Enabled' : 'Disabled'}</div>
+                                                <div className="mt-1 text-zinc-500">No pack can be sold before the catalog is approved.</div>
+                                            </div>
+                                            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Auto-refill</div>
+                                                <div className="mt-1 font-semibold text-white">{additionalUsage?.autoRefillEnabled ? 'Available with monthly ceiling' : 'Off'}</div>
+                                                <div className="mt-1 text-zinc-500">A Host-selected monthly maximum is required before this can turn on.</div>
+                                            </div>
+                                            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Active prepaid capacity</div>
+                                                <div className="mt-1 font-semibold text-white">
+                                                    {activeAdditionalUsageMeters.length > 0 ? `${activeAdditionalUsageMeters.length} funded meter${activeAdditionalUsageMeters.length === 1 ? '' : 's'}` : 'None this period'}
+                                                </div>
+                                                <div className="mt-1 text-zinc-500">
+                                                    {activeAdditionalUsageMeters.length > 0
+                                                        ? activeAdditionalUsageMeters.map((meter) => `${meter.label}: +${Number(meter.active || 0).toLocaleString()}`).join(' · ')
+                                                        : 'Your current plan and Workspace ceiling remain authoritative.'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     {canManageUsageControls && (
                                         <div data-feature-id="usage-cost-guardrails" className="rounded-xl border border-amber-300/20 bg-amber-500/5 p-3 space-y-3">
                                             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -26065,7 +26113,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <input
                                                         type="number"
                                                         min="0"
-                                                        max={Number(usageControls?.meters?.youtube_data_request?.planHardLimit || 0)}
+                                                        max={Number(usageControls?.meters?.youtube_data_request?.maximumHardLimit || usageControls?.meters?.youtube_data_request?.planHardLimit || 0)}
                                                         step="1"
                                                         value={workspaceYouTubeLimitDraft}
                                                         onChange={(event) => setWorkspaceYouTubeLimitDraft(event.target.value)}
@@ -26073,7 +26121,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         disabled={usageControls.loading || !!usageControlSaving}
                                                     />
                                                     <div className="text-[11px] text-zinc-500">
-                                                        Plan maximum: {Number(usageControls?.meters?.youtube_data_request?.planHardLimit || 0).toLocaleString()} requests per month.
+                                                        Current maximum: {Number(usageControls?.meters?.youtube_data_request?.maximumHardLimit || usageControls?.meters?.youtube_data_request?.planHardLimit || 0).toLocaleString()} requests per month
+                                                        {Number(usageControls?.meters?.youtube_data_request?.additionalCapacity || 0) > 0
+                                                            ? ` (${Number(usageControls.meters.youtube_data_request.additionalCapacity).toLocaleString()} prepaid).`
+                                                            : '.'}
                                                     </div>
                                                     <button
                                                         type="button"

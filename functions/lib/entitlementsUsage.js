@@ -29,6 +29,10 @@ const USAGE_CONTROL_POLICY = Object.freeze({
   warningThresholdBps: Object.freeze([...(HOST_COMMERCIAL_CONTRACT.usageControlPolicy?.warningThresholdBps || [])]),
   protectedLiveRoomCapabilities: Object.freeze([...(HOST_COMMERCIAL_CONTRACT.usageControlPolicy?.protectedLiveRoomCapabilities || [])]),
 });
+const ADDITIONAL_USAGE_POLICY = Object.freeze({
+  ...(HOST_COMMERCIAL_CONTRACT.additionalUsagePolicy || {}),
+  packs: Object.freeze({ ...(HOST_COMMERCIAL_CONTRACT.additionalUsagePolicy?.packs || {}) }),
+});
 
 const INTERNAL_USAGE_METER_PRICING = Object.freeze({
   ai_generate_content: {
@@ -143,6 +147,10 @@ const isEntitledStatus = (status = "") => ENTITLED_STATUSES.has(String(status ||
 
 const isPublicHostPlan = (planId = "") =>
   PUBLIC_HOST_PLAN_IDS.has(String(planId || "").trim());
+
+const canUseAdditionalUsageCapacity = ({ planId = "free", status = "inactive" } = {}) => (
+  getPlanDefinition(planId)?.tier === "host" && isEntitledStatus(status)
+);
 
 const resolveSubscriptionStateKey = ({
   status = "inactive",
@@ -354,9 +362,11 @@ module.exports = {
   USAGE_METER_DEFINITIONS,
   ROOM_CREATE_CAPABILITY,
   USAGE_CONTROL_POLICY,
+  ADDITIONAL_USAGE_POLICY,
   getPlanDefinition,
   isEntitledStatus,
   isPublicHostPlan,
+  canUseAdditionalUsageCapacity,
   resolveSubscriptionStateKey,
   canCreateRoomForSubscription,
   buildCapabilitiesForPlan,

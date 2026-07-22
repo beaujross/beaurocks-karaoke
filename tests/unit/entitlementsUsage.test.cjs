@@ -3,6 +3,7 @@ const {
   BASE_CAPABILITIES,
   buildCapabilitiesForPlan,
   canCreateRoomForSubscription,
+  canUseAdditionalUsageCapacity,
   isPublicHostPlan,
   resolveUsageMeterQuota,
   buildUsageMeterSummary,
@@ -32,6 +33,10 @@ test("entitlementsUsage.test", () => {
   assert.equal(canCreateRoomForSubscription({ planId: "host_annual", status: "active" }), true);
   assert.equal(canCreateRoomForSubscription({ planId: "host_annual", status: "trialing" }), false);
   assert.equal(canCreateRoomForSubscription({ planId: "host_annual", status: "past_due" }), false);
+  assert.equal(canUseAdditionalUsageCapacity({ planId: "host_monthly", status: "active" }), true);
+  assert.equal(canUseAdditionalUsageCapacity({ planId: "host_monthly", status: "past_due" }), true);
+  assert.equal(canUseAdditionalUsageCapacity({ planId: "host_monthly", status: "canceled" }), false);
+  assert.equal(canUseAdditionalUsageCapacity({ planId: "free", status: "active" }), false);
   assert.equal(isPublicHostPlan("host_monthly"), true);
   assert.equal(isPublicHostPlan("host_annual"), true);
   assert.equal(isPublicHostPlan("vip_monthly"), false);

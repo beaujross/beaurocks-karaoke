@@ -206,7 +206,12 @@
     "lifecycleStates": ["reserved", "settled", "released", "billable", "invoiced"],
     "warningThresholdBps": [5000, 8000, 10000],
     "budgetScopes": ["workspace", "room"],
-    "circuitBreakerCapabilities": ["youtube_live_search"],
+    "circuitBreakerCapabilities": [
+      "youtube_live_search",
+      "youtube_metadata_lookup",
+      "apple_music_lookup",
+      "ai_generation"
+    ],
     "denialReasonCodes": [
       "usage_platform_circuit_open",
       "usage_capability_circuit_open",
@@ -222,6 +227,18 @@
       "room_export"
     ],
     "cloudBudgetAlertsAreEnforcement": false
+  },
+  "additionalUsagePolicy": {
+    "status": "owner_review_required_checkout_disabled",
+    "checkoutEnabled": false,
+    "autoRefillEnabled": false,
+    "autoRefillMonthlyCeilingRequired": true,
+    "grantTrigger": "verified_stripe_webhook_only",
+    "periodScope": "utc_calendar_month",
+    "allowanceLedger": "append_only",
+    "overspendProtection": "transactional_workspace_reservation",
+    "refundPolicy": "future_capacity_adjustment_no_history_rewrite",
+    "packs": {}
   },
   "moneyRails": {
     "host_plan": {

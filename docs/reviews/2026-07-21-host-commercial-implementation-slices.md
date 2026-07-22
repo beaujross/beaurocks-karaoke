@@ -27,7 +27,7 @@ This is the authoritative execution order. The source roadmaps retain strategy, 
 | 03 | production canary | First Room and Tonight Setup | 02 | B2 |
 | 04 | production canary | Room cost envelope and database fan-out containment | 01-03 | C1 |
 | 05 | in progress | Usage states, Host budgets, and graceful degradation | 04 | C2 |
-| 06 | planned | Prepaid usage packs and capped auto-refill | 05 | C3 |
+| 06 | in progress | Prepaid usage packs and capped auto-refill; 06.1 foundation verified with checkout disabled | 05 | C3 |
 | 07 | later | Vetted postpaid usage accounts | 06 plus production evidence | C4 |
 | 08 | planned | Host Tip outbound destination | 03 | D1 |
 | 09 | planned | Money-action clarity and checkout ownership | 01, 08 | D2 |

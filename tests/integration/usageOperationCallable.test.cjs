@@ -4,7 +4,7 @@ process.env.YOUTUBE_API_KEY = "integration-test-key";
 process.env.GEMINI_API_KEY = "integration-test-gemini-key";
 
 const admin = require("../../functions/node_modules/firebase-admin");
-const { geminiGenerate, manageMyUsageControls, youtubeSearch } = require("../../functions/index.js");
+const { geminiGenerate, getMyUsageSummary, manageMyUsageControls, youtubeSearch } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const APP_ID = "bross-app";
@@ -202,6 +202,29 @@ const run = async () => {
       meterId: "youtube_data_request",
       hardLimit: 25000,
     }));
+
+    await db.doc(`organizations/${ORG_ID}/usage_capacity/${period}`).set({
+      schemaVersion: 1,
+      orgId: ORG_ID,
+      period,
+      meters: {
+        youtube_data_request: { granted: 10, revoked: 0 },
+      },
+    });
+    const expandedControls = await manageMyUsageControls.run(requestFor({
+      action: "set_workspace_meter",
+      meterId: "youtube_data_request",
+      hardLimit: 25010,
+    }));
+    assert.equal(expandedControls.meters.youtube_data_request.planHardLimit, 25000);
+    assert.equal(expandedControls.meters.youtube_data_request.additionalCapacity, 10);
+    assert.equal(expandedControls.meters.youtube_data_request.maximumHardLimit, 25010);
+    assert.equal(expandedControls.meters.youtube_data_request.workspaceHardLimit, 25010);
+    const expandedSummary = await getMyUsageSummary.run(requestFor({ period }));
+    assert.equal(expandedSummary.additionalUsage.checkoutEnabled, false);
+    assert.equal(expandedSummary.additionalUsage.autoRefillEnabled, false);
+    assert.equal(expandedSummary.additionalUsage.meters.youtube_data_request.active, 10);
+    assert.equal(expandedSummary.meters.youtube_data_request.maximumHardLimit, 25010);
 
     await db.doc("platform_controls/usage").set({
       schemaVersion: 1,

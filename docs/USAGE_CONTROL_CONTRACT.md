@@ -1,7 +1,7 @@
 # Usage Control Contract
 
 Last updated: 2026-07-22
-Status: Slice 05.4 controlled production boundary; internal guardrail, not public pricing
+Status: Slice 06.1 prepaid-capacity foundation; checkout and auto-refill disabled
 
 ## Decision
 
@@ -65,6 +65,14 @@ Capability circuits are `youtube_live_search`, `youtube_metadata_lookup`, `apple
 
 Recovery is automatic for new operation IDs after capacity is restored or a circuit is closed. Replaying an already-used operation ID stays rejected so recovery cannot double-consume provider capacity.
 
+### Slice 06.1 Additional usage foundation
+
+The monthly maximum can now be the entitled Host plan hard limit plus server-owned prepaid capacity. The same combined maximum is used by the Host summary, owner/admin controls, and atomic reservation. A lower Workspace ceiling remains authoritative, so adding capacity cannot silently relax a Host's safety control.
+
+The server-owned aggregate is `organizations/{orgId}/usage_capacity/{YYYYMM}`. Signed Stripe fulfillment writes an append-only entry at `organizations/{orgId}/additional_usage_ledger/{stripeCheckoutSessionId}` and increments the aggregate in one transaction. Grant validation requires an enabled commercial policy and pack, a paid checkout, exact amount and currency, a valid Workspace and UTC period, and capacity only for known meters. Checkout Session identity prevents duplicate grant on webhook replay.
+
+The production catalog is intentionally empty. `checkoutEnabled` and `autoRefillEnabled` are false, no client checkout function or purchase button exists, and no unvalidated price is public. Capacity is ignored unless the Workspace has an entitled Host plan. Refund, chargeback, receipt, pre-event estimate, first-pack economics, and capped auto-refill work remain required before Gate C3.
+
 ## Host warnings
 
 Money > Billing & Usage receives application-calculated capacity state at 50%, 80%, and 100% of the configured hard limit. Outstanding reservations are included in exposure so concurrent work cannot hide above the cap. Prices and included amounts remain marked `existing_unvalidated_do_not_publish` until Gate C1 evidence and owner approval are complete.
@@ -94,3 +102,7 @@ Variable-cost degradation must not disable queue management, Host override, exis
 - Usage-control revisions are `getmyusagesummary-00137-wuy` and `managemyusagecontrols-00002-xol`.
 - Hosting release `1784709581207000`, version `ede23a7706418e50`, serves the operation IDs and shared Host/Audience recovery guidance. Production asset smoke returned HTTP 200 and contained the stable Room-limit reason and recovery copy.
 - No public plan, price, payment behavior, postpaid eligibility, or billing claim changed in this sub-slice.
+- Slice 06.1 usage and fulfillment revisions are `getmyusagesummary-00138-waz`, `managemyusagecontrols-00003-sov`, and `stripewebhook-00147-xes`.
+- Slice 06.1 provider revisions are `youtubesearch-00148-lif`, `youtubeplaylist-00147-cep`, `youtubestatus-00148-dah`, `youtuberefreshindexentries-00045-tex`, `youtubedetails-00147-vav`, `geminigenerate-00146-nev`, `applemusiclyrics-00151-bec`, `resolvequeuesonglyrics-00109-kam`, `autoapplelyrics-00147-vav`, `autopoptrivia-00093-xaf`, `backfillpoptriviaonroomenable-00093-yiy`, and `recoverpendingpoptrivia-00093-ced`.
+- Hosting release `1784711753917000`, version `23346e2878422268`, serves `HostApp-C2KTSASp.js`. Live smoke returned HTTP 200 across index, entry, main, and Host assets and found the Additional usage readiness, disabled-purchase, and no-uncapped-overage copy.
+- Slice 06.1 did not enable a pack, price, checkout function, purchase button, auto-refill, postpaid usage, Firestore rule, or payment configuration. Gate C3 remains open.
