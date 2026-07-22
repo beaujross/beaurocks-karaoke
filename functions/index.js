@@ -2202,6 +2202,7 @@ const normalizeRoomEventCredits = (input = {}) => {
   const eventLabel = safeDirectoryString(source.eventLabel || defaults.eventLabel, 120) || defaults.eventLabel;
   return {
     enabled: !!source.enabled,
+    beauBucksEnabledTonight: source.beauBucksEnabledTonight === true,
     presetId: normalizeDirectoryToken(source.presetId || defaults.presetId, 80) || defaults.presetId,
     eventId,
     eventLabel,
@@ -2250,6 +2251,7 @@ const buildRoomEventCreditPublicSummary = (config = {}) => {
   const normalized = normalizeRoomEventCredits(config);
   return {
     enabled: normalized.enabled,
+    beauBucksEnabledTonight: normalized.beauBucksEnabledTonight,
     presetId: normalized.presetId,
     eventId: normalized.eventId,
     eventLabel: normalized.eventLabel,
@@ -2806,6 +2808,10 @@ const isBeauBucksAuthorityCanaryRoom = ({ roomCode = "", roomData = {} } = {}) =
 const isRoomBeauBucksAuthorityEnabled = ({ roomCode = "", roomData = {} } = {}) =>
   isBeauBucksAuthorityCanaryRoom({ roomCode, roomData })
   && roomData?.eventCredits?.beauBucksAuthorityEnabled === true;
+const isRoomBeauBucksExperienceEnabled = ({ roomCode = "", roomData = {} } = {}) =>
+  isRoomBeauBucksAuthorityEnabled({ roomCode, roomData })
+  && roomData?.eventCredits?.enabled === true
+  && roomData?.eventCredits?.beauBucksEnabledTonight === true;
 const ROOM_REQUEST_MODES = Object.freeze({
   canonicalOpen: "canonical_open",
   playableOnly: "playable_only",
@@ -21016,7 +21022,9 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
   if (!roomUserSnap.exists) throw new HttpsError("failed-precondition", "Join the Room before viewing BeauBucks.");
   const roomData = roomSnap.data() || {};
   const authorityEnabled = isRoomBeauBucksAuthorityEnabled({ roomCode, roomData });
-  const checkoutEnabled = authorityEnabled && isBeauBucksCheckoutEnabled();
+  const hostEnabledTonight = roomData?.eventCredits?.beauBucksEnabledTonight === true;
+  const experienceEnabled = isRoomBeauBucksExperienceEnabled({ roomCode, roomData });
+  const checkoutEnabled = experienceEnabled && isBeauBucksCheckoutEnabled();
   const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
   const starterPackCandidate = checkoutEnabled ? getBeauBucksPack("beaubucks_starter_1200") : null;
   const starterPack = starterPackCandidate?.publicOffer === true ? starterPackCandidate : null;
@@ -21027,9 +21035,18 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
     balance: Math.max(0, Math.floor(Number(accountData.balance || 0) || 0)),
     authority: "ledger",
     authorityEnabled,
+    hostEnabledTonight,
+    experienceEnabled,
+    unavailableReason: !authorityEnabled
+      ? "rollout_not_available"
+      : !roomData?.eventCredits?.enabled
+        ? "room_points_disabled"
+        : !hostEnabledTonight
+          ? "host_disabled"
+          : "",
     canPurchase: !!starterPack,
     accountStatus: String(accountData.status || "active"),
-    allowedSpendKinds: authorityEnabled ? [SPEND_KINDS.reaction] : [],
+    allowedSpendKinds: experienceEnabled ? [SPEND_KINDS.reaction] : [],
     pack: starterPack,
   };
 });
@@ -21091,8 +21108,8 @@ exports.spendAudienceBeauBucks = onCall({ cors: true }, async (request) => {
     if (!roomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
     if (!roomUserSnap.exists) throw new HttpsError("failed-precondition", "Join the Room before spending BeauBucks.");
     const roomData = roomSnap.data() || {};
-    if (!isRoomBeauBucksAuthorityEnabled({ roomCode, roomData })) {
-      throw new HttpsError("failed-precondition", "BeauBucks authority is not enabled for this Room.");
+    if (!isRoomBeauBucksExperienceEnabled({ roomCode, roomData })) {
+      throw new HttpsError("failed-precondition", "BeauBucks are not available in this Room tonight.");
     }
     const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
     const balanceBefore = Math.max(0, Math.floor(Number(accountData.balance || 0) || 0));
@@ -25684,6 +25701,14 @@ exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
       roomData,
       updates: roomUpdateInput,
     });
+    if (Object.prototype.hasOwnProperty.call(updates, "eventCredits")) {
+      updates.eventCredits = {
+        ...(updates.eventCredits || {}),
+        ...(roomData?.eventCredits?.beauBucksAuthorityEnabled === true
+          ? { beauBucksAuthorityEnabled: true }
+          : {}),
+      };
+    }
     const nextJoinPolicy = normalizeRoomAudienceJoinPolicy(
       updates.audienceJoinPolicy || roomData.audienceJoinPolicy || {},
     );
@@ -29500,7 +29525,7 @@ exports.createBeauBucksCheckout = onCall(
     if (!roomUserSnap.exists) {
       throw new HttpsError("failed-precondition", "Join the Room before buying BeauBucks.");
     }
-    if (!isRoomBeauBucksAuthorityEnabled({ roomCode, roomData: roomSnap.data() || {} })) {
+    if (!isRoomBeauBucksExperienceEnabled({ roomCode, roomData: roomSnap.data() || {} })) {
       throw new HttpsError("failed-precondition", "BeauBucks purchases are not enabled for this Room.");
     }
 

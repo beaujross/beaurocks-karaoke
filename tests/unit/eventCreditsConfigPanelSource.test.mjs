@@ -27,3 +27,13 @@ test('room economy config exposes currency-aware starting balance and timed refi
   assert.match(source, /timedLobbyIntervalMin/);
   assert.match(source, /timedLobbyMaxPerGuest/);
 });
+
+test('authorized rooms expose one plain-language BeauBucks tonight control', () => {
+  assert.match(source, /beauBucksControlAvailable = eventCreditsConfig\?\.beauBucksAuthorityEnabled === true/);
+  assert.match(source, /data-feature-id="host-beaubucks-tonight-control"/);
+  assert.match(source, /BeauBucks tonight/);
+  assert.match(source, /Off — guests use earned Points/);
+  assert.match(source, /beauBucksEnabledTonight: e\.target\.checked/);
+  assert.doesNotMatch(source, />Authority</);
+  assert.doesNotMatch(source, />Canary</);
+});

@@ -134,6 +134,9 @@ const EventCreditsConfigPanel = ({
 
     const supportProvider = String(eventCreditsConfig?.supportProvider || '').trim().toLowerCase();
     const showAdvancedCredits = !!eventCreditsConfig?.enabled;
+    const beauBucksControlAvailable = eventCreditsConfig?.beauBucksAuthorityEnabled === true;
+    const beauBucksEnabledTonight = eventCreditsConfig?.enabled === true
+        && eventCreditsConfig?.beauBucksEnabledTonight === true;
     const accessMode = normalizeAudienceAccessMode(eventCreditsConfig?.audienceAccessMode || '');
     const creditMode = normalizeCreditEarningMode(eventCreditsConfig?.creditEarningMode || '');
     const celebrationStyle = normalizeSupportCelebrationStyle(eventCreditsConfig?.supportCelebrationStyle || '');
@@ -247,6 +250,34 @@ const EventCreditsConfigPanel = ({
                         ))}
                     </div>
                 </div>
+
+                {beauBucksControlAvailable ? (
+                    <div className="mt-4 rounded-2xl border border-fuchsia-300/22 bg-fuchsia-500/8 p-4" data-feature-id="host-beaubucks-tonight-control">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="max-w-2xl">
+                                <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/75">BeauBucks tonight</div>
+                                <div className="mt-1 text-base font-black text-white">
+                                    {beauBucksEnabledTonight ? 'Available for paid reactions' : 'Off — guests use earned Points'}
+                                </div>
+                                <div className="mt-1 text-sm leading-6 text-zinc-300">
+                                    BeauBucks are purchased separately from Points and only work in this Room. Turning this on lets guests who have BeauBucks spend them on reactions; checkout only appears when BeauRocks has enabled purchases.
+                                </div>
+                            </div>
+                            <label className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-3 py-2 text-sm font-black ${eventCreditsConfig?.enabled ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-50' : 'cursor-not-allowed border-white/10 bg-black/20 text-zinc-500'}`}>
+                                <input
+                                    type="checkbox"
+                                    checked={beauBucksEnabledTonight}
+                                    disabled={!eventCreditsConfig?.enabled}
+                                    onChange={(e) => updateConfig({ beauBucksEnabledTonight: e.target.checked })}
+                                />
+                                {beauBucksEnabledTonight ? 'On' : 'Off'}
+                            </label>
+                        </div>
+                        {!eventCreditsConfig?.enabled ? (
+                            <div className="mt-3 text-xs text-amber-100/80">Enable the Room experience above before making BeauBucks available.</div>
+                        ) : null}
+                    </div>
+                ) : null}
 
                 <details className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-500/6 p-4">
                     <summary className="cursor-pointer list-none">

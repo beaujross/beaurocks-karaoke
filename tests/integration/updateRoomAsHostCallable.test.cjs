@@ -42,6 +42,11 @@ async function resetRoom() {
     readyCheck: { active: true },
     bingoSuggestions: { "2": { count: 0, lastNote: "", lastAt: null } },
     bingoRevealed: { "2": false },
+    eventCredits: {
+      enabled: true,
+      beauBucksAuthorityEnabled: true,
+      beauBucksEnabledTonight: false,
+    },
   });
 }
 
@@ -168,6 +173,7 @@ async function run() {
         lobbyOrbSkinUrl: "https://example.com/orb.png",
         eventCredits: {
           enabled: true,
+          beauBucksEnabledTonight: true,
           eventId: "aahf_kickoff",
           eventLabel: "AAHF Karaoke Kick-Off",
           generalAdmissionPoints: 200,
@@ -267,6 +273,8 @@ async function run() {
       assert.equal(snap.get("hostNightPresetConfig.id"), "festival_custom");
       assert.equal(snap.get("lobbyOrbSkinUrl"), "https://example.com/orb.png");
       assert.equal(snap.get("eventCredits.enabled"), true);
+      assert.equal(snap.get("eventCredits.beauBucksEnabledTonight"), true);
+      assert.equal(snap.get("eventCredits.beauBucksAuthorityEnabled"), true);
       assert.equal(snap.get("eventCredits.generalAdmissionPoints"), 200);
       assert.equal(snap.get("eventCredits.audienceAccessMode"), "email_or_donation");
       assert.equal(snap.get("eventCredits.creditEarningMode"), "friendly");

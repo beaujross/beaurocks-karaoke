@@ -119,6 +119,20 @@ test("hostLaunchHelpers keeps co-host credit defaults in drafts", () => {
   assert.equal(draft.reactionTapCooldownMs, DEFAULT_REACTION_TAP_COOLDOWN_MS);
 });
 
+test("hostLaunchHelpers persists Host BeauBucks intent without submitting the admin permission", () => {
+  const draft = createEventCreditsDraft({
+    enabled: true,
+    beauBucksEnabledTonight: true,
+    beauBucksAuthorityEnabled: true,
+  });
+  const payload = buildProvisionEventCreditsPayload(draft);
+
+  assert.equal(draft.beauBucksAuthorityEnabled, true);
+  assert.equal(payload.beauBucksEnabledTonight, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, "beauBucksAuthorityEnabled"), false);
+  assert.equal(buildProvisionEventCreditsPayload({ ...draft, enabled: false }).beauBucksEnabledTonight, false);
+});
+
 test("hostLaunchHelpers normalizes donation-backed support offers", () => {
   const payload = buildProvisionEventCreditsPayload(
     createEventCreditsDraft({

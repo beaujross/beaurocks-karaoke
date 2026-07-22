@@ -17,6 +17,9 @@ import {
     joinRoomAudience,
     updateAudienceIdentity,
     spendAudienceRoomCredits,
+    getMyRoomBeauBucksWallet,
+    spendAudienceBeauBucks,
+    createBeauBucksCheckout,
     listMyRoomCreditActivity,
     uploadAudienceRoomPhoto,
     submitAudienceQueueSong,
@@ -1791,6 +1794,12 @@ const SingerApp = ({ roomCode, uid }) => {
         hasMore: false,
         error: '',
     });
+    const [beauBucksWalletState, setBeauBucksWalletState] = useState({
+        status: 'idle',
+        roomCode: '',
+        wallet: null,
+        error: '',
+    });
     const [supportEmbedOpen, setSupportEmbedOpen] = useState(false);
     const [pointsCheckoutPendingKey, setPointsCheckoutPendingKey] = useState('');
     const [eventGrantCode, setEventGrantCode] = useState('');
@@ -2105,10 +2114,12 @@ const SingerApp = ({ roomCode, uid }) => {
                 offerType: 'tip_crate',
             }));
         return [
-            ...POINTS_PACKS.map((pack) => ({ ...pack, offerType: 'points_pack' })),
+            ...(room?.eventCredits?.beauBucksAuthorityEnabled === true
+                ? []
+                : POINTS_PACKS.map((pack) => ({ ...pack, offerType: 'points_pack' }))),
             ...roomBuyerBoosts,
         ];
-    }, [availableTipCrates]);
+    }, [availableTipCrates, room?.eventCredits?.beauBucksAuthorityEnabled]);
     const roomBoostOffers = useMemo(() => {
         const picks = [];
         const seen = new Set();
@@ -2880,7 +2891,8 @@ const SingerApp = ({ roomCode, uid }) => {
         const params = new URLSearchParams(window.location.search);
         const pointsStatus = String(params.get('points') || '').trim().toLowerCase();
         const tipStatus = String(params.get('tip') || '').trim().toLowerCase();
-        if (!pointsStatus && !tipStatus) return;
+        const beauBucksStatus = String(params.get('beaubucks') || '').trim().toLowerCase();
+        if (!pointsStatus && !tipStatus && !beauBucksStatus) return;
 
         if (pointsStatus === 'success') {
             setShowPoints(true);
@@ -2898,8 +2910,17 @@ const SingerApp = ({ roomCode, uid }) => {
             toast('Room boost canceled.');
         }
 
+        if (beauBucksStatus === 'success') {
+            setShowPoints(true);
+            toast('BeauBucks purchase complete. Your Room balance should update in a moment.');
+        } else if (beauBucksStatus === 'cancel') {
+            setShowPoints(true);
+            toast('BeauBucks checkout canceled.');
+        }
+
         params.delete('points');
         params.delete('tip');
+        params.delete('beaubucks');
         const nextSearch = params.toString();
         const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash || ''}`;
         window.history.replaceState({}, '', nextUrl);
@@ -3177,6 +3198,8 @@ const SingerApp = ({ roomCode, uid }) => {
         const source = room?.eventCredits && typeof room.eventCredits === 'object' ? room.eventCredits : {};
         return {
             enabled: !!source.enabled,
+            beauBucksAuthorityEnabled: source.beauBucksAuthorityEnabled === true,
+            beauBucksEnabledTonight: source.beauBucksEnabledTonight === true,
             presetId: String(source.presetId || '').trim(),
             eventId: String(source.eventId || '').trim(),
             eventLabel: String(source.eventLabel || '').trim(),
@@ -3236,6 +3259,61 @@ const SingerApp = ({ roomCode, uid }) => {
                 : [],
         };
     }, [room?.eventCredits]);
+    const beauBucksRoomCandidate = activeEventCredits.beauBucksAuthorityEnabled === true;
+    const beauBucksIntentEnabled = beauBucksRoomCandidate
+        && activeEventCredits.enabled
+        && activeEventCredits.beauBucksEnabledTonight;
+    const loadBeauBucksWallet = useCallback(async ({ force = false } = {}) => {
+        if (!beauBucksRoomCandidate || !roomCode || !activeUid) return null;
+        if (!force && beauBucksWalletState.roomCode === roomCode && beauBucksWalletState.status === 'loading') return null;
+        setBeauBucksWalletState((current) => ({ ...current, status: 'loading', roomCode, error: '' }));
+        try {
+            const wallet = await getMyRoomBeauBucksWallet({ roomCode });
+            setBeauBucksWalletState({ status: 'ready', roomCode, wallet: wallet || null, error: '' });
+            return wallet || null;
+        } catch (walletError) {
+            console.error(walletError);
+            setBeauBucksWalletState({
+                status: 'error',
+                roomCode,
+                wallet: null,
+                error: 'BeauBucks balance is unavailable right now.',
+            });
+            return null;
+        }
+    }, [activeUid, beauBucksRoomCandidate, beauBucksWalletState.roomCode, beauBucksWalletState.status, roomCode]);
+    useEffect(() => {
+        setBeauBucksWalletState({ status: 'idle', roomCode: '', wallet: null, error: '' });
+    }, [activeEventCredits.beauBucksEnabledTonight, activeEventCredits.enabled, roomCode]);
+    useEffect(() => {
+        if (!showPoints || !beauBucksRoomCandidate) return;
+        if (beauBucksWalletState.roomCode === roomCode && beauBucksWalletState.status !== 'idle') return;
+        void loadBeauBucksWallet();
+    }, [beauBucksRoomCandidate, beauBucksWalletState.roomCode, beauBucksWalletState.status, loadBeauBucksWallet, roomCode, showPoints]);
+    const requestBeauBucksReactionSpend = useCallback(async ({ reactionType = '', payload = {}, retryKey = '' } = {}) => {
+        const safeRetryKey = `beaubucks:${String(retryKey || reactionType || 'reaction')}`;
+        const pendingOperationId = pendingSpendOperationIdsRef.current.get(safeRetryKey) || '';
+        const clientOperationId = pendingOperationId || createAudienceSpendOperationId('beaubucks_reaction');
+        pendingSpendOperationIdsRef.current.set(safeRetryKey, clientOperationId);
+        const result = await spendAudienceBeauBucks({
+            roomCode,
+            kind: 'reaction',
+            clientOperationId,
+            payload: { ...payload, reactionType },
+        });
+        const definitiveOutcome = ['accepted', 'insufficient_balance', 'account_restricted'].includes(String(result?.outcome || ''));
+        if (definitiveOutcome) pendingSpendOperationIdsRef.current.delete(safeRetryKey);
+        if (Number.isFinite(Number(result?.balanceAfter))) {
+            setBeauBucksWalletState((current) => ({
+                ...current,
+                status: 'ready',
+                roomCode,
+                wallet: { ...(current.wallet || {}), balance: Math.max(0, Number(result.balanceAfter) || 0) },
+                error: '',
+            }));
+        }
+        return result || { ok: false, outcome: 'unknown' };
+    }, [roomCode]);
     const roomCurrencyPresentation = useMemo(() => getRoomCurrencyPresentation(activeEventCredits), [activeEventCredits]);
     const roomSpendIntentGuide = useMemo(() => getRoomSpendIntentGuide(activeEventCredits), [activeEventCredits]);
     const isRunOfShowCoHost = runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host';
@@ -3531,6 +3609,8 @@ const SingerApp = ({ roomCode, uid }) => {
         openEmailAccessModal();
     }, [allowsDonationAccess, openEmailAccessModal, roomSupportHasEmbed, roomSupportOffer, simplifyFestivalSupportAccess]);
     const formatPointsLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} ${roomCurrencyPresentation.shortLabel}`;
+    const formatEarnedPointsLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} ${beauBucksRoomCandidate ? 'PTS' : roomCurrencyPresentation.shortLabel}`;
+    const formatBeauBucksLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} BB`;
     const formatDollarLabel = (value = 0) => {
         const amount = Math.max(0, Number(value) || 0);
         return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`;
@@ -3667,27 +3747,73 @@ const SingerApp = ({ roomCode, uid }) => {
     const visibleCreditActivityState = creditActivityState.roomCode === roomCode
         ? creditActivityState
         : { status: 'idle', activities: [], hasMore: false, error: '' };
+    const visibleBeauBucksWalletState = beauBucksWalletState.roomCode === roomCode
+        ? beauBucksWalletState
+        : { status: 'idle', wallet: null, error: '' };
     const pointsDrawerContent = (
         <>
             <div className="space-y-5" data-feature-id="audience-points-storefront">
                 <section className="relative overflow-hidden rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(34,211,238,0.22),rgba(236,72,153,0.15)_42%,rgba(12,18,32,0.98))] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.34)]">
-                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/78">{roomCurrencyPresentation.balanceLabel}</div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/78">{beauBucksRoomCandidate ? 'Earned Points' : roomCurrencyPresentation.balanceLabel}</div>
                     <div className="mt-2 text-[clamp(3rem,15vw,5rem)] font-black leading-none text-white">
-                        {formatPointsLabel(getEffectivePoints())}
+                        {formatEarnedPointsLabel(getEffectivePoints())}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                         {activeEventCredits.generalAdmissionPoints > 0 ? (
                             <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black text-white">
-                                Start +{formatPointsLabel(activeEventCredits.generalAdmissionPoints)}
+                                Start +{formatEarnedPointsLabel(activeEventCredits.generalAdmissionPoints)}
                             </span>
                         ) : null}
                         {activeEventCredits.timedLobbyEnabled ? (
                             <span className="rounded-full bg-cyan-300/16 px-3 py-1.5 text-xs font-black text-cyan-50">
-                                +{formatPointsLabel(activeEventCredits.timedLobbyPoints)} {timedLobbyIntervalLabel.toLowerCase()}
+                                +{formatEarnedPointsLabel(activeEventCredits.timedLobbyPoints)} {timedLobbyIntervalLabel.toLowerCase()}
                             </span>
                         ) : null}
                     </div>
                 </section>
+
+                {beauBucksRoomCandidate ? (
+                    <section className="rounded-[1.25rem] border border-fuchsia-300/22 bg-[linear-gradient(145deg,rgba(192,38,211,0.14),rgba(12,18,32,0.96))] p-4" data-feature-id="audience-beaubucks-wallet">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100/70">BeauBucks</div>
+                                <div className="mt-1 text-sm font-black text-white">
+                                    {beauBucksIntentEnabled ? 'Purchased value for this Room' : 'Off tonight'}
+                                </div>
+                            </div>
+                            {visibleBeauBucksWalletState.status === 'ready' ? (
+                                <div className="rounded-full border border-fuchsia-200/20 bg-fuchsia-500/12 px-3 py-1 text-lg font-black text-fuchsia-50">
+                                    {formatBeauBucksLabel(visibleBeauBucksWalletState.wallet?.balance || 0)}
+                                </div>
+                            ) : null}
+                        </div>
+                        <div className="mt-2 text-xs leading-5 text-zinc-300">
+                            Points are earned through the party. BeauBucks are purchased separately, stay in this Room, and can only be used for paid reactions tonight.
+                        </div>
+                        {visibleBeauBucksWalletState.status === 'loading' || visibleBeauBucksWalletState.status === 'idle' ? (
+                            <div className="mt-3 text-xs text-zinc-400" role="status">Loading BeauBucks balance...</div>
+                        ) : visibleBeauBucksWalletState.status === 'error' ? (
+                            <div className="mt-3 flex items-center justify-between gap-3">
+                                <span className="text-xs text-amber-100">{visibleBeauBucksWalletState.error}</span>
+                                <button type="button" onClick={() => loadBeauBucksWallet({ force: true })} className="min-h-[40px] rounded-xl bg-white/10 px-3 text-xs font-black text-white">Retry</button>
+                            </div>
+                        ) : visibleBeauBucksWalletState.wallet?.canPurchase && visibleBeauBucksWalletState.wallet?.pack ? (
+                            <button
+                                type="button"
+                                onClick={() => startBeauBucksCheckout(visibleBeauBucksWalletState.wallet.pack)}
+                                disabled={pointsCheckoutPendingKey === 'beaubucks'}
+                                className="mt-3 flex min-h-[48px] w-full items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-fuchsia-400 to-pink-400 px-4 font-black text-black disabled:opacity-60"
+                            >
+                                <span>{pointsCheckoutPendingKey === 'beaubucks' ? 'Opening checkout...' : visibleBeauBucksWalletState.wallet.pack.publicLabel}</span>
+                                <span>${(Number(visibleBeauBucksWalletState.wallet.pack.amountCents || 0) / 100).toFixed(2)}</span>
+                            </button>
+                        ) : (
+                            <div className="mt-3 rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-xs text-zinc-400">
+                                {beauBucksIntentEnabled ? 'Purchases are not open right now. Existing BeauBucks can still be used for reactions.' : 'The Host has not made BeauBucks available for this party.'}
+                            </div>
+                        )}
+                    </section>
+                ) : null}
 
                 <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035]" data-feature-id="audience-credit-activity">
                     <button
@@ -3723,7 +3849,7 @@ const SingerApp = ({ roomCode, uid }) => {
                                     {visibleCreditActivityState.activities.slice(0, 5).map((entry) => {
                                         const isDebit = entry.direction === 'debit';
                                         const isRoomCredit = entry.direction === 'room_credit';
-                                        const signedAmount = `${isDebit ? '-' : '+'}${Math.max(0, Number(entry.amount || 0) || 0)} ${roomCurrencyPresentation.shortLabel}`;
+                                        const signedAmount = `${isDebit ? '-' : '+'}${Math.max(0, Number(entry.amount || 0) || 0)} ${entry.currency === 'beaubucks' ? 'BB' : (beauBucksRoomCandidate ? 'PTS' : roomCurrencyPresentation.shortLabel)}`;
                                         return (
                                             <div key={entry.activityId} className="flex items-start justify-between gap-3 py-3">
                                                 <div className="min-w-0">
@@ -3745,7 +3871,7 @@ const SingerApp = ({ roomCode, uid }) => {
                             )}
                             {visibleCreditActivityState.activities.length > 0 ? (
                                 <div className="mt-2 flex items-center justify-between gap-3 border-t border-white/8 pt-3">
-                                    <span className="text-[11px] leading-4 text-zinc-500">Server-recorded activity for this Room. The balance above remains your current total.</span>
+                                    <span className="text-[11px] leading-4 text-zinc-500">Server-recorded activity for this Room. The balances above remain your current totals.</span>
                                     <button type="button" onClick={() => loadCreditActivity({ force: true })} className="min-h-[40px] shrink-0 rounded-xl bg-white/8 px-3 text-xs font-black text-zinc-200">Refresh</button>
                                 </div>
                             ) : null}
@@ -5691,9 +5817,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const reactionCostLabel = useCallback((cost = 0) => formatRoomActionDisclosure({
         intent: 'performer',
         cost,
-        currencyLabel: roomCurrencyPresentation.shortLabel,
+        currencyLabel: beauBucksIntentEnabled ? 'BB' : roomCurrencyPresentation.shortLabel,
         free: coHostFreeReactions,
-    }), [coHostFreeReactions, roomCurrencyPresentation.shortLabel]);
+    }), [beauBucksIntentEnabled, coHostFreeReactions, roomCurrencyPresentation.shortLabel]);
     const renderReactionCooldownFill = useCallback((
         reactionKey = '',
         fillClass = 'bg-white/20',
@@ -6901,6 +7027,24 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         }
     }, [billingPlatform, billingProvider, pointsCheckoutPendingKey, roomCode, startGivebutterSupportCheckout, toast, uid, user?.name]);
 
+    const startBeauBucksCheckout = useCallback(async (pack) => {
+        if (pointsCheckoutPendingKey || !pack?.id) return;
+        setPointsCheckoutPendingKey('beaubucks');
+        try {
+            const payload = await createBeauBucksCheckout({ roomCode, packId: pack.id });
+            if (payload?.url) {
+                window.location.href = payload.url;
+                return;
+            }
+            setPointsCheckoutPendingKey('');
+            toast('BeauBucks checkout is unavailable right now.');
+        } catch (checkoutError) {
+            console.error(checkoutError);
+            setPointsCheckoutPendingKey('');
+            toast('BeauBucks checkout is unavailable right now.');
+        }
+    }, [pointsCheckoutPendingKey, roomCode, toast]);
+
     const _startSubscriptionCheckout = async (plan) => {
         try {
             const payload = await billingProvider.purchaseSubscription({
@@ -7744,7 +7888,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (takeoverClapVotingActive && safeType === 'clap') nextCost = 0;
         if (coHostFreeReactions) nextCost = 0;
         if (!currentSinger && !applauseModeActive && !takeoverClapVotingActive) return toast('Reactions wake up once someone is on stage or a scene goes live.');
-        if(!user || !canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} ${roomCurrencyPresentation.shortLabel}!`);
+        const useBeauBucks = nextCost > 0 && beauBucksIntentEnabled && !coHostUnlimitedCredits;
+        if (!user) return toast('Join the Room before sending reactions.');
+        if (!useBeauBucks && !canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} ${roomCurrencyPresentation.shortLabel}!`);
         const now = Date.now();
         const cooldownUntil = Number(reactionCooldownByType?.[safeType] || 0);
         if (reactionTapCooldownMs > 0 && cooldownUntil > now) {
@@ -7753,7 +7899,32 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         }
         try {
             let chargedCost = nextCost;
-            if (nextCost > 0 && spendAuthority === 'server_canary' && !coHostUnlimitedCredits) {
+            if (useBeauBucks) {
+                const spendResult = await requestBeauBucksReactionSpend({
+                    reactionType: safeType,
+                    retryKey: `reaction:${safeType}:${currentSinger?.id || 'scene'}`,
+                    payload: {
+                        performanceId: currentSinger?.id || '',
+                        canonicalSongId: currentSinger?.canonicalSongId || '',
+                        backingTrackId: currentSinger?.backingTrackId || currentSinger?.trackId || '',
+                        performerUid: currentSinger?.singerUid || '',
+                    },
+                });
+                if (spendResult?.outcome === 'insufficient_balance') {
+                    toast(`Need ${nextCost} BB!`);
+                    setShowPoints(true);
+                    return;
+                }
+                if (spendResult?.outcome === 'account_restricted') {
+                    toast('BeauBucks spending is unavailable for this account.');
+                    return;
+                }
+                if (spendResult?.outcome !== 'accepted') {
+                    toast('Could not confirm the BeauBucks charge. Try that reaction again.');
+                    return;
+                }
+                chargedCost = Math.max(0, Number(spendResult.chargedAmount || nextCost) || 0);
+            } else if (nextCost > 0 && spendAuthority === 'server_canary' && !coHostUnlimitedCredits) {
                 const spendResult = await requestServerSpend({
                     kind: 'reaction',
                     retryKey: `reaction:${safeType}:${currentSinger?.id || 'scene'}`,
@@ -7794,7 +7965,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setTimeout(() => setLocalReactions(prev => prev.filter(r => r.id !== id)), 4000);
             toast(getReactionFeedback({
                 cost: chargedCost,
-                currencyLabel: roomCurrencyPresentation.shortLabel,
+                currencyLabel: useBeauBucks ? 'BB' : roomCurrencyPresentation.shortLabel,
                 performerName: takeoverClapVotingActive ? '' : currentSinger?.singerName,
                 roomInfluence: takeoverClapVotingActive,
             }));
@@ -11812,7 +11983,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             <div className="mx-auto flex min-h-full w-full max-w-md flex-col px-4 py-3 text-left">
                 <div className="mb-5 flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/70">{allowsDonationAccess ? 'Support + Points' : 'Points'}</div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/70">{beauBucksRoomCandidate ? 'Points + BeauBucks' : (allowsDonationAccess ? 'Support + Points' : 'Points')}</div>
                         <h2 className="mt-1 text-4xl font-black leading-none text-white">Fuel the show</h2>
                     </div>
                     <button

@@ -100,7 +100,12 @@ async function resetState() {
     roomRef.set({
       hostUid: 'host-uid',
       hostUids: ['host-uid'],
-      eventCredits: { enabled: true, presetId: 'beaubucks', beauBucksAuthorityEnabled: true },
+      eventCredits: {
+        enabled: true,
+        presetId: 'beaubucks',
+        beauBucksAuthorityEnabled: true,
+        beauBucksEnabledTonight: true,
+      },
     }),
     roomUserRef.set({ roomCode: ROOM_CODE, uid: USER_UID, name: 'Buyer', points: 777 }),
     userRef.set({ uid: USER_UID, pointsBalance: 999 }),
@@ -148,6 +153,24 @@ const purchaseEvent = {
 async function run() {
   await resetState();
 
+  await roomRef.update({ 'eventCredits.beauBucksEnabledTonight': false });
+  const offWallet = await getMyRoomBeauBucksWallet.run(requestFor(USER_UID, { roomCode: ROOM_CODE }));
+  assert.equal(offWallet.authorityEnabled, true);
+  assert.equal(offWallet.hostEnabledTonight, false);
+  assert.equal(offWallet.experienceEnabled, false);
+  assert.equal(offWallet.unavailableReason, 'host_disabled');
+  assert.deepEqual(offWallet.allowedSpendKinds, []);
+  await expectHttpsError(
+    () => spendAudienceBeauBucks.run(requestFor(USER_UID, {
+      roomCode: ROOM_CODE,
+      kind: 'reaction',
+      clientOperationId: 'paid-reaction-while-off',
+      payload: { reactionType: 'fire' },
+    })),
+    'failed-precondition',
+  );
+  await roomRef.update({ 'eventCredits.beauBucksEnabledTonight': true });
+
   await expectHttpsError(
     () => createBeauBucksCheckout.run(requestFor(USER_UID, { roomCode: ROOM_CODE, packId: 'beaubucks_starter_1200' })),
     'failed-precondition',
@@ -177,6 +200,9 @@ async function run() {
   const wallet = await getMyRoomBeauBucksWallet.run(requestFor(USER_UID, { roomCode: ROOM_CODE }));
   assert.equal(wallet.balance, 1200);
   assert.equal(wallet.authority, 'ledger');
+  assert.equal(wallet.hostEnabledTonight, true);
+  assert.equal(wallet.experienceEnabled, true);
+  assert.equal(wallet.unavailableReason, '');
   assert.equal(wallet.canPurchase, false);
   assert.deepEqual(wallet.allowedSpendKinds, ['reaction']);
 

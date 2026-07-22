@@ -894,6 +894,24 @@ const permanentlyDeleteHostRoom = async (payload = {}) => {
   return data || null;
 };
 
+const getMyRoomBeauBucksWallet = async (payload = {}) => {
+  await requireAppCheckToken("getMyRoomBeauBucksWallet");
+  const data = await callFunction("getMyRoomBeauBucksWallet", payload || {});
+  return data || null;
+};
+
+const spendAudienceBeauBucks = async (payload = {}) => {
+  await requireAppCheckToken("spendAudienceBeauBucks");
+  const data = await callFunction("spendAudienceBeauBucks", payload || {});
+  return data || null;
+};
+
+const createBeauBucksCheckout = async (payload = {}) => {
+  await requireAppCheckToken("createBeauBucksCheckout");
+  const data = await callFunction("createBeauBucksCheckout", payload || {});
+  return data || null;
+};
+
 const previewMyRoomCapacity = async (payload = {}) => {
   await requireAppCheckToken("previewMyRoomCapacity");
   const data = await callFunction("previewMyRoomCapacity", payload || {});
@@ -1319,6 +1337,9 @@ export {
   submitAudienceEmailCapture,
   updateAudienceIdentity,
   spendAudienceRoomCredits,
+  getMyRoomBeauBucksWallet,
+  spendAudienceBeauBucks,
+  createBeauBucksCheckout,
   uploadAudienceRoomPhoto,
   createMediaUploadSession,
   uploadHostSceneMedia,

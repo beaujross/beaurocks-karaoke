@@ -6,7 +6,7 @@ const source = readFileSync('src/apps/Mobile/SingerApp.jsx', 'utf8');
 
 test('audience actions report their actual effects without implying payment completion', () => {
   assert.match(source, /getReactionFeedback/);
-  assert.match(source, /currencyLabel: roomCurrencyPresentation\.shortLabel/);
+  assert.match(source, /currencyLabel: useBeauBucks \? 'BB' : roomCurrencyPresentation\.shortLabel/);
   assert.match(source, /performerName: takeoverClapVotingActive \? '' : currentSinger\?\.singerName/);
   assert.match(source, /roomInfluence: takeoverClapVotingActive/);
   assert.match(source, /toast\(getCheckoutLaunchFeedback\('Givebutter'\)\)/);
