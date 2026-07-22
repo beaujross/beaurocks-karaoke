@@ -80,7 +80,9 @@ This view is proof of server-recorded activity, not a declaration that the shado
 - The private Audience activity projection can render an authoritative purchase with USD amount and a hashed BeauRocks confirmation code. It also returns the separate ledger balance, but no Audience storefront or new Host control is routed to this rail yet.
 - BeauBucks do not expire during this canary. General-release expiration, portability, support, tax/accounting, and refund language require owner review.
 
-Activation remains a no-go until the out-of-order adjustment/recovery procedure is proven, the pack/refund terms are approved, Host enablement is designed, and the Audience purchase/spend surface is explicitly routed away from legacy Points.
+Signed refunds and chargebacks that arrive before purchase completion now enter a hashed, server-only pending inbox. Each unique event is immutable and each payment aggregate is cumulative; fulfillment reads that aggregate in the same transaction as the grant and immediately posts the compensating debit, leaving no spendable window. A transaction-level payment-reference recheck closes the concurrent-arrival race. Pending records carry a 90-day `expiresAt` field and use dedicated collection groups so production TTL policies can bound storage without affecting other event data.
+
+Activation remains a no-go until the pack/refund terms are approved, Host enablement is designed, and the Audience purchase/spend surface is explicitly routed away from legacy Points.
 
 ## Server-Authoritative Canary Spend Contract (Implemented 2026-07-13)
 

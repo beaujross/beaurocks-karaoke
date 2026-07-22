@@ -5,6 +5,8 @@ const { buildLedgerAccountId } = require('./beauBucksLedger');
 const BEAUBUCKS_ACCOUNT_COLLECTION = 'beaurocks_ledger_accounts';
 const BEAUBUCKS_PAYMENT_REF_COLLECTION = 'beaurocks_payment_refs';
 const BEAUBUCKS_ADJUSTMENT_COLLECTION = 'beaurocks_payment_adjustments';
+const BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION = 'beaurocks_pending_payment_adjustments';
+const BEAUBUCKS_PENDING_ADJUSTMENT_EVENT_COLLECTION = 'beaurocks_pending_payment_adjustment_events';
 const BEAUBUCKS_AUTHORITY_SCHEMA_VERSION = 1;
 
 const token = (value = '') => String(value || '').trim();
@@ -45,6 +47,35 @@ const hashId = (namespace = '', value = '') => {
 };
 const buildBeauBucksPaymentRefId = (paymentIntentId = '') => hashId('beaubucks_payment', paymentIntentId);
 const buildBeauBucksAdjustmentId = (eventId = '') => hashId('beaubucks_adjustment', eventId);
+
+const buildPendingBeauBucksAdjustmentState = ({
+  existing = {},
+  eventIdHash = '',
+  adjustmentType = 'refund',
+  cumulativeRefundedAmountCents = 0,
+  chargebackAmountCents = 0,
+  maxEventIds = 20,
+} = {}) => {
+  const previousEventIds = Array.isArray(existing.eventIdHashes)
+    ? existing.eventIdHashes.map(token).filter(Boolean)
+    : [];
+  const nextEventIds = [...previousEventIds.filter((value) => value !== token(eventIdHash)), token(eventIdHash)]
+    .filter(Boolean)
+    .slice(-Math.max(1, whole(maxEventIds)));
+  return {
+    cumulativeRefundedAmountCents: Math.max(
+      whole(existing.cumulativeRefundedAmountCents),
+      whole(cumulativeRefundedAmountCents),
+    ),
+    chargebackObserved: existing.chargebackObserved === true || adjustmentType === 'chargeback',
+    chargebackAmountCents: Math.max(
+      whole(existing.chargebackAmountCents),
+      adjustmentType === 'chargeback' ? whole(chargebackAmountCents) : 0,
+    ),
+    eventIdHashes: nextEventIds,
+    eventCount: whole(existing.eventCount) + 1,
+  };
+};
 
 const validateBeauBucksCheckoutFulfillment = ({ checkout = {}, session = {}, contract = commercialContract } = {}) => {
   const metadata = session?.metadata || {};
@@ -107,11 +138,14 @@ module.exports = {
   BEAUBUCKS_ACCOUNT_COLLECTION,
   BEAUBUCKS_ADJUSTMENT_COLLECTION,
   BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+  BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION,
+  BEAUBUCKS_PENDING_ADJUSTMENT_EVENT_COLLECTION,
   BEAUBUCKS_PAYMENT_REF_COLLECTION,
   buildBeauBucksAccountId,
   buildBeauBucksAdjustmentId,
   buildBeauBucksAdjustmentPlan,
   buildBeauBucksPaymentRefId,
+  buildPendingBeauBucksAdjustmentState,
   getBeauBucksPack,
   getBeauBucksPolicy,
   isBeauBucksCheckoutEnabled,

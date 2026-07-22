@@ -86,6 +86,8 @@ async function resetState() {
     ['beaurocks_ledger_accounts'],
     ['beaurocks_payment_refs'],
     ['beaurocks_payment_adjustments'],
+    ['beaurocks_pending_payment_adjustments'],
+    ['beaurocks_pending_payment_adjustment_events'],
     ['beaurocks_spend_operations'],
     ['artifacts', APP_ID, 'public', 'data', 'rooms'],
     ['artifacts', APP_ID, 'public', 'data', 'room_users'],
@@ -247,6 +249,57 @@ async function run() {
   assert.equal(restrictedSpend.chargedAmount, 0);
   assert.equal((await accountRef.get()).get('balance'), 0);
   assert.equal((await roomUserRef.get()).get('points'), 777);
+
+  await resetState();
+  const earlyRefund = await invokeStripeWebhook(refundEvent);
+  assert.equal(earlyRefund.body.additionalUsageAdjustment, false);
+  assert.equal(earlyRefund.body.beauBucksAdjustment, false);
+  assert.equal(earlyRefund.body.beauBucksAdjustmentPending, true);
+  assert.equal(earlyRefund.body.ignored, true);
+  const earlyRefundReplay = await invokeStripeWebhook(refundEvent);
+  assert.equal(earlyRefundReplay.body.pendingAdjustmentDuplicate, true);
+  const paymentRefId = buildBeauBucksPaymentRefId(PAYMENT_INTENT_ID);
+  const pendingRefundRef = db.doc(`beaurocks_pending_payment_adjustments/${paymentRefId}`);
+  assert.equal((await pendingRefundRef.get()).get('cumulativeRefundedAmountCents'), 250);
+  assert.equal((await pendingRefundRef.get()).get('eventCount'), 1);
+  assert.equal((await db.doc(`beaurocks_pending_payment_adjustment_events/${buildBeauBucksAdjustmentId(refundEvent.id)}`).get()).exists, true);
+
+  const purchaseAfterRefund = await invokeStripeWebhook(purchaseEvent);
+  assert.equal(purchaseAfterRefund.body.granted, true);
+  assert.equal(purchaseAfterRefund.body.pendingAdjustmentApplied, true);
+  assert.equal(purchaseAfterRefund.body.pendingAdjustmentType, 'refund');
+  assert.equal((await accountRef.get()).get('balance'), 600);
+  assert.equal((await accountRef.get()).get('status'), 'active');
+  assert.equal((await pendingRefundRef.get()).get('status'), 'recovered');
+  assert.equal((await db.doc(`beaurocks_payment_refs/${paymentRefId}`).get()).get('status'), 'partially_refunded');
+  const recoveredRefundAdjustmentId = buildBeauBucksAdjustmentId(`pending_recovery:${paymentRefId}`);
+  const recoveredRefundAdjustment = (await db.doc(`beaurocks_payment_adjustments/${recoveredRefundAdjustmentId}`).get()).data();
+  assert.equal(recoveredRefundAdjustment.appliedRevocation, 600);
+  assert.equal(recoveredRefundAdjustment.unrecoveredAmount, 0);
+  const recoveredRefundLedgerId = buildLedgerEntryId(`beaubucks_pending_adjustment:${paymentRefId}`);
+  assert.equal((await db.doc(`beaurocks_ledger_entries/${recoveredRefundLedgerId}`).get()).get('type'), 'refund_reversal');
+  const purchaseAfterRefundReplay = await invokeStripeWebhook(purchaseEvent);
+  assert.equal(purchaseAfterRefundReplay.body.duplicate, true);
+  assert.equal((await accountRef.get()).get('balance'), 600);
+  assert.equal((await roomUserRef.get()).get('points'), 777);
+  assert.equal((await userRef.get()).get('pointsBalance'), 999);
+
+  await resetState();
+  const earlyChargeback = await invokeStripeWebhook(chargebackEvent);
+  assert.equal(earlyChargeback.body.beauBucksAdjustmentPending, true);
+  assert.equal((await db.doc(`beaurocks_pending_payment_adjustments/${paymentRefId}`).get()).get('chargebackObserved'), true);
+  const purchaseAfterChargeback = await invokeStripeWebhook(purchaseEvent);
+  assert.equal(purchaseAfterChargeback.body.granted, true);
+  assert.equal(purchaseAfterChargeback.body.pendingAdjustmentApplied, true);
+  assert.equal(purchaseAfterChargeback.body.pendingAdjustmentType, 'chargeback');
+  assert.equal((await accountRef.get()).get('balance'), 0);
+  assert.equal((await accountRef.get()).get('status'), 'restricted');
+  const recoveredChargebackAdjustment = (await db.doc(`beaurocks_payment_adjustments/${recoveredRefundAdjustmentId}`).get()).data();
+  assert.equal(recoveredChargebackAdjustment.appliedRevocation, 1200);
+  assert.equal(recoveredChargebackAdjustment.unrecoveredAmount, 0);
+  assert.equal((await db.doc(`beaurocks_ledger_entries/${recoveredRefundLedgerId}`).get()).get('type'), 'chargeback_reversal');
+  assert.equal((await roomUserRef.get()).get('points'), 777);
+  assert.equal((await userRef.get()).get('pointsBalance'), 999);
 
   console.log('PASS BeauBucks authority vertical callable');
 }

@@ -64,7 +64,7 @@ The Firestore emulator proves:
 - No expiration job, transferable wallet, cash-out, Host settlement, or pay-to-win action.
 - No production canary activation.
 
-Before public checkout, prove recovery for a refund/chargeback arriving before its purchase fulfillment record, approve customer-facing pack/refund/expiration/support terms, and add explicit Host and Audience controls with the same low-mental-load disclosure pattern.
+Refund/chargeback-before-purchase recovery is completed in the follow-on checkpoint. Before public checkout, approve customer-facing pack/refund/expiration/support terms and add explicit Host and Audience controls with the same low-mental-load disclosure pattern.
 
 ## Verification and production release
 

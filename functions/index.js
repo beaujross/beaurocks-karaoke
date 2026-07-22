@@ -140,11 +140,14 @@ const {
   BEAUBUCKS_ACCOUNT_COLLECTION,
   BEAUBUCKS_ADJUSTMENT_COLLECTION,
   BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+  BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION,
+  BEAUBUCKS_PENDING_ADJUSTMENT_EVENT_COLLECTION,
   BEAUBUCKS_PAYMENT_REF_COLLECTION,
   buildBeauBucksAccountId,
   buildBeauBucksAdjustmentId,
   buildBeauBucksAdjustmentPlan,
   buildBeauBucksPaymentRefId,
+  buildPendingBeauBucksAdjustmentState,
   getBeauBucksPack,
   getBeauBucksPolicy,
   isBeauBucksCheckoutEnabled,
@@ -29522,6 +29525,16 @@ exports.createBeauBucksCheckout = onCall(
         beauBucks: `${pack.beauBucks}`,
         rewardScope: "room",
       },
+      payment_intent_data: {
+        metadata: {
+          checkoutType: "beaubucks_purchase",
+          roomCode,
+          buyerUid: callerUid,
+          packId: pack.id,
+          beauBucks: `${pack.beauBucks}`,
+          rewardScope: "room",
+        },
+      },
       success_url: `${origin}/?room=${encodeURIComponent(roomCode)}&beaubucks=success`,
       cancel_url: `${origin}/?room=${encodeURIComponent(roomCode)}&beaubucks=cancel`,
     });
@@ -29690,8 +29703,9 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
   const checkoutRef = getRootRef().collection("stripe_checkouts").doc(sessionId);
   const purchaseEntryId = buildLedgerEntryId(`beaubucks_purchase:${sessionId}`);
   const purchaseRef = db.collection(LEDGER_COLLECTION).doc(purchaseEntryId);
-  const paymentRef = db.collection(BEAUBUCKS_PAYMENT_REF_COLLECTION)
-    .doc(buildBeauBucksPaymentRefId(paymentIntentId));
+  const paymentRefId = buildBeauBucksPaymentRefId(paymentIntentId);
+  const paymentRef = db.collection(BEAUBUCKS_PAYMENT_REF_COLLECTION).doc(paymentRefId);
+  const pendingAdjustmentRef = db.collection(BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION).doc(paymentRefId);
   const now = admin.firestore.FieldValue.serverTimestamp();
 
   return db.runTransaction(async (tx) => {
@@ -29702,10 +29716,11 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
     const { pack, roomCode, buyerUid } = verification;
     const accountId = buildBeauBucksAccountId({ roomCode, uid: buyerUid });
     const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
-    const [purchaseSnap, paymentRefSnap, accountSnap] = await Promise.all([
+    const [purchaseSnap, paymentRefSnap, accountSnap, pendingAdjustmentSnap] = await Promise.all([
       tx.get(purchaseRef),
       tx.get(paymentRef),
       tx.get(accountRef),
+      tx.get(pendingAdjustmentRef),
     ]);
     if (purchaseSnap.exists) {
       return { ok: true, duplicate: true, grant: purchaseSnap.data() || {} };
@@ -29715,7 +29730,34 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
     }
     const account = accountSnap.exists ? (accountSnap.data() || {}) : {};
     const balanceBefore = Math.max(0, Math.floor(Number(account.balance || 0) || 0));
-    const balanceAfter = balanceBefore + pack.beauBucks;
+    const grantedBalance = balanceBefore + pack.beauBucks;
+    const pendingAdjustment = pendingAdjustmentSnap.exists ? (pendingAdjustmentSnap.data() || {}) : {};
+    const pendingAdjustmentType = pendingAdjustment.status === "pending"
+      ? pendingAdjustment.chargebackObserved === true
+        ? "chargeback"
+        : Number(pendingAdjustment.cumulativeRefundedAmountCents || 0) > 0
+          ? "refund"
+          : ""
+      : "";
+    const pendingPlan = pendingAdjustmentType ? buildBeauBucksAdjustmentPlan({
+      purchaseBeauBucks: pack.beauBucks,
+      purchaseAmountCents: pack.amountCents,
+      priorAdjustedAmountCents: 0,
+      requestedAdjustedAmountCents: pendingAdjustmentType === "chargeback"
+        ? pack.amountCents
+        : pendingAdjustment.cumulativeRefundedAmountCents,
+      availableBalance: grantedBalance,
+      adjustmentType: pendingAdjustmentType,
+    }) : null;
+    const balanceAfter = pendingPlan ? pendingPlan.balanceAfter : grantedBalance;
+    const accountStatus = pendingPlan?.restrictAccount === true
+      ? "restricted"
+      : String(account.status || "active");
+    const paymentStatus = pendingPlan
+      ? pendingAdjustmentType === "chargeback"
+        ? "chargeback"
+        : pendingPlan.targetAdjustedAmountCents >= pack.amountCents ? "refunded" : "partially_refunded"
+      : "paid";
     const policy = getBeauBucksPolicy();
 
     createAuthoritativeLedgerEntry({
@@ -29749,8 +29791,10 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
       currency: "beaubucks",
       scope: "room",
       balance: balanceAfter,
-      status: String(account.status || "active"),
+      status: accountStatus,
       lifetimePurchased: admin.firestore.FieldValue.increment(pack.beauBucks),
+      lifetimeRevoked: admin.firestore.FieldValue.increment(pendingPlan?.appliedRevocation || 0),
+      unrecoveredBeauBucks: admin.firestore.FieldValue.increment(pendingPlan?.unrecoveredAmount || 0),
       lastEntryAt: now,
       createdAt: account.createdAt || now,
       updatedAt: now,
@@ -29767,26 +29811,93 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
       purchaseLedgerEntryId: purchaseEntryId,
       purchaseBeauBucks: pack.beauBucks,
       purchaseAmountCents: pack.amountCents,
-      adjustedAmountCents: 0,
-      revokedBeauBucks: 0,
-      unrecoveredBeauBucks: 0,
+      adjustedAmountCents: pendingPlan?.targetAdjustedAmountCents || 0,
+      revokedBeauBucks: pendingPlan?.appliedRevocation || 0,
+      unrecoveredBeauBucks: pendingPlan?.unrecoveredAmount || 0,
       currency: pack.currency,
-      status: "paid",
+      status: paymentStatus,
       createdAt: now,
       updatedAt: now,
     });
     tx.set(checkoutRef, {
-      checkoutStatus: "completed",
-      paymentStatus: "paid",
+      checkoutStatus: paymentStatus === "paid" ? "completed" : paymentStatus,
+      paymentStatus,
       webhookEventId: eventId,
       purchaseLedgerEntryId: purchaseEntryId,
       fulfilledAt: now,
       updatedAt: now,
       policyStatusAtFulfillment: String(policy.status || "unknown"),
     }, { merge: true });
+    if (pendingPlan) {
+      const recoveryAdjustmentId = buildBeauBucksAdjustmentId(`pending_recovery:${paymentRefId}`);
+      const recoveryAdjustmentRef = db.collection(BEAUBUCKS_ADJUSTMENT_COLLECTION).doc(recoveryAdjustmentId);
+      tx.create(recoveryAdjustmentRef, {
+        schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+        adjustmentId: recoveryAdjustmentId,
+        adjustmentType: pendingAdjustmentType,
+        recoverySource: "pending_payment_adjustment",
+        paymentRefId,
+        stripeSessionId: sessionId,
+        stripePaymentIntentId: paymentIntentId,
+        pendingEventIdHashes: Array.isArray(pendingAdjustment.eventIdHashes)
+          ? pendingAdjustment.eventIdHashes.slice(-20)
+          : [],
+        roomCode,
+        uid: buyerUid,
+        accountId,
+        purchaseLedgerEntryId: purchaseEntryId,
+        purchaseAmountCents: pack.amountCents,
+        adjustmentAmountCents: pendingPlan.targetAdjustedAmountCents,
+        targetAdjustedAmountCents: pendingPlan.targetAdjustedAmountCents,
+        requestedRevocation: pendingPlan.requestedRevocation,
+        appliedRevocation: pendingPlan.appliedRevocation,
+        unrecoveredAmount: pendingPlan.unrecoveredAmount,
+        balanceAfter,
+        currency: pack.currency,
+        status: paymentStatus,
+        createdAt: now,
+      });
+      if (pendingPlan.appliedRevocation > 0) {
+        createAuthoritativeLedgerEntry({
+          writer: tx,
+          db,
+          idempotencyKey: `beaubucks_pending_adjustment:${paymentRefId}`,
+          roomCode,
+          uid: buyerUid,
+          eventCredits: { enabled: true, presetId: "beaubucks" },
+          type: pendingAdjustmentType === "chargeback" ? "chargeback_reversal" : "refund_reversal",
+          amount: pendingPlan.appliedRevocation,
+          direction: "debit",
+          source: {
+            provider: "stripe",
+            sourceId: paymentRefId,
+            sourceCollection: BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION,
+          },
+          attribution: { fundCode: pack.id },
+          financial: {
+            amountCents: pendingPlan.targetAdjustedAmountCents,
+            currency: pack.currency,
+            externalTransactionId: paymentIntentId,
+          },
+          serverTimestamp: now,
+        });
+      }
+      tx.set(pendingAdjustmentRef, {
+        status: "recovered",
+        checkoutSessionId: sessionId,
+        purchaseLedgerEntryId: purchaseEntryId,
+        adjustmentId: recoveryAdjustmentId,
+        appliedRevocation: pendingPlan.appliedRevocation,
+        unrecoveredAmount: pendingPlan.unrecoveredAmount,
+        recoveredAt: now,
+        updatedAt: now,
+      }, { merge: true });
+    }
     return {
       ok: true,
       duplicate: false,
+      pendingAdjustmentApplied: !!pendingPlan,
+      pendingAdjustmentType: pendingAdjustmentType || null,
       grant: { roomCode, uid: buyerUid, amount: pack.beauBucks, balanceAfter },
     };
   });
@@ -29812,6 +29923,76 @@ const resolveAdjustmentPaymentIntentId = async ({ stripe = null, source = {} } =
     });
     return "";
   }
+};
+
+const capturePendingBeauBucksPaymentAdjustment = async ({
+  event = {},
+  paymentIntentId = "",
+  adjustmentType = "refund",
+  source = {},
+} = {}) => {
+  const safePaymentIntentId = sanitizeSecurityToken(paymentIntentId, 180);
+  const eventId = sanitizeSecurityToken(event.id || "", 180);
+  const sourceAmount = Math.max(0, Math.floor(Number(source?.amount || 0) || 0));
+  const cumulativeRefundedAmountCents = Math.max(0, Math.floor(Number(source?.amount_refunded || 0) || 0));
+  if (!safePaymentIntentId || !eventId || (adjustmentType === "refund" ? cumulativeRefundedAmountCents <= 0 : sourceAmount <= 0)) {
+    return { ok: false, ignored: true, reasonCode: "beaubucks_pending_adjustment_invalid" };
+  }
+  const db = admin.firestore();
+  const paymentRefId = buildBeauBucksPaymentRefId(safePaymentIntentId);
+  const eventIdHash = buildBeauBucksAdjustmentId(eventId);
+  const paymentRef = db.collection(BEAUBUCKS_PAYMENT_REF_COLLECTION).doc(paymentRefId);
+  const pendingRef = db.collection(BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION).doc(paymentRefId);
+  const pendingEventRef = db.collection(BEAUBUCKS_PENDING_ADJUSTMENT_EVENT_COLLECTION).doc(eventIdHash);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + (90 * 24 * 60 * 60 * 1000));
+
+  return db.runTransaction(async (tx) => {
+    const [paymentRefSnap, pendingSnap, pendingEventSnap] = await Promise.all([
+      tx.get(paymentRef),
+      tx.get(pendingRef),
+      tx.get(pendingEventRef),
+    ]);
+    if (paymentRefSnap.exists) {
+      return { ok: true, ignored: true, paymentReferenceAvailable: true };
+    }
+    if (pendingEventSnap.exists) {
+      return { ok: true, ignored: true, pending: true, duplicate: true };
+    }
+    const existing = pendingSnap.exists ? (pendingSnap.data() || {}) : {};
+    const pendingState = buildPendingBeauBucksAdjustmentState({
+      existing,
+      eventIdHash,
+      adjustmentType,
+      cumulativeRefundedAmountCents,
+      chargebackAmountCents: sourceAmount,
+    });
+    tx.create(pendingEventRef, {
+      schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+      paymentRefId,
+      eventIdHash,
+      stripeEventId: eventId,
+      stripeChargeId: readStripeObjectId(source?.charge || source?.id) || null,
+      adjustmentType,
+      amountCents: sourceAmount,
+      cumulativeRefundedAmountCents,
+      currency: String(source?.currency || "usd").trim().toLowerCase(),
+      status: "pending_purchase_classification",
+      createdAt: now,
+      expiresAt,
+    });
+    tx.set(pendingRef, {
+      schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+      paymentRefId,
+      status: "pending",
+      ...pendingState,
+      firstDetectedAt: existing.firstDetectedAt || now,
+      lastDetectedAt: now,
+      updatedAt: now,
+      expiresAt,
+    }, { merge: true });
+    return { ok: true, ignored: true, pending: true, duplicate: false };
+  });
 };
 
 const applyBeauBucksPaymentAdjustment = async ({
@@ -30133,6 +30314,8 @@ exports.stripeWebhook = onRequest(
           beauBucksCheckout: true,
           granted: result.ok === true,
           duplicate: result.duplicate === true,
+          pendingAdjustmentApplied: result.pendingAdjustmentApplied === true,
+          pendingAdjustmentType: result.pendingAdjustmentType || null,
           reasonCode: result.ok ? null : String(result.reasonCode || "beaubucks_purchase_rejected"),
         });
         return;
@@ -30347,12 +30530,29 @@ exports.stripeWebhook = onRequest(
         adjustmentType,
         source,
       });
-      const beauBucksResult = await applyBeauBucksPaymentAdjustment({
+      let beauBucksResult = await applyBeauBucksPaymentAdjustment({
         event,
         paymentIntentId,
         adjustmentType,
         source,
       });
+      let pendingBeauBucksResult = null;
+      if (additionalUsageResult.ignored === true && beauBucksResult.reasonCode === "not_beaubucks_purchase") {
+        pendingBeauBucksResult = await capturePendingBeauBucksPaymentAdjustment({
+          event,
+          paymentIntentId,
+          adjustmentType,
+          source,
+        });
+        if (pendingBeauBucksResult.paymentReferenceAvailable === true) {
+          beauBucksResult = await applyBeauBucksPaymentAdjustment({
+            event,
+            paymentIntentId,
+            adjustmentType,
+            source,
+          });
+        }
+      }
       const additionalUsageAdjustment = additionalUsageResult.ignored !== true;
       const beauBucksAdjustment = beauBucksResult.ignored !== true;
       const reasonCode = additionalUsageAdjustment
@@ -30364,6 +30564,8 @@ exports.stripeWebhook = onRequest(
         received: true,
         additionalUsageAdjustment,
         beauBucksAdjustment,
+        beauBucksAdjustmentPending: pendingBeauBucksResult?.pending === true,
+        pendingAdjustmentDuplicate: pendingBeauBucksResult?.duplicate === true,
         adjustmentType,
         applied: additionalUsageResult.applied === true || beauBucksResult.applied === true,
         duplicate: additionalUsageResult.duplicate === true || beauBucksResult.duplicate === true,

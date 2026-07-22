@@ -417,7 +417,7 @@ Guests can buy BeauBucks from BeauRocks and spend them on clearly defined in-app
 
 The first backend-only vertical now exists without changing the live Points economy. It defines a room-scoped internal `Starter 1,200 BeauBucks` test pack, exact verified-webhook fulfillment, an authoritative ledger/account projection, reaction-only spending, proportional refund reversal, chargeback restriction and shortfall evidence, and private Audience purchase proof. Emulator coverage proves purchase and spend replay safety and proves legacy Room/global Points remain unchanged.
 
-This is not a public offer. The commercial contract keeps both checkout and the pack's public-offer flag off, no production Room/host is allowlisted by this change, and no Audience storefront or primary Host control is connected. Remaining owner gates are pack economics, scope/portability, customer-facing refund and expiration terms, support/tax treatment, and the out-of-order webhook recovery procedure.
+This is not a public offer. The commercial contract keeps both checkout and the pack's public-offer flag off, no production Room/host is allowlisted by this change, and no Audience storefront or primary Host control is connected. The out-of-order webhook blocker is now closed with bounded pending evidence and fulfillment-time recovery. Remaining owner gates are pack economics, scope/portability, customer-facing refund and expiration terms, support/tax treatment, and simplified Host/Audience controls.
 
 ## Slice 8 — Room Boosts and room-controlled consumption
 

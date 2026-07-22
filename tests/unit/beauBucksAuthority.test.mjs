@@ -6,6 +6,7 @@ const require = createRequire(import.meta.url);
 const {
   buildBeauBucksAccountId,
   buildBeauBucksAdjustmentPlan,
+  buildPendingBeauBucksAdjustmentState,
   getBeauBucksPack,
   isBeauBucksCheckoutEnabled,
   validateBeauBucksCheckoutFulfillment,
@@ -86,4 +87,23 @@ test('chargebacks target the full purchase and restrict the account', () => {
   assert.equal(plan.requestedRevocation, 1200);
   assert.equal(plan.balanceAfter, 0);
   assert.equal(plan.restrictAccount, true);
+});
+
+test('pending adjustment state is cumulative, bounded, and chargeback-sticky', () => {
+  const refund = buildPendingBeauBucksAdjustmentState({
+    existing: { cumulativeRefundedAmountCents: 100, eventIdHashes: ['one'], eventCount: 1 },
+    eventIdHash: 'two', adjustmentType: 'refund', cumulativeRefundedAmountCents: 250,
+  });
+  assert.equal(refund.cumulativeRefundedAmountCents, 250);
+  assert.equal(refund.chargebackObserved, false);
+  assert.deepEqual(refund.eventIdHashes, ['one', 'two']);
+  const chargeback = buildPendingBeauBucksAdjustmentState({
+    existing: refund,
+    eventIdHash: 'three', adjustmentType: 'chargeback', chargebackAmountCents: 500,
+    maxEventIds: 2,
+  });
+  assert.equal(chargeback.chargebackObserved, true);
+  assert.equal(chargeback.chargebackAmountCents, 500);
+  assert.deepEqual(chargeback.eventIdHashes, ['two', 'three']);
+  assert.equal(chargeback.eventCount, 3);
 });
