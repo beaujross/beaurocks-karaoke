@@ -126,6 +126,9 @@ test('host flow dropdown exposes One-Minute Mic live pacing controls', () => {
   assert.match(hostAppSource, /const oneMinuteMicLiveStatus = \(\(\) => \{/);
   assert.match(hostAppSource, /Crowd rescue vote is live/);
   assert.match(hostAppSource, /One-Minute Mic vote is live/);
+  assert.match(hostAppSource, /Tie — singer stays/);
+  assert.match(hostAppSource, /The backing track is fading before applause starts/);
+  assert.match(hostAppSource, /Rotation won, but the transition has not started/);
   assert.match(hostAppSource, /oneMinuteMicLiveStatus,/);
   assert.match(hostAppSource, /onSetOneMinuteMic: setOneMinuteMicQuick/);
   assert.match(hostAppSource, /onSetOneMinuteMicTiming: setOneMinuteMicTimingQuick/);
@@ -141,6 +144,12 @@ test('host flow dropdown exposes room control model choices above detailed pacin
   assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*data-host-room-control-model/);
   assert.doesNotMatch(source, /data-feature-id="deck-queue-menu-toggle"[\s\S]*data-host-room-control-model/);
   assert.match(source, /Room control model[\s\S]*host-driven, host-assisted, or crowd-driven/);
+  assert.match(source, /Tonight's effective controls/);
+  assert.match(source, /Start the next singer automatically/);
+  assert.match(source, /Start backing media automatically/);
+  assert.match(source, /Fill breaks with audience activities/);
+  assert.match(source, /Let the crowd extend or rotate singers/);
+  assert.match(source, /Direct changes here override any preset or starting point/);
   assert.match(source, /activeRoomControlModel = quickRoomControls\?\.oneMinuteMicEnabled[\s\S]*'crowd_driven'[\s\S]*quickAutomationControls\?\.autoDj[\s\S]*'assisted_host'[\s\S]*'host_led'/);
   assert.match(source, /quickRoomControls\.onApplyRoomControlModel\?\.\(option\.id\)/);
   assert.match(hostAppSource, /const applyRoomControlModelQuick = async \(modelId = 'host_led'\) => \{/);

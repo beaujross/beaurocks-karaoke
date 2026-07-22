@@ -71,7 +71,7 @@ afterEach(() => {
   delete globalThis.window;
 });
 
-test('HostRoomLaunchPad prioritizes pinned ready rooms in the browser and selected workspace', () => {
+test('HostRoomLaunchPad defaults the browser to newest-created rooms while retaining pinned labels', () => {
   globalThis.window = {
     localStorage: {
       getItem: () => JSON.stringify(['PIN1']),
@@ -85,7 +85,7 @@ test('HostRoomLaunchPad prioritizes pinned ready rooms in the browser and select
         code: 'LATE1',
         roomName: 'Later Updated Room',
         updatedAtMs: 2000,
-        createdAtMs: 1000,
+        createdAtMs: 3000,
         closedAtMs: 0,
         archived: false,
         publicRoom: false,
@@ -106,10 +106,11 @@ test('HostRoomLaunchPad prioritizes pinned ready rooms in the browser and select
   assert.match(markup, /Pinned Room/);
   assert.match(markup, /Pinned/);
   assert.equal(
-    markup.indexOf('Pinned Priority Room') < markup.indexOf('Later Updated Room'),
+    markup.indexOf('Later Updated Room') < markup.indexOf('Pinned Priority Room'),
     true,
-    'Pinned rooms should render ahead of newer unpinned rooms in the ready browser list',
+    'Newest-created rooms should render first even when an older room is pinned',
   );
+  assert.match(markup, /Newest Rooms First/);
 });
 
 test('HostRoomLaunchPad keeps AAHF in the existing-rooms workspace without a separate spotlight strip', () => {

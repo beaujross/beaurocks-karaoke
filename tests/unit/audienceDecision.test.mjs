@@ -34,13 +34,13 @@ test('audienceDecision normalizes One-Minute Mic continue-or-rotate defaults', (
   assert.equal(decision.openingWindowSec, 60);
   assert.equal(decision.minimumVotes, 1);
   assert.equal(decision.thresholdMode, 'choice_threshold');
-  assert.equal(decision.thresholdChoiceId, 'keep_singing');
+  assert.equal(decision.thresholdChoiceId, 'next_singer');
   assert.equal(decision.thresholdPct, 55);
-  assert.equal(decision.fallbackChoiceId, 'next_singer');
+  assert.equal(decision.fallbackChoiceId, 'keep_singing');
   assert.deepEqual(Object.keys(decision.votesByUid), ['guest_1', 'guest_2']);
 });
 
-test('audienceDecision resolves continue-or-rotate only when keep singing clears threshold', () => {
+test('audienceDecision rotates only when next singer clears the protected threshold', () => {
   const passing = resolveAudienceDecision({
     type: AUDIENCE_DECISION_TYPES.continueOrRotate,
     openedAtMs: 1000,
@@ -90,6 +90,27 @@ test('audienceDecision resolves continue-or-rotate only when keep singing clears
   assert.equal(rotating.resolved, true);
   assert.equal(rotating.resultChoice, 'next_singer');
   assert.equal(rotating.resolutionAction, 'wrap_and_rotate');
+});
+
+test('audienceDecision keeps the singer on an exact tie', () => {
+  const tied = resolveAudienceDecision({
+    type: AUDIENCE_DECISION_TYPES.continueOrRotate,
+    openedAtMs: 1000,
+    closesAtMs: 13_000,
+    votesByUid: {
+      guest_1: 'keep_singing',
+      guest_2: 'keep_singing',
+      guest_3: 'next_singer',
+      guest_4: 'next_singer',
+    },
+  }, {
+    nowMs: 13_000,
+  });
+
+  assert.equal(tied.resultChoice, 'keep_singing');
+  assert.equal(tied.resolutionAction, 'continue_song');
+  assert.equal(tied.resolutionReason, 'tie_keeps_singer');
+  assert.equal(tied.decision.resolutionReason, 'tie_keeps_singer');
 });
 
 test('audienceDecision treats performance skip as a guarded supermajority-style decision', () => {
@@ -214,7 +235,9 @@ test('audienceDecision builds a live One-Minute Mic decision payload', () => {
   assert.equal(decision.subjectSessionId, 'session_abc');
   assert.equal(decision.openedAtMs, 60_000);
   assert.equal(decision.closesAtMs, 72_000);
-  assert.equal(decision.prompt, 'Keep it going?');
+  assert.equal(decision.prompt, 'Keep singing or next singer?');
+  assert.equal(decision.thresholdChoiceId, 'next_singer');
+  assert.equal(decision.fallbackChoiceId, 'keep_singing');
   assert.deepEqual(decision.choices.map((choice) => choice.id), ['keep_singing', 'next_singer']);
   assert.deepEqual(decision.choices.map((choice) => choice.resultAction), ['continue_song', 'wrap_and_rotate']);
 });

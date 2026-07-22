@@ -19,9 +19,9 @@ const AUDIENCE_DECISION_POLICIES = Object.freeze({
   [AUDIENCE_DECISION_TYPES.continueOrRotate]: {
     minimumVotes: 1,
     thresholdMode: "choice_threshold",
-    thresholdChoiceId: "keep_singing",
+    thresholdChoiceId: "next_singer",
     thresholdPct: 55,
-    fallbackChoiceId: "next_singer",
+    fallbackChoiceId: "keep_singing",
     actionsByChoice: Object.freeze({
       keep_singing: "continue_song",
       next_singer: "wrap_and_rotate",
@@ -95,8 +95,8 @@ const buildContinueOrRotateDecision = ({
     status: AUDIENCE_DECISION_STATUS.open,
     active: true,
     displayMode: "glass_overlay",
-    prompt: "Keep it going?",
-    subprompt: `${cleanText(singerName, 80) || "The singer"} has hit the opening minute. Should they keep the mic or rotate?`,
+    prompt: "Keep singing or next singer?",
+    subprompt: `Vote now for ${cleanText(singerName, 80) || "the singer"}. A tie keeps the singer.`,
     subjectSongId: safeSongId,
     subjectSessionId: safeSessionId,
     subjectTitle: cleanText(songTitle, 140) || "Current song",
@@ -106,6 +106,11 @@ const buildContinueOrRotateDecision = ({
     openingWindowSec: safeOpeningWindowSec,
     voteWindowSec: safeVoteWindowSec,
     threshold: 0.55,
+    minimumVotes: 1,
+    thresholdMode: "choice_threshold",
+    thresholdChoiceId: "next_singer",
+    thresholdPct: 55,
+    fallbackChoiceId: "keep_singing",
     choices: [
       {
         id: "keep_singing",
@@ -262,10 +267,20 @@ const resolveAudienceDecision = (decision = {}, nowMs = Date.now()) => {
   const choiceById = Object.fromEntries((normalized.choices || []).map((choice) => [choice.id, choice]));
   if (!choiceById[resultChoice]) resultChoice = "";
   const resolutionAction = choiceById[resultChoice]?.action || policy.actionsByChoice?.[resultChoice] || "";
+  const resolutionReason = cleanText(normalized.resolutionReason || "", 80) || (
+    totalVotes < normalized.minimumVotes
+      ? "insufficient_votes"
+      : tied
+        ? "tie_keeps_singer"
+        : resultChoice === normalized.thresholdChoiceId
+          ? "threshold_met"
+          : "threshold_not_met"
+  );
   const resolvedAtMs = Math.max(Math.round(toNumber(nowMs, Date.now())), normalized.closesAtMs || 0);
   return {
     resultChoice,
     resolutionAction,
+    resolutionReason,
     decision: {
       ...decision,
       active: false,
@@ -273,6 +288,7 @@ const resolveAudienceDecision = (decision = {}, nowMs = Date.now()) => {
       resolvedAtMs,
       resultChoice,
       resolutionAction,
+      resolutionReason,
       votesSummary: {
         total: totalVotes,
         ...countsByChoice,

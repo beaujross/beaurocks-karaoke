@@ -81,9 +81,9 @@ const DECISION_TYPE_POLICIES = Object.freeze({
         durationSec: 12,
         minimumVotes: 1,
         thresholdMode: 'choice_threshold',
-        thresholdChoiceId: 'keep_singing',
+        thresholdChoiceId: 'next_singer',
         thresholdPct: 55,
-        fallbackChoiceId: 'next_singer',
+        fallbackChoiceId: 'keep_singing',
         openingWindowSec: 60,
         maxExtensions: 1,
         displayMode: AUDIENCE_DECISION_DISPLAY_MODES.glassOverlay,
@@ -226,6 +226,7 @@ export const normalizeAudienceDecision = (decision = {}, options = {}) => {
         votesByUid,
         resultChoice: choiceIds.has(cleanText(decision?.resultChoice).toLowerCase()) ? cleanText(decision.resultChoice).toLowerCase() : '',
         resolutionAction: cleanText(decision?.resolutionAction),
+        resolutionReason: cleanText(decision?.resolutionReason).toLowerCase(),
         resolvedAtMs: asTimestampMs(decision?.resolvedAtMs, 0)
     };
 };
@@ -290,18 +291,29 @@ export const resolveAudienceDecision = (decision = {}, options = {}) => {
     if (!choiceById[resultChoice]) resultChoice = '';
     const resultChoiceModel = choiceById[resultChoice] || null;
     const resolutionAction = resultChoiceModel?.resultAction || normalized.resolutionAction || '';
+    const resolutionReason = normalized.resolutionReason || (
+        tally.totalVotes < normalized.minimumVotes
+            ? 'insufficient_votes'
+            : tally.tied
+                ? 'tie_keeps_singer'
+                : resultChoice === normalized.thresholdChoiceId
+                    ? 'threshold_met'
+                    : 'threshold_not_met'
+    );
     return {
         decision: {
             ...normalized,
             status: resultChoice ? AUDIENCE_DECISION_STATUS.resolved : AUDIENCE_DECISION_STATUS.expired,
             resultChoice,
             resolutionAction,
+            resolutionReason,
             resolvedAtMs: normalized.resolvedAtMs || nowMs
         },
         tally,
         resolved: !!resultChoice,
         resultChoice,
-        resolutionAction
+        resolutionAction,
+        resolutionReason
     };
 };
 
@@ -424,14 +436,19 @@ export const buildContinueOrRotateDecision = ({
         id: `continue_or_rotate:${safeSongId || 'song'}:${safeSessionId || safeOpenedAtMs}`,
         type: AUDIENCE_DECISION_TYPES.continueOrRotate,
         status: AUDIENCE_DECISION_STATUS.open,
-        prompt: 'Keep it going?',
-        promptDetail: `${safeSingerName} is one minute in. Unlock more time or rotate to the next mic.`,
+        prompt: 'Keep singing or next singer?',
+        promptDetail: `Vote now for ${safeSingerName}. A tie keeps the singer.`,
         displayMode: AUDIENCE_DECISION_DISPLAY_MODES.glassOverlay,
         openedBy: 'system',
         durationSec: safeVoteWindowSec,
         openedAtMs: safeOpenedAtMs,
         closesAtMs: safeOpenedAtMs + (safeVoteWindowSec * 1000),
         openingWindowSec,
+        minimumVotes: 1,
+        thresholdMode: 'choice_threshold',
+        thresholdChoiceId: 'next_singer',
+        thresholdPct: 55,
+        fallbackChoiceId: 'keep_singing',
         subjectSongId: safeSongId,
         subjectSessionId: safeSessionId,
         choices: [

@@ -436,18 +436,18 @@ const RunOfShowReleaseWindowOverlay = ({
                     <div>
                         <div className="flex items-center gap-3">
                             <div className={`flex ${isGlassOverlay ? 'h-10 w-10 text-xl' : 'h-14 w-14 text-3xl'} shrink-0 items-center justify-center rounded-2xl border border-white/14 bg-white/10 font-bebas text-white shadow-[0_0_28px_rgba(255,255,255,0.14)]`}>{choiceLetter}</div>
-                            <div className={`text-sm font-black uppercase tracking-[0.3em] ${choice.labelClass}`}>{choice.label}</div>
+                            <div className={`${isPerformanceProgressionDecision ? 'text-[clamp(2rem,4vw,4.5rem)] font-bebas leading-none tracking-[0.04em]' : 'text-sm font-black tracking-[0.3em]'} uppercase ${choice.labelClass}`}>{choice.label}</div>
                         </div>
-                        <div className={`${isGlassOverlay ? 'mt-2 text-[clamp(1.9rem,3.3vw,3.7rem)]' : 'mt-4 text-[clamp(2.3rem,4.4vw,5rem)]'} font-bebas leading-[0.94] tracking-[0.02em] text-white`}>
+                        {!isPerformanceProgressionDecision ? <><div className={`${isGlassOverlay ? 'mt-2 text-[clamp(1.9rem,3.3vw,3.7rem)]' : 'mt-4 text-[clamp(2.3rem,4.4vw,5rem)]'} font-bebas leading-[0.94] tracking-[0.02em] text-white`}>
                             {choice.detail}
                         </div>
-                        <div className="mt-3 text-[clamp(1rem,1.55vw,1.35rem)] text-zinc-300">{choice.subline}</div>
+                        <div className="mt-3 text-[clamp(1rem,1.55vw,1.35rem)] text-zinc-300">{choice.subline}</div></> : null}
                     </div>
                     <div className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-black uppercase tracking-[0.22em] text-white/82">
                         {choiceCount} vote{choiceCount === 1 ? '' : 's'} - {choicePct}%
                     </div>
                 </div>
-                <div className="mt-auto flex items-end justify-between gap-6">
+                {!isPerformanceProgressionDecision ? <div className="mt-auto flex items-end justify-between gap-6">
                     <div className={`${isGlassOverlay ? 'max-w-[18rem] text-sm' : 'max-w-[22rem] text-lg'} text-zinc-300`}>
                         {isSongFaceOff
                             ? 'Phones pick the next featured song.'
@@ -468,7 +468,7 @@ const RunOfShowReleaseWindowOverlay = ({
                             </div>
                         )}
                     </div>
-                </div>
+                </div> : <div className="mt-auto pt-8 text-[clamp(1.2rem,2vw,2rem)] font-black uppercase tracking-[0.18em] text-white/85">{choiceCount} vote{choiceCount === 1 ? '' : 's'} · {choicePct}%</div>}
             </div>
         </div>
         );
@@ -516,7 +516,7 @@ const RunOfShowReleaseWindowOverlay = ({
                             {selfServeDecisionPresentation
                                 ? selfServeDecisionPresentation.helper + ' Vote now at ' + voteHost + ' with room code ' + (String(roomCode || '').trim().toUpperCase() || 'ROOM') + '.'
                                 : isOneMinuteMicDecision
-                                ? 'Vote on your phone at ' + voteHost + '. The crowd decides if the singer keeps going or rotates.'
+                                ? 'Vote now at ' + voteHost + '. Next Singer needs 55%; a tie keeps the singer.'
                                 : isSkipPerformanceDecision
                                 ? 'Vote on your phone at ' + voteHost + '. Moving on requires a strong room signal.'
                                 : isCoHostVote
@@ -543,7 +543,7 @@ const RunOfShowReleaseWindowOverlay = ({
                 </div>
                 <div className={`${isGlassOverlay ? 'mt-4' : 'mt-8'} flex items-center justify-center`}>
                     <div className="rounded-full border border-white/10 bg-white/[0.05] px-6 py-2 text-base font-black uppercase tracking-[0.34em] text-zinc-200 shadow-[0_20px_40px_rgba(0,0,0,0.24)]">
-                        {selfServeDecisionPresentation ? selfServeDecisionPresentation.decisionLabel : isOneMinuteMicDecision ? 'Continue or rotate' : isSkipPerformanceDecision ? 'Keep going or move on' : 'Pick the next moment'}
+                        {selfServeDecisionPresentation ? selfServeDecisionPresentation.decisionLabel : isOneMinuteMicDecision ? 'A tie keeps the singer' : isSkipPerformanceDecision ? 'Keep going or move on' : 'Pick the next moment'}
                     </div>
                 </div>
                 <div className={`${isGlassOverlay ? 'mt-4 max-h-[42vh] flex-none grid-cols-[minmax(0,1fr)_100px_minmax(0,1fr)] gap-5' : 'mt-8 flex-1 grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)] gap-8'} grid`}>
@@ -6992,6 +6992,11 @@ const PublicTV = ({ roomCode }) => {
         && Number(activeAudienceDecision?.resolvedAtMs || 0) > 0
         && takeoverNowMs < (Number(activeAudienceDecision.resolvedAtMs || 0) + 6000)
     );
+    const oneMinuteMicContinueCueLabel = String(activeAudienceDecision?.resolutionReason || '').trim().toLowerCase() === 'tie_keeps_singer'
+        ? 'Tie — Singer Stays'
+        : String(activeAudienceDecision?.resolutionReason || '').trim().toLowerCase() === 'insufficient_votes'
+            ? 'No Clear Vote — Singer Stays'
+            : 'Crowd Picked Keep Singing';
     const oneMinuteMicRoomModeActive = room?.oneMinuteMicEnabled === true
         || String(room?.performanceProgressionMode || '').trim().toLowerCase() === 'one_minute_mic';
     const oneMinuteMicVoteLive = !!(
@@ -9239,7 +9244,7 @@ const PublicTV = ({ roomCode }) => {
                                 {oneMinuteMicContinueCueVisible ? (
                                     <div className="pointer-events-none fixed inset-0 z-[193] flex items-start justify-center px-6 pt-10 text-white">
                                         <div className="rounded-full border border-cyan-200/35 bg-black/65 px-7 py-4 text-center shadow-[0_24px_80px_rgba(34,211,238,0.28)] backdrop-blur-md animate-in fade-in zoom-in duration-300">
-                                            <div className="text-xs font-black uppercase tracking-[0.32em] text-cyan-200">Crowd Unlocked It</div>
+                                            <div className="text-xs font-black uppercase tracking-[0.32em] text-cyan-200">{oneMinuteMicContinueCueLabel}</div>
                                             <div className="mt-1 font-bebas text-[clamp(2rem,4vw,4.5rem)] leading-none text-white">Keep Singing</div>
                                         </div>
                                     </div>

@@ -13704,7 +13704,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const partyRaw = room?.missionControl?.party || {};
         const partyConfig = buildMissionPartyPayload({
             ...partyRaw,
-            autoCrowdMomentsEnabled: explicitAutoPartyEnabled || assistLevel === 'autopilot_first'
+            autoCrowdMomentsEnabled: explicitAutoPartyEnabled
         });
         const durationSec = Math.max(30, Number(room?.lastPerformance?.duration || 180));
         const hasTrackedPerformance = Number(partyRaw?.lastPerformanceAtMs || 0) === lastPerformanceTs;
@@ -21485,11 +21485,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
     const quickAutomationControls = {
         autoDj: !!autoDj,
+        autoPlayMedia: !!autoPlayMedia,
         autoBgMusic: !!autoBgMusic,
         autoEndOnTrackFinish: !!autoEndOnTrackFinish,
         autoBonusEnabled: !!autoBonusEnabled,
         autoLyricsOnQueue: !!autoLyricsOnQueue,
         autoPartyEnabled: !!autoCrowdMomentsEnabled,
+        autoPartyOrderPreset: autoCrowdMomentOrderPreset,
         popTriviaEnabled: !!popTriviaEnabled,
         onToggleAutoDj: toggleAutoDjQuick,
         onToggleAutoBgMusic: toggleAutoBgMusicQuick,
@@ -21527,6 +21529,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const audienceDecisionVotesQuick = audienceDecisionQuick?.votesByUid && typeof audienceDecisionQuick.votesByUid === 'object' && !Array.isArray(audienceDecisionQuick.votesByUid)
         ? Object.keys(audienceDecisionQuick.votesByUid).filter(Boolean).length
         : 0;
+    const audienceAutomationCommandQuick = room?.audienceAutomationCommand && typeof room.audienceAutomationCommand === 'object'
+        ? room.audienceAutomationCommand
+        : null;
+    const oneMinuteMicTransitionStatusQuick = String(audienceAutomationCommandQuick?.status || '').trim().toLowerCase();
+    const oneMinuteMicTransitionActiveQuick = String(audienceAutomationCommandQuick?.source || '').trim().toLowerCase() === 'one_minute_mic'
+        && String(audienceAutomationCommandQuick?.action || '').trim().toLowerCase() === 'finish_performance'
+        && ['fade_pending', 'server_started'].includes(oneMinuteMicTransitionStatusQuick);
     const oneMinuteMicPerformanceStartedAtMs = currentSong ? Math.max(
         String(room?.currentPerformanceSession?.songId || '').trim() === String(currentSong?.id || '').trim() ? Number(room?.currentPerformanceSession?.startedAtMs || 0) || 0 : 0,
         String(room?.currentPerformanceMeta?.songId || '').trim() === String(currentSong?.id || '').trim() ? Number(room?.currentPerformanceMeta?.startedAtMs || 0) || 0 : 0,
@@ -21560,11 +21569,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         if (['continue_or_rotate', 'skip_performance'].includes(audienceDecisionTypeQuick) && audienceDecisionStatusQuick === 'resolved') {
             const resultChoice = String(audienceDecisionQuick?.resultChoice || '').trim().toLowerCase();
+            const resolutionReason = String(audienceDecisionQuick?.resolutionReason || '').trim().toLowerCase();
+            const singerStaysLabel = resolutionReason === 'tie_keeps_singer'
+                ? 'Tie — singer stays'
+                : resolutionReason === 'insufficient_votes'
+                    ? 'No clear vote — singer stays'
+                    : 'Crowd chose to keep singing';
+            const rotateDetail = oneMinuteMicTransitionActiveQuick
+                ? oneMinuteMicTransitionStatusQuick === 'fade_pending'
+                    ? 'The backing track is fading before applause starts.'
+                    : 'Applause is running before the next singer advances.'
+                : 'Rotation won, but the transition has not started. Use Next Singer if it does not begin.';
             return {
                 state: 'resolved',
-                label: resultChoice === 'next_singer' ? 'Crowd chose to rotate' : 'Crowd chose to keep singing',
-                detail: resultChoice === 'next_singer' ? 'Automation is handing the mic to the next singer.' : 'The current singer keeps the rest of the song.',
-                badge: 'Resolved',
+                label: resultChoice === 'next_singer' ? 'Crowd chose to rotate' : singerStaysLabel,
+                detail: resultChoice === 'next_singer' ? rotateDetail : 'The current singer keeps the rest of the song.',
+                badge: resolutionReason === 'tie_keeps_singer' ? 'Tie' : 'Resolved',
                 tone: 'resolved',
                 subject: oneMinuteMicSongLabel,
                 subtext: oneMinuteMicSingerLabel,

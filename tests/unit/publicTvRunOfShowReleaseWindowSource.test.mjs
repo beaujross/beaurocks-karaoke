@@ -37,7 +37,11 @@ test('public TV can render release-window votes as a glass overlay above active 
   assert.match(source, /oneMinuteMicRotateFadeActive/);
   assert.match(source, /fade_pending/);
   assert.match(source, /Crowd Picked Next Singer/);
-  assert.match(source, /Crowd Unlocked It/);
+  assert.match(source, /Tie — Singer Stays/);
+  assert.match(source, /No Clear Vote — Singer Stays/);
+  assert.match(source, /Next Singer needs 55%; a tie keeps the singer/);
+  assert.match(source, /A tie keeps the singer/);
+  assert.match(source, /isPerformanceProgressionDecision \? 'text-\[clamp\(2rem,4vw,4\.5rem\)\]/);
   assert.match(source, /Live Vote - Phones Now/);
   assert.match(source, /data-tv-vote-choice-card/);
   assert.match(source, /choiceCounts/);

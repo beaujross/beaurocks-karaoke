@@ -50,6 +50,10 @@ test('audience app exposes run-of-show release-window controls for crowd and co-
   assert.match(source, /const isAudienceSkipPerformanceDecision = audienceReleaseSubjectType === 'skip_performance';/);
   assert.match(source, /performanceAudienceDecisionPresentation/);
   assert.match(source, /One-Minute Mic/);
+  assert.match(source, /Next Singer must win clearly; a tie keeps the singer/);
+  assert.match(source, /Next Singer needs 55%. A tie keeps the singer/);
+  assert.match(source, /isAudiencePerformanceProgressionDecision \? 'text-2xl'/);
+  assert.match(source, /isAudiencePerformanceProgressionDecision \? 'text-lg font-black'/);
   assert.match(source, /Crowd Rescue Vote/);
   assert.match(source, /choiceSublines\?\.slot_scene/);
   assert.match(source, /fa-forward-step/);
@@ -60,6 +64,7 @@ test('audience app exposes run-of-show release-window controls for crowd and co-
   assert.match(source, /Host confirms the winner after voting closes\./);
   assert.match(source, /audienceReleasePanelProminent/);
   assert.match(source, /Live vote - tap now/);
+  assert.match(source, /audienceReleasePanelProminent && !isAudiencePerformanceProgressionDecision/);
   assert.match(source, /data-audience-release-window-panel/);
   assert.match(source, /data-audience-release-choice-card="slot_scene"/);
   assert.match(source, /data-audience-release-choice-card="keep_queue_moving"/);

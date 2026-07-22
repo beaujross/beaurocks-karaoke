@@ -1349,8 +1349,8 @@ const SingerApp = ({ roomCode, uid }) => {
         if (isAudienceOneMinuteMicDecision) {
             return {
                 eyebrow: 'One-Minute Mic',
-                helper: 'Vote now. The room decides if this singer unlocks the rest of the song or rotates.',
-                badgeLabel: 'Crowd Decides',
+                helper: 'Tap your choice. Next Singer must win clearly; a tie keeps the singer.',
+                badgeLabel: 'Vote Now',
                 tallyLabel: String(totalVotes) + ' vote' + (totalVotes === 1 ? '' : 's'),
             };
         }
@@ -8555,44 +8555,26 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         window.history.replaceState({}, document.title, buildAudienceEmailLinkTarget());
     }, [buildAudienceEmailLinkTarget]);
 
-    const completeAudienceAccountUpgrade = useCallback(async ({ verifiedUser, sourceUid, roomUserSeed = null, email, source = 'audience_email_verify' }) => {
+    const completeAudienceAccountUpgrade = useCallback(async ({ verifiedUser, sourceUid, email, source = 'audience_email_verify' }) => {
         const linkedUid = String(verifiedUser?.uid || auth.currentUser?.uid || activeUid || '').trim();
         if (!linkedUid) throw new Error('No active session');
         const normalizedEmail = normalizeAccountEmail(email || verifiedUser?.email || '');
-        const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${linkedUid}`);
         const vipStatus = await setMyVipAccountStatus({
             source,
-            vipLevel: 1
+            vipLevel: 1,
+            roomCode,
+            sourceUid
         });
-        const migratedPoints = Math.max(0, Number(roomUserSeed?.points || 0));
-        const migratedEmojiTotal = Math.max(0, Number(roomUserSeed?.totalEmojis || 0));
         await ensureUserProfile(linkedUid, {
             name: profile?.name || user?.name || form.name || (normalizedEmail.split('@')[0] || 'Guest'),
             avatar: profile?.avatar || user?.avatar || form.emoji || DEFAULT_EMOJI
         });
-        const roomUserProjection = getRoomUserProjection({
-            uid: linkedUid,
-            isVip: !!vipStatus?.isVip,
-            vipLevel: Math.max(1, Number(vipStatus?.vipLevel || 1)),
-            totalEmojis: migratedEmojiTotal
-        });
-        const { avatar: _ignoredAvatar, ...roomUserProjectionWithoutAvatar } = roomUserProjection;
-        await setDoc(roomUserRef, {
-            ...roomUserProjectionWithoutAvatar,
-            ...(normalizedEmail ? { email: normalizedEmail } : {}),
-            points: migratedPoints + 5000,
-            lastSeen: serverTimestamp()
-        }, { merge: true });
         await verifiedUser?.getIdToken?.(true);
         await updateAudienceIdentity({
             roomCode,
             name: profile?.name || user?.name || form.name || (normalizedEmail.split('@')[0] || 'Guest'),
             avatar: profile?.avatar || user?.avatar || form.emoji || DEFAULT_EMOJI
         });
-        if (sourceUid && linkedUid && sourceUid !== linkedUid) {
-            const previousRoomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${sourceUid}`);
-            await deleteDoc(previousRoomUserRef).catch(() => {});
-        }
         const nextVipLevel = Math.max(1, Number(vipStatus?.vipLevel || 1));
         setVipUnlockPending(true);
         setProfile((prev) => ({
@@ -8614,8 +8596,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         setShowVipOnboarding(true);
         setTab('request');
         setSongsTab('tight15');
-        showRewardToast(`Email verified. ${premiumAccessLabel} perks unlocked! +5000 PTS`, 5000, { durationMs: 3600 });
-    }, [activeUid, form.emoji, form.name, getRoomUserProjection, premiumAccessLabel, profile?.avatar, profile?.name, roomCode, showRewardToast, user?.avatar, user?.name]);
+        if (Number(vipStatus?.pointsGranted || 0) > 0) {
+            showRewardToast(`Email verified. ${premiumAccessLabel} perks unlocked! +5000 PTS`, 5000, { durationMs: 3600 });
+        } else {
+            toast(`Email verified. ${premiumAccessLabel} perks unlocked. Reward already claimed.`);
+        }
+    }, [activeUid, form.emoji, form.name, premiumAccessLabel, profile?.avatar, profile?.name, roomCode, showRewardToast, toast, user?.avatar, user?.name]);
 
     const sendAccountEmailLink = async () => {
         const normalizedEmail = normalizeAccountEmail(accountEmail);
@@ -8698,19 +8684,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 const storedSourceUid = String(storedState?.sourceUid || '').trim();
                 const currentAuthUid = String(auth.currentUser?.uid || '').trim();
                 const sourceUid = String(storedSourceUid || activeUid || currentAuthUid || '').trim();
-                let roomUserSeed = null;
-                if (sourceUid) {
-                    const previousRoomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${sourceUid}`);
-                    try {
-                        const previousRoomUserSnap = await getDoc(previousRoomUserRef);
-                        if (previousRoomUserSnap.exists()) {
-                            roomUserSeed = previousRoomUserSnap.data() || null;
-                        }
-                    } catch {
-                        roomUserSeed = null;
-                    }
-                }
-
                 const credential = EmailAuthProvider.credentialWithLink(email, emailLinkHref);
                 let verifiedUser = auth.currentUser;
                 try {
@@ -8749,7 +8722,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     await completeAudienceAccountUpgrade({
                         verifiedUser,
                         sourceUid,
-                        roomUserSeed,
                         email,
                         source: 'audience_email_verify'
                     });
@@ -12967,7 +12939,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     <div className={`mx-auto ${audienceReleasePanelProminent ? 'max-w-[32rem] rounded-[1.5rem] border-2 px-4 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.46)] ring-2 ring-emerald-300/16' : 'max-w-[26rem] rounded-[1.35rem] border px-3.5 py-3.5'} backdrop-blur ${audienceReleaseTone.cardClass}`}>
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <div className={`${audienceReleasePanelProminent ? 'text-[10px]' : 'text-[9px]'} uppercase tracking-[0.22em] ${audienceReleaseTone.eyebrowClass}`}>
+                                <div className={`${isAudiencePerformanceProgressionDecision ? 'text-xs font-black' : audienceReleasePanelProminent ? 'text-[10px]' : 'text-[9px]'} uppercase tracking-[0.22em] ${audienceReleaseTone.eyebrowClass}`}>
                                     {selfServeAudienceDecisionPresentation
                                         ? selfServeAudienceDecisionPresentation.eyebrow
                                         : performanceAudienceDecisionPresentation
@@ -12986,17 +12958,17 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         Promoted Co-Host
                                     </div>
                                 ) : null}
-                                {audienceReleasePanelProminent ? (
+                                {audienceReleasePanelProminent && !isAudiencePerformanceProgressionDecision ? (
                                     <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/14 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-emerald-50">
                                         <i className="fa-solid fa-mobile-screen-button"></i>
                                         Live vote - tap now
                                     </div>
                                 ) : null}
-                                <div className={`mt-1.5 ${audienceReleasePanelProminent ? 'text-lg' : 'text-sm'} font-bold leading-tight text-white`}>
+                                <div className={`mt-1.5 ${isAudiencePerformanceProgressionDecision ? 'text-2xl' : audienceReleasePanelProminent ? 'text-lg' : 'text-sm'} font-bold leading-tight text-white`}>
                                     {String(audienceReleaseWindow?.prompt || 'Should this scene slot in next?').trim()}
                                 </div>
                                 {selfServeAudienceDecisionPresentation ? (
-                                    <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
+                                    <div className={`mt-2 ${isAudiencePerformanceProgressionDecision ? 'text-sm font-semibold leading-snug' : 'text-[11px]'} ${audienceReleaseTone.helperClass}`}>
                                         {selfServeAudienceDecisionPresentation.helper}
                                     </div>
                                 ) : performanceAudienceDecisionPresentation ? (
@@ -13025,18 +12997,18 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     </div>
                                 ) : null}
                             </div>
-                            <div className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
+                            <div className={`shrink-0 rounded-full border px-2.5 py-1 ${isAudiencePerformanceProgressionDecision ? 'text-xs' : 'text-[9px]'} font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
                                 {selfServeAudienceDecisionPresentation?.badgeLabel || performanceAudienceDecisionPresentation?.badgeLabel || 'Vote Open'}
                             </div>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                             {audienceReleaseTimeLeftSec > 0 ? (
-                                <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
+                                <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${isAudiencePerformanceProgressionDecision ? 'text-xs' : 'text-[9px]'} font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
                                     <i className="fa-regular fa-clock"></i>
                                     {audienceReleaseTimeLeftSec}s left
                                 </div>
                             ) : null}
-                            <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
+                            <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${isAudiencePerformanceProgressionDecision ? 'text-xs' : 'text-[9px]'} font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
                                 <i className="fa-solid fa-check-to-slot"></i>
                                 {selfServeAudienceDecisionPresentation?.tallyLabel || performanceAudienceDecisionPresentation?.tallyLabel || `${releaseWindowTally.totalVotes || 0} total`}
                             </div>
@@ -13052,10 +13024,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 data-audience-release-choice-card="slot_scene"
                                 type="button"
                                 onClick={() => castRunOfShowReleaseVote('slot_scene')}
-                                className={`min-h-[126px] rounded-[1.1rem] border px-2.5 py-2.5 text-left shadow-[0_14px_34px_rgba(0,0,0,0.24)] ${myReleaseWindowVote === 'slot_scene' ? audienceReleaseTone.selectedChoiceClass : 'border-white/10 bg-black/20 text-white'}`}
+                                className={`${isAudiencePerformanceProgressionDecision ? 'min-h-[112px] px-3 py-4' : 'min-h-[126px] px-2.5 py-2.5'} rounded-[1.1rem] border text-left shadow-[0_14px_34px_rgba(0,0,0,0.24)] ${myReleaseWindowVote === 'slot_scene' ? audienceReleaseTone.selectedChoiceClass : 'border-white/10 bg-black/20 text-white'}`}
                             >
-                                <div className="flex items-start gap-2.5">
-                                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-lg">
+                                <div className={`flex gap-2.5 ${isAudiencePerformanceProgressionDecision ? 'items-center' : 'items-start'}`}>
+                                    {!isAudiencePerformanceProgressionDecision ? <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-lg">
                                         <span className="absolute left-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-lg bg-cyan-300 text-[11px] font-black text-slate-950 shadow-lg">A</span>
                                         {getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.slotScene) ? (
                                             <><img src={getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.slotScene)} alt={audienceReleaseChoiceLabels.slotScene} className="h-full w-full object-cover" />{audienceReleaseChoiceMetadata.slotScene?.durationLabel ? <span className="absolute bottom-1 right-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-black text-white">{audienceReleaseChoiceMetadata.slotScene.durationLabel}</span> : null}</>
@@ -13064,15 +13036,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                 <i className={`fa-solid ${isAudiencePerformanceProgressionDecision ? 'fa-microphone-lines' : 'fa-music'}`}></i>
                                             </div>
                                         )}
-                                    </div>
+                                    </div> : null}
                                     <div className="min-w-0 flex-1">
-                                        <div className={`truncate text-[10px] uppercase tracking-[0.18em] ${audienceReleaseTone.choiceLabelClass}`}>{audienceReleaseChoiceLabels.slotScene}</div>
-                                        <div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
+                                        <div className={`truncate ${isAudiencePerformanceProgressionDecision ? 'text-lg font-black' : 'text-[10px]'} uppercase tracking-[0.14em] ${audienceReleaseTone.choiceLabelClass}`}>{audienceReleaseChoiceLabels.slotScene}</div>
+                                        {!isAudiencePerformanceProgressionDecision ? <><div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
                                             {audienceReleaseChoiceDetails.slotScene || (isAudiencePerformanceProgressionDecision ? (audienceReleaseSubjectTitle || (isAudienceOneMinuteMicDecision ? 'Unlock the rest' : 'Protect the moment')) : '') || audienceReleaseChoiceSongs.slotScene?.singerName || 'Queued singer'}
                                         </div>
                                         <div className="truncate text-[11px] text-zinc-400">
                                             {audienceReleaseChoiceSublines.slotScene || (isAudienceOneMinuteMicDecision ? 'Let this singer finish the track' : isAudienceSkipPerformanceDecision ? 'Keep the performer on mic' : '') || audienceReleaseSubjectSubtitle || String(audienceReleaseChoiceSongs.slotScene?.artist || audienceReleaseChoiceSongs.slotScene?.artistName || '').trim() || 'Ready queue pick'}
-                                        </div>
+                                        </div></> : null}
                                         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                                             <div className="h-full rounded-full bg-cyan-300 transition-all duration-500" style={{ width: `${getAudienceReleaseChoicePct(audienceReleaseChoiceCounts.slotScene)}%` }} />
                                         </div>
@@ -13087,10 +13059,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 data-audience-release-choice-card="keep_queue_moving"
                                 type="button"
                                 onClick={() => castRunOfShowReleaseVote('keep_queue_moving')}
-                                className={`min-h-[126px] rounded-[1.1rem] border px-2.5 py-2.5 text-left shadow-[0_14px_34px_rgba(0,0,0,0.24)] ${myReleaseWindowVote === 'keep_queue_moving' ? 'border-pink-300/45 bg-pink-500/14 text-pink-50' : 'border-white/10 bg-black/20 text-white'}`}
+                                className={`${isAudiencePerformanceProgressionDecision ? 'min-h-[112px] px-3 py-4' : 'min-h-[126px] px-2.5 py-2.5'} rounded-[1.1rem] border text-left shadow-[0_14px_34px_rgba(0,0,0,0.24)] ${myReleaseWindowVote === 'keep_queue_moving' ? 'border-pink-300/45 bg-pink-500/14 text-pink-50' : 'border-white/10 bg-black/20 text-white'}`}
                             >
-                                <div className="flex items-start gap-2.5">
-                                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-lg">
+                                <div className={`flex gap-2.5 ${isAudiencePerformanceProgressionDecision ? 'items-center' : 'items-start'}`}>
+                                    {!isAudiencePerformanceProgressionDecision ? <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-lg">
                                         <span className="absolute left-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-lg bg-pink-300 text-[11px] font-black text-slate-950 shadow-lg">B</span>
                                         {getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.keepQueueMoving) ? (
                                             <><img src={getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.keepQueueMoving)} alt={audienceReleaseChoiceLabels.keepQueueMoving} className="h-full w-full object-cover" />{audienceReleaseChoiceMetadata.keepQueueMoving?.durationLabel ? <span className="absolute bottom-1 right-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-black text-white">{audienceReleaseChoiceMetadata.keepQueueMoving.durationLabel}</span> : null}</>
@@ -13099,15 +13071,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                 <i className={`fa-solid ${isAudiencePerformanceProgressionDecision ? 'fa-forward-step' : 'fa-music'}`}></i>
                                             </div>
                                         )}
-                                    </div>
+                                    </div> : null}
                                     <div className="min-w-0 flex-1">
-                                        <div className="truncate text-[10px] uppercase tracking-[0.18em] text-pink-200">{audienceReleaseChoiceLabels.keepQueueMoving}</div>
-                                        <div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
+                                        <div className={`truncate ${isAudiencePerformanceProgressionDecision ? 'text-lg font-black' : 'text-[10px]'} uppercase tracking-[0.14em] text-pink-200`}>{audienceReleaseChoiceLabels.keepQueueMoving}</div>
+                                        {!isAudiencePerformanceProgressionDecision ? <><div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
                                             {audienceReleaseChoiceDetails.keepQueueMoving || (isAudiencePerformanceProgressionDecision ? 'Rotate the mic' : '') || audienceReleaseChoiceSongs.keepQueueMoving?.singerName || 'Queued singer'}
                                         </div>
                                         <div className="truncate text-[11px] text-zinc-400">
                                             {audienceReleaseChoiceSublines.keepQueueMoving || (isAudienceOneMinuteMicDecision ? 'Wrap this minute and keep the queue moving' : isAudienceSkipPerformanceDecision ? 'Requires a strong crowd signal' : '') || String(audienceReleaseChoiceSongs.keepQueueMoving?.artist || audienceReleaseChoiceSongs.keepQueueMoving?.artistName || '').trim() || 'Ready queue pick'}
-                                        </div>
+                                        </div></> : null}
                                         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                                             <div className="h-full rounded-full bg-pink-300 transition-all duration-500" style={{ width: `${getAudienceReleaseChoicePct(audienceReleaseChoiceCounts.keepQueueMoving)}%` }} />
                                         </div>
@@ -13119,11 +13091,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 </div>
                             </button>
                         </div>
-                        <div className="mt-2 text-[11px] text-zinc-400">
+                        <div className={`${isAudiencePerformanceProgressionDecision ? 'mt-3 text-sm font-semibold text-zinc-200' : 'mt-2 text-[11px] text-zinc-400'}`}>
                             {selfServeAudienceDecisionPresentation
                                 ? 'One joined guest, one live vote. The winning choice locks automatically when the timer ends.'
+                                : isAudienceOneMinuteMicDecision
+                                    ? 'Next Singer needs 55%. A tie keeps the singer.'
                                 : performanceAudienceDecisionPresentation
-                                    ? 'One joined guest, one live vote. The winning choice resolves automatically when the timer ends.'
+                                    ? 'One vote per joined guest. The choice resolves when the timer ends.'
                                 : releaseWindowTally.totalVotes > 0
                                     ? `${audienceReleaseVoteCountLabel} locked so far. Host confirms the winner after voting closes.`
                                     : 'One vote per joined user. Host confirms the winner after voting closes.'}

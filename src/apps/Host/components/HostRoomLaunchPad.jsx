@@ -587,6 +587,7 @@ const HostRoomLaunchPad = ({
     ];
     const defaultRoomBrowserFilter = findBucketForRoomCode(featuredRoom?.code, roomBrowserBuckets) || 'ready';
     const [roomBrowserFilter, setRoomBrowserFilter] = useState(() => defaultRoomBrowserFilter);
+    const [roomBrowserSort, setRoomBrowserSort] = useState('newest');
     const [roomBrowserSearch, setRoomBrowserSearch] = useState('');
     const [selectedRoomCode, setSelectedRoomCode] = useState(() => String(featuredRoom?.code || '').trim().toUpperCase());
     const landingFocusAppliedRef = useRef(false);
@@ -633,33 +634,27 @@ const HostRoomLaunchPad = ({
     ];
     const activeRoomBucket = roomBrowserBuckets.find((bucket) => bucket.id === roomBrowserFilter) || roomBrowserBuckets[0];
     const normalizedRoomBrowserSearch = normalizeLaunchSearchToken(roomBrowserSearch);
-    const featuredRoomCode = String(featuredRoom?.code || '').trim().toUpperCase();
     const roomBrowserResults = [...(activeRoomBucket?.rooms || [])]
         .sort((left, right) => {
-            const leftCode = String(left.code || '').trim().toUpperCase();
-            const rightCode = String(right.code || '').trim().toUpperCase();
-            const leftFeatured = !!featuredRoomCode && leftCode === featuredRoomCode;
-            const rightFeatured = !!featuredRoomCode && rightCode === featuredRoomCode;
-            if (leftFeatured !== rightFeatured) return Number(rightFeatured) - Number(leftFeatured);
-            const leftPinned = pinnedRoomCodeSet.has(String(left.code || '').trim().toUpperCase());
-            const rightPinned = pinnedRoomCodeSet.has(String(right.code || '').trim().toUpperCase());
-            if (leftPinned !== rightPinned) return Number(rightPinned) - Number(leftPinned);
-            if (activeRoomBucket?.id === 'upcoming') {
+            if (roomBrowserSort === 'name') {
+                return String(left.roomName || left.code || '').localeCompare(String(right.roomName || right.code || ''), undefined, {
+                    numeric: true,
+                    sensitivity: 'base'
+                });
+            }
+            if (roomBrowserSort === 'upcoming') {
                 const leftScheduled = Number(left.roomStartsAtMs || left.discoverStartsAtMs || Number.MAX_SAFE_INTEGER);
                 const rightScheduled = Number(right.roomStartsAtMs || right.discoverStartsAtMs || Number.MAX_SAFE_INTEGER);
                 return leftScheduled - rightScheduled;
             }
-            const getRank = (roomItem) => {
-                if (roomItem.archived) return 3;
-                if (Number(roomItem.closedAtMs || 0) > 0) return 2;
-                if (Number(roomItem.roomStartsAtMs || roomItem.discoverStartsAtMs || 0) > browserNowMs + (90 * 60 * 1000)) return 1;
-                return 0;
-            };
-            const rankDelta = getRank(left) - getRank(right);
-            if (rankDelta !== 0) return rankDelta;
-            const leftRecent = Number(left.updatedAtMs || left.createdAtMs || left.roomStartsAtMs || left.discoverStartsAtMs || 0);
-            const rightRecent = Number(right.updatedAtMs || right.createdAtMs || right.roomStartsAtMs || right.discoverStartsAtMs || 0);
-            return rightRecent - leftRecent;
+            if (roomBrowserSort === 'recent') {
+                const leftRecent = Number(left.updatedAtMs || left.createdAtMs || left.roomStartsAtMs || left.discoverStartsAtMs || 0);
+                const rightRecent = Number(right.updatedAtMs || right.createdAtMs || right.roomStartsAtMs || right.discoverStartsAtMs || 0);
+                return rightRecent - leftRecent;
+            }
+            const leftCreated = Number(left.createdAtMs || left.updatedAtMs || left.roomStartsAtMs || left.discoverStartsAtMs || 0);
+            const rightCreated = Number(right.createdAtMs || right.updatedAtMs || right.roomStartsAtMs || right.discoverStartsAtMs || 0);
+            return rightCreated - leftCreated;
         })
         .filter((roomItem) => {
             if (!normalizedRoomBrowserSearch) return true;
@@ -730,6 +725,8 @@ const HostRoomLaunchPad = ({
             activeRoomBucket={activeRoomBucket}
             roomBrowserBuckets={roomBrowserBuckets}
             setRoomBrowserFilter={setRoomBrowserFilter}
+            roomBrowserSort={roomBrowserSort}
+            setRoomBrowserSort={setRoomBrowserSort}
             setSelectedRoomCode={setSelectedRoomCode}
             roomBrowserSearch={roomBrowserSearch}
             setRoomBrowserSearch={setRoomBrowserSearch}

@@ -108,6 +108,36 @@ test('One-Minute Mic automation accepts one keep-singing vote in a small room', 
   assert.equal('audienceAutomationCommand' in patch, false);
 });
 
+test('One-Minute Mic automation keeps the singer on a two-two tie', () => {
+  const openDecision = buildOneMinuteMicRoomPatch({
+    room: baseRoom,
+    roomCode: 'ROOM1',
+    nowMs: 62000,
+  }).audienceDecision;
+
+  const patch = buildOneMinuteMicRoomPatch({
+    room: {
+      ...baseRoom,
+      audienceDecision: {
+        ...openDecision,
+        votesByUid: {
+          u1: 'keep_singing',
+          u2: 'keep_singing',
+          u3: 'next_singer',
+          u4: 'next_singer',
+        },
+      },
+    },
+    roomCode: 'ROOM1',
+    nowMs: 75000,
+  });
+
+  assert.equal(patch.audienceDecision.resultChoice, 'keep_singing');
+  assert.equal(patch.audienceDecision.resolutionAction, 'continue_song');
+  assert.equal(patch.audienceDecision.resolutionReason, 'tie_keeps_singer');
+  assert.equal('audienceAutomationCommand' in patch, false);
+});
+
 test('One-Minute Mic automation resolves to rotate by holding karaoke through a fade window', () => {
   const openDecision = buildOneMinuteMicRoomPatch({
     room: baseRoom,

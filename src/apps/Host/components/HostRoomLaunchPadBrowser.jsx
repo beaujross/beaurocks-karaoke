@@ -196,6 +196,8 @@ const HostRoomLaunchPadBrowser = ({
     activeRoomBucket,
     roomBrowserBuckets,
     setRoomBrowserFilter,
+    roomBrowserSort,
+    setRoomBrowserSort,
     setSelectedRoomCode,
     roomBrowserSearch,
     setRoomBrowserSearch,
@@ -595,13 +597,25 @@ const HostRoomLaunchPadBrowser = ({
                                         {recentHostRoomsLoading ? 'Syncing rooms...' : `${roomBrowserResults.length} room${roomBrowserResults.length === 1 ? '' : 's'}`}
                                     </div>
                                 </div>
-                                <div className="flex min-w-full flex-col gap-2 sm:min-w-[320px] sm:flex-row">
+                                <div className="flex min-w-full flex-col gap-2 sm:min-w-[520px] sm:flex-row">
                                     <input
                                         value={roomBrowserSearch}
                                         onChange={(e) => setRoomBrowserSearch(e.target.value)}
                                         placeholder="Search by room name, code, preset, or status"
                                         className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-300/45"
                                     />
+                                    <label className="sr-only" htmlFor="room-browser-sort">Sort Rooms</label>
+                                    <select
+                                        id="room-browser-sort"
+                                        value={roomBrowserSort}
+                                        onChange={(event) => setRoomBrowserSort(event.target.value)}
+                                        className="rounded-xl border border-cyan-400/20 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-300/45"
+                                    >
+                                        <option value="newest">Newest Rooms First</option>
+                                        <option value="recent">Recently Active</option>
+                                        <option value="upcoming">Upcoming First</option>
+                                        <option value="name">Room Name</option>
+                                    </select>
                                     {roomBrowserSearch ? (
                                         <button
                                             type="button"
@@ -614,7 +628,7 @@ const HostRoomLaunchPadBrowser = ({
                                 </div>
                             </div>
 
-                            <div className="hidden grid-cols-[minmax(0,1.5fr)_112px_112px_160px_minmax(180px,0.8fr)] gap-3 border-b border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-cyan-100/48 md:grid">
+                            <div className="hidden grid-cols-[minmax(210px,2fr)_104px_104px_150px_minmax(180px,0.8fr)] gap-3 border-b border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-cyan-100/48 md:grid">
                                 <div>Room</div>
                                 <div>Status</div>
                                 <div>Visibility</div>
@@ -638,11 +652,16 @@ const HostRoomLaunchPadBrowser = ({
                                         <div
                                             key={roomItem.code}
                                             onClick={() => handleSelectRoom(roomItem.code)}
-                                            className={`grid cursor-pointer gap-3 border-b border-white/6 px-4 py-3 transition md:grid-cols-[minmax(0,1.5fr)_112px_112px_160px_minmax(180px,0.8fr)] ${selected ? 'bg-cyan-500/10' : 'hover:bg-white/[0.04]'}`}
+                                            className={`grid cursor-pointer gap-3 border-b border-white/6 px-4 py-3 transition md:grid-cols-[minmax(210px,2fr)_104px_104px_150px_minmax(180px,0.8fr)] ${selected ? 'bg-cyan-500/10' : 'hover:bg-white/[0.04]'}`}
                                         >
                                             <div className="min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="truncate text-sm font-semibold text-white">{roomItem.roomName || roomItem.code}</div>
+                                                <div className="flex items-start gap-2">
+                                                    <div
+                                                        className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-semibold leading-5 text-white"
+                                                        title={roomItem.roomName || roomItem.code}
+                                                    >
+                                                        {roomItem.roomName || roomItem.code}
+                                                    </div>
                                                     {roomPinned ? (
                                                         <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-100">
                                                             Pinned

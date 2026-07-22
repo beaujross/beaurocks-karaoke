@@ -16513,8 +16513,15 @@ exports.setMyVipAccountStatus = onCall({ cors: true }, async (request) => {
   enforceAppCheckIfEnabled(request, "set_my_vip_account_status");
   const uid = requireAuth(request, "Sign in required.");
   const source = normalizeDirectoryToken(request.data?.source || "audience_app", 60) || "audience_app";
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const sourceUid = normalizeUidToken(request.data?.sourceUid || "");
   const qaBypass = !!request.data?.qaBypass;
   const vipLevel = clampNumber(request.data?.vipLevel, 1, 5, 1);
+  const rewardPoints = 5000;
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required for VIP unlock.");
+  }
 
   let phone = "";
   let email = "";
@@ -16533,15 +16540,113 @@ exports.setMyVipAccountStatus = onCall({ cors: true }, async (request) => {
     }
   }
 
-  await admin.firestore().collection("users").doc(uid).set({
-    vipLevel,
-    isVip: vipLevel > 0,
-    ...(phone ? { phone } : {}),
-    ...(!phone && email ? { email } : {}),
-    vipStatusSource: source,
-    vipStatusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const userRef = db.collection("users").doc(uid);
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${uid}`);
+  const migratedUid = sourceUid && sourceUid !== uid ? sourceUid : "";
+  const sourceUserRef = migratedUid ? db.collection("users").doc(migratedUid) : null;
+  const sourceRoomUserRef = migratedUid
+    ? rootRef.collection("room_users").doc(`${roomCode}_${migratedUid}`)
+    : null;
+  const grantType = "vip_account_upgrade";
+  const eventId = "vip_account_upgrade";
+  const grantId = buildRoomEventCreditGrantDocId({ roomCode, eventId, uid, grantType });
+  const grantRef = db.collection(ROOM_EVENT_CREDIT_GRANTS_COLLECTION).doc(grantId);
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap, grantSnap, sourceUserSnap, sourceRoomUserSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(grantRef),
+      sourceUserRef ? tx.get(sourceUserRef) : Promise.resolve(null),
+      sourceRoomUserRef ? tx.get(sourceRoomUserRef) : Promise.resolve(null),
+    ]);
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room not found.");
+    }
+
+    const sourceUserData = sourceUserSnap?.exists ? (sourceUserSnap.data() || {}) : {};
+    const sourceMigrationAllowed = !!migratedUid
+      && normalizeUidToken(sourceUserData.mergedIntoUid || "") === uid;
+    const roomUserData = roomUserSnap.exists ? (roomUserSnap.data() || {}) : {};
+    const sourceRoomUserData = sourceMigrationAllowed && sourceRoomUserSnap?.exists
+      ? (sourceRoomUserSnap.data() || {})
+      : {};
+    const existingRoomPoints = Math.max(0, Number(roomUserData.points || 0) || 0);
+    const migratedRoomPoints = Math.max(0, Number(sourceRoomUserData.points || 0) || 0);
+    const baseRoomPoints = Math.max(existingRoomPoints, migratedRoomPoints);
+    const duplicate = grantSnap.exists;
+    const pointsGranted = duplicate ? 0 : rewardPoints;
+    const roomPoints = baseRoomPoints + pointsGranted;
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+    tx.set(userRef, {
+      uid,
+      vipLevel,
+      isVip: vipLevel > 0,
+      ...(phone ? { phone } : {}),
+      ...(!phone && email ? { email } : {}),
+      ...(!duplicate ? { pointsBalance: admin.firestore.FieldValue.increment(rewardPoints) } : {}),
+      vipStatusSource: source,
+      vipStatusUpdatedAt: serverNow,
+      updatedAt: serverNow,
+    }, { merge: true });
+    tx.set(roomUserRef, {
+      roomCode,
+      uid,
+      vipLevel,
+      isVip: vipLevel > 0,
+      points: roomPoints,
+      totalEmojis: Math.max(
+        0,
+        Number(roomUserData.totalEmojis || 0) || 0,
+        Number(sourceRoomUserData.totalEmojis || 0) || 0,
+      ),
+      lastSeen: serverNow,
+      updatedAt: serverNow,
+    }, { merge: true });
+
+    if (!duplicate) {
+      tx.set(grantRef, {
+        roomCode,
+        uid,
+        eventId,
+        eventLabel: "Verified audience account",
+        grantType,
+        pointsGranted: rewardPoints,
+        source,
+        createdAt: serverNow,
+        updatedAt: serverNow,
+      });
+      setShadowLedgerEntry({
+        writer: tx,
+        db,
+        idempotencyKey: `room_event_credit_grant:${grantId}`,
+        roomCode,
+        uid,
+        eventCredits: { enabled: false },
+        type: grantType,
+        amount: rewardPoints,
+        source: {
+          provider: "beaurocks",
+          sourceId: grantId,
+          sourceCollection: ROOM_EVENT_CREDIT_GRANTS_COLLECTION,
+        },
+        serverTimestamp: serverNow,
+      });
+    }
+    if (sourceMigrationAllowed && sourceRoomUserRef && sourceRoomUserSnap?.exists) {
+      tx.delete(sourceRoomUserRef);
+    }
+
+    return {
+      duplicate,
+      pointsGranted,
+      roomPoints,
+      sourceRoomUserMigrated: sourceMigrationAllowed && !!sourceRoomUserSnap?.exists,
+    };
+  });
 
   return {
     ok: true,
@@ -16552,6 +16657,10 @@ exports.setMyVipAccountStatus = onCall({ cors: true }, async (request) => {
     emailVerified: !phone && !!email,
     mode: qaBypass ? "qa_bypass" : (phone ? "phone_verified" : "email_verified"),
     source,
+    roomCode,
+    rewardPoints,
+    grantId,
+    ...result,
   };
 });
 

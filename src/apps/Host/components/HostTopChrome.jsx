@@ -411,6 +411,7 @@ const HostTopChrome = ({
     const quickStripItemClass = compactTopQuickStrip ? 'relative min-w-0 flex-[1_1_calc(50%-0.25rem)]' : 'relative shrink-0';
     const automationActiveCount = [
         !!quickAutomationControls?.autoDj,
+        !!quickRoomControls?.autoPlayMedia,
         !!quickAutomationControls?.autoBgMusic,
         !!quickAutomationControls?.autoEndOnTrackFinish,
         !!quickAutomationControls?.autoBonusEnabled,
@@ -1152,6 +1153,12 @@ const HostTopChrome = ({
             ? 'assisted_host'
             : 'host_led';
     const activeRoomControlModelOption = ROOM_CONTROL_MODEL_OPTIONS.find((option) => option.id === activeRoomControlModel) || ROOM_CONTROL_MODEL_OPTIONS[0];
+    const autoPartyPlanLabel = {
+        volley_first: 'Volley Orb, then Ready Check',
+        ready_first: 'Ready Check, then Volley Orb',
+        ready_only: 'Ready Check only',
+        volley_only: 'Volley Orb only',
+    }[quickAutomationControls?.autoPartyOrderPreset] || 'Volley Orb, then Ready Check';
     const oneMinuteMicLiveStatus = quickRoomControls?.oneMinuteMicLiveStatus || null;
     const oneMinuteMicStatusToneClass = oneMinuteMicLiveStatus?.tone === 'live'
         ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'
@@ -1865,6 +1872,59 @@ const HostTopChrome = ({
                                 </div>
                                 {quickRoomControls ? (
                                     <>
+                                <div className={`${quickMenuCardClass} mt-2 space-y-3`} data-host-effective-room-controls>
+                                    <div>
+                                        <div className={`${quickMenuEyebrowClass} text-cyan-200`}>Tonight's effective controls</div>
+                                        <div className={quickMenuBodyClass}>These are the live Room behaviors. Direct changes here override any preset or starting point.</div>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        {[
+                                            {
+                                                key: 'next-singer',
+                                                label: 'Start the next singer automatically',
+                                                detail: 'Auto-DJ',
+                                                active: !!quickAutomationControls?.autoDj,
+                                                onClick: quickAutomationControls?.onToggleAutoDj,
+                                            },
+                                            {
+                                                key: 'backing-media',
+                                                label: 'Start backing media automatically',
+                                                detail: 'Auto Playback',
+                                                active: quickRoomControls?.autoPlayMedia !== false,
+                                                onClick: quickRoomControls?.onToggleAutoPlayMedia,
+                                            },
+                                            {
+                                                key: 'break-activities',
+                                                label: 'Fill breaks with audience activities',
+                                                detail: quickAutomationControls?.autoPartyEnabled ? autoPartyPlanLabel : 'Auto Party',
+                                                active: !!quickAutomationControls?.autoPartyEnabled,
+                                                onClick: quickAutomationControls?.onToggleAutoParty,
+                                            },
+                                            {
+                                                key: 'singer-turns',
+                                                label: 'Let the crowd extend or rotate singers',
+                                                detail: 'One-Minute Mic',
+                                                active: !!quickRoomControls?.oneMinuteMicEnabled,
+                                                onClick: () => quickRoomControls?.onSetOneMinuteMic?.(!quickRoomControls?.oneMinuteMicEnabled),
+                                            },
+                                        ].map((item) => (
+                                            <button
+                                                key={item.key}
+                                                type="button"
+                                                data-effective-room-control={item.key}
+                                                onClick={() => { void item.onClick?.(); }}
+                                                aria-pressed={item.active}
+                                                className={`${styles.btnStd} ${item.active ? styles.btnHighlight : styles.btnNeutral} min-h-[76px] min-w-0 items-start justify-between gap-3 whitespace-normal px-3 py-2.5 text-left normal-case tracking-[0.02em]`}
+                                            >
+                                                <span className="flex min-w-0 flex-col items-start">
+                                                    <span className="text-sm font-semibold leading-tight">{item.label}</span>
+                                                    <span className="mt-1 text-xs leading-4 text-zinc-400">{item.detail}</span>
+                                                </span>
+                                                <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.16em]">{item.active ? 'On' : 'Off'}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`} data-host-room-control-model>
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
@@ -2040,13 +2100,6 @@ const HostTopChrome = ({
                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                         {[
                                             {
-                                                key: 'autoDj',
-                                                label: 'Auto DJ',
-                                                active: !!quickAutomationControls.autoDj,
-                                                icon: 'fa-forward-fast',
-                                                onClick: quickAutomationControls.onToggleAutoDj,
-                                            },
-                                            {
                                                 key: 'autoBg',
                                                 label: 'Auto BG Music',
                                                 active: !!quickAutomationControls.autoBgMusic,
@@ -2073,13 +2126,6 @@ const HostTopChrome = ({
                                                 active: !!quickAutomationControls.autoLyricsOnQueue,
                                                 icon: 'fa-closed-captioning',
                                                 onClick: quickAutomationControls.onToggleAutoLyricsOnQueue,
-                                            },
-                                            {
-                                                key: 'autoParty',
-                                                label: 'Auto Party',
-                                                active: !!quickAutomationControls.autoPartyEnabled,
-                                                icon: 'fa-wand-magic-sparkles',
-                                                onClick: quickAutomationControls.onToggleAutoParty,
                                             },
                                             {
                                                 key: 'popTrivia',
