@@ -460,6 +460,18 @@ const RecapView = ({ roomCode }) => {
             text: String(entry?.text || entry?.summary || entry?.message || entry?.detail || entry?.label || 'Room moment').trim(),
             user: firstName(entry?.user || entry?.userName || entry?.actorName || entry?.name || '', ''),
         }));
+        const gameRounds = (Array.isArray(recap?.gameRounds) ? recap.gameRounds : [])
+            .slice(-8)
+            .map((entry, index) => ({
+                id: entry?.id || entry?.questionId || `game-round-${index}`,
+                type: String(entry?.type || '').trim().toLowerCase() === 'wyr' ? 'Would You Rather' : 'Trivia',
+                question: String(entry?.question || '').trim(),
+                responseCount: Math.max(0, n(entry?.responseCount, 0)),
+                counts: Object.entries(entry?.counts && typeof entry.counts === 'object' ? entry.counts : {})
+                    .map(([label, count]) => ({ label, count: Math.max(0, n(count, 0)) }))
+                    .sort((left, right) => right.count - left.count),
+            }))
+            .filter((entry) => entry.question);
 
         const startMs = n(recap?.window?.startMs || recap?.window?.firstEventMs || 0, 0);
         const endMs = n(recap?.window?.lastEventMs || recap?.window?.endMs || 0, 0);
@@ -515,6 +527,7 @@ const RecapView = ({ roomCode }) => {
             performancesPerHour,
             gallery,
             highlights,
+            gameRounds,
             topPerformance,
             topReactionType,
         };
@@ -653,6 +666,39 @@ const RecapView = ({ roomCode }) => {
                         </div>
                     </article>
                 </section>
+
+                {summary.gameRounds.length > 0 ? (
+                    <section className="mt-8 rounded-[2.1rem] border border-white/10 p-6 shadow-[0_30px_90px_rgba(0,0,0,0.42)]" style={{ background: `radial-gradient(circle at 100% 0%, rgba(255,255,255,0.05), transparent 26%), linear-gradient(180deg, rgba(14,22,38,0.92), rgba(8,13,23,0.96))` }}>
+                        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/68" style={{ background: `linear-gradient(135deg, ${withAudienceBrandAlpha(secondary, 0.16)}, rgba(255,255,255,0.03))` }}>
+                            <i className="fa-solid fa-gamepad text-cyan-200"></i>
+                            Game breaks
+                        </div>
+                        <div className="mt-5 grid gap-3 md:grid-cols-2">
+                            {summary.gameRounds.map((round) => (
+                                <article key={round.id} className="rounded-[1.4rem] border border-white/10 bg-black/25 px-4 py-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60">{round.type}</div>
+                                            <div className="mt-1 text-base font-black text-white">{round.question}</div>
+                                        </div>
+                                        <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/68">{fmt(round.responseCount)} votes</span>
+                                    </div>
+                                    {round.counts.length > 0 ? (
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {round.counts.map((choice) => (
+                                                <span key={choice.label} className="rounded-full border border-cyan-300/16 bg-cyan-500/8 px-2.5 py-1 text-[10px] text-cyan-50">
+                                                    {choice.label} · {fmt(choice.count)}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="mt-3 text-xs text-white/45">No audience answers recorded.</div>
+                                    )}
+                                </article>
+                            ))}
+                        </div>
+                    </section>
+                ) : null}
 
                 <section className="mt-8 rounded-[2.1rem] border border-white/10 p-6 shadow-[0_30px_90px_rgba(0,0,0,0.42)]" style={{ background: `radial-gradient(circle at 100% 0%, rgba(255,255,255,0.05), transparent 26%), linear-gradient(180deg, rgba(14,22,38,0.92), rgba(8,13,23,0.96))` }}>
                     <div className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/68" style={{ background: `linear-gradient(135deg, ${withAudienceBrandAlpha(accent, 0.14)}, rgba(255,255,255,0.03))` }}><span className="text-amber-300">✦</span>Emoji Storm</div>

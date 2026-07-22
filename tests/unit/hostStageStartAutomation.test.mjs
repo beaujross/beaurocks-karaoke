@@ -48,6 +48,7 @@ test('browse-backed stage start keeps resolved media duration but waits for play
   const { getAutoEndSchedule } = await import('../../src/apps/Host/hostPlaybackAutomation.js');
 
   const updateRoomMock = vi.fn(async () => {});
+  const pauseAppleMusicMock = vi.fn(async () => {});
   const stopAppleMusicMock = vi.fn(async () => {});
   const logActivityMock = vi.fn();
 
@@ -74,6 +75,7 @@ test('browse-backed stage start keeps resolved media duration but waits for play
     isAudioUrl: () => false,
     holdAutoBgDuringStageActivation: noop,
     playAppleMusicTrack: vi.fn(async () => {}),
+    pauseAppleMusic: pauseAppleMusicMock,
     stopAppleMusic: stopAppleMusicMock,
     updateRoom: updateRoomMock,
     logActivity: logActivityMock,
@@ -94,7 +96,8 @@ test('browse-backed stage start keeps resolved media duration but waits for play
   assert.equal(updateDocPayload.durationSource, 'backing_media');
   assert.equal(updateDocPayload.autoEndSafe, true);
 
-  assert.equal(stopAppleMusicMock.mock.calls.length, 1);
+  assert.equal(pauseAppleMusicMock.mock.calls.length, 1);
+  assert.equal(stopAppleMusicMock.mock.calls.length, 0);
   assert.equal(updateRoomMock.mock.calls.length, 1);
   const roomPatch = updateRoomMock.mock.calls[0][0];
   assert.equal(roomPatch.activeMode, 'karaoke');
@@ -111,6 +114,7 @@ test('browse-backed stage start keeps resolved media duration but waits for play
   assert.equal(roomPatch.currentPerformanceSession.lastHeartbeatAtMs, 0);
   assert.equal(roomPatch.currentPerformanceSession.expectedDurationSec, 245);
   assert.equal(roomPatch.currentPerformanceSession.playerReportedDurationSec, 0);
+  assert.equal('appleMusicPlayback' in roomPatch, false);
 
   const schedule = getAutoEndSchedule({
     autoEndEnabled: true,

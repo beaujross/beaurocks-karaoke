@@ -50,3 +50,36 @@ test('Smart live-or-soon signal does not elevate a listing whose end time has pa
 test('Invalid timezones fall back without throwing', () => {
   assert.equal(normalizeDiscoverTimezone('Not/A_Timezone', 'UTC'), 'UTC');
 });
+
+test('All excludes ended nights by default while preserving a bounded public recap', () => {
+  const nowMs = new Date('2026-07-15T12:00:00.000Z').getTime();
+  const endedAtMs = nowMs - 60_000;
+  assert.equal(matchesDirectoryDiscoverTimeWindow({
+    listingType: 'event',
+    startsAtMs: endedAtMs - 3_600_000,
+    endsAtMs: endedAtMs,
+  }, 'all', nowMs, 'UTC'), false);
+  assert.equal(matchesDirectoryDiscoverTimeWindow({
+    listingType: 'room_session',
+    roomCode: 'RECAP1',
+    startsAtMs: endedAtMs - 3_600_000,
+    endsAtMs: endedAtMs,
+    latestRecapAtMs: endedAtMs,
+  }, 'all', nowMs, 'UTC'), true);
+  assert.equal(matchesDirectoryDiscoverTimeWindow({
+    listingType: 'room_session',
+    roomCode: 'OLD99',
+    startsAtMs: nowMs - (40 * 86_400_000),
+    endsAtMs: nowMs - (39 * 86_400_000),
+    latestRecapAtMs: nowMs - (39 * 86_400_000),
+  }, 'all', nowMs, 'UTC'), false);
+});
+
+test('All can explicitly include ended listings for stable public detail routes', () => {
+  const nowMs = Date.now();
+  assert.equal(matchesDirectoryDiscoverTimeWindow({
+    listingType: 'event',
+    startsAtMs: nowMs - 7_200_000,
+    endsAtMs: nowMs - 3_600_000,
+  }, 'all', nowMs, 'UTC', { includeEnded: true }), true);
+});

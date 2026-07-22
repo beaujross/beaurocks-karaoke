@@ -1,7 +1,7 @@
 # YouTube Quota Extension Packet
 
 Date: 2026-07-06
-Status: Production event-readiness behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`), and authenticated quota, controlled cooldown, permanent-delete, and request-sizing evidence are captured. The room-deletion evidence remains tied to its original 2026-07-13 production checkpoint. Not ready to submit until the live form's five address-bar presentation captures and final business/contact/request approval are attached.
+Status: Production event-readiness behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`), and authenticated quota, controlled cooldown, permanent-delete, request-sizing, and all current-form address-bar evidence are captured. The room-deletion evidence remains tied to its original 2026-07-13 production checkpoint. Technical preflight passed on 2026-07-19; only final business/contact/request approval and owner submission remain.
 
 ## Executive Summary
 
@@ -31,6 +31,8 @@ Verified against official Google/YouTube docs on 2026-07-06:
 - YouTube Terms: https://www.youtube.com/t/terms
 
 The official quota/compliance guide was revalidated on 2026-07-13 against the June 2026 granular-quota model. Projects receive default allocations of 100 `search.list` calls per day, 100 `videos.insert` calls per day, and 10,000 units per day combined for other endpoints. `search.list` consumes 1 unit from its dedicated Search Queries bucket per call. Additional quota still requires an audit demonstrating compliance with the YouTube API Services Terms.
+
+Authenticated project evidence confirms the live assignment is `100 Search Queries/day` and `10,000` general-data units/day.
 
 Official current references:
 
@@ -112,6 +114,9 @@ Evidence:
 - The nightly job also backfills verified indexed canonical tracks into `songs/{songId}/backing_candidates` without live YouTube search.
 - Maintenance is bounded by library and candidate limits to prevent write/API spikes.
 - `tests/unit/youtubeIndexMaintenanceServer.test.mjs` covers refresh planning, playable refresh application, dropping unplayable IDs, and bounded canonical backfill wiring.
+- `nightlyYouTubeCatalogEnrichment` is a separate 23:35 Pacific demand-driven worker. It uses the server-wide daily method ledger, skips active rooms, preserves at least 20 calls or 25% of the daily Search Queries allocation for live use, and searches only first-party-demand canonical songs lacking a fresh candidate.
+- Nightly discoveries require strong title/artist and karaoke-intent matching plus `videos.list` playability and embeddability validation. Stored metadata receives a 29-day verification lease, and daily maintenance deletes expired documents before the 30-day boundary; no audiovisual content is downloaded or cached.
+- `tests/unit/youtubeDailyCatalog.test.mjs` covers daily budget boundaries, Pacific reset dates, strict candidate selection, and candidate freshness.
 
 ### Canonical Backing Reuse
 
@@ -177,11 +182,11 @@ Captured files:
 
 The capture script, `scripts/qa/youtube-audit-product-evidence-screenshots.mjs`, renders QA-only host, audience, and TV fixtures from the built app and asserts the expected YouTube/Google disclosure, search-mode, URL-paste, curator, and playback labels before writing the screenshots.
 
-## Screenshots To Capture Before Submission
+## Submission Screenshot Status
 
 Required presentation screenshots:
 
-- the five address-bar captures listed in `docs/compliance/evidence/2026-07-15-youtube-form/README.md`
+- all five address-bar captures listed in `docs/compliance/evidence/2026-07-15-youtube-form/README.md` are complete and reviewed
 - `quota-exhaustion-fallback.png` (captured)
 - `room-permanent-delete-confirmation.png` and `room-permanent-delete-success.png` (captured)
 - authenticated production host session for the live audit room, if reviewers request live-room evidence beyond the QA product-surface packet
@@ -219,7 +224,6 @@ No known code blocker remains for the quota-mitigation story.
 
 Submission still requires:
 
-- current-form Cloud quota, Privacy, policy-link, Terms, and player/embed captures (the authenticated Quotas API independently confirms 100 Search Queries/day and 10,000 general units/day)
 - authenticated live-room product screenshots only if reviewers require evidence beyond the captured QA product-surface packet
 - confirmation of final business/contact details
 - confirmation that `5,000 Search Queries/day` with a `120/minute` peak is the approved request amount
@@ -227,7 +231,7 @@ Submission still requires:
 
 ## Recommended Submission Sequence
 
-1. Capture the Cloud-owner quota screenshot; retain the completed public/product address-bar captures, Quotas API, controlled cooldown, and permanent-delete artifacts.
-2. Confirm final business/contact details and approve the proposed `5,000 Search Queries/day` request with a `120/minute` peak.
+1. Confirm final business/contact details and approve the proposed `5,000 Search Queries/day` request with a `120/minute` peak.
+2. Follow `docs/compliance/YOUTUBE_QUOTA_OWNER_ACTION_GUIDE_2026-07-19.md` and run the strict preflight.
 3. Review this packet against deployed behavior.
 4. Submit the YouTube API Services Audit and Quota Extension Form.

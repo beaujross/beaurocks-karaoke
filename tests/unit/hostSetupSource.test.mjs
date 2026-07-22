@@ -6,6 +6,7 @@ const primaryPicksPath = 'src/apps/Host/components/setup/MissionSetupPrimaryPick
 const autopilotPreviewPath = 'src/apps/Host/components/setup/MissionSetupAutopilotPreview.jsx';
 const footerPath = 'src/apps/Host/components/setup/MissionSetupFooter.jsx';
 const missionSetupShellPath = 'src/apps/Host/components/setup/MissionSetupShell.jsx';
+const missionSetupHeaderPath = 'src/apps/Host/components/setup/MissionSetupHeader.jsx';
 const selfServeLauncherPath = 'src/apps/Host/components/SelfServeModeLauncher.jsx';
 const topChromePath = 'src/apps/Host/components/HostTopChrome.jsx';
 const launchPadBrowserPath = 'src/apps/Host/components/HostRoomLaunchPadBrowser.jsx';
@@ -59,6 +60,10 @@ test('mission setup exposes an autopilot plan instead of a third stacked assist 
   const primaryPicksSource = readFileSync(primaryPicksPath, 'utf8');
   const autopilotPreviewSource = readFileSync(autopilotPreviewPath, 'utf8');
   const footerSource = readFileSync(footerPath, 'utf8');
+  const headerSource = readFileSync(missionSetupHeaderPath, 'utf8');
+
+  assert.match(headerSource, /Room Readiness/);
+  assert.match(headerSource, /Then Launch Room\./);
 
   assert.match(
     autopilotPreviewSource,
@@ -82,13 +87,13 @@ test('mission setup exposes an autopilot plan instead of a third stacked assist 
   );
   assert.match(
     footerSource,
-    /Start Room/,
-    'Setup footer should use a single plain-language launch action',
+    /Launch Room/,
+    'Setup footer should use one plain-language launch action',
   );
-  assert.match(
+  assert.doesNotMatch(
     footerSource,
-    /Open TV \+ Copy Link/,
-    'Setup footer should keep launch links as a secondary action',
+    /Start Room|Open TV \+ Copy Link/,
+    'Setup footer should not split setup and surface handoff into competing launch actions',
   );
   assert.match(
     footerSource,
@@ -243,7 +248,7 @@ test('room formats are optional while room creation centers on defaults', () => 
   );
   assert.match(
     launchPadBrowserSource,
-    /LAUNCH_OPERATING_MODEL_OPTIONS[\s\S]*Host-Led Night[\s\S]*Hybrid Room[\s\S]*Audience-Led Night[\s\S]*data-launch-operating-model/,
+    /LAUNCH_OPERATING_MODEL_OPTIONS[\s\S]*Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven[\s\S]*data-launch-room-control/,
     'Room creation should make the operating model a launch-time decision.',
   );
   assert.match(
@@ -604,8 +609,8 @@ test('host audience access toggle gates custom emojis and featured reactions tog
 
   assert.match(
     hostAppSource,
-    /Custom emoji and featured voting reactions can require a BeauRocks account\./,
-    'Audience access copy should describe both profile emojis and voting reactions',
+    /Account-gated reactions[\s\S]*Song requests stay open\./,
+    'Audience access should state the gated behavior without obscuring open song requests',
   );
   assert.match(
     hostAppSource,

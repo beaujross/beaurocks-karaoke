@@ -9,5 +9,6 @@ test('production persona QA waits for authenticated Host content before checking
   expect(source).toMatch(/await delay\(1200\);[\s\S]*const directReady = await getGameLaunchpadDetail\(page\)/);
   expect(source).toMatch(/initialStateStartedAt/);
   expect(source).toMatch(/Singer surface did not reach an explicit join or main\/game state/);
-  expect(source).toMatch(/Expected five effective setup domains before room creation/);
+  expect(source).toMatch(/Expected the simplified room creation controls to be visible/);
+  expect(source).toMatch(/Detailed launch configuration should stay hidden during room creation/);
 });

@@ -4,6 +4,15 @@ const admin = require("firebase-admin");
 
 const BACKING_FEEDBACK_EVENTS_COLLECTION = "backing_feedback_events";
 const BACKING_CANDIDATES_SUBCOLLECTION = "backing_candidates";
+// Leave one daily cleanup cycle of safety before the 30-day API-data boundary.
+const YOUTUBE_CANDIDATE_RETENTION_MS = 29 * 24 * 60 * 60 * 1000;
+
+const backingTimestampToMs = (value) => {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return Math.max(0, Number(value.toMillis() || 0));
+  if (value instanceof Date) return Math.max(0, value.getTime());
+  return Math.max(0, Number(value || 0) || 0);
+};
 
 const defaultExtractYouTubeId = (input = "") => {
   if (!input) return "";
@@ -78,6 +87,7 @@ const buildCanonicalBackingCandidatePatchFromYouTubeIndexEntry = ({
   actorUid = "",
   sourceDiscovery = "trusted_catalog",
   timestamp = null,
+  atMs = Date.now(),
   extractYouTubeId = defaultExtractYouTubeId,
 } = {}) => {
   const input = entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {};
@@ -109,6 +119,11 @@ const buildCanonicalBackingCandidatePatchFromYouTubeIndexEntry = ({
   });
   const rankingScore = Number(input.rankingScore);
   const qualityScore = Number(input.qualityScore);
+  const verifiedAtMs = Math.max(0, Number(input.lastVerifiedAtMs || atMs || 0) || 0);
+  const expiresAtMs = Math.max(
+    verifiedAtMs + YOUTUBE_CANDIDATE_RETENTION_MS,
+    Number(input.expiresAtMs || 0) || 0
+  );
   return {
     songId: canonicalSongId,
     candidateId,
@@ -143,6 +158,8 @@ const buildCanonicalBackingCandidatePatchFromYouTubeIndexEntry = ({
       successCount,
       failureCount,
       lastVerifiedAt: timestampValue,
+      lastVerifiedAtMs: verifiedAtMs,
+      expiresAtMs,
       lastIndexedAt: timestampValue,
       updatedAt: timestampValue,
       createdAt: timestampValue,
@@ -264,6 +281,7 @@ const buildCanonicalBackingCandidateSummaries = ({
   title = "",
   artist = "",
   scoreCatalogTextMatch = () => 0,
+  atMs = Date.now(),
 } = {}) => {
   const requestTitle = String(title || "").trim();
   const requestArtist = String(artist || "").trim();
@@ -292,6 +310,14 @@ const buildCanonicalBackingCandidateSummaries = ({
       const titleScore = Math.min(50, scoreCatalogTextMatch(requestTitle, candidateTitle));
       const artistScore = Math.min(30, scoreCatalogTextMatch(requestArtist, candidateArtist));
       const playable = entry.playable !== false && entry.embeddable !== false && entry.youtubePlaybackStatus !== "blocked";
+      const explicitExpiryMs = backingTimestampToMs(entry.expiresAtMs || entry.expiresAt);
+      const verifiedAtMs = Math.max(
+        backingTimestampToMs(entry.lastVerifiedAtMs || entry.lastVerifiedAt),
+        backingTimestampToMs(entry.lastFeedbackAt),
+        backingTimestampToMs(entry.updatedAt)
+      );
+      const fresh = provider !== "youtube"
+        || (explicitExpiryMs ? explicitExpiryMs > atMs : verifiedAtMs > 0 && (verifiedAtMs + YOUTUBE_CANDIDATE_RETENTION_MS) > atMs);
       return {
         id: candidateId || `canonical_backing:${index}`,
         source: provider,
@@ -315,9 +341,15 @@ const buildCanonicalBackingCandidateSummaries = ({
         layer: "canonical_backing",
         score: 150 + titleScore + artistScore + qualityScore + rankingSignal + popularityScore + (provider === "youtube" ? 10 : 0),
         label: String(entry.label || entry.sourceDetail || "Ranked backing").trim() || "Ranked backing",
+        fresh,
       };
     })
-    .filter((entry) => entry && (entry.mediaUrl || entry.appleMusicId))
+    .filter((entry) => entry && entry.fresh && (entry.mediaUrl || entry.appleMusicId))
+    .map((entry) => {
+      const summary = { ...entry };
+      delete summary.fresh;
+      return summary;
+    })
     .sort((left, right) => Number(right.score || 0) - Number(left.score || 0))
     .slice(0, 5);
 };

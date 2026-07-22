@@ -11,7 +11,13 @@ const toMillis = (value) => {
 };
 
 export const isEndedRoomSession = (entry = {}, nowMs = Date.now()) => {
-  const endsAtMs = toMillis(entry?.endsAtMs);
+  const startsAtMs = toMillis(entry?.startsAtMs);
+  const explicitEndsAtMs = toMillis(entry?.endsAtMs);
+  const endsAtMs = explicitEndsAtMs > startsAtMs
+    ? explicitEndsAtMs
+    : startsAtMs > 0
+      ? startsAtMs + (6 * 60 * 60 * 1000)
+      : 0;
   const currentTimeMs = Math.max(0, toMillis(entry?.currentTimeMs) || toMillis(nowMs));
   return endsAtMs > 0 && endsAtMs <= currentTimeMs;
 };

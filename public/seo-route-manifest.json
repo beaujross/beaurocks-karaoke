@@ -1,10 +1,10 @@
 {
   "source": "firestore",
-  "generatedAt": "2026-07-15T01:23:56.476Z",
+  "generatedAt": "2026-07-22T01:06:28.416Z",
   "counts": {
     "venues": 32,
     "events": 73,
-    "sessions": 9,
+    "sessions": 11,
     "profiles": 1,
     "hosts": 1,
     "performers": 1,
@@ -46,7 +46,24 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/discover.png"
       ],
-      "lastmod": "2026-07-15T01:23:56.887Z",
+      "staticContent": {
+        "heading": "Setlist Karaoke Finder",
+        "summary": "Find karaoke nights by city, host, venue, and time window with BeauRocks Setlist Finder.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:28.598Z",
       "priority": "1.0"
     },
     {
@@ -57,7 +74,7 @@
       },
       "routePath": "/charts",
       "title": "Global Karaoke Charts | BeauRocks Karaoke",
-      "description": "Explore qualified BeauRocks karaoke charts across singers, canonical songs, and public hosted nights.",
+      "description": "Explore BeauRocks karaoke charts, see the top score for each song, and find the singers and hosted nights moving the room.",
       "canonicalUrl": "https://beaurocks.app/charts",
       "robots": "index,follow,max-image-preview:large",
       "ogType": "website",
@@ -74,7 +91,7 @@
           "@context": "https://schema.org",
           "@type": "WebPage",
           "name": "Global Karaoke Charts | BeauRocks Karaoke",
-          "description": "Explore qualified BeauRocks karaoke charts across singers, canonical songs, and public hosted nights.",
+          "description": "Explore BeauRocks karaoke charts, see the top score for each song, and find the singers and hosted nights moving the room.",
           "url": "https://beaurocks.app/charts",
           "image": "https://beaurocks.app/images/social/charts.png"
         }
@@ -83,7 +100,24 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/charts.png"
       ],
-      "lastmod": "2026-07-15T01:23:57.354Z",
+      "staticContent": {
+        "heading": "Global Karaoke Charts",
+        "summary": "Explore BeauRocks karaoke charts, see the top score for each song, and find the singers and hosted nights moving the room.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:28.828Z",
       "priority": "0.9"
     },
     {
@@ -120,7 +154,24 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/changelog.png"
       ],
-      "lastmod": "2026-07-15T01:23:57.811Z",
+      "staticContent": {
+        "heading": "Product Changelog",
+        "summary": "Release updates and product changes across host, audience, and public TV experiences.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:29.060Z",
       "priority": "0.5"
     },
     {
@@ -157,7 +208,24 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/for_hosts.png"
       ],
-      "lastmod": "2026-07-15T01:23:58.198Z",
+      "staticContent": {
+        "heading": "Apply To Host Karaoke Nights",
+        "summary": "Apply for BeauRocks host access and launch karaoke nights from a single operator deck.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:29.224Z",
       "priority": "0.9"
     },
     {
@@ -194,7 +262,24 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/for_venues.png"
       ],
-      "lastmod": "2026-07-15T01:23:58.649Z",
+      "staticContent": {
+        "heading": "For Venues",
+        "summary": "Claim your venue profile, publish recurring karaoke cadence, and make the night easier to trust.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:29.462Z",
       "priority": "0.9"
     },
     {
@@ -231,7 +316,24 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/for_performers.png"
       ],
-      "lastmod": "2026-07-15T01:23:59.038Z",
+      "staticContent": {
+        "heading": "For Performers",
+        "summary": "Find standout karaoke rooms, compare schedules, and build a weekly rotation.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:29.617Z",
       "priority": "0.8"
     },
     {
@@ -266,7 +368,7 @@
           "@type": "Organization",
           "name": "BeauRocks Karaoke",
           "url": "https://beaurocks.app",
-          "logo": "https://beaurocks.app/images/social/for_fans.png"
+          "logo": "https://beaurocks.app/images/logo-library/beaurocks-logo-neon trasnparent.png"
         },
         {
           "@context": "https://schema.org",
@@ -281,8 +383,77 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/for_fans.png"
       ],
-      "lastmod": "2026-07-15T01:23:59.136Z",
+      "staticContent": {
+        "heading": "Live Karaoke Finder and Host Tools",
+        "summary": "Discover live karaoke nights, run smoother hosted events, and keep the TV, queue, and guest phones moving together with BeauRocks.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:29.709Z",
       "priority": "0.8"
+    },
+    {
+      "route": {
+        "page": "host_access",
+        "id": "",
+        "params": {}
+      },
+      "routePath": "/host-access",
+      "title": "Host Access | BeauRocks Karaoke",
+      "description": "Approved hosts sign in here to open Host Dashboard. New host partners can request early access.",
+      "canonicalUrl": "https://beaurocks.app/host-access",
+      "robots": "noindex,nofollow",
+      "ogType": "website",
+      "siteName": "BeauRocks Karaoke",
+      "image": {
+        "url": "https://beaurocks.app/images/social/host_access.png",
+        "width": 1200,
+        "height": 630,
+        "alt": "BeauRocks Karaoke featured image",
+        "path": "/images/social/host_access.png"
+      },
+      "jsonLd": [
+        {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "Host Access | BeauRocks Karaoke",
+          "description": "Approved hosts sign in here to open Host Dashboard. New host partners can request early access.",
+          "url": "https://beaurocks.app/host-access",
+          "image": "https://beaurocks.app/images/social/host_access.png"
+        }
+      ],
+      "indexable": false,
+      "sitemapImages": [],
+      "staticContent": {
+        "heading": "Host Access",
+        "summary": "Approved hosts sign in here to open Host Dashboard. New host partners can request early access.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:29.939Z",
+      "priority": "0.6"
     },
     {
       "route": {
@@ -296,7 +467,7 @@
       "title": "Los Angeles, CA Karaoke Nights | BeauRocks",
       "description": "Browse karaoke venues and upcoming events in Los Angeles, CA.",
       "canonicalUrl": "https://beaurocks.app/karaoke/ca_los_angeles",
-      "robots": "index,follow,max-image-preview:large",
+      "robots": "noindex,nofollow",
       "ogType": "website",
       "siteName": "BeauRocks Karaoke",
       "image": {
@@ -341,11 +512,27 @@
           ]
         }
       ],
-      "indexable": true,
-      "sitemapImages": [
-        "https://beaurocks.app/images/social/geo_region-ca_los_angeles.png"
-      ],
-      "lastmod": "2026-07-15T01:23:59.579Z",
+      "indexable": false,
+      "sitemapImages": [],
+      "staticContent": {
+        "heading": "Los Angeles, CA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Los Angeles, CA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": false,
+        "listingCount": 0
+      },
+      "lastmod": "2026-07-22T01:06:30.174Z",
       "priority": "0.8"
     },
     {
@@ -409,7 +596,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_region-nationwide.png"
       ],
-      "lastmod": "2026-07-15T01:24:00.019Z",
+      "staticContent": {
+        "heading": "Nationwide Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Nationwide.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 106
+      },
+      "lastmod": "2026-07-22T01:06:30.416Z",
       "priority": "0.8"
     },
     {
@@ -424,7 +629,7 @@
       "title": "New York, NY Karaoke Nights | BeauRocks",
       "description": "Browse karaoke venues and upcoming events in New York, NY.",
       "canonicalUrl": "https://beaurocks.app/karaoke/ny_new_york",
-      "robots": "index,follow,max-image-preview:large",
+      "robots": "noindex,nofollow",
       "ogType": "website",
       "siteName": "BeauRocks Karaoke",
       "image": {
@@ -469,11 +674,27 @@
           ]
         }
       ],
-      "indexable": true,
-      "sitemapImages": [
-        "https://beaurocks.app/images/social/geo_region-ny_new_york.png"
-      ],
-      "lastmod": "2026-07-15T01:24:00.464Z",
+      "indexable": false,
+      "sitemapImages": [],
+      "staticContent": {
+        "heading": "New York, NY Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in New York, NY.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": false,
+        "listingCount": 0
+      },
+      "lastmod": "2026-07-22T01:06:30.636Z",
       "priority": "0.8"
     },
     {
@@ -537,7 +758,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_region-wa_kitsap.png"
       ],
-      "lastmod": "2026-07-15T01:24:00.901Z",
+      "staticContent": {
+        "heading": "Kitsap, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Kitsap, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 105
+      },
+      "lastmod": "2026-07-22T01:06:30.867Z",
       "priority": "0.8"
     },
     {
@@ -552,7 +791,7 @@
       "title": "Seattle, WA Karaoke Nights | BeauRocks",
       "description": "Browse karaoke venues and upcoming events in Seattle, WA.",
       "canonicalUrl": "https://beaurocks.app/karaoke/wa_seattle",
-      "robots": "index,follow,max-image-preview:large",
+      "robots": "noindex,nofollow",
       "ogType": "website",
       "siteName": "BeauRocks Karaoke",
       "image": {
@@ -597,11 +836,27 @@
           ]
         }
       ],
-      "indexable": true,
-      "sitemapImages": [
-        "https://beaurocks.app/images/social/geo_region-wa_seattle.png"
-      ],
-      "lastmod": "2026-07-15T01:24:01.329Z",
+      "indexable": false,
+      "sitemapImages": [],
+      "staticContent": {
+        "heading": "Seattle, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Seattle, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": false,
+        "listingCount": 0
+      },
+      "lastmod": "2026-07-22T01:06:31.088Z",
       "priority": "0.8"
     },
     {
@@ -617,7 +872,7 @@
       "title": "Los Angeles, CA Karaoke Nights | BeauRocks",
       "description": "Browse karaoke venues and upcoming events in Los Angeles, CA.",
       "canonicalUrl": "https://beaurocks.app/karaoke/us/ca/los-angeles",
-      "robots": "index,follow,max-image-preview:large",
+      "robots": "noindex,nofollow",
       "ogType": "website",
       "siteName": "BeauRocks Karaoke",
       "image": {
@@ -662,11 +917,27 @@
           ]
         }
       ],
-      "indexable": true,
-      "sitemapImages": [
-        "https://beaurocks.app/images/social/geo_city-ca-los-angeles.png"
-      ],
-      "lastmod": "2026-07-15T01:24:01.765Z",
+      "indexable": false,
+      "sitemapImages": [],
+      "staticContent": {
+        "heading": "Los Angeles, CA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Los Angeles, CA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": false,
+        "listingCount": 0
+      },
+      "lastmod": "2026-07-22T01:06:31.302Z",
       "priority": "0.8"
     },
     {
@@ -682,7 +953,7 @@
       "title": "New York, NY Karaoke Nights | BeauRocks",
       "description": "Browse karaoke venues and upcoming events in New York, NY.",
       "canonicalUrl": "https://beaurocks.app/karaoke/us/ny/new-york",
-      "robots": "index,follow,max-image-preview:large",
+      "robots": "noindex,nofollow",
       "ogType": "website",
       "siteName": "BeauRocks Karaoke",
       "image": {
@@ -727,11 +998,27 @@
           ]
         }
       ],
-      "indexable": true,
-      "sitemapImages": [
-        "https://beaurocks.app/images/social/geo_city-ny-new-york.png"
-      ],
-      "lastmod": "2026-07-15T01:24:02.204Z",
+      "indexable": false,
+      "sitemapImages": [],
+      "staticContent": {
+        "heading": "New York, NY Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in New York, NY.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": false,
+        "listingCount": 0
+      },
+      "lastmod": "2026-07-22T01:06:31.512Z",
       "priority": "0.8"
     },
     {
@@ -796,7 +1083,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-bainbridge-island.png"
       ],
-      "lastmod": "2026-07-15T01:24:02.629Z",
+      "staticContent": {
+        "heading": "Bainbridge Island, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Bainbridge Island, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 7
+      },
+      "lastmod": "2026-07-22T01:06:31.720Z",
       "priority": "0.8"
     },
     {
@@ -861,7 +1166,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-belfair.png"
       ],
-      "lastmod": "2026-07-15T01:24:03.060Z",
+      "staticContent": {
+        "heading": "Belfair, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Belfair, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 5
+      },
+      "lastmod": "2026-07-22T01:06:31.942Z",
       "priority": "0.8"
     },
     {
@@ -926,7 +1249,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-bremerton.png"
       ],
-      "lastmod": "2026-07-15T01:24:03.478Z",
+      "staticContent": {
+        "heading": "Bremerton, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Bremerton, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 41
+      },
+      "lastmod": "2026-07-22T01:06:32.161Z",
       "priority": "0.8"
     },
     {
@@ -991,7 +1332,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-gig-harbor.png"
       ],
-      "lastmod": "2026-07-15T01:24:03.900Z",
+      "staticContent": {
+        "heading": "Gig Harbor, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Gig Harbor, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 10
+      },
+      "lastmod": "2026-07-22T01:06:32.367Z",
       "priority": "0.8"
     },
     {
@@ -1056,7 +1415,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-gorst.png"
       ],
-      "lastmod": "2026-07-15T01:24:04.320Z",
+      "staticContent": {
+        "heading": "Gorst, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Gorst, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 3
+      },
+      "lastmod": "2026-07-22T01:06:32.573Z",
       "priority": "0.8"
     },
     {
@@ -1121,7 +1498,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-kingston.png"
       ],
-      "lastmod": "2026-07-15T01:24:04.741Z",
+      "staticContent": {
+        "heading": "Kingston, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Kingston, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 3
+      },
+      "lastmod": "2026-07-22T01:06:32.788Z",
       "priority": "0.8"
     },
     {
@@ -1186,7 +1581,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-port-orchard.png"
       ],
-      "lastmod": "2026-07-15T01:24:05.174Z",
+      "staticContent": {
+        "heading": "Port Orchard, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Port Orchard, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 22
+      },
+      "lastmod": "2026-07-22T01:06:33.001Z",
       "priority": "0.8"
     },
     {
@@ -1251,7 +1664,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-poulsbo.png"
       ],
-      "lastmod": "2026-07-15T01:24:05.594Z",
+      "staticContent": {
+        "heading": "Poulsbo, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Poulsbo, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 11
+      },
+      "lastmod": "2026-07-22T01:06:33.211Z",
       "priority": "0.8"
     },
     {
@@ -1267,7 +1698,7 @@
       "title": "Seattle, WA Karaoke Nights | BeauRocks",
       "description": "Browse karaoke venues and upcoming events in Seattle, WA.",
       "canonicalUrl": "https://beaurocks.app/karaoke/us/wa/seattle",
-      "robots": "index,follow,max-image-preview:large",
+      "robots": "noindex,nofollow",
       "ogType": "website",
       "siteName": "BeauRocks Karaoke",
       "image": {
@@ -1312,11 +1743,27 @@
           ]
         }
       ],
-      "indexable": true,
-      "sitemapImages": [
-        "https://beaurocks.app/images/social/geo_city-wa-seattle.png"
-      ],
-      "lastmod": "2026-07-15T01:24:06.032Z",
+      "indexable": false,
+      "sitemapImages": [],
+      "staticContent": {
+        "heading": "Seattle, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Seattle, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": false,
+        "listingCount": 0
+      },
+      "lastmod": "2026-07-22T01:06:33.415Z",
       "priority": "0.8"
     },
     {
@@ -1381,7 +1828,25 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-silverdale.png"
       ],
-      "lastmod": "2026-07-15T01:24:06.458Z",
+      "staticContent": {
+        "heading": "Silverdale, WA Karaoke Nights",
+        "summary": "Browse karaoke venues and upcoming events in Silverdale, WA.",
+        "facts": [],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true,
+        "listingCount": 4
+      },
+      "lastmod": "2026-07-22T01:06:33.619Z",
       "priority": "0.8"
     },
     {
@@ -1448,7 +1913,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bainbridge_island_fletcher_bay_winery.png"
       ],
-      "lastmod": "2026-07-15T01:24:07.066Z",
+      "staticContent": {
+        "heading": "Fletcher Bay Winery",
+        "summary": "Kitsap karaoke schedule listing. Occurs only on last Fridays",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bainbridge Island, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Fri 6-9pm (ALL AGES) | Sun (Only Last Fridays)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:33.974Z",
       "priority": "0.6"
     },
     {
@@ -1515,7 +2006,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bainbridge_island_the_plate_pint.png"
       ],
-      "lastmod": "2026-07-15T01:24:07.766Z",
+      "staticContent": {
+        "heading": "The Plate & Pint",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bainbridge Island, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Fri 9:30pm-12am | Sat 9:30pm-1am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:34.230Z",
       "priority": "0.6"
     },
     {
@@ -1582,7 +2099,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_belfair_casey_s_bar_grill.png"
       ],
-      "lastmod": "2026-07-15T01:24:08.366Z",
+      "staticContent": {
+        "heading": "Casey's Bar & Grill",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Belfair, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Tue 8pm-12am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:34.573Z",
       "priority": "0.6"
     },
     {
@@ -1649,7 +2192,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_belfair_the_woodshed.png"
       ],
-      "lastmod": "2026-07-15T01:24:09.122Z",
+      "staticContent": {
+        "heading": "The Woodshed",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Belfair, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Fri 9pm-12am | Sun 9pm-12am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:34.887Z",
       "priority": "0.6"
     },
     {
@@ -1716,7 +2285,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_behind_the_pine_bar_grill.png"
       ],
-      "lastmod": "2026-07-15T01:24:09.637Z",
+      "staticContent": {
+        "heading": "Behind The Pine Bar & Grill",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Thu 9pm-1:30am | Fri 9pm-1:30am | Sat 9pm-1:30am | Sun 9pm-1:30am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:35.173Z",
       "priority": "0.6"
     },
     {
@@ -1783,7 +2378,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_beyond_karaoke.png"
       ],
-      "lastmod": "2026-07-15T01:24:10.361Z",
+      "staticContent": {
+        "heading": "Beyond Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Tue 5-11:30pm | Thu 5-11:30pm | Fri 5pm-1am | Sat 5pm-1am | Sun 2-8pm (ALL AGES)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:35.375Z",
       "priority": "0.6"
     },
     {
@@ -1850,7 +2471,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_mccloud_s_grill_house.png"
       ],
-      "lastmod": "2026-07-15T01:24:10.916Z",
+      "staticContent": {
+        "heading": "McCloud's Grill House",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Wed 8-11pm (ALL AGES TIL 10)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:35.602Z",
       "priority": "0.6"
     },
     {
@@ -1917,7 +2564,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_remedy_speakeasy.png"
       ],
-      "lastmod": "2026-07-15T01:24:11.445Z",
+      "staticContent": {
+        "heading": "Remedy Speakeasy",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Tue 9pm-12am | Wed 9pm-12am | Fri 9pm-1am | Sat 9pm-1am | Sun 9pm-12am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:35.926Z",
       "priority": "0.6"
     },
     {
@@ -1984,7 +2657,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_siren_s.png"
       ],
-      "lastmod": "2026-07-15T01:24:12.096Z",
+      "staticContent": {
+        "heading": "Siren's",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Tue 9pm-1am | Wed 9pm-1am | Thu 9pm-1am | Fri 9pm-1:30am | Sat 9pm-1:30am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:36.154Z",
       "priority": "0.6"
     },
     {
@@ -2051,7 +2750,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_south_pacific_bar_grill.png"
       ],
-      "lastmod": "2026-07-15T01:24:12.713Z",
+      "staticContent": {
+        "heading": "South Pacific Bar & Grill",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Wed 8pm-Close | Thu 8pm-Close | Fri 8pm-Close | Sat 8pm-Close"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:36.359Z",
       "priority": "0.6"
     },
     {
@@ -2118,7 +2843,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_the_884_pub.png"
       ],
-      "lastmod": "2026-07-15T01:24:13.275Z",
+      "staticContent": {
+        "heading": "The 884 Pub",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Fri 8pm-1am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:36.594Z",
       "priority": "0.6"
     },
     {
@@ -2185,7 +2936,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_the_garage_bar_grill.png"
       ],
-      "lastmod": "2026-07-15T01:24:13.752Z",
+      "staticContent": {
+        "heading": "The Garage Bar & Grill",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Thu 9pm-1am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:36.868Z",
       "priority": "0.6"
     },
     {
@@ -2252,7 +3029,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_tik_tok_s_workshop.png"
       ],
-      "lastmod": "2026-07-15T01:24:14.287Z",
+      "staticContent": {
+        "heading": "Tik Tok's Workshop",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Thu 9pm-1:30am | Sun 9pm-1:30am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:37.188Z",
       "priority": "0.6"
     },
     {
@@ -2319,7 +3122,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_town_portal.png"
       ],
-      "lastmod": "2026-07-15T01:24:14.849Z",
+      "staticContent": {
+        "heading": "Town Portal",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Tue 8pm-12am | Wed 8:30pm-12am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:37.396Z",
       "priority": "0.6"
     },
     {
@@ -2386,7 +3215,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gig_harbor_eagles_club_gig_harbor.png"
       ],
-      "lastmod": "2026-07-15T01:24:15.376Z",
+      "staticContent": {
+        "heading": "Eagles Club (Gig Harbor)",
+        "summary": "Kitsap karaoke schedule listing. Members & Guests Only",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Tue (Members & Guests Only) 5-9pm (ALL AGES)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:37.710Z",
       "priority": "0.6"
     },
     {
@@ -2453,7 +3308,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gig_harbor_half_time_sports_saloon.png"
       ],
-      "lastmod": "2026-07-15T01:24:15.962Z",
+      "staticContent": {
+        "heading": "Half Time Sports Saloon",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Wed 9pm-12am | Fri 9pm-1am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:37.955Z",
       "priority": "0.6"
     },
     {
@@ -2520,7 +3401,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gig_harbor_ocean_5.png"
       ],
-      "lastmod": "2026-07-15T01:24:16.591Z",
+      "staticContent": {
+        "heading": "Ocean 5",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Sun 4-8pm (ALL AGES)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:38.197Z",
       "priority": "0.6"
     },
     {
@@ -2587,7 +3494,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gig_harbor_the_float.png"
       ],
-      "lastmod": "2026-07-15T01:24:17.112Z",
+      "staticContent": {
+        "heading": "The Float",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Fri 8:30pm-12:30am | Sat 8:30pm-12:30am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:38.508Z",
       "priority": "0.6"
     },
     {
@@ -2654,7 +3587,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gorst_jimmy_d_s_bar_grill.png"
       ],
-      "lastmod": "2026-07-15T01:24:17.645Z",
+      "staticContent": {
+        "heading": "Jimmy D's Bar & Grill",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gorst, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Fri 5-8pm | Sat 9pm-12:30am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:38.814Z",
       "priority": "0.6"
     },
     {
@@ -2721,7 +3680,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_kingston_kingston_ale_house.png"
       ],
-      "lastmod": "2026-07-15T01:24:18.235Z",
+      "staticContent": {
+        "heading": "Kingston Ale House",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Kingston, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Fri 9:30pm-1am | Sat 9:30pm-1am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:39.021Z",
       "priority": "0.6"
     },
     {
@@ -2788,7 +3773,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_damn_fine_pizza.png"
       ],
-      "lastmod": "2026-07-15T01:24:18.818Z",
+      "staticContent": {
+        "heading": "Damn Fine Pizza",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Thu 8-11pm"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:39.247Z",
       "priority": "0.6"
     },
     {
@@ -2855,7 +3866,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_eagles_club_port_orchard.png"
       ],
-      "lastmod": "2026-07-15T01:24:19.308Z",
+      "staticContent": {
+        "heading": "Eagles Club (Port Orchard)",
+        "summary": "Kitsap karaoke schedule listing. 2nd & 4th Thursdays only; Members & Guests Only",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Thu (Members & Guests Only) 5:30-9pm (ALL AGES) (2nd & 4th Thursdays)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:39.499Z",
       "priority": "0.6"
     },
     {
@@ -2922,7 +3959,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_empire_pizza.png"
       ],
-      "lastmod": "2026-07-15T01:24:19.863Z",
+      "staticContent": {
+        "heading": "Empire Pizza",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Fri 8pm-12am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:39.799Z",
       "priority": "0.6"
     },
     {
@@ -2989,7 +4052,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_golden_grill_on_the_bay.png"
       ],
-      "lastmod": "2026-07-15T01:24:20.393Z",
+      "staticContent": {
+        "heading": "Golden Grill On The Bay",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Thu 9pm-12am | Fri 9pm-12am | Sat 9pm-12am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:40.112Z",
       "priority": "0.6"
     },
     {
@@ -3056,7 +4145,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_new_way_lounge.png"
       ],
-      "lastmod": "2026-07-15T01:24:21.170Z",
+      "staticContent": {
+        "heading": "New Way Lounge",
+        "summary": "Kitsap karaoke schedule listing. All ages until 11pm on Thu",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Thu 7-2am (ALL AGES TIL 11) | Sat 9pm-2am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:40.317Z",
       "priority": "0.6"
     },
     {
@@ -3123,7 +4238,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_ruby_slipper_bar_grill.png"
       ],
-      "lastmod": "2026-07-15T01:24:21.806Z",
+      "staticContent": {
+        "heading": "Ruby Slipper Bar & Grill",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Mon 7-10pm | Wed 7-10pm | Fri 8-11pm | Sat 8-11pm"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:40.536Z",
       "priority": "0.6"
     },
     {
@@ -3190,7 +4331,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_the_end_zone_sports_pub.png"
       ],
-      "lastmod": "2026-07-15T01:24:22.339Z",
+      "staticContent": {
+        "heading": "The End Zone Sports Pub",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Wed 9pm-12:30am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:40.833Z",
       "priority": "0.6"
     },
     {
@@ -3257,7 +4424,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_vfw_post_2669.png"
       ],
-      "lastmod": "2026-07-15T01:24:22.877Z",
+      "staticContent": {
+        "heading": "VFW Post 2669",
+        "summary": "Kitsap karaoke schedule listing. Members & Guests Only",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Fri 5-8pm (Members & Guests Only)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:41.144Z",
       "priority": "0.6"
     },
     {
@@ -3324,7 +4517,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_poulsbo_bushel_barrel_ciderhouse.png"
       ],
-      "lastmod": "2026-07-15T01:24:23.818Z",
+      "staticContent": {
+        "heading": "Bushel & Barrel Ciderhouse",
+        "summary": "Kitsap karaoke schedule listing. Only 2nd Saturdays noted; Sunday all ages until 7pm",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Sat (Only 2nd Saturdays) | Sun 6-10pm (ALL AGES TIL 7)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:41.334Z",
       "priority": "0.6"
     },
     {
@@ -3391,7 +4610,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_poulsbo_the_brass_kraken_pub.png"
       ],
-      "lastmod": "2026-07-15T01:24:24.320Z",
+      "staticContent": {
+        "heading": "The Brass Kraken Pub",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Wed 8:30pm-2am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:41.560Z",
       "priority": "0.6"
     },
     {
@@ -3458,7 +4703,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_poulsbo_the_sk_l_house_pub.png"
       ],
-      "lastmod": "2026-07-15T01:24:24.900Z",
+      "staticContent": {
+        "heading": "The Skål House Pub",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Tue 8pm-12am | Fri 9pm-2am | Sat 9pm-2am | Sun 4pm-12am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:41.778Z",
       "priority": "0.6"
     },
     {
@@ -3525,7 +4796,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_silverdale_our_place_pub.png"
       ],
-      "lastmod": "2026-07-15T01:24:25.431Z",
+      "staticContent": {
+        "heading": "Our Place Pub",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Silverdale, WA"
+          },
+          {
+            "label": "Schedule",
+            "value": "Wed 8:30-11:30pm | Fri 9pm-12:30am | Sat 9pm-12:30am"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:42.101Z",
       "priority": "0.6"
     },
     {
@@ -3600,7 +4897,41 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_beaurocks_bremerton_live_band_2026.png"
       ],
-      "lastmod": "2026-07-15T01:24:25.828Z",
+      "staticContent": {
+        "heading": "DJ BeauRocks Presents: Harbor Lights Live Band Social",
+        "summary": "A featured Bremerton waterfront night that starts with live-band energy and rolls into a crowd-led singalong. Expect big hooks, warm-up sets, and a.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Apr 10, 2026, 7:00 PM"
+          },
+          {
+            "label": "Host",
+            "value": "DJ BeauRocks"
+          },
+          {
+            "label": "Venue",
+            "value": "Harborside Fountain Park"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:42.298Z",
       "priority": "0.6"
     },
     {
@@ -3675,7 +5006,41 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_beaurocks_poulsbo_other_2026.png"
       ],
-      "lastmod": "2026-07-15T01:24:26.238Z",
+      "staticContent": {
+        "heading": "DJ BeauRocks Presents: Neon Waterfront Variety Night",
+        "summary": "A flexible featured pop-up in Poulsbo built for curveballs, theme rounds, crowd prompts, and whatever fun lane the room wants to take. It is the.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Apr 17, 2026, 6:30 PM"
+          },
+          {
+            "label": "Host",
+            "value": "DJ BeauRocks"
+          },
+          {
+            "label": "Venue",
+            "value": "Poulsbo Waterfront Park"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:42.473Z",
       "priority": "0.6"
     },
     {
@@ -3747,7 +5112,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bainbridge_island_fletcher_bay_winery_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:26.676Z",
+      "staticContent": {
+        "heading": "Fletcher Bay Winery Karaoke",
+        "summary": "Kitsap karaoke schedule listing. Occurs only on last Fridays",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bainbridge Island, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 6:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Fletcher Bay Winery"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:42.678Z",
       "priority": "0.6"
     },
     {
@@ -3817,7 +5212,33 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bainbridge_island_fletcher_bay_winery_sun.png"
       ],
-      "lastmod": "2026-07-15T01:24:27.117Z",
+      "staticContent": {
+        "heading": "Fletcher Bay Winery Karaoke",
+        "summary": "Kitsap karaoke schedule listing. Occurs only on last Fridays",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bainbridge Island, WA"
+          },
+          {
+            "label": "Venue",
+            "value": "Fletcher Bay Winery"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:42.882Z",
       "priority": "0.6"
     },
     {
@@ -3889,7 +5310,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bainbridge_island_the_plate_pint_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:27.545Z",
+      "staticContent": {
+        "heading": "The Plate & Pint Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bainbridge Island, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Plate & Pint"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:43.091Z",
       "priority": "0.6"
     },
     {
@@ -3961,7 +5412,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bainbridge_island_the_plate_pint_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:27.973Z",
+      "staticContent": {
+        "heading": "The Plate & Pint Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bainbridge Island, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Plate & Pint"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:43.296Z",
       "priority": "0.6"
     },
     {
@@ -4033,7 +5514,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_belfair_casey_s_bar_grill_tue.png"
       ],
-      "lastmod": "2026-07-15T01:24:28.417Z",
+      "staticContent": {
+        "heading": "Casey's Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Belfair, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 24, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Casey's Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:43.501Z",
       "priority": "0.6"
     },
     {
@@ -4105,7 +5616,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_belfair_the_woodshed_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:28.848Z",
+      "staticContent": {
+        "heading": "The Woodshed Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Belfair, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Woodshed"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:43.709Z",
       "priority": "0.6"
     },
     {
@@ -4177,7 +5718,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_belfair_the_woodshed_sun.png"
       ],
-      "lastmod": "2026-07-15T01:24:29.304Z",
+      "staticContent": {
+        "heading": "The Woodshed Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Belfair, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 22, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Woodshed"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:43.914Z",
       "priority": "0.6"
     },
     {
@@ -4249,7 +5820,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_behind_the_pine_bar_grill_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:29.744Z",
+      "staticContent": {
+        "heading": "Behind The Pine Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Behind The Pine Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:44.123Z",
       "priority": "0.6"
     },
     {
@@ -4321,7 +5922,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_behind_the_pine_bar_grill_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:30.185Z",
+      "staticContent": {
+        "heading": "Behind The Pine Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Behind The Pine Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:44.326Z",
       "priority": "0.6"
     },
     {
@@ -4393,7 +6024,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_behind_the_pine_bar_grill_sun.png"
       ],
-      "lastmod": "2026-07-15T01:24:30.627Z",
+      "staticContent": {
+        "heading": "Behind The Pine Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 22, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Behind The Pine Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:44.527Z",
       "priority": "0.6"
     },
     {
@@ -4465,7 +6126,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_behind_the_pine_bar_grill_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:31.079Z",
+      "staticContent": {
+        "heading": "Behind The Pine Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Behind The Pine Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:44.735Z",
       "priority": "0.6"
     },
     {
@@ -4537,7 +6228,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:31.520Z",
+      "staticContent": {
+        "heading": "Beyond Karaoke Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 5:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Beyond Karaoke"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:44.937Z",
       "priority": "0.6"
     },
     {
@@ -4609,7 +6330,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:31.959Z",
+      "staticContent": {
+        "heading": "Beyond Karaoke Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 5:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Beyond Karaoke"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:45.151Z",
       "priority": "0.6"
     },
     {
@@ -4681,7 +6432,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_sun.png"
       ],
-      "lastmod": "2026-07-15T01:24:32.413Z",
+      "staticContent": {
+        "heading": "Beyond Karaoke Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Mar 1, 2026, 2:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Beyond Karaoke"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:45.354Z",
       "priority": "0.6"
     },
     {
@@ -4753,7 +6534,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:32.849Z",
+      "staticContent": {
+        "heading": "Beyond Karaoke Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 5:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Beyond Karaoke"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:45.564Z",
       "priority": "0.6"
     },
     {
@@ -4825,7 +6636,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_tue.png"
       ],
-      "lastmod": "2026-07-15T01:24:33.289Z",
+      "staticContent": {
+        "heading": "Beyond Karaoke Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 24, 2026, 5:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Beyond Karaoke"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:45.764Z",
       "priority": "0.6"
     },
     {
@@ -4897,7 +6738,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_mccloud_s_grill_house_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:33.733Z",
+      "staticContent": {
+        "heading": "McCloud's Grill House Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "McCloud's Grill House"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:45.970Z",
       "priority": "0.6"
     },
     {
@@ -4969,7 +6840,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:34.166Z",
+      "staticContent": {
+        "heading": "Remedy Speakeasy Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Remedy Speakeasy"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:46.185Z",
       "priority": "0.6"
     },
     {
@@ -5041,7 +6942,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:34.609Z",
+      "staticContent": {
+        "heading": "Remedy Speakeasy Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Remedy Speakeasy"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:46.392Z",
       "priority": "0.6"
     },
     {
@@ -5113,7 +7044,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_sun.png"
       ],
-      "lastmod": "2026-07-15T01:24:35.036Z",
+      "staticContent": {
+        "heading": "Remedy Speakeasy Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 22, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Remedy Speakeasy"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:46.598Z",
       "priority": "0.6"
     },
     {
@@ -5185,7 +7146,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_tue.png"
       ],
-      "lastmod": "2026-07-15T01:24:35.469Z",
+      "staticContent": {
+        "heading": "Remedy Speakeasy Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 24, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Remedy Speakeasy"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:46.798Z",
       "priority": "0.6"
     },
     {
@@ -5257,7 +7248,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:35.902Z",
+      "staticContent": {
+        "heading": "Remedy Speakeasy Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Remedy Speakeasy"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:47.008Z",
       "priority": "0.6"
     },
     {
@@ -5329,7 +7350,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:36.338Z",
+      "staticContent": {
+        "heading": "Siren's Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Siren's"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:47.216Z",
       "priority": "0.6"
     },
     {
@@ -5401,7 +7452,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:36.767Z",
+      "staticContent": {
+        "heading": "Siren's Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Siren's"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:47.417Z",
       "priority": "0.6"
     },
     {
@@ -5473,7 +7554,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:37.193Z",
+      "staticContent": {
+        "heading": "Siren's Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Siren's"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:47.624Z",
       "priority": "0.6"
     },
     {
@@ -5545,7 +7656,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_tue.png"
       ],
-      "lastmod": "2026-07-15T01:24:37.620Z",
+      "staticContent": {
+        "heading": "Siren's Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 24, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Siren's"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:47.824Z",
       "priority": "0.6"
     },
     {
@@ -5617,7 +7758,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:38.042Z",
+      "staticContent": {
+        "heading": "Siren's Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Siren's"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:48.028Z",
       "priority": "0.6"
     },
     {
@@ -5688,7 +7859,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_south_pacific_bar_grill_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:38.467Z",
+      "staticContent": {
+        "heading": "South Pacific Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "South Pacific Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:48.239Z",
       "priority": "0.6"
     },
     {
@@ -5759,7 +7960,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_south_pacific_bar_grill_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:38.890Z",
+      "staticContent": {
+        "heading": "South Pacific Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "South Pacific Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:48.440Z",
       "priority": "0.6"
     },
     {
@@ -5830,7 +8061,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_south_pacific_bar_grill_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:39.321Z",
+      "staticContent": {
+        "heading": "South Pacific Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "South Pacific Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:48.642Z",
       "priority": "0.6"
     },
     {
@@ -5901,7 +8162,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_south_pacific_bar_grill_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:39.754Z",
+      "staticContent": {
+        "heading": "South Pacific Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "South Pacific Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:48.852Z",
       "priority": "0.6"
     },
     {
@@ -5973,7 +8264,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_the_884_pub_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:40.174Z",
+      "staticContent": {
+        "heading": "The 884 Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The 884 Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:49.059Z",
       "priority": "0.6"
     },
     {
@@ -6045,7 +8366,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_the_garage_bar_grill_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:40.602Z",
+      "staticContent": {
+        "heading": "The Garage Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Garage Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:49.267Z",
       "priority": "0.6"
     },
     {
@@ -6117,7 +8468,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_tik_tok_s_workshop_sun.png"
       ],
-      "lastmod": "2026-07-15T01:24:41.033Z",
+      "staticContent": {
+        "heading": "Tik Tok's Workshop Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 22, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Tik Tok's Workshop"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:49.472Z",
       "priority": "0.6"
     },
     {
@@ -6189,7 +8570,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_tik_tok_s_workshop_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:41.454Z",
+      "staticContent": {
+        "heading": "Tik Tok's Workshop Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Tik Tok's Workshop"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:49.674Z",
       "priority": "0.6"
     },
     {
@@ -6261,7 +8672,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_town_portal_tue.png"
       ],
-      "lastmod": "2026-07-15T01:24:41.878Z",
+      "staticContent": {
+        "heading": "Town Portal Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 24, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Town Portal"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:49.879Z",
       "priority": "0.6"
     },
     {
@@ -6333,7 +8774,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_town_portal_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:42.299Z",
+      "staticContent": {
+        "heading": "Town Portal Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Bremerton, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 8:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Town Portal"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:50.086Z",
       "priority": "0.6"
     },
     {
@@ -6405,7 +8876,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_eagles_club_gig_harbor_tue.png"
       ],
-      "lastmod": "2026-07-15T01:24:42.724Z",
+      "staticContent": {
+        "heading": "Eagles Club (Gig Harbor) Karaoke",
+        "summary": "Kitsap karaoke schedule listing. Members & Guests Only",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 24, 2026, 5:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Eagles Club (Gig Harbor)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:50.297Z",
       "priority": "0.6"
     },
     {
@@ -6477,7 +8978,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_half_time_sports_saloon_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:43.149Z",
+      "staticContent": {
+        "heading": "Half Time Sports Saloon Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Half Time Sports Saloon"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:50.503Z",
       "priority": "0.6"
     },
     {
@@ -6549,7 +9080,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_half_time_sports_saloon_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:43.577Z",
+      "staticContent": {
+        "heading": "Half Time Sports Saloon Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Half Time Sports Saloon"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:50.710Z",
       "priority": "0.6"
     },
     {
@@ -6621,7 +9182,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_ocean_5_sun.png"
       ],
-      "lastmod": "2026-07-15T01:24:43.998Z",
+      "staticContent": {
+        "heading": "Ocean 5 Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Mar 1, 2026, 4:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Ocean 5"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:50.912Z",
       "priority": "0.6"
     },
     {
@@ -6693,7 +9284,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_the_float_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:44.423Z",
+      "staticContent": {
+        "heading": "The Float Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 8:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Float"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:51.121Z",
       "priority": "0.6"
     },
     {
@@ -6765,7 +9386,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_the_float_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:44.843Z",
+      "staticContent": {
+        "heading": "The Float Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gig Harbor, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 8:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Float"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:51.335Z",
       "priority": "0.6"
     },
     {
@@ -6837,7 +9488,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gorst_jimmy_d_s_bar_grill_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:45.274Z",
+      "staticContent": {
+        "heading": "Jimmy D's Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gorst, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 5:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Jimmy D's Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:51.539Z",
       "priority": "0.6"
     },
     {
@@ -6909,7 +9590,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gorst_jimmy_d_s_bar_grill_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:45.715Z",
+      "staticContent": {
+        "heading": "Jimmy D's Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Gorst, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Jimmy D's Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:51.741Z",
       "priority": "0.6"
     },
     {
@@ -6981,7 +9692,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_kingston_kingston_ale_house_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:46.129Z",
+      "staticContent": {
+        "heading": "Kingston Ale House Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Kingston, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Kingston Ale House"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:51.946Z",
       "priority": "0.6"
     },
     {
@@ -7053,7 +9794,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_kingston_kingston_ale_house_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:46.551Z",
+      "staticContent": {
+        "heading": "Kingston Ale House Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Kingston, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Kingston Ale House"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:52.154Z",
       "priority": "0.6"
     },
     {
@@ -7125,7 +9896,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_damn_fine_pizza_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:46.973Z",
+      "staticContent": {
+        "heading": "Damn Fine Pizza Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Damn Fine Pizza"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:52.367Z",
       "priority": "0.6"
     },
     {
@@ -7197,7 +9998,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_eagles_club_port_orchard_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:47.398Z",
+      "staticContent": {
+        "heading": "Eagles Club (Port Orchard) Karaoke",
+        "summary": "Kitsap karaoke schedule listing. 2nd & 4th Thursdays only; Members & Guests Only",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 5:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Eagles Club (Port Orchard)"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:52.572Z",
       "priority": "0.6"
     },
     {
@@ -7269,7 +10100,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_empire_pizza_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:47.824Z",
+      "staticContent": {
+        "heading": "Empire Pizza Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Empire Pizza"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:52.778Z",
       "priority": "0.6"
     },
     {
@@ -7341,7 +10202,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_golden_grill_on_the_bay_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:48.243Z",
+      "staticContent": {
+        "heading": "Golden Grill On The Bay Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Golden Grill On The Bay"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:52.986Z",
       "priority": "0.6"
     },
     {
@@ -7413,7 +10304,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_golden_grill_on_the_bay_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:48.662Z",
+      "staticContent": {
+        "heading": "Golden Grill On The Bay Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Golden Grill On The Bay"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:53.198Z",
       "priority": "0.6"
     },
     {
@@ -7485,7 +10406,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_golden_grill_on_the_bay_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:49.083Z",
+      "staticContent": {
+        "heading": "Golden Grill On The Bay Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Golden Grill On The Bay"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:53.403Z",
       "priority": "0.6"
     },
     {
@@ -7557,7 +10508,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_new_way_lounge_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:49.507Z",
+      "staticContent": {
+        "heading": "New Way Lounge Karaoke",
+        "summary": "Kitsap karaoke schedule listing. All ages until 11pm on Thu",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "New Way Lounge"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:53.609Z",
       "priority": "0.6"
     },
     {
@@ -7629,7 +10610,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_new_way_lounge_thu.png"
       ],
-      "lastmod": "2026-07-15T01:24:49.929Z",
+      "staticContent": {
+        "heading": "New Way Lounge Karaoke",
+        "summary": "Kitsap karaoke schedule listing. All ages until 11pm on Thu",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 26, 2026, 7:00 AM"
+          },
+          {
+            "label": "Venue",
+            "value": "New Way Lounge"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:53.812Z",
       "priority": "0.6"
     },
     {
@@ -7701,7 +10712,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_ruby_slipper_bar_grill_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:50.351Z",
+      "staticContent": {
+        "heading": "Ruby Slipper Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Ruby Slipper Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:54.020Z",
       "priority": "0.6"
     },
     {
@@ -7773,7 +10814,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_ruby_slipper_bar_grill_mon.png"
       ],
-      "lastmod": "2026-07-15T01:24:50.774Z",
+      "staticContent": {
+        "heading": "Ruby Slipper Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 23, 2026, 7:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Ruby Slipper Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:54.228Z",
       "priority": "0.6"
     },
     {
@@ -7845,7 +10916,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_ruby_slipper_bar_grill_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:51.201Z",
+      "staticContent": {
+        "heading": "Ruby Slipper Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Ruby Slipper Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:54.434Z",
       "priority": "0.6"
     },
     {
@@ -7917,7 +11018,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_ruby_slipper_bar_grill_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:51.625Z",
+      "staticContent": {
+        "heading": "Ruby Slipper Bar & Grill Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 7:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Ruby Slipper Bar & Grill"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:54.642Z",
       "priority": "0.6"
     },
     {
@@ -7989,7 +11120,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_the_end_zone_sports_pub_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:52.054Z",
+      "staticContent": {
+        "heading": "The End Zone Sports Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The End Zone Sports Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:54.855Z",
       "priority": "0.6"
     },
     {
@@ -8061,7 +11222,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_vfw_post_2669_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:52.470Z",
+      "staticContent": {
+        "heading": "VFW Post 2669 Karaoke",
+        "summary": "Kitsap karaoke schedule listing. Members & Guests Only",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Port Orchard, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 5:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "VFW Post 2669"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:55.060Z",
       "priority": "0.6"
     },
     {
@@ -8132,7 +11323,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_bushel_barrel_ciderhouse_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:52.887Z",
+      "staticContent": {
+        "heading": "Bushel & Barrel Ciderhouse Karaoke",
+        "summary": "Kitsap karaoke schedule listing. Only 2nd Saturdays noted; Sunday all ages until 7pm",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 2:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Bushel & Barrel Ciderhouse"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:55.274Z",
       "priority": "0.6"
     },
     {
@@ -8204,7 +11425,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_bushel_barrel_ciderhouse_sun.png"
       ],
-      "lastmod": "2026-07-15T01:24:53.316Z",
+      "staticContent": {
+        "heading": "Bushel & Barrel Ciderhouse Karaoke",
+        "summary": "Kitsap karaoke schedule listing. Only 2nd Saturdays noted; Sunday all ages until 7pm",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Mar 1, 2026, 6:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Bushel & Barrel Ciderhouse"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:55.477Z",
       "priority": "0.6"
     },
     {
@@ -8276,7 +11527,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_brass_kraken_pub_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:53.736Z",
+      "staticContent": {
+        "heading": "The Brass Kraken Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 8:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Brass Kraken Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:55.681Z",
       "priority": "0.6"
     },
     {
@@ -8348,7 +11629,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_sk_l_house_pub_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:54.168Z",
+      "staticContent": {
+        "heading": "The Skål House Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Skål House Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:55.883Z",
       "priority": "0.6"
     },
     {
@@ -8420,7 +11731,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_sk_l_house_pub_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:54.588Z",
+      "staticContent": {
+        "heading": "The Skål House Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Skål House Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:56.093Z",
       "priority": "0.6"
     },
     {
@@ -8492,7 +11833,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_sk_l_house_pub_sun.png"
       ],
-      "lastmod": "2026-07-15T01:24:55.004Z",
+      "staticContent": {
+        "heading": "The Skål House Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Mar 1, 2026, 4:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Skål House Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:56.302Z",
       "priority": "0.6"
     },
     {
@@ -8564,7 +11935,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_sk_l_house_pub_tue.png"
       ],
-      "lastmod": "2026-07-15T01:24:55.433Z",
+      "staticContent": {
+        "heading": "The Skål House Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Poulsbo, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 24, 2026, 8:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "The Skål House Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:56.506Z",
       "priority": "0.6"
     },
     {
@@ -8636,7 +12037,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_silverdale_our_place_pub_fri.png"
       ],
-      "lastmod": "2026-07-15T01:24:55.854Z",
+      "staticContent": {
+        "heading": "Our Place Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Silverdale, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 27, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Our Place Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:56.710Z",
       "priority": "0.6"
     },
     {
@@ -8708,7 +12139,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_silverdale_our_place_pub_sat.png"
       ],
-      "lastmod": "2026-07-15T01:24:56.277Z",
+      "staticContent": {
+        "heading": "Our Place Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Silverdale, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 28, 2026, 9:00 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Our Place Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:56.912Z",
       "priority": "0.6"
     },
     {
@@ -8780,7 +12241,37 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_silverdale_our_place_pub_wed.png"
       ],
-      "lastmod": "2026-07-15T01:24:56.699Z",
+      "staticContent": {
+        "heading": "Our Place Pub Karaoke",
+        "summary": "Kitsap karaoke schedule listing.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "Silverdale, WA"
+          },
+          {
+            "label": "Starts",
+            "value": "Feb 25, 2026, 8:30 PM"
+          },
+          {
+            "label": "Venue",
+            "value": "Our Place Pub"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:57.123Z",
       "priority": "0.6"
     },
     {
@@ -8848,7 +12339,29 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/host-12scdwbbxvb6cyostveztdkmsji2.png"
       ],
-      "lastmod": "2026-07-15T01:24:57.081Z",
+      "staticContent": {
+        "heading": "DJ BeauRocks",
+        "summary": "DJ BeauRocks is the host identity behind BeauRocks Karaoke and Bross Entertainment, building Seattle-area karaoke nights around faster room setup, live.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "bainbridge island, wa"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:57.299Z",
       "priority": "0.6"
     },
     {
@@ -8916,7 +12429,29 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/performer-12scdwbbxvb6cyostveztdkmsji2.png"
       ],
-      "lastmod": "2026-07-15T01:24:57.460Z",
+      "staticContent": {
+        "heading": "DJ BeauRocks",
+        "summary": "DJ BeauRocks is the host identity behind BeauRocks Karaoke and Bross Entertainment, building Seattle-area karaoke nights around faster room setup, live.",
+        "facts": [
+          {
+            "label": "Location",
+            "value": "bainbridge island, wa"
+          }
+        ],
+        "links": [
+          {
+            "href": "/discover",
+            "label": "Find karaoke nights"
+          },
+          {
+            "href": "/charts",
+            "label": "Explore karaoke charts"
+          }
+        ],
+        "publicVibeIndex": null,
+        "hasMeaningfulData": true
+      },
+      "lastmod": "2026-07-22T01:06:57.467Z",
       "priority": "0.6"
     },
     {
@@ -8953,7 +12488,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/logo-library/beaurocks-logo-background.png"
       ],
-      "lastmod": "2026-07-15T01:24:57.460Z",
+      "lastmod": "2026-07-22T01:06:57.467Z",
       "priority": "0.3"
     },
     {
@@ -8990,7 +12525,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/logo-library/beaurocks-logo-background.png"
       ],
-      "lastmod": "2026-07-15T01:24:57.460Z",
+      "lastmod": "2026-07-22T01:06:57.467Z",
       "priority": "0.3"
     },
     {
@@ -9027,7 +12562,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/logo-library/beaurocks-logo-background.png"
       ],
-      "lastmod": "2026-07-15T01:24:57.460Z",
+      "lastmod": "2026-07-22T01:06:57.467Z",
       "priority": "0.3"
     }
   ]

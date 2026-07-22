@@ -73,6 +73,29 @@ async function resetState() {
   }, { merge: true });
 }
 
+async function seedHostSubscription(status = "active", planId = "host_monthly") {
+  const orgId = "org_" + HOST_UID;
+  await Promise.all([
+    db.doc(`host_access_approvals/${HOST_UID}`).delete(),
+    db.doc(`marketing_private_access/${HOST_UID}`).delete(),
+  ]);
+  await db.doc(`organizations/${orgId}`).set({
+    orgId,
+    ownerUid: HOST_UID,
+    name: "Paid Host Workspace",
+    status: "active",
+  }, { merge: true });
+  await db.doc(`organizations/${orgId}/subscription/current`).set({
+    orgId,
+    planId,
+    status,
+    provider: "stripe",
+    cancelAtPeriodEnd: false,
+  }, { merge: true });
+  await db.doc(`organizations/${orgId}/entitlements/current`).delete();
+  return orgId;
+}
+
 async function runCase(name, fn) {
   await resetState();
   try {
@@ -88,6 +111,89 @@ async function runCase(name, fn) {
 
 async function run() {
   const checks = [
+    ["unpaid account cannot create a Room without an approval override", async () => {
+      await seedHostSubscription("inactive", "free");
+      await assert.rejects(
+        () => provisionHostRoom.run(
+          requestFor(HOST_UID, {
+            requestId: "unpaid_free",
+            hostName: "Free Account",
+          })
+        ),
+        (error) => {
+          assert.equal(error.code, "permission-denied");
+          assert.equal(error.details?.reason, "active_host_plan_required");
+          assert.equal(error.details?.capability, "rooms.create");
+          return true;
+        }
+      );
+    }],
+
+    ["active paid Host plan creates a Room without an approval override", async () => {
+      await seedHostSubscription("active");
+      const result = await provisionHostRoom.run(
+        requestFor(HOST_UID, {
+          requestId: "paid_active",
+          hostName: "Paid Host",
+        })
+      );
+      assert.equal(result.ok, true);
+      assert.equal(result.created, true);
+    }],
+
+    ["trialing Host plan cannot create a Room before payment", async () => {
+      await seedHostSubscription("trialing");
+      await assert.rejects(
+        () => provisionHostRoom.run(
+          requestFor(HOST_UID, {
+            requestId: "paid_trialing",
+            hostName: "Trial Host",
+          })
+        ),
+        (error) => {
+          assert.equal(error.code, "permission-denied");
+          assert.equal(error.details?.reason, "payment_required");
+          assert.equal(error.details?.capability, "rooms.create");
+          return true;
+        }
+      );
+    }],
+
+    ["past-due Host plan cannot create another Room", async () => {
+      await seedHostSubscription("past_due");
+      await assert.rejects(
+        () => provisionHostRoom.run(
+          requestFor(HOST_UID, {
+            requestId: "paid_past_due",
+            hostName: "Past Due Host",
+          })
+        ),
+        (error) => {
+          assert.equal(error.code, "permission-denied");
+          assert.equal(error.details?.reason, "subscription_past_due");
+          assert.match(String(error.message || ""), /past due/i);
+          return true;
+        }
+      );
+    }],
+
+    ["canceled Host plan cannot create another Room", async () => {
+      await seedHostSubscription("canceled");
+      await assert.rejects(
+        () => provisionHostRoom.run(
+          requestFor(HOST_UID, {
+            requestId: "paid_canceled",
+            hostName: "Canceled Host",
+          })
+        ),
+        (error) => {
+          assert.equal(error.code, "permission-denied");
+          assert.equal(error.details?.reason, "active_host_plan_required");
+          return true;
+        }
+      );
+    }],
+
     ["provisionHostRoom creates room + host library + idempotency record", async () => {
       const result = await provisionHostRoom.run(
         requestFor(HOST_UID, {

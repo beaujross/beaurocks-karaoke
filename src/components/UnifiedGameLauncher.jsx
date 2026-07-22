@@ -449,6 +449,53 @@ const VoiceAudioSetupPanel = ({ voiceRoomTuning = 'forgiving_room', setVoiceRoom
         </div>
     );
 };
+const promptRoundTimestampMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value;
+    if (typeof value?.toMillis === 'function') return value.toMillis();
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+};
+
+const buildPromptRoundHistory = (room = {}) => {
+    const existing = Array.isArray(room?.gameRoundHistory) ? room.gameRoundHistory : [];
+    const byId = new Map(existing
+        .filter((entry) => String(entry?.questionId || entry?.id || '').trim())
+        .map((entry) => [String(entry?.questionId || entry?.id || '').trim(), entry]));
+    const trivia = room?.triviaQuestion;
+    const triviaId = String(trivia?.id || '').trim();
+    if (triviaId && String(trivia?.q || '').trim()) {
+        byId.set(triviaId, {
+            id: triviaId,
+            questionId: triviaId,
+            type: 'trivia',
+            question: String(trivia.q || '').trim(),
+            options: Array.isArray(trivia.options) ? trivia.options.slice(0, 8) : [],
+            correct: Number.isFinite(Number(trivia.correct)) ? Number(trivia.correct) : null,
+            bankId: String(trivia.bankId || '').trim(),
+            startedAt: promptRoundTimestampMs(trivia.startedAt),
+            durationSec: Math.max(0, Number(trivia.durationSec || 0)),
+        });
+    }
+    const wyr = room?.wyrData;
+    const wyrId = String(wyr?.id || '').trim();
+    if (wyrId && String(wyr?.question || '').trim()) {
+        byId.set(wyrId, {
+            id: wyrId,
+            questionId: wyrId,
+            type: 'wyr',
+            question: String(wyr.question || '').trim(),
+            options: [wyr.optionA, wyr.optionB].map((option) => String(option || '').trim()).filter(Boolean),
+            bankId: String(wyr.bankId || '').trim(),
+            startedAt: promptRoundTimestampMs(wyr.startedAt),
+            durationSec: Math.max(0, Number(wyr.durationSec || 0)),
+        });
+    }
+    return [...byId.values()]
+        .sort((left, right) => promptRoundTimestampMs(left?.startedAt) - promptRoundTimestampMs(right?.startedAt))
+        .slice(-60);
+};
+
 const UnifiedGameLauncher = ({
     room,
     roomCode,
@@ -1630,6 +1677,7 @@ const UnifiedGameLauncher = ({
         const bankIndex = triviaBank.findIndex(t => String(t.id) === String(item.id));
         await updateRoom({
             activeMode: 'trivia_pop',
+            gameRoundHistory: buildPromptRoundHistory(room),
             triviaQuestion: {
                 q: item.q,
                 options: opts,
@@ -1665,6 +1713,7 @@ const UnifiedGameLauncher = ({
         const bankIndex = wyrBank.findIndex(w => String(w.id) === String(item.id));
         await updateRoom({
             activeMode: 'wyr',
+            gameRoundHistory: buildPromptRoundHistory(room),
             wyrData: {
                 question: item.q,
                 optionA: item.a,

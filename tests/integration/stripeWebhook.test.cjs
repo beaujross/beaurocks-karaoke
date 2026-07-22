@@ -18,6 +18,9 @@ const ROOT = `artifacts/${APP_ID}/public/data`;
 const ROOM_CODE = "ROOMSTRP";
 const BUYER_UID = "stripe-buyer";
 const CHECKOUT_ID = "cs_test_spotlight_1";
+const HOST_UID = "stripe-host";
+const ORG_ID = "org_stripe-host";
+const SUBSCRIPTION_ID = "sub_host_1";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error("FIRESTORE_EMULATOR_HOST is required for webhook integration tests.");
@@ -41,6 +44,8 @@ async function resetState() {
   await deleteCollection(db, ["artifacts", APP_ID, "public", "data", "stripe_checkouts"]);
   await deleteCollection(db, ["artifacts", APP_ID, "public", "data", "stripe_events"]);
   await deleteCollection(db, ["users"]);
+  await deleteCollection(db, ["organizations"]);
+  await deleteCollection(db, ["stripe_subscriptions"]);
 
   await roomRef.set({
     hostUid: "host-uid",
@@ -149,6 +154,99 @@ async function run() {
   };
 
   const checks = [
+    ["projects an active Host subscription idempotently with Room creation enabled", async () => {
+      const subscriptionEvent = {
+        id: "evt_host_subscription_active",
+        type: "customer.subscription.updated",
+        object: "event",
+        data: {
+          object: {
+            id: SUBSCRIPTION_ID,
+            object: "subscription",
+            status: "active",
+            customer: "cus_host_1",
+            current_period_end: 1800000000,
+            cancel_at_period_end: false,
+            metadata: {
+              orgId: ORG_ID,
+              ownerUid: HOST_UID,
+              planId: "host_monthly",
+            },
+          },
+        },
+      };
+
+      const first = await invokeStripeWebhook(subscriptionEvent);
+      const second = await invokeStripeWebhook(subscriptionEvent);
+      assert.equal(first.statusCode, 200);
+      assert.equal(second.statusCode, 200);
+
+      const subscriptionSnap = await db.doc("organizations/" + ORG_ID + "/subscription/current").get();
+      const entitlementSnap = await db.doc("organizations/" + ORG_ID + "/entitlements/current").get();
+      assert.equal(subscriptionSnap.get("planId"), "host_monthly");
+      assert.equal(subscriptionSnap.get("status"), "active");
+      assert.equal(entitlementSnap.get("capabilities")?.["rooms.create"], true);
+      assert.equal(entitlementSnap.get("capabilities")?.["ai.generate_content"], true);
+    }],
+
+    ["projects past-due Host recovery access without new-Room permission", async () => {
+      const response = await invokeStripeWebhook({
+        id: "evt_host_subscription_past_due",
+        type: "customer.subscription.updated",
+        object: "event",
+        data: {
+          object: {
+            id: SUBSCRIPTION_ID,
+            object: "subscription",
+            status: "past_due",
+            customer: "cus_host_1",
+            current_period_end: 1800000000,
+            cancel_at_period_end: false,
+            metadata: {
+              orgId: ORG_ID,
+              ownerUid: HOST_UID,
+              planId: "host_monthly",
+            },
+          },
+        },
+      });
+      assert.equal(response.statusCode, 200);
+
+      const entitlementSnap = await db.doc("organizations/" + ORG_ID + "/entitlements/current").get();
+      assert.equal(entitlementSnap.get("status"), "past_due");
+      assert.equal(entitlementSnap.get("capabilities")?.["rooms.create"], false);
+      assert.equal(entitlementSnap.get("capabilities")?.["ai.generate_content"], true);
+    }],
+
+    ["projects a canceled Host subscription with Room creation disabled", async () => {
+      const response = await invokeStripeWebhook({
+        id: "evt_host_subscription_deleted",
+        type: "customer.subscription.deleted",
+        object: "event",
+        data: {
+          object: {
+            id: SUBSCRIPTION_ID,
+            object: "subscription",
+            status: "canceled",
+            customer: "cus_host_1",
+            current_period_end: 1800000000,
+            cancel_at_period_end: false,
+            metadata: {
+              orgId: ORG_ID,
+              ownerUid: HOST_UID,
+              planId: "host_monthly",
+            },
+          },
+        },
+      });
+      assert.equal(response.statusCode, 200);
+
+      const entitlementSnap = await db.doc("organizations/" + ORG_ID + "/entitlements/current").get();
+      assert.equal(entitlementSnap.get("status"), "canceled");
+      assert.equal(entitlementSnap.get("capabilities")?.["rooms.create"], false);
+      assert.equal(entitlementSnap.get("capabilities")?.["ai.generate_content"], false);
+    }],
+
     ["refreshes spotlight auction projection from a signed Stripe checkout event", async () => {
       const response = await invokeStripeWebhook(baseEvent);
       assert.equal(response.statusCode, 200);

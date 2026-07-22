@@ -13,12 +13,19 @@ const {
   BASE_CAPABILITIES,
   PLAN_DEFINITIONS,
   USAGE_METER_DEFINITIONS,
+  ROOM_CREATE_CAPABILITY,
   getPlanDefinition,
   isEntitledStatus,
+  isPublicHostPlan,
+  canCreateRoomForSubscription,
   buildCapabilitiesForPlan,
   resolveUsageMeterQuota,
   buildUsageMeterSummary,
 } = require("./lib/entitlementsUsage");
+const {
+  normalizeCheckoutToken,
+  buildSubscriptionCheckoutIdempotencyKey,
+} = require("./lib/subscriptionCheckout");
 const { resolveLyricsForSong } = require("./lib/lyrics/resolveLyricsForSong");
 const { buildLyricsAiAccessState } = require("./lib/lyrics/aiAccess");
 const {
@@ -57,6 +64,14 @@ const {
   planYouTubeIndexRefresh: planYouTubeIndexRefreshForAdmin,
 } = require("./lib/youtubeIndexMaintenance");
 const {
+  DEFAULT_YOUTUBE_CANDIDATE_RETENTION_MS,
+  buildNightlyYouTubeSearchBudget,
+  buildPacificDateKey,
+  buildYouTubeDailyCatalogPolicy,
+  isFreshYouTubeCandidate,
+  selectNightlyKaraokeCandidate,
+} = require("./lib/youtubeDailyCatalog");
+const {
   buildAudienceLedQueueFaceOffPlan,
   buildOneMinuteMicAdvancePlan,
   buildOneMinuteMicFinalizePlan,
@@ -93,6 +108,26 @@ const {
   resolveReactionSpendCost,
 } = require("./lib/beauBucksSpend");
 const { buildSpendOperationReadiness } = require("./lib/beauBucksSpendReadiness");
+const { buildPublicVibeIndexProjection } = require("./lib/publicVibeIndex");
+const {
+  buildPublicVibeEvidenceRecord,
+  buildSessionRecapEvidenceRecords,
+  isPublicVibeEvidenceTimeEligible,
+  normalizeEvidenceTargetType,
+  sessionMatchesEvidenceTarget,
+} = require("./lib/publicVibeEvidenceLedger");
+const {
+  VIBE_V2_PREVIEW_TARGET_TYPES,
+  buildPublicVibeEvidenceBackfillPreview,
+} = require("./lib/publicVibeEvidenceBackfillPreview");
+const {
+  PUBLIC_VIBE_INDEX_ROLLUP_TARGET_TYPES,
+  authorizePublicVibeIndexApply,
+  buildPublicVibeIndexRollupProjection,
+  buildPublicVibeIndexRolloutConfig,
+  normalizePublicVibeIndexRollupTargetType,
+  publicVibeIndexProjectionsEqual,
+} = require("./lib/publicVibeIndexRollup");
 
 admin.initializeApp();
 const APP_ID = "bross-app";
@@ -134,6 +169,9 @@ const LYRICS_PIPELINE_V2_ENABLED_DEFAULT = String(process.env.LYRICS_PIPELINE_V2
 const LYRICS_TIMED_ADAPTER_ENABLED_DEFAULT = String(process.env.LYRICS_TIMED_ADAPTER_ENABLED || "false")
   .trim()
   .toLowerCase() === "true";
+const LYRICS_AI_FALLBACK_ENABLED_DEFAULT = String(process.env.LYRICS_AI_FALLBACK_ENABLED || "false")
+  .trim()
+  .toLowerCase() === "true";
 
 const rateState = new Map();
 const GLOBAL_LIMITS = { perMinute: 600, perHour: 5000 };
@@ -150,6 +188,8 @@ const YOUTUBE_SEARCH_PERSISTED_EMPTY_CACHE_TTL_MS = 30 * 60 * 1000;
 const YOUTUBE_INDEX_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const YOUTUBE_API_QUOTA_BACKOFF_MS = 15 * 60 * 1000;
 let youtubeApiQuotaBlockedUntilMs = 0;
+let youtubeApiQuotaBlockedKind = "";
+let youtubeApiQuotaBlockedReason = "";
 const SUPER_ADMIN_EMAIL_DEFAULT = "hello@beauross.com,hello@beaurocks.app";
 const YOUTUBE_SEARCH_INTENT_STOPWORDS = new Set([
   "karaoke",
@@ -348,22 +388,211 @@ const YOUTUBE_QUOTA_ERROR_REASONS = new Set([
   "userratelimitexceeded",
   "uploadlimitexceeded",
 ]);
+const YOUTUBE_DAILY_QUOTA_ERROR_REASONS = new Set([
+  "quotaexceeded",
+  "dailylimitexceeded",
+  "dailylimitexceeded402",
+]);
+const YOUTUBE_QUOTA_STATUS_COLLECTION = "runtime_status";
+const YOUTUBE_QUOTA_STATUS_DOCUMENT = "youtube_api";
+const YOUTUBE_API_DAILY_USAGE_COLLECTION = "youtube_api_daily_usage";
+
+const normalizeYouTubeApiMethod = (value = "") => {
+  const method = String(value || "").trim().toLowerCase();
+  if (method === "search.list") return "searchList";
+  if (method === "videos.list") return "videosList";
+  if (method === "playlistitems.list") return "playlistItemsList";
+  return "other";
+};
+
+const getYouTubeApiDailyUsageRef = (atMs = nowMs()) =>
+  admin.firestore().collection(YOUTUBE_API_DAILY_USAGE_COLLECTION).doc(buildPacificDateKey(atMs));
+
+const reserveYouTubeApiDailyCall = async ({
+  method = "",
+  source = "",
+  atMs = nowMs(),
+  maxMethodCalls = 0,
+} = {}) => {
+  const methodField = normalizeYouTubeApiMethod(method);
+  const sourceKey = String(source || "unknown")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .slice(0, 80) || "unknown";
+  const dateKey = buildPacificDateKey(atMs);
+  const usageRef = getYouTubeApiDailyUsageRef(atMs);
+  return admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(usageRef);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const methods = data.methods && typeof data.methods === "object" ? data.methods : {};
+    const sources = data.sources && typeof data.sources === "object" ? data.sources : {};
+    const currentMethodCalls = Math.max(0, Number(methods[methodField] || 0) || 0);
+    const nextMethodCalls = currentMethodCalls + 1;
+    if (maxMethodCalls > 0 && nextMethodCalls > maxMethodCalls) {
+      throw new HttpsError(
+        "resource-exhausted",
+        "The reserved nightly YouTube search allowance has been consumed."
+      );
+    }
+    tx.set(usageRef, {
+      dateKey,
+      timeZone: "America/Los_Angeles",
+      totalCalls: Math.max(0, Number(data.totalCalls || 0) || 0) + 1,
+      methods: {
+        ...methods,
+        [methodField]: nextMethodCalls,
+      },
+      sources: {
+        ...sources,
+        [sourceKey]: Math.max(0, Number(sources[sourceKey] || 0) || 0) + 1,
+      },
+      updatedAtMs: atMs,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: data.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return {
+      dateKey,
+      methodField,
+      methodCalls: nextMethodCalls,
+    };
+  });
+};
+
+const readYouTubeApiDailyUsage = async (atMs = nowMs()) => {
+  const snap = await getYouTubeApiDailyUsageRef(atMs).get();
+  const data = snap.exists ? (snap.data() || {}) : {};
+  return {
+    dateKey: buildPacificDateKey(atMs),
+    searchListCalls: Math.max(0, Number(data?.methods?.searchList || 0) || 0),
+    videosListCalls: Math.max(0, Number(data?.methods?.videosList || 0) || 0),
+    playlistItemsListCalls: Math.max(0, Number(data?.methods?.playlistItemsList || 0) || 0),
+    totalCalls: Math.max(0, Number(data.totalCalls || 0) || 0),
+  };
+};
+
+const getTimeZoneParts = (valueMs = nowMs(), timeZone = "America/Los_Angeles") => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(valueMs));
+  return Object.fromEntries(parts
+    .filter((part) => part.type !== "literal")
+    .map((part) => [part.type, Number(part.value)]));
+};
+
+const getTimeZoneOffsetMs = (valueMs = nowMs(), timeZone = "America/Los_Angeles") => {
+  const parts = getTimeZoneParts(valueMs, timeZone);
+  const representedUtcMs = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
+  return representedUtcMs - (Math.floor(valueMs / 1000) * 1000);
+};
+
+const getNextPacificQuotaResetMs = (valueMs = nowMs()) => {
+  const parts = getTimeZoneParts(valueMs, "America/Los_Angeles");
+  const nextLocalMidnightShapeMs = Date.UTC(parts.year, parts.month - 1, parts.day + 1, 0, 0, 0);
+  let candidateMs = nextLocalMidnightShapeMs
+    - getTimeZoneOffsetMs(nextLocalMidnightShapeMs, "America/Los_Angeles");
+  candidateMs = nextLocalMidnightShapeMs
+    - getTimeZoneOffsetMs(candidateMs, "America/Los_Angeles");
+  return candidateMs + (60 * 1000);
+};
+
+const getYouTubeQuotaStatusRef = () =>
+  admin.firestore().collection(YOUTUBE_QUOTA_STATUS_COLLECTION).doc(YOUTUBE_QUOTA_STATUS_DOCUMENT);
+
+const writeYouTubeQuotaStatus = async ({
+  quotaKind = "rate",
+  reason = "",
+  blockedUntilMs = 0,
+  httpStatus = 0,
+} = {}) => {
+  const safeBlockedUntilMs = Math.max(nowMs() + 60 * 1000, Number(blockedUntilMs || 0));
+  try {
+    await getYouTubeQuotaStatusRef().set({
+      provider: "youtube",
+      state: "paused",
+      quotaBlocked: true,
+      quotaKind: quotaKind === "daily" ? "daily" : "rate",
+      reason: String(reason || "").trim().slice(0, 120),
+      httpStatus: Math.max(0, Number(httpStatus || 0)),
+      blockedUntilMs: safeBlockedUntilMs,
+      updatedAtMs: nowMs(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    console.warn("[youtube-quota] shared status write failed", {
+      code: String(error?.code || "unknown"),
+    });
+  }
+  return safeBlockedUntilMs;
+};
+
+const readSharedYouTubeQuotaStatus = async () => {
+  try {
+    const snap = await getYouTubeQuotaStatusRef().get();
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const blockedUntilMs = Math.max(0, Number(data.blockedUntilMs || 0));
+    const quotaBlocked = data.quotaBlocked === true && blockedUntilMs > nowMs();
+    return {
+      provider: "youtube",
+      state: quotaBlocked ? "paused" : "available",
+      quotaBlocked,
+      quotaKind: quotaBlocked ? String(data.quotaKind || "").trim().toLowerCase() : "",
+      reason: quotaBlocked ? String(data.reason || "").trim() : "",
+      blockedUntilMs: quotaBlocked ? blockedUntilMs : 0,
+      checkedAtMs: nowMs(),
+    };
+  } catch (error) {
+    console.warn("[youtube-quota] shared status read failed", {
+      code: String(error?.code || "unknown"),
+    });
+    return {
+      provider: "youtube",
+      state: "unknown",
+      quotaBlocked: false,
+      quotaKind: "",
+      reason: "",
+      blockedUntilMs: 0,
+      checkedAtMs: nowMs(),
+    };
+  }
+};
 
 const readYouTubeApiQuotaBlockedUntilMs = () => {
   const safeUntil = Number(youtubeApiQuotaBlockedUntilMs || 0);
   return safeUntil > nowMs() ? safeUntil : 0;
 };
 
-const setYouTubeApiQuotaBlocked = (durationMs = YOUTUBE_API_QUOTA_BACKOFF_MS) => {
+const setYouTubeApiQuotaBlocked = (
+  durationMs = YOUTUBE_API_QUOTA_BACKOFF_MS,
+  { quotaKind = "rate", reason = "" } = {}
+) => {
   youtubeApiQuotaBlockedUntilMs = Math.max(
     readYouTubeApiQuotaBlockedUntilMs(),
     nowMs() + Math.max(60 * 1000, Number(durationMs || YOUTUBE_API_QUOTA_BACKOFF_MS))
   );
+  youtubeApiQuotaBlockedKind = quotaKind === "daily" ? "daily" : "rate";
+  youtubeApiQuotaBlockedReason = String(reason || "").trim().slice(0, 120);
   return youtubeApiQuotaBlockedUntilMs;
 };
 
 const clearYouTubeApiQuotaBlocked = () => {
   youtubeApiQuotaBlockedUntilMs = 0;
+  youtubeApiQuotaBlockedKind = "";
+  youtubeApiQuotaBlockedReason = "";
 };
 
 const isYouTubeQuotaReason = (reason = "") => (
@@ -402,7 +631,14 @@ const ensureYouTubeApiQuotaAvailable = () => {
   if (!blockedUntilMs) return;
   throw new HttpsError(
     "resource-exhausted",
-    "YouTube API quota is temporarily exhausted. Try again later."
+    "YouTube API quota is temporarily exhausted. Try again later.",
+    {
+      provider: "youtube",
+      quotaBlocked: true,
+      quotaKind: youtubeApiQuotaBlockedKind || "rate",
+      reason: youtubeApiQuotaBlockedReason || "instance_cooldown",
+      blockedUntilMs,
+    }
   );
 };
 
@@ -423,10 +659,38 @@ const assertYouTubeApiResponseOk = async (res, label = "YouTube request") => {
     || res.status === 429
   );
   if (quotaBlocked) {
-    setYouTubeApiQuotaBlocked();
+    const quotaKind = YOUTUBE_DAILY_QUOTA_ERROR_REASONS.has(normalizedReason)
+      ? "daily"
+      : "rate";
+    const requestedBlockedUntilMs = quotaKind === "daily"
+      ? getNextPacificQuotaResetMs()
+      : nowMs() + YOUTUBE_API_QUOTA_BACKOFF_MS;
+    const blockedUntilMs = await writeYouTubeQuotaStatus({
+      quotaKind,
+      reason: failure.reason || (res.status === 429 ? "http_429" : "quota_error"),
+      blockedUntilMs: requestedBlockedUntilMs,
+      httpStatus: res.status,
+    });
+    setYouTubeApiQuotaBlocked(blockedUntilMs - nowMs(), {
+      quotaKind,
+      reason: failure.reason || (res.status === 429 ? "http_429" : "quota_error"),
+    });
+    console.warn("[youtube-quota] provider search unavailable", {
+      quotaKind,
+      reason: failure.reason || "unknown",
+      httpStatus: res.status,
+      blockedUntilMs,
+    });
     throw new HttpsError(
       "resource-exhausted",
-      `YouTube API quota exhausted${failure.reason ? `: ${failure.reason}` : ""}.`
+      `YouTube API quota exhausted${failure.reason ? `: ${failure.reason}` : ""}.`,
+      {
+        provider: "youtube",
+        quotaBlocked: true,
+        quotaKind,
+        reason: failure.reason || (res.status === 429 ? "http_429" : "quota_error"),
+        blockedUntilMs,
+      }
     );
   }
   throw new HttpsError("unavailable", `${label} failed: ${text}`);
@@ -663,6 +927,13 @@ const enforceAppCheckIfEnabled = (request, scope = "unknown") => {
   console.warn(`[app-check] missing token scope=${scope} uid=${uid}`);
 
   if (mode === "log") return;
+  throw new HttpsError("failed-precondition", "App Check token required.");
+};
+
+const requireAppCheck = (request, scope = "unknown") => {
+  if (hasAppCheck(request)) return;
+  const uid = request.auth?.uid || "anonymous";
+  console.warn(`[app-check] required token missing scope=${scope} uid=${uid}`);
   throw new HttpsError("failed-precondition", "App Check token required.");
 };
 
@@ -2640,6 +2911,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "featuredPhotoId",
   "gameData",
   "gameDefaults",
+  "gameRoundHistory",
   "hostDiagnostics",
   "gameParticipantMode",
   "gameParticipants",
@@ -2906,6 +3178,7 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
 ]);
 const HOST_ROOM_ARRAY_ROOT_KEYS = new Set([
   "bingoTurnOrder",
+  "gameRoundHistory",
   "gameParticipants",
   "marqueeItems",
   "musicalMomentPresets",
@@ -3704,9 +3977,14 @@ const normalizeCapabilities = (input = {}) => {
   return caps;
 };
 
-const isPaidPlan = (planId = "") => {
+const isPublicPaidHostPlan = (planId = "") => {
   const plan = getPlanDefinition(planId);
-  return !!(plan && plan.id !== "free" && plan.interval && plan.amountCents > 0);
+  return !!(
+    plan
+    && isPublicHostPlan(planId)
+    && plan.interval
+    && plan.amountCents > 0
+  );
 };
 
 const planToUserTier = (planId = "") => {
@@ -4499,6 +4777,9 @@ const MARKETING_GEO_PAGES_ENABLED = String(process.env.MARKETING_GEO_PAGES_ENABL
 const MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED = String(process.env.MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED || "false")
   .trim()
   .toLowerCase() === "true";
+const PUBLIC_VIBE_INDEX_ROLLOUT = buildPublicVibeIndexRolloutConfig(process.env);
+const PUBLIC_VIBE_INDEX_ROLLUP_LIMIT = PUBLIC_VIBE_INDEX_ROLLOUT.pageSize;
+const PUBLIC_VIBE_INDEX_MAX_TARGETS_PER_TYPE = PUBLIC_VIBE_INDEX_ROLLOUT.maxTargetsPerType;
 const MARKETING_DISCOVER_OFFICIAL_HOST_UIDS = parseMarketingUidSet(
   process.env.MARKETING_DISCOVER_OFFICIAL_HOST_UIDS || ""
 );
@@ -5429,6 +5710,8 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     },
     joinAccessMode: normalizeDirectoryToken(data.joinAccessMode || "anonymous_allowed", 40),
     requiresGuestPasscode: data.requiresGuestPasscode === true,
+    latestRecapAtMs: Math.max(0, Number(data.latestRecapAtMs || 0) || 0),
+    latestRecapUrl: normalizeDirectoryOptionalUrl(data.latestRecapUrl || ""),
     experienceProfile: buildDirectoryPublicExperienceProfile(data.experienceProfile || {}),
     karaokeNightsLabel: safeDirectoryString(data.karaokeNightsLabel || "", 200),
     location: normalizeDirectoryLatLng(data.location || {}),
@@ -5462,8 +5745,25 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     officialBadgeImageUrl: normalizeDirectoryOptionalUrl(data.officialBadgeImageUrl || ""),
     officialBeauRocksStatus: normalizeDirectoryToken(data.officialBeauRocksStatus || "", 40),
     officialBeauRocksStatusLabel: safeDirectoryString(data.officialBeauRocksStatusLabel || "", 60),
+    publicVibeIndex: buildPublicVibeIndexProjection({ publicVibeIndex: data.publicVibeIndex }),
     isOfficialBeauRocksListing: isOfficialBeauRocksListing(baseListing),
     isOfficialBeauRocksRoom: isOfficialBeauRocksRoomListing(baseListing),
+  };
+};
+
+const buildDirectoryDiscoverResponseItem = (item = {}, viewerUid = "") => {
+  const safeViewerUid = safeDirectoryString(viewerUid || "", 180);
+  const ownerUid = safeDirectoryString(item.ownerUid || "", 180);
+  const hostUid = safeDirectoryString(item.hostUid || "", 180);
+  const canManage = !!safeViewerUid && (safeViewerUid === ownerUid || safeViewerUid === hostUid);
+  const {
+    ownerUid: _ownerUid,
+    identityLinks: _identityLinks,
+    ...publicItem
+  } = item;
+  return {
+    ...publicItem,
+    canManage,
   };
 };
 
@@ -5632,6 +5932,643 @@ const normalizeDirectoryReminderChannels = (input = []) => {
     channels.push(token);
   });
   return channels;
+};
+
+const PUBLIC_VIBE_INDEX_TARGET_COLLECTIONS = Object.freeze({
+  venue: "venues",
+  host: "directory_profiles",
+  event: "karaoke_events",
+  room_session: "room_sessions",
+});
+
+const PUBLIC_VIBE_EVIDENCE_COLLECTION = "public_vibe_evidence";
+
+const requestHasNonAnonymousAccount = (request = {}) => {
+  const provider = String(
+    request?.auth?.token?.firebase?.sign_in_provider
+    || request?.auth?.token?.sign_in_provider
+    || ""
+  ).trim().toLowerCase();
+  return !!request?.auth?.uid && !!provider && provider !== "anonymous";
+};
+
+const isApprovedPublicVibeSession = (session = {}) =>
+  normalizeDirectoryStatus(session?.status || "pending", "pending") === "approved"
+  && normalizeDirectoryVisibility(session?.visibility || "private", "private") === "public";
+
+const collectPublicVibeEvidenceOwnerUids = (targetType = "", targetId = "", data = {}) => new Set([
+  data?.ownerUid,
+  data?.hostUid,
+  ...(Array.isArray(data?.hostUids) ? data.hostUids : []),
+  ...(Array.isArray(data?.coHostUids) ? data.coHostUids : []),
+  normalizeEvidenceTargetType(targetType) === "host" ? targetId : "",
+].map((value) => safeDirectoryString(value || "", 180)).filter(Boolean));
+
+const resolvePublicVibeParticipantEvidenceContext = async ({
+  request,
+  evidenceType = "",
+  targetType = "",
+  targetId = "",
+  roomSessionId = "",
+  occurrenceId = "",
+  nowMs = Date.now(),
+} = {}) => {
+  if (!requestHasNonAnonymousAccount(request)) return { qualified: false, reason: "account_required" };
+  const actorUid = safeDirectoryString(request?.auth?.uid || "", 180);
+  const canonicalTargetType = normalizeEvidenceTargetType(targetType);
+  const canonicalTargetId = safeDirectoryString(targetId || "", 220);
+  const safeRoomSessionId = safeDirectoryString(roomSessionId || "", 220);
+  if (!canonicalTargetType || !canonicalTargetId) return { qualified: false, reason: "unsupported_target" };
+  if (!safeRoomSessionId) return { qualified: false, reason: "missing_session" };
+
+  const db = admin.firestore();
+  const sessionRef = db.collection("room_sessions").doc(safeRoomSessionId);
+  const sessionSnap = await sessionRef.get();
+  if (!sessionSnap.exists) return { qualified: false, reason: "session_not_found" };
+  const session = sessionSnap.data() || {};
+  if (!isApprovedPublicVibeSession(session)) return { qualified: false, reason: "session_not_public" };
+  if (!sessionMatchesEvidenceTarget({
+    sessionId: safeRoomSessionId,
+    session,
+    targetType: canonicalTargetType,
+    targetId: canonicalTargetId,
+  })) return { qualified: false, reason: "wrong_entity" };
+
+  const roomCode = normalizeRoomCode(session.roomCode || "");
+  if (!roomCode) return { qualified: false, reason: "missing_room" };
+  const roomUserRef = getRootRef().collection("room_users").doc(`${roomCode}_${actorUid}`);
+  const safeOccurrenceId = safeDirectoryString(occurrenceId || "", 220);
+  const targetCollection = PUBLIC_VIBE_INDEX_TARGET_COLLECTIONS[canonicalTargetType];
+  const targetRef = canonicalTargetType === "room_session"
+    ? sessionRef
+    : db.collection(targetCollection).doc(canonicalTargetId);
+  const reads = [roomUserRef.get(), targetRef.get()];
+  if (safeOccurrenceId) reads.push(db.collection(DIRECTORY_NIGHT_OCCURRENCES_COLLECTION).doc(safeOccurrenceId).get());
+  const [roomUserSnap, targetSnap, occurrenceSnap] = await Promise.all(reads);
+  if (!roomUserSnap.exists) return { qualified: false, reason: "room_membership_required" };
+  if (!targetSnap.exists) return { qualified: false, reason: "target_not_found" };
+  const target = targetSnap.data() || {};
+  const ownerUids = collectPublicVibeEvidenceOwnerUids(canonicalTargetType, canonicalTargetId, target);
+  if (ownerUids.has(actorUid)) return { qualified: false, reason: "self_attributed" };
+
+  let evidenceSessionId = safeRoomSessionId;
+  let occurrence = {};
+  if (safeOccurrenceId) {
+    if (!occurrenceSnap?.exists) return { qualified: false, reason: "occurrence_not_found" };
+    occurrence = occurrenceSnap.data() || {};
+    const occurrenceSourceId = safeDirectoryString(occurrence.sourceListingId || "", 220);
+    const occurrenceRoomCode = normalizeRoomCode(occurrence.roomCode || "");
+    const occurrenceStatus = normalizeDirectoryToken(occurrence.status || "", 40);
+    if (
+      occurrenceSourceId !== safeRoomSessionId
+      || (occurrenceRoomCode && occurrenceRoomCode !== roomCode)
+      || occurrenceStatus === "cancelled"
+    ) return { qualified: false, reason: "occurrence_mismatch" };
+    evidenceSessionId = safeOccurrenceId;
+  }
+  if (!isPublicVibeEvidenceTimeEligible({ evidenceType, session, occurrence, nowMs })) {
+    return { qualified: false, reason: "outside_evidence_window" };
+  }
+
+  return {
+    qualified: true,
+    actorUid,
+    targetType: canonicalTargetType,
+    targetId: canonicalTargetId,
+    roomSessionId: safeRoomSessionId,
+    sessionId: evidenceSessionId,
+    roomCode,
+  };
+};
+
+const buildPublicVibeEvidenceFirestorePayload = (record = {}) => ({
+  ...record,
+  occurredAt: admin.firestore.Timestamp.fromMillis(record.occurredAtMs),
+  verifiedAt: admin.firestore.Timestamp.fromMillis(record.verifiedAtMs),
+  expiresAt: admin.firestore.Timestamp.fromMillis(record.expiresAtMs),
+  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+});
+
+const writePublicVibeEvidenceRecordsIfAbsent = async (records = []) => {
+  const validRecords = (Array.isArray(records) ? records : []).filter((record) => record?.evidenceId);
+  if (!validRecords.length) return { attempted: 0, written: 0 };
+  const db = admin.firestore();
+  let written = 0;
+  await db.runTransaction(async (tx) => {
+    const refs = validRecords.map((record) =>
+      db.collection(PUBLIC_VIBE_EVIDENCE_COLLECTION).doc(record.evidenceId)
+    );
+    const snaps = await Promise.all(refs.map((ref) => tx.get(ref)));
+    validRecords.forEach((record, index) => {
+      if (snaps[index]?.exists) return;
+      tx.set(refs[index], buildPublicVibeEvidenceFirestorePayload(record));
+      written += 1;
+    });
+  });
+  return { attempted: validRecords.length, written };
+};
+
+const fetchPublicVibeEvidenceOwnerUids = async ({ db, evidence = [] } = {}) => {
+  const targets = new Map();
+  (Array.isArray(evidence) ? evidence : []).forEach((record) => {
+    const targetType = normalizeEvidenceTargetType(record?.targetType || "");
+    const targetId = safeDirectoryString(record?.targetId || "", 220);
+    const collectionName = PUBLIC_VIBE_INDEX_TARGET_COLLECTIONS[targetType];
+    if (!collectionName || !targetId || targetId.includes("/")) return;
+    const key = `${targetType}:${targetId}`;
+    if (!targets.has(key)) targets.set(key, { key, targetType, targetId, collectionName });
+  });
+  const entries = Array.from(targets.values());
+  const ownersByTarget = new Map();
+  for (let offset = 0; offset < entries.length; offset += 200) {
+    const chunk = entries.slice(offset, offset + 200);
+    const snaps = await db.getAll(...chunk.map((target) =>
+      db.collection(target.collectionName).doc(target.targetId)
+    ));
+    chunk.forEach((target, index) => {
+      const data = snaps[index]?.exists ? (snaps[index].data() || {}) : {};
+      ownersByTarget.set(target.key, Array.from(collectPublicVibeEvidenceOwnerUids(
+        target.targetType,
+        target.targetId,
+        data
+      )));
+    });
+  }
+  return ownersByTarget;
+};
+
+const previewPublicVibeEvidenceBackfillInternal = async ({
+  db = admin.firestore(),
+  limit = 500,
+  targetTypes = VIBE_V2_PREVIEW_TARGET_TYPES,
+  nowMs = Date.now(),
+} = {}) => {
+  const safeLimit = clampNumber(limit, 25, 1000, 500);
+  const snapshot = await db.collection(PUBLIC_VIBE_EVIDENCE_COLLECTION)
+    .orderBy("occurredAt", "desc")
+    .limit(safeLimit + 1)
+    .get();
+  const truncated = snapshot.size > safeLimit;
+  const evidence = snapshot.docs.slice(0, safeLimit).map((docSnap) => docSnap.data() || {});
+  const ownerUidsByTarget = await fetchPublicVibeEvidenceOwnerUids({ db, evidence });
+  return {
+    ...buildPublicVibeEvidenceBackfillPreview({
+      evidence,
+      ownerUidsByTarget,
+      targetTypes,
+      nowMs,
+      sampleLimit: safeLimit,
+      truncated,
+    }),
+    generatedAtMs: nowMs,
+    source: "protected_evidence_ledger",
+    writesAttempted: 0,
+    writesPerformed: 0,
+  };
+};
+
+const logPublicVibeEvidenceWriteFailure = (scope = "", error = null) => {
+  console.warn("[directory/vibe-evidence] additive write skipped", {
+    scope: safeDirectoryString(scope || "unknown", 80),
+    code: safeDirectoryString(error?.code || "unknown", 80),
+  });
+};
+
+const preparePublicVibeParticipantEvidence = async ({
+  request,
+  evidenceType = "",
+  targetType = "",
+  targetId = "",
+  roomSessionId = "",
+  occurrenceId = "",
+  sourceCollection = "",
+  sourceId = "",
+  verificationMethod = "",
+  nowMs = Date.now(),
+} = {}) => {
+  const context = await resolvePublicVibeParticipantEvidenceContext({
+    request,
+    evidenceType,
+    targetType,
+    targetId,
+    roomSessionId,
+    occurrenceId,
+    nowMs,
+  });
+  if (!context.qualified) return { ...context, record: null, ref: null };
+  const record = buildPublicVibeEvidenceRecord({
+    evidenceType,
+    targetType: context.targetType,
+    targetId: context.targetId,
+    sessionId: context.sessionId,
+    actorUid: context.actorUid,
+    sourceCollection,
+    sourceId,
+    verificationMethod,
+    occurredAtMs: nowMs,
+    verifiedAtMs: nowMs,
+  });
+  if (!record) return { qualified: false, reason: "invalid_evidence_record", record: null, ref: null };
+  return {
+    ...context,
+    record,
+    ref: admin.firestore().collection(PUBLIC_VIBE_EVIDENCE_COLLECTION).doc(record.evidenceId),
+  };
+};
+
+const publicVibeIndexEngagementTargetType = (targetType = "") =>
+  normalizePublicVibeIndexRollupTargetType(targetType) === "room_session" ? "session" : targetType;
+
+const buildPublicVibeIndexTargetEntity = (target = {}) => {
+  const data = target?.data && typeof target.data === "object" ? target.data : {};
+  if (target.targetType === "host") {
+    return {
+      ...data,
+      id: target.id,
+      title: safeDirectoryString(data.displayName || data.hostName || data.title || data.handle || "Host", 200),
+      hostUid: target.id,
+      status: normalizeDirectoryStatus(data.status || "approved", "approved"),
+      visibility: normalizeDirectoryVisibility(data.visibility || "public", "public"),
+    };
+  }
+  return buildDirectoryPublicListing(target.docSnap, target.targetType);
+};
+
+const fetchPublicVibeIndexTargets = async ({
+  db,
+  limit = PUBLIC_VIBE_INDEX_ROLLUP_LIMIT,
+  maxTargetsPerType = PUBLIC_VIBE_INDEX_MAX_TARGETS_PER_TYPE,
+} = {}) => {
+  const safeLimit = Math.max(1, Math.min(500, Number(limit || PUBLIC_VIBE_INDEX_ROLLUP_LIMIT) || PUBLIC_VIBE_INDEX_ROLLUP_LIMIT));
+  const safeMaximum = Math.max(safeLimit, Math.min(10000, Number(maxTargetsPerType || PUBLIC_VIBE_INDEX_MAX_TARGETS_PER_TYPE)));
+  const targets = [];
+  const truncatedTargetTypes = [];
+  for (const targetType of PUBLIC_VIBE_INDEX_ROLLUP_TARGET_TYPES) {
+    let lastDocument = null;
+    let scannedForType = 0;
+    while (scannedForType < safeMaximum) {
+      const remaining = safeMaximum - scannedForType;
+      let query = db.collection(PUBLIC_VIBE_INDEX_TARGET_COLLECTIONS[targetType])
+        .where("status", "==", "approved")
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(Math.min(safeLimit, remaining));
+      if (lastDocument) query = query.startAfter(lastDocument);
+      const snapshot = await query.get();
+      if (snapshot.empty) break;
+      scannedForType += snapshot.size;
+      snapshot.docs.forEach((docSnap) => {
+      const data = docSnap.data() || {};
+      if (normalizeDirectoryVisibility(data.visibility || "public", "public") === "private") return;
+      if (targetType === "host" && !normalizeDirectoryRoles(data.roles || []).includes("host")) return;
+      const target = { targetType, id: docSnap.id, docSnap, data };
+      target.entity = buildPublicVibeIndexTargetEntity(target);
+      targets.push(target);
+      });
+      lastDocument = snapshot.docs[snapshot.docs.length - 1];
+      if (snapshot.size < Math.min(safeLimit, remaining)) break;
+    }
+    if (scannedForType >= safeMaximum && lastDocument) {
+      const overflow = await db.collection(PUBLIC_VIBE_INDEX_TARGET_COLLECTIONS[targetType])
+        .where("status", "==", "approved")
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .startAfter(lastDocument)
+        .limit(1)
+        .get();
+      if (!overflow.empty) truncatedTargetTypes.push(targetType);
+    }
+  }
+  return { targets, truncatedTargetTypes };
+};
+
+const fetchPublicVibeIndexEngagement = async ({ db, targets = [] } = {}) => {
+  const requests = new Map();
+  const addRequest = (targetType = "", targetId = "") => {
+    const type = publicVibeIndexEngagementTargetType(targetType);
+    const id = safeDirectoryString(targetId || "", 180);
+    if (!type || !id) return;
+    requests.set(`${type}:${id}`, { targetType: type, targetId: id });
+  };
+  targets.forEach((target) => {
+    addRequest(target.targetType, target.id);
+    if (target.targetType === "event" || target.targetType === "room_session") {
+      addRequest("venue", target.entity?.venueId || target.data?.venueId);
+    }
+  });
+  const entries = Array.from(requests.entries());
+  const result = new Map();
+  for (let offset = 0; offset < entries.length; offset += 200) {
+    const chunk = entries.slice(offset, offset + 200);
+    const reviewRefs = chunk.map(([, request]) =>
+      db.collection("review_totals").doc(buildDirectoryCheckinTotalDocId(request.targetType, request.targetId))
+    );
+    const checkinRefs = chunk.map(([, request]) =>
+      db.collection("checkin_totals").doc(buildDirectoryCheckinTotalDocId(request.targetType, request.targetId))
+    );
+    const [reviewSnaps, checkinSnaps] = await Promise.all([
+      reviewRefs.length ? db.getAll(...reviewRefs) : [],
+      checkinRefs.length ? db.getAll(...checkinRefs) : [],
+    ]);
+    chunk.forEach(([key], index) => {
+      const reviewData = reviewSnaps[index]?.exists ? (reviewSnaps[index].data() || {}) : {};
+      const checkinData = checkinSnaps[index]?.exists ? (checkinSnaps[index].data() || {}) : {};
+      result.set(key, {
+        reviewCount: Math.max(0, Number(reviewData.reviewCount || 0) || 0),
+        checkinCount: Math.max(0, Number(checkinData.totalCount || 0) || 0),
+      });
+    });
+  }
+  return result;
+};
+
+const fetchPublicVibeIndexHostAccounts = async ({ db, hostUids = [] } = {}) => {
+  const safeHostUids = Array.from(new Set(hostUids.map((uid) => safeDirectoryString(uid || "", 180)).filter(Boolean)));
+  const result = new Map();
+  for (let offset = 0; offset < safeHostUids.length; offset += DIRECTORY_DISCOVER_MAX_HOST_META_IDS) {
+    const chunk = safeHostUids.slice(offset, offset + DIRECTORY_DISCOVER_MAX_HOST_META_IDS);
+    const chunkResult = await fetchDirectoryDiscoverHostAccountMeta(db, chunk);
+    chunkResult.forEach((value, key) => result.set(key, value));
+  }
+  return result;
+};
+
+const PUBLIC_VIBE_INDEX_JOBS_COLLECTION = "public_vibe_index_jobs";
+const buildPublicVibeIndexJobId = () => `vibe_job_${Date.now().toString(36)}_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+const buildPublicVibeIndexChangeId = (targetType = "", targetId = "") => crypto
+  .createHash("sha256")
+  .update(`${targetType}:${targetId}`)
+  .digest("hex")
+  .slice(0, 32);
+
+const executePublicVibeIndexRollup = async ({
+  db = admin.firestore(),
+  dryRun = true,
+  limit = PUBLIC_VIBE_INDEX_ROLLUP_LIMIT,
+  targetTypes = PUBLIC_VIBE_INDEX_ROLLUP_TARGET_TYPES,
+  targetId = "",
+  nowMs = Date.now(),
+  actorUid = "system",
+  operationMode = "preview",
+} = {}) => {
+  const selectedTypes = Array.from(new Set((Array.isArray(targetTypes) ? targetTypes : [targetTypes])
+    .map(normalizePublicVibeIndexRollupTargetType)
+    .filter(Boolean)));
+  const safeSelectedTypes = selectedTypes.length ? selectedTypes : [...PUBLIC_VIBE_INDEX_ROLLUP_TARGET_TYPES];
+  const safeTargetId = safeDirectoryString(targetId || "", 220);
+  const targetFetch = await fetchPublicVibeIndexTargets({ db, limit });
+  const allTargets = targetFetch.targets;
+  const truncatedTargetTypes = targetFetch.truncatedTargetTypes;
+  if (!dryRun && truncatedTargetTypes.length) {
+    throw new HttpsError(
+      "resource-exhausted",
+      `Vibe rollup stopped before writes because target pagination was truncated: ${truncatedTargetTypes.join(", ")}.`
+    );
+  }
+  const targets = allTargets.filter((target) =>
+    safeSelectedTypes.includes(target.targetType)
+    && (!safeTargetId || target.id === safeTargetId)
+  );
+  const upcomingByHostUid = new Map();
+  const upcomingByVenueId = new Map();
+  const upcomingByTarget = new Map();
+  const windowEndMs = nowMs + (30 * 24 * 60 * 60 * 1000);
+  allTargets.forEach((target) => {
+    if (target.targetType !== "event" && target.targetType !== "room_session") return;
+    const startsAtMs = valueToMillis(target.entity?.startsAtMs || target.data?.startsAtMs);
+    if (startsAtMs < nowMs || startsAtMs > windowEndMs) return;
+    const hostUid = safeDirectoryString(target.entity?.hostUid || target.data?.hostUid || target.data?.ownerUid || "", 180);
+    const venueId = safeDirectoryString(target.entity?.venueId || target.data?.venueId || "", 180);
+    if (hostUid) upcomingByHostUid.set(hostUid, (upcomingByHostUid.get(hostUid) || 0) + 1);
+    if (venueId) upcomingByVenueId.set(venueId, (upcomingByVenueId.get(venueId) || 0) + 1);
+    upcomingByTarget.set(`${target.targetType}:${target.id}`, 1);
+  });
+
+  const hostUids = targets.map((target) => target.targetType === "host"
+    ? target.id
+    : safeDirectoryString(target.entity?.hostUid || target.data?.hostUid || target.data?.ownerUid || "", 180)
+  ).filter(Boolean);
+  const [hostInsights, hostAccounts, engagement] = await Promise.all([
+    fetchDirectoryDiscoverHostInsights().catch(() => ({ byHostUid: new Map() })),
+    fetchPublicVibeIndexHostAccounts({ db, hostUids }),
+    fetchPublicVibeIndexEngagement({ db, targets: allTargets }),
+  ]);
+
+  const previews = [];
+  const writes = [];
+  const counters = {
+    scanned: allTargets.length,
+    eligible: targets.length,
+    changed: 0,
+    unchanged: 0,
+    published: 0,
+    notEnoughData: 0,
+    written: 0,
+  };
+  targets.forEach((target) => {
+    const hostUid = target.targetType === "host"
+      ? target.id
+      : safeDirectoryString(target.entity?.hostUid || target.data?.hostUid || target.data?.ownerUid || "", 180);
+    const venueId = target.targetType === "venue"
+      ? target.id
+      : safeDirectoryString(target.entity?.venueId || target.data?.venueId || "", 180);
+    const engagementType = publicVibeIndexEngagementTargetType(target.targetType);
+    const projection = buildPublicVibeIndexRollupProjection({
+      targetType: target.targetType,
+      entity: target.entity,
+      hostInsights: hostInsights?.byHostUid?.get(hostUid) || {},
+      hostAccount: hostAccounts.get(hostUid) || {},
+      engagement: engagement.get(`${engagementType}:${target.id}`) || {},
+      venueEngagement: venueId ? (engagement.get(`venue:${venueId}`) || {}) : {},
+      upcomingPublicEvents30d: target.targetType === "host"
+        ? (upcomingByHostUid.get(target.id) || 0)
+        : target.targetType === "venue"
+          ? (upcomingByVenueId.get(target.id) || 0)
+          : (upcomingByTarget.get(`${target.targetType}:${target.id}`) || 0),
+      nowMs,
+    });
+    const changed = !publicVibeIndexProjectionsEqual(target.data?.publicVibeIndex || {}, projection);
+    if (projection.status === "published") counters.published += 1;
+    else counters.notEnoughData += 1;
+    if (changed) counters.changed += 1;
+    else counters.unchanged += 1;
+    previews.push({
+      targetType: target.targetType,
+      targetId: target.id,
+      status: projection.status,
+      score: projection.score,
+      label: projection.label,
+      confidence: projection.confidence,
+      changed,
+    });
+    if (changed && !dryRun) writes.push({ target, projection });
+  });
+
+  let jobId = "";
+  let jobRef = null;
+  if (!dryRun) {
+    jobId = buildPublicVibeIndexJobId();
+    jobRef = db.collection(PUBLIC_VIBE_INDEX_JOBS_COLLECTION).doc(jobId);
+    await jobRef.set({
+      jobId,
+      operation: "apply",
+      operationMode: safeDirectoryString(operationMode || "apply", 40),
+      actorUid: safeDirectoryString(actorUid || "system", 180),
+      status: "running",
+      scoreVersion: "vibe_v1",
+      rollupVersion: "rollup_v1",
+      targetTypes: safeSelectedTypes,
+      targetId: safeTargetId || null,
+      scanned: counters.scanned,
+      eligible: counters.eligible,
+      changed: counters.changed,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+
+  try {
+    for (let offset = 0; offset < writes.length; offset += 200) {
+      const batch = db.batch();
+      const chunk = writes.slice(offset, offset + 200);
+      chunk.forEach(({ target, projection }) => {
+        const changeRef = jobRef.collection("changes").doc(buildPublicVibeIndexChangeId(target.targetType, target.id));
+        const beforeProjection = target.data?.publicVibeIndex && typeof target.data.publicVibeIndex === "object"
+          ? target.data.publicVibeIndex
+          : null;
+        batch.set(changeRef, {
+          jobId,
+          targetType: target.targetType,
+          targetId: target.id,
+          beforeProjection,
+          beforeRollupVersion: target.data?.publicVibeIndexRollupVersion ?? null,
+          beforeUpdatedAt: target.data?.publicVibeIndexUpdatedAt ?? null,
+          afterProjection: projection,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        batch.set(target.docSnap.ref, {
+          publicVibeIndex: projection,
+          publicVibeIndexRollupVersion: "rollup_v1",
+          publicVibeIndexUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      });
+      await batch.commit();
+      counters.written += chunk.length;
+    }
+    if (jobRef) {
+      await jobRef.set({
+        status: "completed",
+        written: counters.written,
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+  } catch (error) {
+    if (jobRef) {
+      await jobRef.set({
+        status: "failed",
+        written: counters.written,
+        error: safeDirectoryString(error?.message || error || "rollup_failed", 500),
+        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }).catch(() => {});
+    }
+    throw error;
+  }
+
+  return {
+    ok: true,
+    dryRun: !!dryRun,
+    scoreVersion: "vibe_v1",
+    rollupVersion: "rollup_v1",
+    jobId: jobId || null,
+    operationMode: safeDirectoryString(operationMode || (dryRun ? "preview" : "apply"), 40),
+    targetTypes: safeSelectedTypes,
+    targetId: safeTargetId,
+    truncatedTargetTypes,
+    ...counters,
+    previews: previews.slice(0, 100),
+  };
+};
+
+const rollbackPublicVibeIndexJobInternal = async ({
+  db = admin.firestore(),
+  jobId = "",
+  actorUid = "system",
+} = {}) => {
+  const safeJobId = safeDirectoryString(jobId || "", 220);
+  if (!safeJobId || safeJobId.includes("/")) {
+    throw new HttpsError("invalid-argument", "A valid Vibe rollup jobId is required.");
+  }
+  const jobRef = db.collection(PUBLIC_VIBE_INDEX_JOBS_COLLECTION).doc(safeJobId);
+  const jobSnap = await jobRef.get();
+  if (!jobSnap.exists) throw new HttpsError("not-found", "Vibe rollup job not found.");
+  const job = jobSnap.data() || {};
+  if (job.status === "rolled_back") {
+    return { ok: true, jobId: safeJobId, restored: Number(job.restored || 0), alreadyRolledBack: true };
+  }
+  if (!["completed", "failed", "rollback_failed", "rollback_running"].includes(String(job.status || ""))) {
+    throw new HttpsError("failed-precondition", "Only completed or failed Vibe rollup jobs can be rolled back.");
+  }
+  await jobRef.set({
+    status: "rollback_running",
+    rollbackActorUid: safeDirectoryString(actorUid || "system", 180),
+    rollbackStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  let restored = 0;
+  let lastDocument = null;
+  try {
+    while (true) {
+      let query = jobRef.collection("changes")
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(400);
+      if (lastDocument) query = query.startAfter(lastDocument);
+      const changeSnap = await query.get();
+      if (changeSnap.empty) break;
+      const batch = db.batch();
+      changeSnap.docs.forEach((changeDoc) => {
+        const change = changeDoc.data() || {};
+        const targetType = normalizePublicVibeIndexRollupTargetType(change.targetType || "");
+        const targetId = safeDirectoryString(change.targetId || "", 220);
+        const collectionName = PUBLIC_VIBE_INDEX_TARGET_COLLECTIONS[targetType];
+        if (!collectionName || !targetId || targetId.includes("/")) {
+          throw new Error(`Invalid audited Vibe target in ${changeDoc.id}.`);
+        }
+        const restore = {
+          publicVibeIndex: change.beforeProjection && typeof change.beforeProjection === "object"
+            ? change.beforeProjection
+            : admin.firestore.FieldValue.delete(),
+          publicVibeIndexRollupVersion: change.beforeRollupVersion !== null && change.beforeRollupVersion !== undefined
+            ? change.beforeRollupVersion
+            : admin.firestore.FieldValue.delete(),
+          publicVibeIndexUpdatedAt: change.beforeUpdatedAt !== null && change.beforeUpdatedAt !== undefined
+            ? change.beforeUpdatedAt
+            : admin.firestore.FieldValue.delete(),
+        };
+        batch.set(db.collection(collectionName).doc(targetId), restore, { merge: true });
+      });
+      await batch.commit();
+      restored += changeSnap.size;
+      lastDocument = changeSnap.docs[changeSnap.docs.length - 1];
+      if (changeSnap.size < 400) break;
+    }
+    await jobRef.set({
+      status: "rolled_back",
+      restored,
+      rolledBackAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { ok: true, jobId: safeJobId, restored, alreadyRolledBack: false };
+  } catch (error) {
+    await jobRef.set({
+      status: "rollback_failed",
+      restored,
+      rollbackError: safeDirectoryString(error?.message || error || "rollback_failed", 500),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true }).catch(() => {});
+    throw error;
+  }
 };
 
 const normalizeDirectoryPhone = (value = "") => {
@@ -5955,6 +6892,15 @@ const requireDirectoryModerator = async (request, options = {}) => {
   return { uid, ...access };
 };
 
+const requireDirectoryAdmin = async (request, options = {}) => {
+  const uid = requireAuth(request, options.authMessage || "Sign in required.");
+  const access = await getDirectoryModeratorAccess(uid);
+  if (!access.isAdmin) {
+    throw new HttpsError("permission-denied", options.deniedMessage || "Directory administrator role required.");
+  }
+  return { uid, ...access };
+};
+
 const CATALOG_EDITOR_PROFILE_ROLES = new Set(["host", "venue_owner"]);
 const CATALOG_EDITOR_SUBSCRIPTION_TIERS = new Set(["host", "host_plus"]);
 
@@ -6037,9 +6983,15 @@ const normalizeDirectoryListingPayload = (listingType = "", payload = {}, caller
   const venueId = safeDirectoryString(payload?.venueId || "", 180);
   const hostUid = safeDirectoryString(payload?.hostUid || callerUid, 180) || callerUid;
   const performerUid = safeDirectoryString(payload?.performerUid || "", 180);
-  const region = normalizeDirectoryToken(payload?.region || DIRECTORY_DEFAULT_REGION, 80) || DIRECTORY_DEFAULT_REGION;
   const city = safeDirectoryString(payload?.city || "", 80);
   const state = safeDirectoryString(payload?.state || "", 40);
+  const requestedRegion = normalizeDirectoryToken(payload?.region || "", 80);
+  const inferredRegion = state && city
+    ? normalizeDirectoryToken(`${state}_${city}`, 80)
+    : "";
+  const region = requestedRegion && requestedRegion !== DIRECTORY_DEFAULT_REGION
+    ? requestedRegion
+    : inferredRegion || requestedRegion || DIRECTORY_DEFAULT_REGION;
   const timezone = safeDirectoryString(payload?.timezone || "America/Los_Angeles", 80);
   const country = safeDirectoryString(payload?.country || DIRECTORY_DEFAULT_COUNTRY, 2).toUpperCase();
   const startsAtMs = Number(payload?.startsAtMs || 0);
@@ -6813,7 +7765,14 @@ const readOrganizationEntitlements = async (orgId = "") => {
   ).trim() || "inactive";
   const capabilities = entitlementsSnap.exists
     ? normalizeCapabilities(entitlementsSnap.data()?.capabilities || {})
-    : buildCapabilitiesForPlan(planId, status);
+    : buildCapabilitiesForPlan(planId, status, {
+      cancelAtPeriodEnd: !!subscriptionData.cancelAtPeriodEnd,
+    });
+  capabilities[ROOM_CREATE_CAPABILITY] = canCreateRoomForSubscription({
+    planId,
+    status,
+    cancelAtPeriodEnd: !!subscriptionData.cancelAtPeriodEnd,
+  });
   const renewalAtMs = valueToMillis(subscriptionData.currentPeriodEnd);
   const provider = String(subscriptionData.provider || "internal").trim() || "internal";
   const cancelAtPeriodEnd = !!subscriptionData.cancelAtPeriodEnd;
@@ -6849,6 +7808,7 @@ const resolveUserEntitlements = async (uid) => {
       source: "super_admin",
       capabilities: normalizeCapabilities({
         ...BASE_CAPABILITIES,
+        [ROOM_CREATE_CAPABILITY]: true,
         "ai.generate_content": true,
         "api.youtube_data": true,
         "api.apple_music": true,
@@ -6861,6 +7821,7 @@ const resolveUserEntitlements = async (uid) => {
   const capabilities = normalizeCapabilities(entitlements.capabilities || {});
   const hostApprovalEnabled = await hasHostApprovalAccess(uid);
   if (hostApprovalEnabled) {
+    capabilities[ROOM_CREATE_CAPABILITY] = true;
     capabilities["ai.generate_content"] = true;
     capabilities["api.youtube_data"] = true;
   }
@@ -7078,6 +8039,47 @@ const requireHostWorkspaceAccess = async (request, options = {}) => {
   return { uid, entitlements, hostApprovalEnabled };
 };
 
+const requireRoomCreationAccess = async (request) => {
+  const uid = requireAuth(request, "Sign in before creating a Room.");
+  const entitlements = await resolveUserEntitlements(uid);
+  const email = normalizeEmailToken(request.auth?.token?.email || "");
+  const hostApprovalEnabled = await hasHostApprovalAccess(uid, email);
+  const subscriptionAllowed = canCreateRoomForSubscription({
+    planId: entitlements.planId,
+    status: entitlements.status,
+    cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
+  });
+  const superAdmin = entitlements.provider === "super_admin";
+  if (!subscriptionAllowed && !hostApprovalEnabled && !superAdmin) {
+    const normalizedStatus = String(entitlements.status || "inactive").trim().toLowerCase();
+    const reason = normalizedStatus === "past_due"
+      ? "subscription_past_due"
+      : normalizedStatus === "trialing"
+        ? "payment_required"
+        : "active_host_plan_required";
+    const message = reason === "subscription_past_due"
+      ? "Payment is past due. Update billing before creating another Room."
+      : "An active paid Host plan is required before creating a Room.";
+    throw new HttpsError("permission-denied", message, {
+      reason,
+      capability: ROOM_CREATE_CAPABILITY,
+      planId: entitlements.planId || "free",
+      status: entitlements.status || "inactive",
+    });
+  }
+  const accessSource = superAdmin
+    ? "super_admin"
+    : subscriptionAllowed
+      ? "host_plan"
+      : "approved_host_override";
+  return {
+    uid,
+    entitlements,
+    hostApprovalEnabled,
+    accessSource,
+  };
+};
+
 const resolveHostApplicationRecord = async ({ uid = "", email = "" } = {}) => {
   const safeUid = normalizeUidToken(uid);
   const safeEmail = normalizeEmailToken(email);
@@ -7166,7 +8168,9 @@ const applyOrganizationSubscriptionState = async ({
   const now = admin.firestore.FieldValue.serverTimestamp();
   const safePlanId = getPlanDefinition(planId) ? planId : "free";
   const plan = getPlanDefinition(safePlanId) || PLAN_DEFINITIONS.free;
-  const capabilities = buildCapabilitiesForPlan(safePlanId, status);
+  const capabilities = buildCapabilitiesForPlan(safePlanId, status, {
+    cancelAtPeriodEnd,
+  });
   const entitlementActive = isEntitledStatus(status);
   const currentPeriodEnd = Number(currentPeriodEndSec || 0) > 0
     ? new Date(Number(currentPeriodEndSec) * 1000)
@@ -10253,6 +11257,7 @@ const normalizeLyricsGenerationStatus = ({
   const token = String(resolution || "").trim().toLowerCase();
   if (token === "disabled") return "disabled";
   if (token === "capability_blocked") return "capability_blocked";
+  if (token === "apple_permission_denied" || token === "permission_denied") return "permission_denied";
   if (token.includes("error")) return "error";
   return "no_match";
 };
@@ -10787,6 +11792,7 @@ Do not include markdown.`;
 };
 
 const fetchAiLyricsFallbackText = async (title, artist) => {
+  if (!LYRICS_AI_FALLBACK_ENABLED_DEFAULT) return null;
   const safeTitle = normalizeLyricsText(title);
   if (!safeTitle) return null;
   const safeArtist = normalizeLyricsText(artist || "Unknown") || "Unknown";
@@ -12341,6 +13347,26 @@ exports.reconcilePerformanceRecap = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.youtubeQuotaStatus = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "youtube_quota_status", { perMinute: 120, perHour: 1200 });
+  requireAuth(request);
+  enforceAppCheckIfEnabled(request, "youtube_quota_status");
+  const checkedAtMs = nowMs();
+  const [status, dailyUsage] = await Promise.all([
+    readSharedYouTubeQuotaStatus(),
+    readYouTubeApiDailyUsage(checkedAtMs),
+  ]);
+  const policy = buildYouTubeDailyCatalogPolicy();
+  return {
+    ...status,
+    checkedAtMs,
+    dailyUsage,
+    dailySearchListCallLimit: policy.dailySearchLimit,
+    nightlyLiveSearchReserve: policy.liveSearchReserve,
+    nightlySearchCap: policy.nightlySearchCap,
+  };
+});
+
 exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_search");
   await checkDurableRateLimit(request.rawRequest, "youtube_search", DEFAULT_LIMITS);
@@ -12397,6 +13423,10 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
       source: usageSource,
     }),
   });
+  await reserveYouTubeApiDailyCall({
+    method: "search.list",
+    source: usageSource,
+  });
   const url = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&q=${encodeURIComponent(query)}&part=snippet&type=video&maxResults=${maxResults}&order=relevance`;
   const res = await fetch(url);
   await assertYouTubeApiResponseOk(res, "YouTube search");
@@ -12428,6 +13458,10 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
       roomCode: request.data?.roomCode || "",
       source: usageSource,
     }),
+  });
+  await reserveYouTubeApiDailyCall({
+    method: "videos.list",
+    source: `${usageSource}_playability`,
   });
   const ids = baseItems.map((item) => item.id).slice(0, 50);
   const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,contentDetails,statistics&id=${ids.join(",")}`;
@@ -12510,6 +13544,10 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
         source: usageSource,
       }),
     });
+    await reserveYouTubeApiDailyCall({
+      method: "playlistItems.list",
+      source: usageSource,
+    });
     const url = `https://www.googleapis.com/youtube/v3/playlistItems?key=${apiKey}&part=snippet&maxResults=${batchSize}&playlistId=${playlistId}${pageToken ? `&pageToken=${pageToken}` : ""}`;
     const res = await fetch(url);
     await assertYouTubeApiResponseOk(res, "Playlist fetch");
@@ -12555,6 +13593,10 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
       roomCode: request.data?.roomCode || "",
       source: usageSource,
     }),
+  });
+  await reserveYouTubeApiDailyCall({
+    method: "videos.list",
+    source: usageSource,
   });
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status&id=${sliced.join(",")}`;
@@ -12698,6 +13740,10 @@ exports.youtubeRefreshIndexEntries = onCall({ cors: true, secrets: [YOUTUBE_API_
       source: usageSource,
     }),
   });
+  await reserveYouTubeApiDailyCall({
+    method: "videos.list",
+    source: usageSource,
+  });
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,snippet&id=${ids.join(",")}`;
   const res = await fetch(url);
   await assertYouTubeApiResponseOk(res, "YouTube index refresh");
@@ -12824,6 +13870,10 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
       source: usageSource,
     }),
   });
+  await reserveYouTubeApiDailyCall({
+    method: "videos.list",
+    source: usageSource,
+  });
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=contentDetails&id=${sliced.join(",")}`;
   const res = await fetch(url);
@@ -12854,6 +13904,12 @@ exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async
         "Capability \"ai.generate_content\" requires an active subscription."
       );
     }
+  }
+  if (type === "lyrics" && !LYRICS_AI_FALLBACK_ENABLED_DEFAULT) {
+    throw new HttpsError(
+      "failed-precondition",
+      "AI lyric generation is disabled. Use canonical, licensed, or host-provided lyrics."
+    );
   }
   enforceAppCheckIfEnabled(request, "gemini");
   if (!aiDemoBypass) {
@@ -13019,7 +14075,8 @@ const runLyricsResolverForQueueSong = async ({
     aiMeterEntitlements = entitlements;
   }
 
-  const aiFallbackConfigured = !!String(GEMINI_API_KEY.value() || "").trim();
+  const aiFallbackConfigured = LYRICS_AI_FALLBACK_ENABLED_DEFAULT
+    && !!String(GEMINI_API_KEY.value() || "").trim();
   const aiCapabilityEnabled = !!aiMeterEntitlements?.capabilities?.["ai.generate_content"];
   const aiMetered = !!aiMeterEntitlements?.capabilities?.["ai.generate_content"];
   const demoBypassEnabled = isRoomAiDemoBypassEnabled(roomData);
@@ -13500,9 +14557,10 @@ exports.appleMusicLyrics = onCall(
     });
     if (!lyricsRes.ok) {
       const text = await lyricsRes.text();
-      // Apple returns code 40012 when lyrics permission is missing from the request.
-      // This is commonly resolved by providing a Music User Token from MusicKit auth.
+      // Apple returns code 40012 when this request lacks lyrics privileges. A missing
+      // Music User Token is actionable; the same response with a token is an access gate.
       if (lyricsRes.status === 400 && text.includes("\"code\":\"40012\"")) {
+        const userAuthorizationMissing = !musicUserToken;
         return {
           found: true,
           songId: appleSongId,
@@ -13510,8 +14568,12 @@ exports.appleMusicLyrics = onCall(
           artist: resolvedArtist,
           timedLyrics: [],
           lyrics: "",
-          needsUserToken: !musicUserToken,
-          message: "Apple Music lyrics require additional permissions in request (code 40012).",
+          needsUserToken: userAuthorizationMissing,
+          permissionDenied: !userAuthorizationMissing,
+          resolution: userAuthorizationMissing ? "apple_needs_user_token" : "apple_permission_denied",
+          message: userAuthorizationMissing
+            ? "Apple Music lyrics require host authorization (code 40012)."
+            : "Apple Music lyrics access is not approved for this integration (code 40012).",
         };
       }
       throw new HttpsError("unavailable", `Apple Music lyrics failed: ${text}`);
@@ -13724,6 +14786,20 @@ exports.autoAppleLyrics = onDocumentCreated(
           await event.data.ref.set({
             lyricsGenerationStatus: "resolved",
             lyricsGenerationResolution: "source_existing",
+            lyricsGenerationUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lyricsProviderTrace: [],
+          }, { merge: true });
+        } catch (_error) {
+          // Best-effort status stamp.
+        }
+        return;
+      }
+
+      if (initialRoomData?.autoLyricsOnQueue !== true) {
+        try {
+          await event.data.ref.set({
+            lyricsGenerationStatus: "disabled",
+            lyricsGenerationResolution: "room_auto_lyrics_disabled",
             lyricsGenerationUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
             lyricsProviderTrace: [],
           }, { merge: true });
@@ -14232,12 +15308,299 @@ const fetchYouTubeIndexRefreshItemsAdmin = async ({ apiKey = "", ids = [] } = {}
   const safeIds = [...new Set((Array.isArray(ids) ? ids : []).map((id) => String(id || "").trim()).filter(Boolean))].slice(0, 50);
   if (!apiKey || !safeIds.length) return [];
   ensureYouTubeApiQuotaAvailable();
+  await reserveYouTubeApiDailyCall({
+    method: "videos.list",
+    source: "nightly_index_maintenance",
+  });
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,snippet&id=${safeIds.join(",")}`;
   const res = await fetch(url);
   await assertYouTubeApiResponseOk(res, "YouTube index maintenance refresh");
   const data = await res.json();
   return Array.isArray(data.items) ? data.items : [];
 };
+
+const NIGHTLY_YOUTUBE_CATALOG_ACTIVE_ROOM_WINDOW_MS = 20 * 60 * 1000;
+const NIGHTLY_YOUTUBE_CATALOG_SEED_SCAN_MULTIPLIER = 3;
+const NIGHTLY_YOUTUBE_EXPIRED_CANDIDATE_DELETE_LIMIT = 500;
+
+const deleteExpiredCanonicalYouTubeCandidates = async (atMs = nowMs()) => {
+  const expiredSnap = await admin.firestore()
+    .collectionGroup(BACKING_CANDIDATES_SUBCOLLECTION)
+    .where("provider", "==", "youtube")
+    .where("expiresAtMs", "<=", atMs)
+    .limit(NIGHTLY_YOUTUBE_EXPIRED_CANDIDATE_DELETE_LIMIT)
+    .get();
+  if (expiredSnap.empty) return 0;
+  const batches = [];
+  for (let offset = 0; offset < expiredSnap.docs.length; offset += 400) {
+    const batch = admin.firestore().batch();
+    expiredSnap.docs.slice(offset, offset + 400).forEach((docSnap) => batch.delete(docSnap.ref));
+    batches.push(batch.commit());
+  }
+  await Promise.all(batches);
+  return expiredSnap.size;
+};
+
+const roomLooksActiveForNightlyYouTubeCatalog = (room = {}, atMs = nowMs()) => {
+  const archived = room.archived === true
+    || String(room.archivedStatus || "").trim().toLowerCase() === "archived";
+  const closedAtMs = valueToMillis(room.closedAt)
+    || Math.max(0, Number(room.closedAtMs || room.closedAt || 0) || 0);
+  if (archived || closedAtMs > 0) return false;
+  const activityAtMs = Math.max(
+    valueToMillis(room.updatedAt),
+    Math.max(0, Number(room.updatedAtMs || 0) || 0),
+    valueToMillis(room.lastPerformance?.timestamp),
+    Math.max(0, Number(room.currentPerformanceSession?.lastHeartbeatAtMs || 0) || 0),
+    valueToMillis(room.createdAt),
+    Math.max(0, Number(room.createdAtMs || 0) || 0)
+  );
+  return activityAtMs >= (atMs - NIGHTLY_YOUTUBE_CATALOG_ACTIVE_ROOM_WINDOW_MS);
+};
+
+const hasActiveRoomForNightlyYouTubeCatalog = async (atMs = nowMs()) => {
+  const roomsRef = getRootRef().collection("rooms");
+  try {
+    const [timestampSnap, numericSnap] = await Promise.all([
+      roomsRef.orderBy("updatedAt", "desc").limit(30).get(),
+      roomsRef.orderBy("updatedAtMs", "desc").limit(30).get(),
+    ]);
+    const rooms = new Map();
+    [...timestampSnap.docs, ...numericSnap.docs].forEach((docSnap) => rooms.set(docSnap.id, docSnap.data() || {}));
+    return [...rooms.values()].some((room) => roomLooksActiveForNightlyYouTubeCatalog(room, atMs));
+  } catch (error) {
+    console.warn("nightlyYouTubeCatalogEnrichment active-room safety check failed", error?.message || error);
+    return true;
+  }
+};
+
+const loadNightlyYouTubeCatalogSeeds = async ({ limit = 25, atMs = nowMs() } = {}) => {
+  const safeLimit = Math.max(1, Math.min(100, Number(limit || 25) || 25));
+  const scanLimit = Math.max(safeLimit, Math.min(200, safeLimit * NIGHTLY_YOUTUBE_CATALOG_SEED_SCAN_MULTIPLIER));
+  const db = admin.firestore();
+  const seedDocs = [];
+  try {
+    const publicSnap = await db.collection(PUBLIC_CHART_SONGS_COLLECTION)
+      .orderBy("updatedAt", "desc")
+      .limit(scanLimit)
+      .get();
+    seedDocs.push(...publicSnap.docs.map((docSnap) => ({ priority: 2, docSnap })));
+  } catch (error) {
+    console.warn("nightlyYouTubeCatalogEnrichment public song seed read failed", error?.message || error);
+  }
+  try {
+    const songSnap = await db.collection("songs")
+      .orderBy("updatedAt", "desc")
+      .limit(scanLimit)
+      .get();
+    seedDocs.push(...songSnap.docs.map((docSnap) => ({ priority: 1, docSnap })));
+  } catch (error) {
+    console.warn("nightlyYouTubeCatalogEnrichment canonical song seed read failed", error?.message || error);
+  }
+
+  const seedsBySongId = new Map();
+  for (const { priority, docSnap } of seedDocs) {
+    const data = docSnap.data() || {};
+    const songId = String(data.canonicalSongId || data.songId || docSnap.id || "").trim();
+    const title = String(data.songTitle || data.title || "").trim();
+    const artist = String(data.artist || "").trim();
+    if (!songId || !title || !artist || artist.toLowerCase() === "unknown") continue;
+    const prior = seedsBySongId.get(songId);
+    if (!prior || priority > prior.priority) {
+      seedsBySongId.set(songId, { songId, title, artist, priority });
+    }
+  }
+
+  const orderedSeeds = [...seedsBySongId.values()].sort((left, right) => right.priority - left.priority);
+  const eligible = [];
+  for (const seed of orderedSeeds) {
+    if (eligible.length >= safeLimit) break;
+    const candidateSnap = await db.collection("songs")
+      .doc(seed.songId)
+      .collection(BACKING_CANDIDATES_SUBCOLLECTION)
+      .where("provider", "==", "youtube")
+      .limit(10)
+      .get();
+    const hasFreshCandidate = candidateSnap.docs.some((docSnap) => isFreshYouTubeCandidate({
+      candidate: docSnap.data() || {},
+      atMs,
+    }));
+    if (!hasFreshCandidate) eligible.push(seed);
+  }
+  return eligible;
+};
+
+const fetchNightlyYouTubeCatalogCandidate = async ({ apiKey = "", song = {}, policy, atMs = nowMs() } = {}) => {
+  ensureYouTubeApiQuotaAvailable();
+  await reserveYouTubeApiDailyCall({
+    method: "search.list",
+    source: "nightly_demand_catalog",
+    atMs,
+    maxMethodCalls: policy.nightlySearchCeiling,
+  });
+  const query = `${song.title} ${song.artist} karaoke instrumental`;
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&q=${encodeURIComponent(query)}&part=snippet&type=video&videoEmbeddable=true&maxResults=10&order=relevance`;
+  const searchRes = await fetch(searchUrl);
+  await assertYouTubeApiResponseOk(searchRes, "Nightly YouTube catalog search");
+  const searchData = await searchRes.json();
+  const baseItems = (Array.isArray(searchData.items) ? searchData.items : []).map((item) => ({
+    id: String(item.id?.videoId || "").trim(),
+    title: String(item.snippet?.title || "").trim(),
+    channelTitle: String(item.snippet?.channelTitle || "").trim(),
+    thumbnailUrl: String(item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || "").trim(),
+  })).filter((item) => item.id);
+  if (!baseItems.length) return null;
+
+  await reserveYouTubeApiDailyCall({
+    method: "videos.list",
+    source: "nightly_demand_catalog_playability",
+    atMs,
+  });
+  const ids = baseItems.map((item) => item.id).slice(0, 50);
+  const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,contentDetails,statistics&id=${ids.join(",")}`;
+  const detailsRes = await fetch(detailsUrl);
+  await assertYouTubeApiResponseOk(detailsRes, "Nightly YouTube catalog playability check");
+  const detailsData = await detailsRes.json();
+  const detailsById = new Map((Array.isArray(detailsData.items) ? detailsData.items : []).map((item) => {
+    const uploadStatus = String(item.status?.uploadStatus || "").toLowerCase();
+    const privacyStatus = String(item.status?.privacyStatus || "").toLowerCase();
+    const embeddable = item.status?.embeddable === true;
+    const playable = embeddable
+      && (uploadStatus === "processed" || uploadStatus === "uploaded")
+      && (privacyStatus === "public" || privacyStatus === "unlisted");
+    return [String(item.id || "").trim(), {
+      embeddable,
+      playable,
+      uploadStatus,
+      privacyStatus,
+      durationSec: parseIsoDuration(item.contentDetails?.duration || ""),
+      viewCount: Math.max(0, Number(item.statistics?.viewCount || 0) || 0),
+    }];
+  }));
+  const verifiedItems = baseItems.map((item) => ({ ...item, ...(detailsById.get(item.id) || {}) }));
+  return selectNightlyKaraokeCandidate({ song, items: verifiedItems });
+};
+
+exports.nightlyYouTubeCatalogEnrichment = onSchedule(
+  {
+    schedule: "35 23 * * *",
+    timeZone: "America/Los_Angeles",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    secrets: [YOUTUBE_API_KEY],
+  },
+  async () => {
+    const atMs = nowMs();
+    const policy = buildYouTubeDailyCatalogPolicy();
+    const report = {
+      dateKey: buildPacificDateKey(atMs),
+      enabled: policy.enabled,
+      policy,
+      startedAtMs: atMs,
+      skippedReason: "",
+      searchBudget: 0,
+      attemptedSongs: 0,
+      discoveredCandidates: 0,
+      misses: 0,
+      failures: 0,
+    };
+    try {
+      const apiKey = String(YOUTUBE_API_KEY.value() || "").trim();
+      if (!policy.enabled) report.skippedReason = "disabled";
+      else if (!apiKey) report.skippedReason = "missing_api_key";
+      else {
+        const sharedStatus = await readSharedYouTubeQuotaStatus();
+        if (sharedStatus.quotaBlocked) report.skippedReason = "shared_quota_blocked";
+        else if (await hasActiveRoomForNightlyYouTubeCatalog(atMs)) report.skippedReason = "active_room";
+      }
+      if (!report.skippedReason) {
+        const usage = await readYouTubeApiDailyUsage(atMs);
+        report.usageBefore = usage;
+        report.searchBudget = buildNightlyYouTubeSearchBudget({
+          usedSearchCalls: usage.searchListCalls,
+          policy,
+        });
+        if (!report.searchBudget) report.skippedReason = "live_reserve_reached";
+      }
+      if (!report.skippedReason) {
+        const seeds = await loadNightlyYouTubeCatalogSeeds({ limit: report.searchBudget, atMs });
+        report.seedCount = seeds.length;
+        for (const song of seeds) {
+          if (report.attemptedSongs >= report.searchBudget) break;
+          report.attemptedSongs += 1;
+          try {
+            const selected = await fetchNightlyYouTubeCatalogCandidate({
+              apiKey: YOUTUBE_API_KEY.value(),
+              song,
+              policy,
+              atMs,
+            });
+            if (!selected?.item) {
+              report.misses += 1;
+              continue;
+            }
+            const item = selected.item;
+            const candidate = buildCanonicalBackingCandidatePatchFromYouTubeIndexEntry({
+              entry: {
+                canonicalSongId: song.songId,
+                videoId: item.id,
+                trackName: item.title,
+                artistName: song.artist,
+                channelTitle: item.channelTitle,
+                thumbnailUrl: item.thumbnailUrl,
+                playable: true,
+                embeddable: true,
+                uploadStatus: item.uploadStatus,
+                privacyStatus: item.privacyStatus,
+                durationSec: item.durationSec,
+                viewCount: item.viewCount,
+                qualityScore: selected.score,
+                rankingScore: selected.score,
+                sourceDetail: "Demand-driven nightly YouTube backing candidate.",
+                lastVerifiedAtMs: atMs,
+                expiresAtMs: atMs + DEFAULT_YOUTUBE_CANDIDATE_RETENTION_MS,
+              },
+              actorUid: "nightly_youtube_catalog_enrichment",
+              sourceDiscovery: "nightly_demand_catalog",
+              timestamp: admin.firestore.FieldValue.serverTimestamp(),
+              atMs,
+            });
+            if (!candidate) {
+              report.misses += 1;
+              continue;
+            }
+            await admin.firestore().collection("songs")
+              .doc(candidate.songId)
+              .collection(BACKING_CANDIDATES_SUBCOLLECTION)
+              .doc(candidate.candidateId)
+              .set(candidate.data, { merge: true });
+            report.discoveredCandidates += 1;
+          } catch (error) {
+            report.failures += 1;
+            console.warn("nightlyYouTubeCatalogEnrichment song failed", {
+              songId: song.songId,
+              error: error?.message || String(error),
+            });
+            const code = String(error?.code || "").toLowerCase();
+            if (code.includes("resource-exhausted")) break;
+          }
+        }
+      }
+    } catch (error) {
+      report.failures += 1;
+      report.skippedReason = report.skippedReason || "job_failure";
+      console.error("nightlyYouTubeCatalogEnrichment failed", error?.message || error);
+    } finally {
+      report.finishedAtMs = nowMs();
+      report.usageAfter = await readYouTubeApiDailyUsage(atMs).catch(() => null);
+      await admin.firestore().collection("runtime_status").doc("youtube_nightly_catalog").set({
+        ...report,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      console.log("nightlyYouTubeCatalogEnrichment", report);
+    }
+  }
+);
 
 exports.nightlyYouTubeIndexCleanup = onSchedule(
   {
@@ -14258,6 +15621,12 @@ exports.nightlyYouTubeIndexCleanup = onSchedule(
     let removedByRefresh = 0;
     let backfillLibraries = 0;
     let backfilledCandidates = 0;
+    let expiredCanonicalCandidatesDeleted = 0;
+    try {
+      expiredCanonicalCandidatesDeleted = await deleteExpiredCanonicalYouTubeCandidates(maintenanceAtMs);
+    } catch (error) {
+      console.warn("nightlyYouTubeIndexCleanup expired canonical candidate cleanup failed", error?.message || error);
+    }
     while (true) {
       let queryRef = hostLibrariesRef
         .orderBy(admin.firestore.FieldPath.documentId())
@@ -14321,6 +15690,7 @@ exports.nightlyYouTubeIndexCleanup = onSchedule(
               actorUid: data.updatedByUid || "nightly_youtube_index_cleanup",
               sourceDiscovery: entry.sourceDiscovery || "idle_refresh",
               timestamp: candidateTimestamp,
+              atMs: maintenanceAtMs,
             });
             if (!candidate) continue;
             const candidateKey = `${candidate.songId}/${candidate.candidateId}`;
@@ -14370,6 +15740,7 @@ exports.nightlyYouTubeIndexCleanup = onSchedule(
       removedByRefresh,
       backfillLibraries,
       backfilledCandidates,
+      expiredCanonicalCandidatesDeleted,
       refreshEnabled: !!apiKey,
     });
   }
@@ -16516,6 +17887,28 @@ exports.createDirectoryCheckin = onCall({ cors: true }, async (request) => {
   const checkinRef = db.collection("checkins").doc();
   const totalsRef = db.collection("checkin_totals").doc(buildDirectoryCheckinTotalDocId(targetType, targetId));
   const now = buildDirectoryNow();
+  const nowMs = Date.now();
+  const roomSessionId = safeDirectoryString(
+    request.data?.roomSessionId
+    || request.data?.sessionId
+    || (normalizeEvidenceTargetType(targetType) === "room_session" ? targetId : ""),
+    220
+  );
+  const evidence = await preparePublicVibeParticipantEvidence({
+    request,
+    evidenceType: "authenticated_checkin",
+    targetType,
+    targetId,
+    roomSessionId,
+    occurrenceId: request.data?.occurrenceId || "",
+    sourceCollection: "checkins",
+    sourceId: checkinRef.id,
+    verificationMethod: "authenticated_room_member",
+    nowMs,
+  }).catch((error) => {
+    logPublicVibeEvidenceWriteFailure("checkin_prepare", error);
+    return { qualified: false, reason: "preparation_failed", record: null, ref: null };
+  });
 
   await db.runTransaction(async (tx) => {
     tx.set(checkinRef, {
@@ -16537,6 +17930,10 @@ exports.createDirectoryCheckin = onCall({ cors: true }, async (request) => {
       createdAt: now,
     }, { merge: true });
   });
+  if (evidence.record) {
+    await writePublicVibeEvidenceRecordsIfAbsent([evidence.record])
+      .catch((error) => logPublicVibeEvidenceWriteFailure("checkin_write", error));
+  }
 
   return {
     ok: true,
@@ -16567,6 +17964,29 @@ exports.submitDirectoryReview = onCall({ cors: true }, async (request) => {
   const reviewRef = db.collection("reviews").doc(reviewId);
   const totalsRef = db.collection("review_totals").doc(buildDirectoryCheckinTotalDocId(targetType, targetId));
   const now = buildDirectoryNow();
+  const nowMs = Date.now();
+  const roomSessionId = safeDirectoryString(
+    request.data?.roomSessionId
+    || request.data?.sessionId
+    || eventId
+    || (normalizeEvidenceTargetType(targetType) === "room_session" ? targetId : ""),
+    220
+  );
+  const evidence = await preparePublicVibeParticipantEvidence({
+    request,
+    evidenceType: "verified_review",
+    targetType,
+    targetId,
+    roomSessionId,
+    occurrenceId: request.data?.occurrenceId || "",
+    sourceCollection: "reviews",
+    sourceId: reviewId,
+    verificationMethod: "authenticated_room_member_review",
+    nowMs,
+  }).catch((error) => {
+    logPublicVibeEvidenceWriteFailure("review_prepare", error);
+    return { qualified: false, reason: "preparation_failed", record: null, ref: null };
+  });
 
   await db.runTransaction(async (tx) => {
     const prevSnap = await tx.get(reviewRef);
@@ -16610,6 +18030,10 @@ exports.submitDirectoryReview = onCall({ cors: true }, async (request) => {
     }, { merge: true });
     tx.set(totalsRef, totalsPatch, { merge: true });
   });
+  if (evidence.record) {
+    await writePublicVibeEvidenceRecordsIfAbsent([evidence.record])
+      .catch((error) => logPublicVibeEvidenceWriteFailure("review_write", error));
+  }
 
   return { ok: true, reviewId };
 });
@@ -16828,6 +18252,18 @@ exports.submitDirectoryClaimRequest = onCall({ cors: true }, async (request) => 
   if (!listingId) {
     throw new HttpsError("invalid-argument", "listingId is required.");
   }
+  const db = admin.firestore();
+  const collectionName = ensureDirectoryClaimCollectionName(listingType);
+  const listingSnap = await db.collection(collectionName).doc(listingId).get();
+  if (!listingSnap.exists) {
+    throw new HttpsError("not-found", "Public listing was not found.");
+  }
+  const listing = listingSnap.data() || {};
+  const listingStatus = normalizeDirectoryStatus(listing.status || "pending", "pending");
+  const listingVisibility = normalizeDirectoryVisibility(listing.visibility || "private", "private");
+  if (listingStatus !== "approved" || listingVisibility !== "public") {
+    throw new HttpsError("not-found", "Public listing was not found.");
+  }
   const role = normalizeDirectoryToken(request.data?.role || "owner", 40) || "owner";
   const evidenceInput = request.data?.evidence;
   const evidence = normalizeDirectoryTextBlock(
@@ -16838,7 +18274,7 @@ exports.submitDirectoryClaimRequest = onCall({ cors: true }, async (request) => 
   );
   const claimId = buildDirectoryClaimDocId(uid, listingType, listingId);
   const now = buildDirectoryNow();
-  await admin.firestore().collection("directory_claim_requests").doc(claimId).set({
+  await db.collection("directory_claim_requests").doc(claimId).set({
     claimId,
     listingType,
     listingId,
@@ -16922,6 +18358,12 @@ exports.resolveDirectoryClaimRequest = onCall({ cors: true }, async (request) =>
     const listingSnap = await tx.get(listingRef);
     if (!listingSnap.exists) {
       throw new HttpsError("not-found", "Listing for claim request was not found.");
+    }
+    const listing = listingSnap.data() || {};
+    const listingStatus = normalizeDirectoryStatus(listing.status || "pending", "pending");
+    const listingVisibility = normalizeDirectoryVisibility(listing.visibility || "private", "private");
+    if (listingStatus !== "approved" || listingVisibility !== "public") {
+      throw new HttpsError("failed-precondition", "Listing is no longer publicly claimable.");
     }
     const roleToken = normalizeDirectoryToken(claim.role || "owner", 40) || "owner";
     const listingPatch = {
@@ -17075,6 +18517,11 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
   const nowMsValue = Date.now();
   const maxStartMs = nowMsValue + (dateWindowDays * 86400000);
   const db = admin.firestore();
+  const matchesGeoDateWindow = (item = {}) => {
+    const startsAtMs = Number(item.startsAtMs || 0);
+    if (!startsAtMs) return true;
+    return startsAtMs >= nowMsValue && startsAtMs <= maxStartMs;
+  };
 
   let venueQuery = db.collection("venues").where("status", "==", "approved").limit(180);
   let eventQuery = db.collection("karaoke_events").where("status", "==", "approved").limit(260);
@@ -17097,24 +18544,21 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
 
   const events = eventSnap.docs
     .map((docSnap) => buildDirectoryPublicListing(docSnap, "event"))
-    .filter((item) => {
-      if (String(item.visibility || "public") !== "public") return false;
-      const startsAtMs = Number(item.startsAtMs || 0);
-      if (!startsAtMs) return true;
-      return startsAtMs >= nowMsValue && startsAtMs <= maxStartMs;
-    })
+    .filter((item) => shouldIncludeDiscoverListing({
+      item,
+      matchesTimeWindow: matchesGeoDateWindow(item),
+    }))
     .sort((a, b) => Number(a.startsAtMs || 0) - Number(b.startsAtMs || 0));
   const sessions = sessionSnap.docs
     .map((docSnap) => buildDirectoryPublicListing(docSnap, "room_session"))
-    .filter((item) => {
-      const startsAtMs = Number(item.startsAtMs || 0);
-      if (!startsAtMs) return true;
-      return startsAtMs >= nowMsValue && startsAtMs <= maxStartMs;
-    })
+    .filter((item) => shouldIncludeDiscoverListing({
+      item,
+      matchesTimeWindow: matchesGeoDateWindow(item),
+    }))
     .sort((a, b) => Number(a.startsAtMs || 0) - Number(b.startsAtMs || 0));
   const venues = venueSnap.docs
     .map((docSnap) => buildDirectoryPublicListing(docSnap, "venue"))
-    .filter((item) => String(item.visibility || "public") === "public")
+    .filter((item) => shouldIncludeDiscoverListing({ item }))
     .sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
 
   const cacheMeta = cacheSnap && cacheSnap.exists ? (cacheSnap.data() || {}) : null;
@@ -17131,9 +18575,9 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
       sessions: sessions.length,
       total: venues.length + events.length + sessions.length,
     },
-    venues,
-    events,
-    sessions,
+    venues: venues.map((item) => buildDirectoryDiscoverResponseItem(item, request.auth?.uid || "")),
+    events: events.map((item) => buildDirectoryDiscoverResponseItem(item, request.auth?.uid || "")),
+    sessions: sessions.map((item) => buildDirectoryDiscoverResponseItem(item, request.auth?.uid || "")),
     cacheMeta: cacheMeta ? {
       token: safeDirectoryString(cacheMeta.token || "", 120),
       updatedAtMs: valueToMillis(cacheMeta.updatedAt),
@@ -17141,6 +18585,85 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
       description: normalizeDirectoryTextBlock(cacheMeta.description || "", 400),
     } : null,
   };
+});
+
+exports.previewPublicVibeEvidenceBackfill = onCall(
+  { cors: true, timeoutSeconds: 120, memory: "256MiB" },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "preview_public_vibe_evidence_backfill", { perMinute: 4, perHour: 20 });
+    requireAppCheck(request, "preview_public_vibe_evidence_backfill");
+    await requireDirectoryAdmin(request, {
+      deniedMessage: "Directory administrator role required to preview protected Vibe evidence.",
+    });
+    const requestedTypes = Array.isArray(request.data?.targetTypes)
+      ? request.data.targetTypes
+      : [request.data?.targetType || ""];
+    const targetTypes = Array.from(new Set(requestedTypes
+      .map(normalizeEvidenceTargetType)
+      .filter((type) => VIBE_V2_PREVIEW_TARGET_TYPES.includes(type))));
+    const hasRequestedType = requestedTypes.some((value) => String(value || "").trim());
+    if (hasRequestedType && !targetTypes.length) {
+      throw new HttpsError("invalid-argument", "At least one supported Vibe target type is required.");
+    }
+    return previewPublicVibeEvidenceBackfillInternal({
+      limit: request.data?.limit,
+      targetTypes: targetTypes.length ? targetTypes : VIBE_V2_PREVIEW_TARGET_TYPES,
+      nowMs: Date.now(),
+    });
+  }
+);
+
+exports.refreshPublicVibeIndexes = onCall({ cors: true, timeoutSeconds: 300, memory: "512MiB" }, async (request) => {
+  checkRateLimit(request.rawRequest, "refresh_public_vibe_indexes", { perMinute: 8, perHour: 30 });
+  enforceAppCheckIfEnabled(request, "refresh_public_vibe_indexes");
+  const previewAccess = await requireDirectoryModerator(request, { deniedMessage: "Directory moderator role required." });
+  const dryRun = parseBooleanInput(request.data?.dryRun, true);
+  const requestedTypes = Array.isArray(request.data?.targetTypes)
+    ? request.data.targetTypes
+    : [request.data?.targetType || ""];
+  const targetTypes = Array.from(new Set(requestedTypes
+    .map(normalizePublicVibeIndexRollupTargetType)
+    .filter(Boolean)));
+  const targetId = safeDirectoryString(request.data?.targetId || "", 220);
+  if (targetId && targetTypes.length !== 1) {
+    throw new HttpsError("invalid-argument", "targetId requires exactly one targetType.");
+  }
+  const selectedTypes = targetTypes.length ? targetTypes : PUBLIC_VIBE_INDEX_ROLLUP_TARGET_TYPES;
+  let actorUid = previewAccess.uid;
+  let operationMode = "preview";
+  if (!dryRun) {
+    requireAppCheck(request, "refresh_public_vibe_indexes_apply");
+    const adminAccess = await requireDirectoryAdmin(request, { deniedMessage: "Directory administrator role required to apply Vibe Index writes." });
+    const authorization = authorizePublicVibeIndexApply({
+      rollout: PUBLIC_VIBE_INDEX_ROLLOUT,
+      targetTypes: selectedTypes,
+      targetId,
+    });
+    if (!authorization.allowed) {
+      throw new HttpsError("failed-precondition", `Vibe Index write blocked: ${authorization.reason}.`);
+    }
+    actorUid = adminAccess.uid;
+    operationMode = PUBLIC_VIBE_INDEX_ROLLOUT.mode;
+  }
+  return executePublicVibeIndexRollup({
+    dryRun,
+    limit: clampNumber(request.data?.limit, 1, PUBLIC_VIBE_INDEX_ROLLUP_LIMIT, PUBLIC_VIBE_INDEX_ROLLUP_LIMIT),
+    targetTypes: selectedTypes,
+    targetId,
+    nowMs: Date.now(),
+    actorUid,
+    operationMode,
+  });
+});
+
+exports.rollbackPublicVibeIndexJob = onCall({ cors: true, timeoutSeconds: 300, memory: "512MiB" }, async (request) => {
+  checkRateLimit(request.rawRequest, "rollback_public_vibe_index_job", { perMinute: 4, perHour: 12 });
+  requireAppCheck(request, "rollback_public_vibe_index_job");
+  const access = await requireDirectoryAdmin(request, { deniedMessage: "Directory administrator role required to roll back Vibe Index jobs." });
+  return rollbackPublicVibeIndexJobInternal({
+    jobId: request.data?.jobId,
+    actorUid: access.uid,
+  });
 });
 
 exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
@@ -17156,6 +18679,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
   const hostUidFilter = safeDirectoryString(request.data?.hostUid || "", 180);
   const officialRoomOnly = parseBooleanInput(request.data?.officialRoomOnly, false);
   const timeWindow = normalizeDirectoryDiscoverTimeWindow(request.data?.timeWindow || "all");
+  const includeEnded = parseBooleanInput(request.data?.includeEnded, false);
   const viewerTimezone = normalizeDiscoverTimezone(request.data?.timezone || "UTC");
   const sortMode = normalizeDirectoryDiscoverSortMode(request.data?.sortMode || "smart");
   const cursor = normalizeDirectoryDiscoverCursor(request.data?.cursor || 0);
@@ -17312,7 +18836,13 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     hostUidFilter,
     officialRoomOnly,
     matchesSearch: matchesDirectoryDiscoverSearch(item, searchToken),
-    matchesTimeWindow: matchesDirectoryDiscoverTimeWindow(item, timeWindow, nowMs, viewerTimezone),
+    matchesTimeWindow: matchesDirectoryDiscoverTimeWindow(
+      item,
+      timeWindow,
+      nowMs,
+      viewerTimezone,
+      { includeEnded },
+    ),
     inBounds: bounds ? isDirectoryLocationInBounds(item.location, bounds) : true,
   }));
 
@@ -17386,6 +18916,9 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     const hasBeauRocksHostAccount = !!hostAccountMeta?.hasAccount && (
       !!hostAccountMeta?.hasHostRole || !!hostAccountMeta?.hasHostPlan
     );
+    const publicVibeIndex = buildPublicVibeIndexProjection({
+      publicVibeIndex: item.publicVibeIndex,
+    });
     const beauRocksElevatedReasons = item.isOfficialBeauRocksListing
       ? [item.listingType === "room_session" ? "official_room" : "official_event"]
       : [];
@@ -17443,12 +18976,11 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
       hostLeaderboardScore: Math.max(0, Number(hostInsightsMeta?.score || 0) || 0),
       hostHostedRooms: Math.max(0, Number(hostInsightsMeta?.hostedRooms || 0) || 0),
       hostRecapCount: Math.max(0, Number(hostInsightsMeta?.recapCount || 0) || 0),
-      hostTotalSongs: Math.max(0, Number(hostInsightsMeta?.totalSongs || 0) || 0),
-      hostTotalUsers: Math.max(0, Number(hostInsightsMeta?.totalUsers || 0) || 0),
       venueLeaderboardRank,
       venueLeaderboardScore: Math.max(0, Number(venueMeta?.leaderboardScore || 0) || 0),
       venueAverageRating: Math.max(0, Number(venueMeta?.averageRating || 0) || 0),
       venueReviewCount: Math.max(0, Number(venueMeta?.reviewCount || 0) || 0),
+      publicVibeIndex,
       venueCheckinCount: Math.max(0, Number(venueMeta?.checkinCount || 0) || 0),
       isOfficialBeauRocksListing: !!item.isOfficialBeauRocksListing,
       isBeauRocksElevated,
@@ -17492,7 +19024,10 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
   });
 
   const total = enrichedSorted.length;
-  const pageItems = enrichedSorted.slice(cursor, cursor + limit);
+  const viewerUid = safeDirectoryString(request.auth?.uid || "", 180);
+  const pageItems = enrichedSorted
+    .slice(cursor, cursor + limit)
+    .map((item) => buildDirectoryDiscoverResponseItem(item, viewerUid));
   const nextCursor = cursor + pageItems.length < total ? String(cursor + pageItems.length) : "";
   const hostFacets = Array.from(hostFacetsMap.values())
     .sort((a, b) => {
@@ -19697,6 +21232,73 @@ exports.mergeAnonymousAccountData = onCall({ cors: true }, async (request) => {
   return { ok: true, ...result, sourceUid, targetUid };
 });
 
+exports.rollPublicVibeIndexes = onSchedule(
+  {
+    schedule: "35 */6 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async () => {
+    const rolloutSummary = {
+      mode: PUBLIC_VIBE_INDEX_ROLLOUT.mode,
+      reason: PUBLIC_VIBE_INDEX_ROLLOUT.reason,
+      canaryTargetCount: PUBLIC_VIBE_INDEX_ROLLOUT.canaryTargets.length,
+      pageSize: PUBLIC_VIBE_INDEX_ROLLOUT.pageSize,
+      maxTargetsPerType: PUBLIC_VIBE_INDEX_ROLLOUT.maxTargetsPerType,
+    };
+    if (!PUBLIC_VIBE_INDEX_ROLLOUT.canRun) {
+      console.info("[directory/vibe-index] roll skipped", rolloutSummary);
+      return;
+    }
+    const startedAtMs = Date.now();
+    try {
+      const results = [];
+      if (PUBLIC_VIBE_INDEX_ROLLOUT.mode === "canary") {
+        for (const target of PUBLIC_VIBE_INDEX_ROLLOUT.canaryTargets) {
+          results.push(await executePublicVibeIndexRollup({
+            dryRun: false,
+            limit: PUBLIC_VIBE_INDEX_ROLLUP_LIMIT,
+            targetTypes: [target.targetType],
+            targetId: target.targetId,
+            nowMs: startedAtMs,
+            actorUid: "system_vibe_index_scheduler",
+            operationMode: "canary",
+          }));
+        }
+      } else {
+        results.push(await executePublicVibeIndexRollup({
+          dryRun: false,
+          limit: PUBLIC_VIBE_INDEX_ROLLUP_LIMIT,
+          targetTypes: PUBLIC_VIBE_INDEX_ROLLUP_TARGET_TYPES,
+          nowMs: startedAtMs,
+          actorUid: "system_vibe_index_scheduler",
+          operationMode: "all",
+        }));
+      }
+      console.log("[directory/vibe-index] roll completed", {
+        ...rolloutSummary,
+        durationMs: Date.now() - startedAtMs,
+        jobs: results.map((result) => ({
+          jobId: result.jobId,
+          targetTypes: result.targetTypes,
+          targetId: result.targetId,
+          scanned: result.scanned,
+          eligible: result.eligible,
+          written: result.written,
+        })),
+      });
+    } catch (error) {
+      console.error("[directory/vibe-index] roll failed", {
+        ...rolloutSummary,
+        durationMs: Date.now() - startedAtMs,
+        error: String(error?.message || error || "unknown_error"),
+      });
+      throw error;
+    }
+  }
+);
+
 exports.rollDirectoryNightOccurrences = onSchedule(
   {
     schedule: "every 6 hours",
@@ -21457,9 +23059,11 @@ exports.provisionHostRoom = onCall(
     checkRateLimit(request.rawRequest, "provision_host_room", { perMinute: 30, perHour: 240 });
     await checkDurableRateLimit(request.rawRequest, "provision_host_room", { perMinute: 30, perHour: 240 });
     enforceAppCheckIfEnabled(request, "provision_host_room");
-    const { uid: callerUid } = await requireHostWorkspaceAccess(request, {
-      deniedMessage: "Room provisioning requires an active host subscription or approved host access.",
-    });
+    const {
+      uid: callerUid,
+      entitlements: roomCreationEntitlements,
+      accessSource: roomCreationAccessSource,
+    } = await requireRoomCreationAccess(request);
     const payload = isPlainObject(request.data) ? request.data : {};
     const rootRef = getRootRef();
     const db = admin.firestore();
@@ -21616,6 +23220,14 @@ exports.provisionHostRoom = onCall(
     if (!roomCode) {
       throw new HttpsError("internal", "Room provisioning failed to return a room code.");
     }
+    console.info("room_creation_access_granted", {
+      uid: callerUid,
+      orgId: ensured.orgId,
+      roomCode,
+      accessSource: roomCreationAccessSource,
+      planId: roomCreationEntitlements.planId || "free",
+      status: roomCreationEntitlements.status || "inactive",
+    });
     const launchUrls = buildProvisionLaunchUrls({
       origin: launchOrigin,
       roomCode,
@@ -21789,7 +23401,7 @@ exports.publishPublicRoomRecap = onCall({ cors: true }, async (request) => {
       ? sessionData.beauRocksCapabilities.filter((entry) => typeof entry === "string")
       : [];
     const nextCapabilities = Array.from(new Set([...existingCapabilities, "recap_ready"]));
-    await sessionRef.set({
+    const sessionPatch = {
       hostRecapCount: Math.max(1, Number(sessionData?.hostRecapCount || 0) || 0),
       latestRecapAtMs: Math.max(0, Number(recap?.generatedAt || 0) || publishedAtMs),
       latestRecapRoomCode: safeRoomCode,
@@ -21798,7 +23410,25 @@ exports.publishPublicRoomRecap = onCall({ cors: true }, async (request) => {
       officialStatusLabel: "Recap Ready",
       beauRocksCapabilities: nextCapabilities,
       updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    };
+    const recapEvidence = sessionSnap.exists && isApprovedPublicVibeSession(sessionData)
+      ? buildSessionRecapEvidenceRecords({
+        sessionId: discoverListingId,
+        evidenceSessionId: safeDirectoryString(
+          roomData?.discover?.occurrenceId || sessionData.occurrenceId || discoverListingId,
+          220
+        ),
+        session: sessionData,
+        sourceCollection: "artifacts_rooms",
+        sourceId: safeRoomCode,
+        verificationMethod: "host_authorized_public_recap",
+        occurredAtMs: publishedAtMs,
+        verifiedAtMs: publishedAtMs,
+      })
+      : [];
+    await sessionRef.set(sessionPatch, { merge: true });
+    await writePublicVibeEvidenceRecordsIfAbsent(recapEvidence)
+      .catch((error) => logPublicVibeEvidenceWriteFailure("public_recap_write", error));
   }
 
   return {
@@ -26261,12 +27891,19 @@ exports.createSubscriptionCheckout = onCall(
     enforceAppCheckIfEnabled(request, "create_subscription_checkout");
     const planId = String(request.data?.planId || "").trim();
     const plan = getPlanDefinition(planId);
-    if (!plan || !isPaidPlan(planId)) {
+    if (!plan || !isPublicPaidHostPlan(planId)) {
       throw new HttpsError("invalid-argument", "Invalid subscription plan.");
     }
 
     const orgName = typeof request.data?.orgName === "string" ? request.data.orgName : "";
     const { orgId } = await ensureOrganizationForUser({ uid: callerUid, orgName });
+    const checkoutRequestId = normalizeCheckoutToken(request.data?.requestId || "", 120);
+    const checkoutIdempotencyKey = buildSubscriptionCheckoutIdempotencyKey({
+      uid: callerUid,
+      orgId,
+      planId,
+      requestId: checkoutRequestId,
+    });
     const origin = resolveOrigin(request.rawRequest, request.data?.origin);
     const stripe = getStripeClient();
     const ownerEmail = typeof request.auth?.token?.email === "string"
@@ -26285,8 +27922,8 @@ exports.createSubscriptionCheckout = onCall(
             unit_amount: plan.amountCents,
             recurring: { interval: plan.interval },
             product_data: {
-              name: `BROSS ${plan.name}`,
-              description: `Organization subscription (${plan.id})`,
+              name: `BeauRocks ${plan.name}`,
+              description: `Host plan for Room creation and Host Dashboard access (${plan.id})`,
             },
           },
           quantity: 1,
@@ -26294,6 +27931,7 @@ exports.createSubscriptionCheckout = onCall(
       ],
       metadata: {
         checkoutType: "org_subscription",
+        requestId: checkoutRequestId,
         orgId,
         ownerUid: callerUid,
         planId: plan.id,
@@ -26307,6 +27945,8 @@ exports.createSubscriptionCheckout = onCall(
       },
       success_url: `${origin}/?mode=host&subscription=success&org=${encodeURIComponent(orgId)}`,
       cancel_url: `${origin}/?mode=host&subscription=cancel&org=${encodeURIComponent(orgId)}`,
+    }, {
+      idempotencyKey: checkoutIdempotencyKey,
     });
 
     return {

@@ -560,7 +560,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
   const initialIsMobile = typeof window !== "undefined"
     && typeof window.matchMedia === "function"
     && window.matchMedia("(max-width: 1120px)").matches;
-  const initialRegion = initialIsMobile ? KITSAP_BOOTSTRAP_REGION : "";
+  const initialRegion = "";
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState(initialRegion);
   const [selectedListingTypes, setSelectedListingTypes] = useState(() => [...DEFAULT_SELECTED_LISTING_TYPES]);
@@ -604,7 +604,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
     padBottom: 0,
   });
   const [mapFullscreen, setMapFullscreen] = useState(false);
-  const mobileBootstrapRegion = isMobileViewport ? KITSAP_BOOTSTRAP_REGION : "";
   const bootstrapMapView = useMemo(() => {
     const regionToken = String(region || "").trim().toLowerCase();
     if (regionToken === KITSAP_BOOTSTRAP_REGION) {
@@ -926,7 +925,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
 
   const resetDiscoverFilters = useCallback(() => {
     setSearch("");
-    setRegion(mobileBootstrapRegion);
+    setRegion("");
     setSelectedListingTypes([...DEFAULT_SELECTED_LISTING_TYPES]);
     setTimeWindow("all");
     setSortMode("smart");
@@ -936,7 +935,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
     setRoomAccessFilter("all");
     setExperienceFilter("all");
     setEventCadenceFilter("all");
-  }, [mobileBootstrapRegion]);
+  }, []);
 
   const registerCardRef = useCallback((key, node) => {
     if (!key) return;

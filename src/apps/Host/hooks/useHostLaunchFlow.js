@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ASSETS } from '../../../lib/assets';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../../billing/capabilities';
 import { HOST_ONBOARDING_PLAN_OPTIONS } from '../hostAppData';
@@ -12,6 +12,14 @@ import {
     normalizeProvisionLaunchUrls,
     isProvisionHostRoomCallableUnavailableError,
 } from '../hostLaunchHelpers';
+import {
+    HOST_LAUNCH_OPTIONS_DRAFT_KEY,
+    buildHostLaunchDraftKey,
+    clearHostLaunchDraftPart,
+    loadHostLaunchDraftPart,
+    persistHostLaunchDraftPart,
+    sanitizeHostLaunchEventCreditsDraft,
+} from '../hostLaunchDraftStorage';
 
 const nowMs = () => Date.now();
 
@@ -54,10 +62,28 @@ const useHostLaunchFlow = ({
     hostRoomProvisionDeploymentWarning,
 }) => {
     const roomProvisionRequestIdRef = useRef('');
+    const launchDraftOwnerKey = String(authUid || uid || '').trim();
+    const launchOptionsDraftKey = buildHostLaunchDraftKey(
+        HOST_LAUNCH_OPTIONS_DRAFT_KEY,
+        launchDraftOwnerKey,
+    );
+    const [recoveredLaunchOptions] = useState(() => {
+        const recovered = loadHostLaunchDraftPart(
+            launchOptionsDraftKey,
+            {},
+        );
+        return recovered.restored ? recovered.value : {};
+    });
     const [creatingRoom, setCreatingRoom] = useState(false);
-    const [launchRequestedRoomCode, setLaunchRequestedRoomCode] = useState('');
-    const [quickLaunchDiscovery, setQuickLaunchDiscovery] = useState(() => createQuickLaunchDiscoveryDraft());
-    const [eventCreditsConfig, setEventCreditsConfig] = useState(() => createEventCreditsDraft());
+    const [launchRequestedRoomCode, setLaunchRequestedRoomCode] = useState(() => (
+        String(recoveredLaunchOptions?.requestedRoomCode || '').trim().toUpperCase().slice(0, 10)
+    ));
+    const [quickLaunchDiscovery, setQuickLaunchDiscovery] = useState(() => (
+        createQuickLaunchDiscoveryDraft(recoveredLaunchOptions?.quickLaunchDiscovery)
+    ));
+    const [eventCreditsConfig, setEventCreditsConfig] = useState(() => (
+        createEventCreditsDraft(recoveredLaunchOptions?.eventCreditsConfig)
+    ));
     const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
     const [onboardingStep, setOnboardingStep] = useState(0);
     const [onboardingBusy, setOnboardingBusy] = useState(false);
@@ -66,6 +92,24 @@ const useHostLaunchFlow = ({
     const [onboardingWorkspaceName, setOnboardingWorkspaceName] = useState('');
     const [onboardingPlanId, setOnboardingPlanId] = useState('host_monthly');
     const [onboardingLogoUrl, setOnboardingLogoUrl] = useState(ASSETS.logo);
+
+    useEffect(() => {
+        const normalizedRequestedCode = String(launchRequestedRoomCode || '').trim().toUpperCase().slice(0, 10);
+        const defaultDiscovery = createQuickLaunchDiscoveryDraft();
+        const defaultEconomy = createEventCreditsDraft();
+        const optionsAreDefault = !normalizedRequestedCode
+            && JSON.stringify(quickLaunchDiscovery) === JSON.stringify(defaultDiscovery)
+            && JSON.stringify(eventCreditsConfig) === JSON.stringify(defaultEconomy);
+        if (optionsAreDefault) {
+            clearHostLaunchDraftPart(launchOptionsDraftKey);
+            return;
+        }
+        persistHostLaunchDraftPart(launchOptionsDraftKey, {
+            requestedRoomCode: normalizedRequestedCode,
+            quickLaunchDiscovery,
+            eventCreditsConfig: sanitizeHostLaunchEventCreditsDraft(eventCreditsConfig),
+        });
+    }, [eventCreditsConfig, launchOptionsDraftKey, launchRequestedRoomCode, quickLaunchDiscovery]);
 
     const createRoom = useCallback(async (options = {}) => {
         if (creatingRoom) return;
@@ -184,6 +228,11 @@ const useHostLaunchFlow = ({
             });
             const code = String(error?.code || '');
             const codeLower = code.toLowerCase();
+            const denialReason = String(
+                error?.details?.reason
+                || error?.customData?.details?.reason
+                || '',
+            ).trim().toLowerCase();
             const shouldReuseRequestId = (
                 codeLower.includes('unavailable')
                 || codeLower.includes('network')
@@ -200,8 +249,11 @@ const useHostLaunchFlow = ({
                 return null;
             }
             if (code.includes('permission-denied')) {
-                toast('Host access requires admin approval or an active host subscription.');
-                setEntryError('Host access requires admin approval or an active host subscription.');
+                const accessMessage = denialReason === 'subscription_past_due'
+                    ? 'Payment is past due. Update billing before creating another Room.'
+                    : 'Choose an active paid Host plan before creating a Room.';
+                toast(accessMessage);
+                setEntryError(accessMessage);
             } else if (code.includes('unauthenticated')) {
                 toast('You are signed out. Please retry auth, then create room again.');
                 setEntryError('You are signed out. Retry auth, then create room again.');

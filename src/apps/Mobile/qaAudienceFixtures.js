@@ -179,7 +179,21 @@ const buildBaseFixture = ({ shellVariant = 'classic', activeMode = 'karaoke' } =
     songs: buildBaseSongs(),
     allUsers: buildBaseUsers(),
     user: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', isVip: true },
-    profile: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', vipLevel: 1, totalFamePoints: 1800, currentLevel: 4, points: 640 },
+    profile: {
+        uid: 'fixture_user',
+        name: 'Taylor Demo',
+        avatar: '🎤',
+        vipLevel: 1,
+        totalFamePoints: 1800,
+        currentLevel: 4,
+        points: 640,
+        vipProfile: {
+            location: 'Seattle',
+            birthMonth: 'Jan',
+            birthDay: '1',
+            tosAccepted: true,
+        },
+    },
     tab: 'home',
     songsTab: 'requests',
     socialTab: 'lounge',
@@ -195,6 +209,7 @@ const buildBaseFixture = ({ shellVariant = 'classic', activeMode = 'karaoke' } =
 export const QA_AUDIENCE_FIXTURE_IDS = Object.freeze([
     'classic-home',
     'streamlined-home',
+    'streamlined-browse',
     'streamlined-aahf-home',
     'streamlined-aahf-party-ready',
     'streamlined-aahf-browse',
@@ -236,6 +251,17 @@ export const buildQaAudienceFixture = (fixtureId = '', { roomCode = DEFAULT_ROOM
             room: {
                 ...buildBaseRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
             },
+        };
+    }
+
+    if (safeId === 'streamlined-browse') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            room: {
+                ...buildBaseRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            },
+            tab: 'request',
+            songsTab: 'browse',
         };
     }
 

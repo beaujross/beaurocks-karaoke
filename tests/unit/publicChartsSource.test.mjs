@@ -9,6 +9,7 @@ import {
 
 const functionsSource = readFileSync(new URL("../../functions/index.js", import.meta.url), "utf8");
 const chartsSource = readFileSync(new URL("../../src/apps/Marketing/pages/ChartsPage.jsx", import.meta.url), "utf8");
+const chartModelSource = readFileSync(new URL("../../src/apps/Marketing/pages/publicChartModel.js", import.meta.url), "utf8");
 const discoverSource = readFileSync(new URL("../../src/apps/Marketing/pages/DiscoverPage.jsx", import.meta.url), "utf8");
 
 test("public charts have a canonical indexable route", () => {
@@ -29,7 +30,17 @@ test("server projections separate member, canonical song, and approved public ni
 test("charts stay low-friction and reportable", () => {
   assert.match(chartsSource, /No account, enjoy the room|Guests still appear in their live room/);
   assert.match(chartsSource, /mailto:hello@beaurocks\.app/);
-  assert.match(chartsSource, /One canonical song, any backing track/);
+  assert.match(chartsSource, /One song, one leaderboard/);
+  assert.match(chartsSource, /Take the crown/);
+  assert.doesNotMatch(chartsSource, /canonical song/i);
   assert.match(discoverSource, /PublicChartsTeaser/);
   assert.doesNotMatch(chartsSource, /Claim this score/);
+});
+
+test("song charts launch with transparent low opening scores from the browse catalog", () => {
+  assert.match(chartModelSource, /BROWSE_CATEGORIES/);
+  assert.match(chartModelSource, /popular_now/);
+  assert.match(chartModelSource, /isOpeningScore: true/);
+  assert.match(chartsSource, /not singer performances/);
+  assert.match(chartsSource, /first qualified score on a song replaces its opening score/);
 });

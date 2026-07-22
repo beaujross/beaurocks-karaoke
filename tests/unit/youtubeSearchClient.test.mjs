@@ -65,12 +65,12 @@ test('searchYouTubeCatalog caches successful client searches', async () => {
   assert.equal(telemetry.dailyGeneralDataUnitLimit, 10000);
   assert.equal(telemetry.dailyGeneralDataUnitLimitSource, 'official_default');
   assert.equal(telemetry.estimatedSearchListCallsPerLiveSearch, 1);
-  assert.equal(telemetry.estimatedGeneralUnitsPerLiveSearch, 1);
+  assert.equal(telemetry.estimatedGeneralUnitsPerLiveSearch, 100);
   assert.equal(telemetry.todaySearchListCallsUsed, 1);
   assert.equal(telemetry.todaySearchListCallsRemaining, 99);
-  assert.equal(telemetry.todayGeneralDataUnitsUsed, 1);
-  assert.equal(telemetry.todayGeneralDataUnitsRemaining, 9999);
-  assert.equal(telemetry.todayEstimatedUnitsUsed, 1);
+  assert.equal(telemetry.todayGeneralDataUnitsUsed, 100);
+  assert.equal(telemetry.todayGeneralDataUnitsRemaining, 9900);
+  assert.equal(telemetry.todayEstimatedUnitsUsed, 100);
   assert.equal(telemetry.todayEstimatedFreshSearchesLeft, 99);
 });
 
@@ -123,6 +123,62 @@ test('searchYouTubeCatalog blocks repeated live calls after quota exhaustion', a
   assert.equal(telemetry.recentSearches, 2);
   assert.equal(telemetry.quotaErrors, 1);
   assert.equal(telemetry.quotaShortCircuits, 1);
+});
+
+test('searchYouTubeCatalog does not mislabel unrelated resource exhaustion as YouTube quota', async () => {
+  const callFunction = vi.fn(async () => {
+    throw Object.assign(new Error('Workspace request allowance reached.'), {
+      code: 'resource-exhausted',
+    });
+  });
+  vi.doMock('../../src/lib/firebase.js', () => ({ callFunction }));
+
+  const { isYouTubeQuotaBlockedError, searchYouTubeCatalog } = await import('../../src/lib/youtubeSearchClient.js');
+
+  await assert.rejects(
+    () => searchYouTubeCatalog({ query: 'Respect karaoke' }),
+    (error) => {
+      assert.equal(isYouTubeQuotaBlockedError(error), false);
+      return true;
+    }
+  );
+});
+
+test('provider quota status shares a daily pause with the host browser', async () => {
+  const blockedUntilMs = Date.now() + (60 * 60 * 1000);
+  const callFunction = vi.fn(async (name) => {
+    assert.equal(name, 'youtubeQuotaStatus');
+    return {
+      quotaBlocked: true,
+      quotaKind: 'daily',
+      reason: 'quotaExceeded',
+      blockedUntilMs,
+      checkedAtMs: Date.now(),
+      dailyUsage: {
+        dateKey: '20260719',
+        searchListCalls: 37,
+        videosListCalls: 41,
+        playlistItemsListCalls: 2,
+        totalCalls: 80,
+      },
+      dailySearchListCallLimit: 100,
+    };
+  });
+  vi.doMock('../../src/lib/firebase.js', () => ({ callFunction }));
+
+  const {
+    getYouTubeSearchTelemetrySnapshot,
+    refreshYouTubeProviderQuotaStatus,
+  } = await import('../../src/lib/youtubeSearchClient.js');
+
+  await refreshYouTubeProviderQuotaStatus({ roomCode: 'C7T8' });
+  const telemetry = getYouTubeSearchTelemetrySnapshot();
+  assert.equal(telemetry.providerQuotaBlocked, true);
+  assert.equal(telemetry.providerQuotaKind, 'daily');
+  assert.equal(telemetry.providerBlockedUntilMs, blockedUntilMs);
+  assert.equal(telemetry.projectDayKey, '20260719');
+  assert.equal(telemetry.projectSearchListCalls, 37);
+  assert.equal(telemetry.projectDailySearchListCallLimit, 100);
 });
 
 test('searchYouTubeCatalog tracks durable server cache hits separately from live calls', async () => {

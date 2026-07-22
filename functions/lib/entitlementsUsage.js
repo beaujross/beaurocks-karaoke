@@ -1,86 +1,31 @@
+const HOST_COMMERCIAL_CONTRACT = require("./hostCommercialContract.json");
+
 const BASE_CAPABILITIES = Object.freeze({
-  "ai.generate_content": false,
-  "api.youtube_data": false,
-  "api.apple_music": false,
-  "billing.invoice_drafts": false,
-  "workspace.shared_templates": false,
-  "workspace.onboarding": true,
+  ...(HOST_COMMERCIAL_CONTRACT.baseCapabilities || {}),
 });
 
-const PLAN_DEFINITIONS = Object.freeze({
-  free: {
-    id: "free",
-    name: "Free",
-    tier: "free",
-    interval: null,
-    amountCents: 0,
-    capabilities: {},
-  },
-  vip_monthly: {
-    id: "vip_monthly",
-    name: "VIP Monthly",
-    tier: "vip",
-    interval: "month",
-    amountCents: 999,
-    capabilities: {},
-  },
-  host_monthly: {
-    id: "host_monthly",
-    name: "Host Monthly",
-    tier: "host",
-    interval: "month",
-    amountCents: 1500,
-    capabilities: {
-      "ai.generate_content": true,
-      "api.youtube_data": true,
-      "api.apple_music": true,
-      "billing.invoice_drafts": true,
-      "workspace.shared_templates": true,
-      "workspace.onboarding": true,
-    },
-  },
-  host_annual: {
-    id: "host_annual",
-    name: "Host Annual",
-    tier: "host",
-    interval: "year",
-    amountCents: 15000,
-    capabilities: {
-      "ai.generate_content": true,
-      "api.youtube_data": true,
-      "api.apple_music": true,
-      "billing.invoice_drafts": true,
-      "workspace.shared_templates": true,
-      "workspace.onboarding": true,
-    },
-  },
-});
+const PLAN_DEFINITIONS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(HOST_COMMERCIAL_CONTRACT.plans || {}).map(([planId, plan]) => [
+      planId,
+      Object.freeze({
+        id: plan.id || planId,
+        name: plan.name || plan.publicLabel || planId,
+        tier: plan.tier || "free",
+        interval: plan.interval || null,
+        amountCents: Number(plan.amountCents || 0),
+        capabilities: Object.freeze({ ...(plan.capabilities || {}) }),
+      }),
+    ]),
+  ),
+);
 
-const ENTITLED_STATUSES = new Set(["active", "trialing", "past_due"]);
+const ENTITLED_STATUSES = new Set(HOST_COMMERCIAL_CONTRACT.entitledStatuses || []);
+const PUBLIC_HOST_PLAN_IDS = new Set(HOST_COMMERCIAL_CONTRACT.publicOfferPlanIds || []);
+const ROOM_CREATE_CAPABILITY = "rooms.create";
 
-const USAGE_METER_DEFINITIONS = Object.freeze({
+const INTERNAL_USAGE_METER_PRICING = Object.freeze({
   ai_generate_content: {
-    id: "ai_generate_content",
-    label: "AI generations",
-    unit: "request",
-    includedByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 750,
-      host_annual: 1200,
-    }),
-    hardLimitByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 2500,
-      host_annual: 4000,
-    }),
-    overageRateCentsByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 3,
-      host_annual: 2,
-    }),
     passThroughUnitCostCentsByPlan: Object.freeze({
       free: 0,
       vip_monthly: 0,
@@ -95,27 +40,6 @@ const USAGE_METER_DEFINITIONS = Object.freeze({
     }),
   },
   youtube_data_request: {
-    id: "youtube_data_request",
-    label: "YouTube Data API request count",
-    unit: "request",
-    includedByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 6000,
-      host_annual: 9000,
-    }),
-    hardLimitByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 25000,
-      host_annual: 35000,
-    }),
-    overageRateCentsByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 1,
-      host_annual: 1,
-    }),
     passThroughUnitCostCentsByPlan: Object.freeze({
       free: 0,
       vip_monthly: 0,
@@ -130,27 +54,6 @@ const USAGE_METER_DEFINITIONS = Object.freeze({
     }),
   },
   apple_music_request: {
-    id: "apple_music_request",
-    label: "Apple Music API requests",
-    unit: "request",
-    includedByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 2000,
-      host_annual: 3000,
-    }),
-    hardLimitByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 10000,
-      host_annual: 15000,
-    }),
-    overageRateCentsByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 2,
-      host_annual: 2,
-    }),
     passThroughUnitCostCentsByPlan: Object.freeze({
       free: 0,
       vip_monthly: 0,
@@ -165,6 +68,33 @@ const USAGE_METER_DEFINITIONS = Object.freeze({
     }),
   },
 });
+
+const USAGE_METER_DEFINITIONS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(HOST_COMMERCIAL_CONTRACT.usageMeters || {}).map(([meterId, meter]) => {
+      const internalPricing = INTERNAL_USAGE_METER_PRICING[meterId] || {};
+      return [
+        meterId,
+        Object.freeze({
+          id: meter.id || meterId,
+          label: meter.publicLabel || internalPricing.label || meterId,
+          unit: meter.unit || internalPricing.unit || "unit",
+          includedByPlan: Object.freeze({ ...(meter.includedByPlan || {}) }),
+          hardLimitByPlan: Object.freeze({ ...(meter.hardLimitByPlan || {}) }),
+          overageRateCentsByPlan: Object.freeze({
+            ...(meter.currentOverageRateCentsByPlan || {}),
+          }),
+          passThroughUnitCostCentsByPlan: Object.freeze({
+            ...(internalPricing.passThroughUnitCostCentsByPlan || {}),
+          }),
+          markupMultiplierByPlan: Object.freeze({
+            ...(internalPricing.markupMultiplierByPlan || {}),
+          }),
+        }),
+      ];
+    }),
+  ),
+);
 
 const toWholeNumber = (value, fallback = 0) => {
   const n = Number(value);
@@ -205,7 +135,42 @@ const getPlanDefinition = (planId = "") => PLAN_DEFINITIONS[String(planId || "")
 
 const isEntitledStatus = (status = "") => ENTITLED_STATUSES.has(String(status || "").toLowerCase());
 
-const buildCapabilitiesForPlan = (planId = "free", status = "inactive") => {
+const isPublicHostPlan = (planId = "") =>
+  PUBLIC_HOST_PLAN_IDS.has(String(planId || "").trim());
+
+const resolveSubscriptionStateKey = ({
+  status = "inactive",
+  cancelAtPeriodEnd = false,
+} = {}) => {
+  const normalizedStatus = String(status || "inactive").trim().toLowerCase() || "inactive";
+  if (cancelAtPeriodEnd && (normalizedStatus === "active" || normalizedStatus === "trialing")) {
+    return "canceled_at_period_end";
+  }
+  return HOST_COMMERCIAL_CONTRACT.subscriptionStates?.[normalizedStatus]
+    ? normalizedStatus
+    : "inactive";
+};
+
+const canCreateRoomForSubscription = ({
+  planId = "free",
+  status = "inactive",
+  cancelAtPeriodEnd = false,
+} = {}) => {
+  const plan = getPlanDefinition(planId);
+  if (!plan || plan.tier !== "host") return false;
+  const stateKey = resolveSubscriptionStateKey({ status, cancelAtPeriodEnd });
+  const state = HOST_COMMERCIAL_CONTRACT.subscriptionStates?.[stateKey] || {};
+  return state.grantsCapabilities === true && (
+    state.newRoomPolicy === "allowed_when_plan_capability_allows"
+    || state.newRoomPolicy === "allowed_until_period_end"
+  );
+};
+
+const buildCapabilitiesForPlan = (
+  planId = "free",
+  status = "inactive",
+  { cancelAtPeriodEnd = false } = {},
+) => {
   const caps = { ...BASE_CAPABILITIES };
   if (!isEntitledStatus(status)) {
     return caps;
@@ -214,6 +179,10 @@ const buildCapabilitiesForPlan = (planId = "free", status = "inactive") => {
   Object.entries(plan.capabilities || {}).forEach(([key, enabled]) => {
     caps[key] = !!enabled;
   });
+  caps[ROOM_CREATE_CAPABILITY] = !!(
+    plan.capabilities?.[ROOM_CREATE_CAPABILITY]
+    && canCreateRoomForSubscription({ planId, status, cancelAtPeriodEnd })
+  );
   return caps;
 };
 
@@ -345,8 +314,12 @@ module.exports = {
   BASE_CAPABILITIES,
   PLAN_DEFINITIONS,
   USAGE_METER_DEFINITIONS,
+  ROOM_CREATE_CAPABILITY,
   getPlanDefinition,
   isEntitledStatus,
+  isPublicHostPlan,
+  resolveSubscriptionStateKey,
+  canCreateRoomForSubscription,
   buildCapabilitiesForPlan,
   resolveUsageMeterQuota,
   buildUsageMeterSummary,

@@ -1,6 +1,6 @@
 # YouTube Audit Packet Checklist
 
-Last updated: 2026-07-14
+Last updated: 2026-07-19
 
 ## Goal
 
@@ -43,10 +43,11 @@ Verified HTTP 200 without login on 2026-07-06. Desktop and mobile screenshots ar
 - controlled production cooldown screenshot and evidence note
 - live disposable-room permanent-delete confirmation, success, hashes, and independent absence checks
 
-## Remaining Screenshots To Capture
+## Screenshot Status
 
-- the five current-form address-bar captures listed in `docs/compliance/evidence/2026-07-15-youtube-form/README.md`
-- authenticated live-room host screenshot only if reviewers require evidence beyond the QA product-surface packet
+- all five required current-form address-bar captures are complete and reviewed in `docs/compliance/evidence/2026-07-15-youtube-form/`
+- the supplemental general-quota and Host Curator captures are also complete
+- an authenticated live-room host screenshot is optional only if a reviewer requests evidence beyond the QA product-surface packet
 
 Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capture steps and filenames.
 
@@ -64,7 +65,7 @@ Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for exact capt
 
 ## Search Queries Request Sizing
 
-Proposed request: `5,000 Search Queries calls/day` with a `120 calls/minute` peak.
+Proposed request: `5,000 Search Queries calls/day` with a `120 calls/minute` peak. The owner action guide is `docs/compliance/YOUTUBE_QUOTA_OWNER_ACTION_GUIDE_2026-07-19.md`.
 
 Observed production baseline from the server usage ledger for period `202607`, read on 2026-07-14:
 

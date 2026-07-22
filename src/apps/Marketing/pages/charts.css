@@ -1,0 +1,269 @@
+.mk3-chart-story {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.68fr) minmax(0, 1.32fr);
+  gap: clamp(1rem, 3vw, 2rem);
+  align-items: center;
+  padding: clamp(1rem, 2vw, 1.5rem);
+  border: 1px solid rgba(124, 230, 255, 0.16);
+  border-radius: 1.25rem;
+  background: linear-gradient(125deg, rgba(6, 18, 30, 0.88), rgba(28, 10, 36, 0.76));
+}
+
+.mk3-chart-story h2 {
+  margin: 0.35rem 0 0;
+  font-family: var(--mk3-host-font-display);
+  font-size: clamp(1.65rem, 3vw, 2.5rem);
+  line-height: 1;
+}
+
+.mk3-chart-story ol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mk3-chart-story li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem;
+  min-height: 100%;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0.9rem;
+  background: rgba(2, 8, 18, 0.58);
+}
+
+.mk3-chart-story li > b {
+  color: #6cecff;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.mk3-chart-story li div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.mk3-chart-story li strong {
+  color: #f7fbff;
+  font-size: 0.88rem;
+}
+
+.mk3-chart-story li span {
+  color: #91a6bd;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.mk3-chart-opening-note {
+  display: flex;
+  gap: 0.5rem 0.8rem;
+  align-items: baseline;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(255, 199, 97, 0.2);
+  border-radius: 0.9rem;
+  background: rgba(45, 27, 10, 0.38);
+}
+
+.mk3-chart-opening-note strong {
+  color: #ffdb8b;
+  white-space: nowrap;
+}
+
+.mk3-chart-opening-note span {
+  color: #b9a98d;
+  font-size: 0.78rem;
+}
+
+.mk3-chart-podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  align-items: end;
+  min-height: 22rem;
+}
+
+.mk3-chart-podium-card {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  min-height: 18rem;
+  overflow: hidden;
+  padding: 1.15rem 1rem 1.25rem;
+  border: 1px solid rgba(118, 229, 255, 0.2);
+  border-radius: 1.35rem;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(67, 222, 255, 0.16), transparent 44%),
+    linear-gradient(160deg, rgba(8, 21, 38, 0.96), rgba(11, 9, 26, 0.94));
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+  text-align: center;
+}
+
+.mk3-chart-podium-card.is-rank-1 {
+  order: 2;
+  min-height: 21rem;
+  border-color: rgba(255, 210, 104, 0.42);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 194, 74, 0.23), transparent 46%),
+    linear-gradient(160deg, rgba(36, 27, 20, 0.98), rgba(19, 10, 29, 0.96));
+}
+
+.mk3-chart-podium-card.is-rank-2 { order: 1; }
+.mk3-chart-podium-card.is-rank-3 { order: 3; }
+
+.mk3-chart-podium-rank {
+  display: flex;
+  gap: 0.35rem;
+  align-items: baseline;
+  color: #7eeeff;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mk3-chart-podium-rank span { font-size: 0.62rem; }
+.mk3-chart-podium-rank strong { font-size: 1.1rem; }
+.mk3-chart-podium-card.is-rank-1 .mk3-chart-podium-rank { color: #ffda7d; }
+
+.mk3-chart-podium-crown {
+  display: flex;
+  gap: 0.22rem;
+  align-items: end;
+  height: 1.6rem;
+  margin: 0.1rem 0;
+}
+
+.mk3-chart-podium-crown i {
+  display: block;
+  width: 0.45rem;
+  height: 0.85rem;
+  border-radius: 999px 999px 0.2rem 0.2rem;
+  background: linear-gradient(#f7fbff, #77e9ff);
+  transform: rotate(-18deg);
+}
+
+.mk3-chart-podium-crown i:nth-child(2) {
+  height: 1.3rem;
+  background: linear-gradient(#fff8d8, #ffc95e);
+  transform: none;
+}
+
+.mk3-chart-podium-crown i:nth-child(3) { transform: rotate(18deg); }
+
+.mk3-chart-podium-art {
+  display: grid;
+  place-items: center;
+  width: 4.3rem;
+  height: 4.3rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  background: linear-gradient(145deg, rgba(255, 78, 167, 0.25), rgba(68, 226, 255, 0.18));
+  color: #ff83c0;
+  font-size: 1.65rem;
+}
+
+.mk3-chart-podium-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mk3-chart-podium-title {
+  max-width: 100%;
+  overflow: hidden;
+  color: #f8fbff;
+  font-family: var(--mk3-host-font-display);
+  font-size: clamp(1.15rem, 2vw, 1.55rem);
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk3-chart-podium-title.is-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mk3-chart-podium-subtitle,
+.mk3-chart-podium-context {
+  max-width: 100%;
+  overflow: hidden;
+  color: #a9bbd0;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk3-chart-podium-context { color: #df8fbd; }
+
+.mk3-chart-podium-score {
+  display: grid;
+  gap: 0.05rem;
+  margin-top: auto;
+}
+
+.mk3-chart-podium-score strong {
+  color: #ff72b8;
+  font-size: clamp(1.65rem, 3vw, 2.35rem);
+  line-height: 1;
+}
+
+.mk3-chart-podium-card.is-rank-1 .mk3-chart-podium-score strong { color: #ffd26c; }
+
+.mk3-chart-podium-score span {
+  color: #7890aa;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 860px) {
+  .mk3-chart-story { grid-template-columns: 1fr; }
+  .mk3-chart-story ol { grid-template-columns: 1fr; }
+  .mk3-chart-opening-note { display: grid; }
+  .mk3-chart-opening-note strong { white-space: normal; }
+  .mk3-chart-podium {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .mk3-chart-podium-card,
+  .mk3-chart-podium-card.is-rank-1 {
+    order: initial;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    justify-items: start;
+    min-height: 0;
+    padding: 1rem;
+    text-align: left;
+  }
+  .mk3-chart-podium-rank { grid-row: 1 / span 3; }
+  .mk3-chart-podium-crown,
+  .mk3-chart-podium-art { display: none; }
+  .mk3-chart-podium-title,
+  .mk3-chart-podium-subtitle,
+  .mk3-chart-podium-context { grid-column: 2; }
+  .mk3-chart-podium-score {
+    grid-column: 3;
+    grid-row: 1 / span 3;
+    align-self: center;
+    margin: 0;
+    text-align: right;
+  }
+}
+
+@media (max-width: 520px) {
+  .mk3-chart-podium-context { display: none; }
+  .mk3-chart-podium-card,
+  .mk3-chart-podium-card.is-rank-1 { grid-template-columns: auto minmax(0, 1fr); }
+  .mk3-chart-podium-score {
+    grid-column: 2;
+    grid-row: auto;
+    text-align: left;
+  }
+}

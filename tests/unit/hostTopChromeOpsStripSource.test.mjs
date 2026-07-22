@@ -32,6 +32,10 @@ test('host top chrome keeps the vibe meter but drops the redundant ops strip', (
   assert.match(hostAppSource, /todayLiveCalls/);
   assert.match(hostAppSource, /dailyQuotaUnits/);
   assert.match(hostAppSource, /getYouTubeQuotaBlockedUntilMs/);
+  assert.match(hostAppSource, /refreshYouTubeProviderQuotaStatus/);
+  assert.match(hostAppSource, /This-device estimate only/);
+  assert.match(hostAppSource, /shared provider paused/);
+  assert.match(hostAppSource, /value: quotaPaused \? 0 : freshSearchesLeft/);
   assert.match(hostAppSource, /youtubeBudgetStatus=\{topChromeYouTubeBudget\}/);
   assert.match(hostAppSource, /hostOpsStatus\?\.summary/);
 });
@@ -59,7 +63,7 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
   );
   assert.match(
     source,
-    /Stage Start[\s\S]*quickRoomControls\.autoPlayMedia !== false \? 'Auto' : 'Manual'/,
+    /data-feature-id="deck-queue-stage-start-toggle"[\s\S]*Stage Start[\s\S]*quickRoomControls\.autoPlayMedia !== false \? 'Auto' : 'Manual'/,
     'HostTopChrome queue controls should keep stage-start mode with live queue governance',
   );
   assert.match(
@@ -102,6 +106,8 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
 
 test('host flow dropdown exposes One-Minute Mic live pacing controls', () => {
   assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*text-\[12px\] font-black leading-none text-zinc-100[\s\S]*Auto \{automationActiveCount\}/);
+  assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*aria-expanded=\{showAutomationQuickMenu\}/);
+  assert.match(source, /data-feature-id="deck-automation-menu"[\s\S]*data-feature-id=\{`deck-automation-\$\{item\.key\}`\}/);
   assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*Flow & Automation[\s\S]*data-host-one-minute-mic-controls/);
   assert.doesNotMatch(source, /data-feature-id="deck-queue-menu-toggle"[\s\S]*data-host-one-minute-mic-controls/);
   assert.match(source, /Song length[\s\S]*One-Minute Mic[\s\S]*Full Songs/);
@@ -123,6 +129,11 @@ test('host flow dropdown exposes One-Minute Mic live pacing controls', () => {
   assert.match(hostAppSource, /oneMinuteMicLiveStatus,/);
   assert.match(hostAppSource, /onSetOneMinuteMic: setOneMinuteMicQuick/);
   assert.match(hostAppSource, /onSetOneMinuteMicTiming: setOneMinuteMicTimingQuick/);
+});
+
+test('top-level host navigation dismisses transient menus before changing workspaces', () => {
+  assert.match(source, /data-host-tab=\{t\.key\}[\s\S]*onClick=\{\(\) => \{[\s\S]*closeAllTopMenus\(\);[\s\S]*setTab\(t\.key\)/);
+  assert.match(source, /data-host-tab="admin"[\s\S]*onClick=\{\(\) => \{[\s\S]*closeAllTopMenus\(\);[\s\S]*openAdminWorkspace\('ops\.room_setup'\)/);
 });
 
 test('host flow dropdown exposes room control model choices above detailed pacing controls', () => {

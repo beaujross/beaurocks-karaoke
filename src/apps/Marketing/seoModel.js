@@ -58,7 +58,7 @@ const PAGE_TITLE_MAP = Object.freeze({
 
 const PAGE_DESCRIPTION_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.discover]: "Find karaoke nights by city, host, venue, and time window with BeauRocks Setlist Finder.",
-  [MARKETING_ROUTE_PAGES.charts]: "Explore qualified BeauRocks karaoke charts across singers, canonical songs, and public hosted nights.",
+  [MARKETING_ROUTE_PAGES.charts]: "Explore BeauRocks karaoke charts, see the top score for each song, and find the singers and hosted nights moving the room.",
   [MARKETING_ROUTE_PAGES.demo]: "Understand how BeauRocks keeps the host, TV, audience, and singer surfaces in sync across one room moment.",
   [MARKETING_ROUTE_PAGES.demoAuto]: "See BeauRocks in action through a product-faithful walkthrough of the host, TV, and audience room experience.",
   [MARKETING_ROUTE_PAGES.changelog]: "Release updates and product changes across host, audience, and public TV experiences.",
@@ -349,12 +349,12 @@ const buildBreadcrumbJsonLd = (breadcrumbs = []) => {
   };
 };
 
-const buildOrganizationJsonLd = ({ baseUrl = MARKETING_SITE_ORIGIN, image = null, sameAs = [] } = {}) => ({
+const buildOrganizationJsonLd = ({ baseUrl = MARKETING_SITE_ORIGIN, sameAs = [] } = {}) => ({
   "@context": "https://schema.org",
   "@type": "Organization",
   name: MARKETING_SITE_NAME,
   url: normalizeBaseUrl(baseUrl),
-  logo: image?.url || toAbsoluteUrl(baseUrl, MARKETING_BRAND_NEON_URL),
+  logo: toAbsoluteUrl(baseUrl, MARKETING_BRAND_NEON_URL),
   ...(sameAsArray(sameAs).length ? { sameAs: sameAsArray(sameAs) } : {}),
 });
 

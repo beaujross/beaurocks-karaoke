@@ -43,14 +43,16 @@ test('AddToQueueFormBody keeps YouTube/autocomplete results inside a dedicated s
   );
   assert.match(
     source,
-    /aria-label="Open YouTube search"/,
-    'The secondary YouTube search action should collapse to an icon control so the Add row does not wrap',
+    /sm:grid-cols-\[auto_minmax\(0,1fr\)_auto\]/,
+    'Backing source, YouTube filter, and expanded search should use an explicit responsive hierarchy',
   );
-  assert.doesNotMatch(
-    source,
-    /sm:min-w-\[8\.5rem\]/,
-    'The secondary YouTube search action should not reserve a wide text-button column in the Add row',
-  );
+  assert.match(source, /data-feature-id="host-performance-search-expand"/);
+  assert.match(source, /Expand Search/);
+  assert.doesNotMatch(source, /aria-label="Open YouTube search"|More YouTube/);
+  assert.match(source, /const appleProviderAvailable = appleProviderConfigured && appleMusicAuthorized;/);
+  assert.match(source, /\{appleProviderAvailable \? \([\s\S]*setAutocompleteProvider\('apple'\)/);
+  assert.match(source, /apple-search-unavailable/);
+  assert.match(source, /YouTube filter/);
 });
 
 test('AddToQueueFormBody autocomplete rows stay dense and metadata-forward', () => {

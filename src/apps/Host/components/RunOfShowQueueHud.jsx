@@ -100,7 +100,7 @@ const getItemExecutionMeta = (item = {}) => {
 };
 
 const buildHudItems = ({ items = [], liveItemId = '', stagedItemId = '', nextItemId = '' } = {}) => (
-    items.map((item, index) => {
+    items.filter((item) => item?.destination !== 'planner').map((item, index) => {
         const status = String(item?.status || '').trim().toLowerCase();
         const type = String(item?.type || '').trim().toLowerCase();
         const executionMeta = getItemExecutionMeta(item);

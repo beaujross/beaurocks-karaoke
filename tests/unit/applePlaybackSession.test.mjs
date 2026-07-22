@@ -4,6 +4,7 @@ import { test } from 'vitest';
 import {
     buildApplePlaybackSyncPatch,
     getApplePlaybackSnapshot,
+    shouldPauseApplePlaybackTransport,
     shouldWriteApplePlaybackSyncPatch
 } from '../../src/apps/Host/applePlaybackSession.js';
 
@@ -24,6 +25,55 @@ test('applePlaybackSession reads authoritative position and duration from MusicK
     assert.equal(snapshot.status, 'playing');
     assert.equal(snapshot.durationSec, 215);
     assert.equal(snapshot.currentTimeSec, 42.5);
+});
+
+test('applePlaybackSession reads MusicKit v1 nested player state', () => {
+    const snapshot = getApplePlaybackSnapshot({
+        player: {
+            playbackState: 'playing',
+            isPlaying: true,
+            currentPlaybackTime: 17,
+            currentPlaybackDuration: 241,
+            nowPlayingItem: {
+                id: 'apple_nested_track',
+                attributes: { durationInMillis: 241000 }
+            },
+            queue: {
+                currentItem: { id: 'apple_nested_track' }
+            }
+        }
+    });
+
+    assert.equal(snapshot.trackId, 'apple_nested_track');
+    assert.equal(snapshot.status, 'playing');
+    assert.equal(snapshot.currentTimeSec, 17);
+    assert.equal(snapshot.durationSec, 241);
+});
+
+test('applePlaybackSession recognizes MusicKit v1 numeric playback states', () => {
+  assert.equal(getApplePlaybackSnapshot({ player: { playbackState: 2 } })?.status, 'playing');
+  assert.equal(getApplePlaybackSnapshot({ player: { playbackState: 3 } })?.status, 'paused');
+  assert.equal(getApplePlaybackSnapshot({ player: { playbackState: 4 } })?.status, 'stopped');
+  assert.equal(getApplePlaybackSnapshot({ player: { playbackState: 10 } })?.status, 'ended');
+});
+
+test('applePlaybackSession only pauses a MusicKit transport with an active play descriptor', () => {
+    assert.equal(shouldPauseApplePlaybackTransport(null), false);
+    assert.equal(shouldPauseApplePlaybackTransport({
+        isPlaying: false,
+        playbackState: 'stopped',
+        queue: { currentItem: null }
+    }), false);
+    assert.equal(shouldPauseApplePlaybackTransport({
+        isPlaying: false,
+        playbackState: 'paused',
+        queue: { currentItem: { id: 'paused_track' } }
+    }), false);
+    assert.equal(shouldPauseApplePlaybackTransport({
+        isPlaying: true,
+        playbackState: 'playing',
+        queue: { currentItem: { id: 'playing_track' } }
+    }), true);
 });
 
 test('applePlaybackSession updates the active performance session while Apple playback is live', () => {
@@ -108,6 +158,31 @@ test('applePlaybackSession does not mutate a mismatched non-apple session', () =
     assert.equal(patch['appleMusicPlayback.status'], 'playing');
     assert.equal('currentPerformanceSession.playbackState' in patch, false);
 });
+
+test('applePlaybackSession preserves playlist identity while tracking its current song separately', () => {
+    const patch = buildApplePlaybackSyncPatch({
+        session: null,
+        applePlayback: {
+            type: 'playlist',
+            id: 'pl.background_playlist',
+            trackId: 'apple_track_old',
+            status: 'playing'
+        },
+        snapshot: {
+            trackId: 'apple_track_new',
+            status: 'playing',
+            currentTimeSec: 24,
+            durationSec: 210,
+            rawPlaybackState: 'playing'
+        },
+        now: 42000
+    });
+
+    assert.equal(patch['appleMusicPlayback.trackId'], 'apple_track_new');
+    assert.equal('appleMusicPlayback.id' in patch, false);
+    assert.equal(patch['appleMusicPlayback.positionSec'], 24);
+});
+
 test('applePlaybackSession throttles repeated heartbeat-only sync writes', () => {
     const patch = {
         'appleMusicPlayback.status': 'playing',

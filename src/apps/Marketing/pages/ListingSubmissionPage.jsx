@@ -153,7 +153,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
         <div className="mk3-chip">submit listing</div>
         <h2>List a Karaoke Venue or Night</h2>
         <p>
-          Independent venues and karaoke nights can be listed even when they do not use BeauRocks. Every submission is reviewed before it reaches the public map.
+          Add a venue or recurring night to the public map. BeauRocks reviews every listing.
         </p>
         {!canSubmit && (
           <div className="mk3-actions-block">
@@ -195,73 +195,79 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
             Description
             <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
           </label>
-          <label>
-            Rotation
-            <select value={form.rotationEstimate} onChange={(e) => setForm((prev) => ({ ...prev, rotationEstimate: e.target.value }))}>
-              <option value="">Unknown</option>
-              <option value="fast">Fast</option>
-              <option value="medium">Steady</option>
-              <option value="slow">Longer queue</option>
-            </select>
-          </label>
-          <label>
-            Beginner Friendly
-            <select value={form.beginnerFriendly} onChange={(e) => setForm((prev) => ({ ...prev, beginnerFriendly: e.target.value }))}>
-              <option value="">Unknown</option>
-              <option value="high">High</option>
-              <option value="medium">Mixed</option>
-              <option value="low">Low</option>
-            </select>
-          </label>
-          <label>
-            Duet Friendly
-            <select value={form.duetFriendly} onChange={(e) => setForm((prev) => ({ ...prev, duetFriendly: e.target.value }))}>
-              <option value="">Unknown</option>
-              <option value="high">High</option>
-              <option value="medium">Mixed</option>
-              <option value="low">Low</option>
-            </select>
-          </label>
-          <label className="full">
-            Experience Tags
-            <input
-              value={form.experienceTagsInput}
-              onChange={(e) => setForm((prev) => ({ ...prev, experienceTagsInput: e.target.value }))}
-              placeholder="fast_rotation, singalong, strong_sound"
-            />
-          </label>
-          <label className="full">
-            Crowd Vibe Tags
-            <input
-              value={form.crowdVibeTagsInput}
-              onChange={(e) => setForm((prev) => ({ ...prev, crowdVibeTagsInput: e.target.value }))}
-              placeholder="welcoming, late_night, serious_singers"
-            />
-          </label>
-          <label className="full">
-            Best For
-            <input
-              value={form.bestForTagsInput}
-              onChange={(e) => setForm((prev) => ({ ...prev, bestForTagsInput: e.target.value }))}
-              placeholder="first_timers, friend_groups, regulars"
-            />
-          </label>
-          <label className="full">
-            Host Style Tags
-            <input
-              value={form.hostStyleTagsInput}
-              onChange={(e) => setForm((prev) => ({ ...prev, hostStyleTagsInput: e.target.value }))}
-              placeholder="hype, organized, playful"
-            />
-          </label>
-          <label className="full">
-            BeauRocks Capabilities
-            <input
-              value={form.beauRocksCapabilitiesInput}
-              onChange={(e) => setForm((prev) => ({ ...prev, beauRocksCapabilitiesInput: e.target.value }))}
-              placeholder="live_join, audience_app, interactive_tv, recap_ready"
-            />
-          </label>
+          <details className="full mk3-submission-optional">
+            <summary>Optional experience details</summary>
+            <p>Help singers find the right vibe. You can add these later.</p>
+            <div className="mk3-form-grid">
+              <label>
+                Rotation
+                <select value={form.rotationEstimate} onChange={(e) => setForm((prev) => ({ ...prev, rotationEstimate: e.target.value }))}>
+                  <option value="">Unknown</option>
+                  <option value="fast">Fast</option>
+                  <option value="medium">Steady</option>
+                  <option value="slow">Longer queue</option>
+                </select>
+              </label>
+              <label>
+                Beginner Friendly
+                <select value={form.beginnerFriendly} onChange={(e) => setForm((prev) => ({ ...prev, beginnerFriendly: e.target.value }))}>
+                  <option value="">Unknown</option>
+                  <option value="high">High</option>
+                  <option value="medium">Mixed</option>
+                  <option value="low">Low</option>
+                </select>
+              </label>
+              <label>
+                Duet Friendly
+                <select value={form.duetFriendly} onChange={(e) => setForm((prev) => ({ ...prev, duetFriendly: e.target.value }))}>
+                  <option value="">Unknown</option>
+                  <option value="high">High</option>
+                  <option value="medium">Mixed</option>
+                  <option value="low">Low</option>
+                </select>
+              </label>
+              <label className="full">
+                Experience
+                <input
+                  value={form.experienceTagsInput}
+                  onChange={(e) => setForm((prev) => ({ ...prev, experienceTagsInput: e.target.value }))}
+                  placeholder="Fast rotation, singalong, strong sound"
+                />
+              </label>
+              <label className="full">
+                Crowd vibe
+                <input
+                  value={form.crowdVibeTagsInput}
+                  onChange={(e) => setForm((prev) => ({ ...prev, crowdVibeTagsInput: e.target.value }))}
+                  placeholder="Welcoming, late night, serious singers"
+                />
+              </label>
+              <label className="full">
+                Best for
+                <input
+                  value={form.bestForTagsInput}
+                  onChange={(e) => setForm((prev) => ({ ...prev, bestForTagsInput: e.target.value }))}
+                  placeholder="First timers, friend groups, regulars"
+                />
+              </label>
+              <label className="full">
+                Host style
+                <input
+                  value={form.hostStyleTagsInput}
+                  onChange={(e) => setForm((prev) => ({ ...prev, hostStyleTagsInput: e.target.value }))}
+                  placeholder="Hype, organized, playful"
+                />
+              </label>
+              <label className="full">
+                BeauRocks features
+                <input
+                  value={form.beauRocksCapabilitiesInput}
+                  onChange={(e) => setForm((prev) => ({ ...prev, beauRocksCapabilitiesInput: e.target.value }))}
+                  placeholder="Live join, audience app, interactive TV, recap ready"
+                />
+              </label>
+            </div>
+          </details>
           {listingType === "venue" && (
             <div className="full mk3-cadence-field">
               <span>Weekly Karaoke Schedule</span>
@@ -284,10 +290,6 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
           <label>
             State
             <input value={form.state} onChange={(e) => setForm((prev) => ({ ...prev, state: e.target.value }))} />
-          </label>
-          <label>
-            Region Token
-            <input value={form.region} onChange={(e) => setForm((prev) => ({ ...prev, region: e.target.value }))} />
           </label>
           <label>
             Venue Timezone

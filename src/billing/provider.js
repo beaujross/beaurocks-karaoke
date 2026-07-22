@@ -79,10 +79,14 @@ class WebStripeBillingProvider {
     if (!selected?.id) {
       throw new Error("Invalid subscription plan.");
     }
+    const requestId = typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `subscription_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const payload = await this.callFunction("createSubscriptionCheckout", {
       planId: selected.id,
       orgName: orgName || "",
       origin: this.origin,
+      requestId,
     });
     return payload;
   }

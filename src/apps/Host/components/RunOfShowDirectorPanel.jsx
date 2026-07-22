@@ -5380,6 +5380,7 @@ export default function RunOfShowDirectorPanel({
     };
     function getPrimaryActionForItem(item = null, readiness = null, options = {}) {
         if (!item || !safeOperatorCapabilities.canEditFlow && !safeOperatorCapabilities.canOperate) return null;
+        if (item?.destination === 'planner') return null;
         const pendingCount = Number(options.pendingCount || 0);
         const blockers = Array.isArray(readiness?.blockers) ? readiness.blockers : [];
         const status = String(item?.status || '').toLowerCase();

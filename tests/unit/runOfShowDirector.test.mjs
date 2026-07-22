@@ -23,7 +23,9 @@ import {
   getRunOfShowRoleCapabilities,
   getRunOfShowOperatingHint,
   getRunOfShowItemReadiness,
+  getNextRunOfShowItem,
   getRunOfShowOpenSubmissionItems,
+  getRunOfShowPreflightReport,
   getRunOfShowPublicItems,
   getRunOfShowProgressionDecision,
   hasRunOfShowBackingIdentity,
@@ -152,6 +154,38 @@ test("runOfShowDirector derives conveyor phases without changing stored statuses
   assert.equal(getRunOfShowConveyorPhase(director, blockedItem), "blocked");
   assert.equal(normalizeRunOfShowDirector(director).items.find((item) => item.id === readyItem.id)?.beltPhase, "on_deck");
   assert.equal(normalizeRunOfShowDirector(director).items.find((item) => item.id === stagedItem.id)?.beltPhase, "flighted");
+});
+
+test("runOfShowDirector keeps Planner entries out of execution, preflight, and public projections", () => {
+  const plannerItem = createRunOfShowItem("announcement", {
+    title: "Happy hour ends",
+    destination: "planner",
+    status: "ready",
+    visibility: "public",
+  });
+  const queueItem = createRunOfShowItem("announcement", {
+    title: "Welcome",
+    destination: "queue",
+    status: "ready",
+  });
+  const director = createDefaultRunOfShowDirector({
+    items: [plannerItem, queueItem],
+  });
+
+  const normalized = normalizeRunOfShowDirector(director);
+  const snapshot = getRunOfShowConveyorSnapshot(normalized);
+  const preflight = getRunOfShowPreflightReport(normalized);
+
+  assert.equal(normalized.items[0].destination, "planner");
+  assert.equal(getRunOfShowConveyorPhase(normalized, normalized.items[0]), "planned");
+  assert.equal(snapshot.onDeckItem?.id, queueItem.id);
+  assert.equal(getNextRunOfShowItem(normalized)?.id, queueItem.id);
+  assert.equal(getRunOfShowPublicItems(normalized).some((item) => item.id === plannerItem.id), false);
+  assert.equal(preflight.itemCount, 1);
+  assert.deepEqual(
+    getRunOfShowProgressionDecision({ director: normalized, item: plannerItem, phase: "prepare" }),
+    { allowed: false, reason: "planner_only" },
+  );
 });
 
 test("runOfShowDirector normalizes release-window governance defaults", () => {

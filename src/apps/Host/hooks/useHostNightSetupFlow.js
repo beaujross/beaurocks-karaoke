@@ -6,6 +6,7 @@ import {
 import {
     buildDeadAirFillerPayload,
 } from '../deadAirAutopilot';
+import { runRoomLaunchPackage } from '../hostLaunchPackage';
 
 const useHostNightSetupFlow = ({
     applyMissionDraftToNightSetupState,
@@ -677,36 +678,44 @@ const useHostNightSetupFlow = ({
     const launchNightSetupPackage = useCallback(async () => {
         if (!roomCode) {
             toast('Open a room first.');
-            return;
+            return {
+                ok: false,
+                applied: false,
+                tvOpened: false,
+                joinLinkCopied: false,
+            };
         }
-        const tvUrl = String(roomLaunchUrls?.tvUrl || '').trim();
-        try {
-            if (tvUrl) {
-                window.open(tvUrl, '_blank', 'noopener,noreferrer');
-            }
-        } catch (_err) {
-            // ignore popup-block issues
-        }
-        const applied = await applyNightSetupWizard({ intent: 'start_match' });
-        if (!applied) return;
+        const launchResult = await runRoomLaunchPackage({
+            roomCode,
+            tvUrl: roomLaunchUrls?.tvUrl,
+            audienceUrl: roomLaunchUrls?.audienceUrl,
+            applySetup: () => applyNightSetupWizard({ intent: 'start_match' }),
+            openPublicTv: (url) => {
+                if (typeof window === 'undefined') return false;
+                const publicTvWindow = window.open('', '_blank');
+                if (!publicTvWindow) return false;
+                publicTvWindow.opener = null;
+                publicTvWindow.location.replace(url);
+                return true;
+            },
+            copyAudienceLink: async (url) => {
+                if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return false;
+                await navigator.clipboard.writeText(url);
+                return true;
+            },
+        });
+        toast(launchResult.message);
 
-        const joinUrl = String(roomLaunchUrls?.audienceUrl || '').trim();
-        if (!joinUrl) {
-            toast('Launch package complete. Audience link is unavailable right now.');
-            return;
-        }
-        try {
-            await navigator.clipboard.writeText(joinUrl);
-            toast('Launch package complete: TV opened and join link copied.');
-        } catch (_err) {
-            toast(`Launch package complete. Join link: ${joinUrl}`);
-        }
-
-        trackEvent('host_night_setup_launch_package', {
+        trackEvent('host_room_launched', {
             room_code: roomCode,
             preset_id: nightSetupPresetId,
             primary_mode: nightSetupPrimaryMode,
+            setup_applied: launchResult.applied === true,
+            public_tv_opened: launchResult.tvOpened === true,
+            audience_link_copied: launchResult.joinLinkCopied === true,
+            recovery_needed: launchResult.needsRecovery === true,
         });
+        return launchResult;
     }, [
         roomCode,
         toast,

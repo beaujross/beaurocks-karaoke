@@ -52,6 +52,7 @@ const EventPage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
           const payload = await directoryActions.listDirectoryDiscover({
             listingType: "event",
             timeWindow: "all",
+            includeEnded: true,
             sortMode: "soonest",
             limit: 60,
             cursor: nextCursor,

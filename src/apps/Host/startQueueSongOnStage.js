@@ -65,6 +65,7 @@ export const startQueueSongOnStage = async ({
   isAudioUrl,
   holdAutoBgDuringStageActivation,
   playAppleMusicTrack,
+  pauseAppleMusic,
   stopAppleMusic,
   updateRoom,
   logActivity,
@@ -202,7 +203,11 @@ export const startQueueSongOnStage = async ({
       ...extraRoomUpdates,
     });
   } else {
-    await stopAppleMusic?.();
+    if (pauseAppleMusic) {
+      await pauseAppleMusic();
+    } else {
+      await stopAppleMusic?.();
+    }
     await updateRoom({
       activeMode: 'karaoke',
       'announcement.active': false,
@@ -227,7 +232,6 @@ export const startQueueSongOnStage = async ({
       videoVolume: 100,
       ...stageDisplayFlags,
       ...extraRoomUpdates,
-      appleMusicPlayback: null,
     });
   }
 

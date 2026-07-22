@@ -32,8 +32,21 @@ describe("marketing page source", () => {
     expect(venueSource).toContain("Publish the room from Host setup");
     expect(venueSource).toContain("Submit a venue or recurring night");
     expect(discoverSource).toContain("List Your Karaoke Night");
-    expect(submissionSource).toContain("Independent venues and karaoke nights can be listed");
+    expect(submissionSource).toContain("Add a venue or recurring night to the public map");
     expect(submissionSource).toContain("Venue Timezone");
+  });
+
+  it("keeps nationwide discovery as the device-independent default", () => {
+    const source = readSource("src/apps/Marketing/pages/DiscoverPage.jsx");
+    expect(source).toContain('const initialRegion = "";');
+    expect(source).toContain('setRegion("");');
+    expect(source).not.toContain("initialIsMobile ? KITSAP_BOOTSTRAP_REGION");
+  });
+
+  it("keeps technical listing metadata optional for venue owners", () => {
+    const source = readSource("src/apps/Marketing/pages/ListingSubmissionPage.jsx");
+    expect(source).toContain("Optional experience details");
+    expect(source).not.toContain("Region Token");
   });
 
   it("stacks the discover radar hero to one column on smaller screens", () => {

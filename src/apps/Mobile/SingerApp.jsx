@@ -94,6 +94,7 @@ import GameLifecycleStatusCard from '../../components/GameLifecycleStatusCard';
 import { getGameLifecyclePresentation } from '../../lib/gameLifecyclePresentation';
 import { getAudienceGameMembershipGate } from '../../lib/audienceGameMembershipGate';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
+import { resolveLyricsPlaybackClock } from '../../lib/lyricsPlaybackClock';
 import { FameLevelProgressBar } from '../../components/FameLevelBadge';
 import UserMetaCard from '../../components/UserMetaCard';
 import { FAME_LEVELS, getLevelFromFame, getProgressToNextLevel } from '../../lib/fameConstants';
@@ -1053,14 +1054,14 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
 };
 
 const SingerApp = ({ roomCode, uid }) => {
-    const initialAudienceDemoFixture = (() => {
+    const initialAudienceDemoFixture = useMemo(() => {
         if (typeof window === 'undefined') return null;
         const params = new URLSearchParams(window.location.search || '');
         const fixtureId = String(params.get('qaAudienceFixture') || '').trim();
         if (!fixtureId) return null;
         const targetRoomCode = String(params.get('room') || roomCode || '').trim().toUpperCase() || 'DEMOAUD';
         return buildQaAudienceFixture(fixtureId, { roomCode: targetRoomCode }) || null;
-    })();
+    }, [roomCode]);
     const isQaAudienceFixture = !!initialAudienceDemoFixture;
     const [user, setUser] = useState(initialAudienceDemoFixture?.user || null);
     const [spendAuthority, setSpendAuthority] = useState(() => readAudienceSpendAuthority(roomCode));
@@ -1221,6 +1222,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [_showLogoTitle, setShowLogoTitle] = useState(true);
     const [authReadyUid, setAuthReadyUid] = useState(null);
     const audienceInstallIdRef = useRef('');
+    const roomUserSubscriptionKeyRef = useRef('');
     const activeUid = useMemo(
         () => resolveAudienceSessionUid({
             authCurrentUid: isQaAudienceFixture ? '' : auth.currentUser?.uid,
@@ -2617,6 +2619,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const audienceBackingPickerAllowed = audienceBackingMode !== AUDIENCE_BACKING_MODES.canonicalOnly;
     const audienceManualBackingAllowed = guestBackingAllowed && unknownBackingPolicy !== UNKNOWN_BACKING_POLICIES.blockUnknown;
     const audienceYouTubeOnlySearch = audienceManualBackingAllowed && room?.audienceYoutubeOnlySearch === true;
+    const audienceAskHostAllowed = !audienceYouTubeOnlySearch;
     const preferredCatalogSearchMode = audienceManualBackingAllowed ? 'youtube' : 'catalog';
     const getAudienceRequestStateMeta = (request = {}) => {
         const normalizedResolutionStatus = String(request?.resolutionStatus || '').trim().toLowerCase();
@@ -4300,8 +4303,10 @@ const SingerApp = ({ roomCode, uid }) => {
 
 const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
-    const hasLyrics = !!currentSinger?.lyrics;
+    const hasLyrics = !!String(currentSinger?.lyrics || '').trim()
+        || (Array.isArray(currentSinger?.lyricsTimed) && currentSinger.lyricsTimed.length > 0);
     const applePlayback = room?.appleMusicPlayback || null;
+    const lyricsPlaybackClock = resolveLyricsPlaybackClock({ room, current: currentSinger });
     const mediaUrl = resolveStageMediaUrl(currentSinger, room);
     const stageBacking = normalizeBackingChoice({
         mediaUrl,
@@ -4666,8 +4671,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     // Listeners
     useEffect(() => {
         if (isAudienceFixtureMode) return () => {};
-        setUser(null);
-        setRoomUserMembershipResolved(false);
+        const nextRoomUserSubscriptionKey = `${String(roomCode || '').trim().toUpperCase()}:${String(activeUid || '').trim() || 'pending'}`;
+        const roomUserIdentityChanged = roomUserSubscriptionKeyRef.current !== nextRoomUserSubscriptionKey;
+        roomUserSubscriptionKeyRef.current = nextRoomUserSubscriptionKey;
+        if (roomUserIdentityChanged) {
+            setUser(null);
+            setRoomUserMembershipResolved(false);
+        }
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
 
         // Subscribe to ALL users for Leaderboard
@@ -5906,7 +5916,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     curatedResults.length
                         ? ''
                         : isYouTubeQuotaBlockedError(error)
-                            ? 'Live YouTube search is temporarily paused because the YouTube quota is exhausted. Try song matches below or ask the host to paste a direct URL.'
+                            ? error?.quotaKind === 'daily'
+                                ? 'The shared YouTube daily search allowance has been reached. Try the song matches below or ask the host to paste a direct URL.'
+                                : 'Live YouTube search is temporarily unavailable. Try the song matches below or ask the host to paste a direct URL.'
                             : 'Could not load YouTube results right now.'
                 );
             } finally {
@@ -6159,10 +6171,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     }, [catalogSearchMode, searchQ]);
 
     useEffect(() => {
-        if (tab !== 'request' || songsTab !== 'requests') {
+        const manualRequestRouteActive = tab === 'request'
+            && (
+                songsTab === 'requests'
+                || (isStreamlinedAudienceShell && songsTab === 'browse')
+            );
+        if (!manualRequestRouteActive) {
             setManualRequestComposerOpen(false);
         }
-    }, [songsTab, tab]);
+    }, [isStreamlinedAudienceShell, songsTab, tab]);
 
     useEffect(() => {
         if (!catalogSearchOpen) return;
@@ -8082,8 +8099,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 handleAudienceCatalogResultSelect(result, requestOptions);
                 return;
             }
-            toast('Pick one of the YouTube karaoke results below for this song.');
-            return;
+            if (audienceYouTubeOnlySearch) {
+                toast('This room requires a playable YouTube result. Choose one above.');
+                return;
+            }
         }
         handleAudienceCatalogResultSelect(result);
     };
@@ -11462,7 +11481,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     );
     
     
-    if ((viewLyrics || hostLyricsActive) && currentSinger?.lyrics) {
+    if ((viewLyrics || hostLyricsActive) && hasLyrics) {
         return (
             <div className="h-[100dvh] relative overflow-hidden">
                 <AppleLyricsRenderer 
@@ -11474,9 +11493,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     artist={currentSinger.artist}
                     isActive={true}
                     // Pass the Room state for sync
-                    startTime={room.videoStartTimestamp}
-                    pausedAt={room.pausedAt}
-                    isPlaying={room.videoPlaying}
+                    startTime={lyricsPlaybackClock.startTime}
+                    pausedAt={lyricsPlaybackClock.pausedAt}
+                    isPlaying={lyricsPlaybackClock.isPlaying}
                     showAll={showAllLyrics}
                     scrollMode={room?.lyricsScrollMode || 'auto'}
                 />
@@ -12028,7 +12047,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (audienceSongLimitState.hardBlocked) return;
         setTab('request');
         setSongsTab('browse');
-        setCatalogSearchMode(preferredCatalogSearchMode);
+        setCatalogSearchMode((current) => ['catalog', 'youtube'].includes(current) ? current : preferredCatalogSearchMode);
         setCatalogSearchOpen(false);
     };
     const handleAudienceInlineSongSearchChange = (event) => {
@@ -12037,8 +12056,21 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (audienceSongLimitState.hardBlocked) return;
         setTab('request');
         setSongsTab('browse');
-        setCatalogSearchMode(preferredCatalogSearchMode);
+        setCatalogSearchMode((current) => ['catalog', 'youtube'].includes(current) ? current : preferredCatalogSearchMode);
         setCatalogSearchOpen(!isStreamlinedAudienceShell);
+    };
+    const openAudienceManualRequestFromSearch = () => {
+        pulseNativeUiFeedback();
+        if (audienceSongLimitState.hardBlocked || !audienceAskHostAllowed) return;
+        const typedRequest = String(searchQ || '').trim();
+        if (typedRequest) {
+            setForm((current) => ({
+                ...current,
+                song: String(current?.song || '').trim() || typedRequest,
+            }));
+        }
+        setCatalogSearchOpen(false);
+        setManualRequestComposerOpen(true);
     };
     const renderStreamlinedInlineSearchResults = () => {
         const trimmedSearch = searchQ.trim();
@@ -12118,8 +12150,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         ) : (
                             <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-300">No embeddable YouTube matches yet. Try song plus artist.</div>
                         )}
-                        {compactSongResults.length ? (
-                            <div className="space-y-2 border-t border-white/10 pt-3">
+                                        {compactSongResults.length ? (
+                                            <div className="space-y-2 border-t border-white/10 pt-3">
                                 <div className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-400">Song matches</div>
                                 {compactSongResults.map((result, index) => (
                                     <button
@@ -12133,6 +12165,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         <div className="min-w-0 flex-1">
                                             <div className="truncate text-sm font-black text-white">{result.trackName}</div>
                                             <div className="truncate text-xs text-zinc-300">{result.artistName}</div>
+                                            <div className="mt-1 text-[11px] text-zinc-400">
+                                                {result.knownBackingCount > 0
+                                                    ? `${result.knownBackingCount} ready karaoke version${result.knownBackingCount === 1 ? '' : 's'}`
+                                                    : result.isResolutionLoading
+                                                        ? 'Checking known karaoke versions'
+                                                        : audienceYouTubeOnlySearch
+                                                            ? 'Choose a playable YouTube result above'
+                                                            : 'Request song - host chooses the karaoke version'}
+                                            </div>
                                         </div>
                                     </button>
                                 ))}
@@ -12510,6 +12551,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 key={item.key}
                                 type="button"
                                 role="tab"
+                                data-feature-id={item.key === 'request' ? 'singer-nav-songs' : 'singer-nav-party'}
                                 aria-selected={isActive}
                                 onClick={() => openStreamlinedPrimaryStageTab(item.key)}
                                 className={`rounded-full px-3 py-1.5 text-center transition-all ${
@@ -12540,6 +12582,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     })}
                 </div>
                 {activePrimaryStageTab === 'request' ? (
+                    <div className="grid gap-1.5">
                     <div role="tablist" aria-label="Song request sections" className="flex min-h-[42px] items-center gap-1 rounded-2xl border border-white/10 bg-black/20 px-1 py-1">
                         <label
                             className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 py-2 transition-colors ${songsTab === 'browse' || catalogSearchOpen ? 'border-cyan-300/55 bg-cyan-500/14 text-white' : 'border-transparent bg-white/[0.04] text-zinc-100'}`}
@@ -12586,6 +12629,37 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 </button>
                             );
                         })}
+                    </div>
+                    <div className="flex min-w-0 flex-wrap items-center gap-1 rounded-full border border-white/10 bg-black/20 p-1" data-feature-id="audience-request-source-switcher">
+                        <span className="px-2 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Find with</span>
+                        {!audienceYouTubeOnlySearch ? (
+                            <button
+                                type="button"
+                                onClick={() => setCatalogSearchMode('catalog')}
+                                className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${catalogSearchMode === 'catalog' ? audienceSearchModeActiveClass : audienceSearchModeInactiveClass}`}
+                            >
+                                Songs
+                            </button>
+                        ) : null}
+                        {audienceManualBackingAllowed ? (
+                            <button
+                                type="button"
+                                onClick={() => setCatalogSearchMode('youtube')}
+                                className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${catalogSearchMode === 'youtube' ? audienceSearchModeActiveClass : audienceSearchModeInactiveClass}`}
+                            >
+                                YouTube
+                            </button>
+                        ) : null}
+                        {audienceAskHostAllowed ? (
+                            <button
+                                type="button"
+                                onClick={openAudienceManualRequestFromSearch}
+                                className="rounded-full border border-pink-300/20 bg-pink-500/8 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-pink-100"
+                            >
+                                Ask host
+                            </button>
+                        ) : null}
+                    </div>
                     </div>
                 ) : (
                     <div className="flex min-h-[42px] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200">
@@ -12797,7 +12871,25 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         );
     };
 
-    if(!user && !isMarketingDemoFixture) return joinScreen;
+    if (!user && !roomUserMembershipResolved && activeUid && !isMarketingDemoFixture) {
+        return (
+            <div
+                data-singer-view="membership-connecting"
+                data-singer-room-code={String(roomCode || '').trim().toUpperCase()}
+                className="flex min-h-[100dvh] w-full items-center justify-center bg-[#090612] px-6 text-white font-saira"
+                style={audienceBrandPalette.rootStyle}
+            >
+                <div className="w-full max-w-sm rounded-[28px] border border-cyan-200/20 bg-black/35 p-6 text-center shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+                    <img src={audienceBrandLogoUrl} className="mx-auto h-16 w-16 object-contain" alt={audienceBrandTitle} />
+                    <div className="mx-auto mt-5 h-10 w-10 animate-spin rounded-full border-4 border-white/15 border-t-cyan-300"></div>
+                    <div className="mt-4 text-lg font-black">Restoring your room</div>
+                    <div className="mt-1 text-sm text-zinc-400">Keeping your confirmed account and place in the night together.</div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!user && !isMarketingDemoFixture) return joinScreen;
 
     return (
         <div
@@ -14879,11 +14971,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     </div>
                                     <div className="px-4 py-3 border-b border-white/10">
                                         <div className={audienceInputShellClass}>
-                                            {audienceManualBackingAllowed && !audienceYouTubeOnlySearch && (
+                                            {!audienceYouTubeOnlySearch && (
                                                 <div className="mb-3 flex flex-wrap gap-2">
                                                     {[
                                                         ['catalog', 'Song search'],
-                                                        ['youtube', 'YouTube']
+                                                        ...(audienceManualBackingAllowed ? [['youtube', 'YouTube']] : [])
                                                     ].map(([mode, label]) => (
                                                         <button
                                                             key={mode}
@@ -14898,6 +14990,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                             {label}
                                                         </button>
                                                     ))}
+                                                    {audienceAskHostAllowed ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={openAudienceManualRequestFromSearch}
+                                                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] ${audienceSearchModeInactiveClass}`}
+                                                        >
+                                                            Ask host
+                                                        </button>
+                                                    ) : null}
                                                 </div>
                                             )}
                                             {catalogSearchMode === 'youtube' && (
@@ -14931,7 +15032,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                 {audienceYouTubeOnlySearch
                                                     ? 'This room is locked to YouTube search for guest requests.'
                                                     : catalogSearchMode === 'youtube'
-                                                    ? (audienceYoutubeSearchMode === 'any' ? 'Search YouTube exactly as typed. Only videos that play inside BeauRocks can be added.' : 'Karaoke mode adds karaoke to the search. Song matches stay below as a fallback if you need them.')
+                                                    ? (audienceYoutubeSearchMode === 'any' ? 'Search YouTube exactly as typed. Only videos that play inside BeauRocks can be added.' : 'Playable karaoke videos appear first. You can also request a song and let the host choose its version.')
                                                     : 'Search by song and artist. Browse only shows picks that already have approved backing.'}
                                             </div>
                                             {catalogSearchMode === 'youtube' && (
@@ -15056,12 +15157,16 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                                     ? 'Choose version'
                                                                     : result.knownBackingCount === 1
                                                                         ? (result.primaryBadge?.label || 'Use ready version')
-                                                                        : 'Use YouTube results';
+                                                                        : audienceYouTubeOnlySearch
+                                                                            ? 'Choose YouTube above'
+                                                                            : 'Request song';
                                                                 const summary = result.knownBackingCount > 0
                                                                     ? `${result.knownBackingCount} ready karaoke version${result.knownBackingCount === 1 ? '' : 's'} found`
                                                                     : result.isResolutionLoading
                                                                         ? 'Checking known karaoke versions'
-                                                                        : 'Request the song if the direct backing is missing.';
+                                                                        : audienceYouTubeOnlySearch
+                                                                            ? 'This room requires a playable YouTube backing.'
+                                                                            : 'Host will choose the karaoke version.';
                                                                 return (
                                                                     <button
                                                                         key={`audience-song-match:${result.resultKey || index}`}
@@ -15421,8 +15526,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             </div>
                                         </label>
                                     )}
+                                    {!isStreamlinedAudienceShell ? (
                                     <button
                                         type="button"
+                                        data-feature-id="singer-manual-request-open"
                                         onClick={() => setManualRequestComposerOpen(true)}
                                         disabled={audienceSongLimitState.hardBlocked}
                                         className={`w-full rounded-[24px] border px-4 text-left ${audienceSongLimitState.hardBlocked ? 'cursor-not-allowed opacity-60' : ''} ${isStreamlinedAudienceShell ? 'py-4 shadow-[0_16px_36px_rgba(0,0,0,0.2)]' : 'border-pink-400/30 bg-gradient-to-r from-pink-500/18 via-fuchsia-500/12 to-cyan-500/12 py-4'}`}
@@ -15445,6 +15552,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             </div>
                                         </div>
                                     </button>
+                                    ) : null}
                                     {audienceManualBackingAllowed && form.backingUrl && (
                                         <div className="rounded-2xl border border-cyan-300/20 bg-black/20 px-4 py-3 text-left">
                                             <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/75">Backing Track Ready</div>

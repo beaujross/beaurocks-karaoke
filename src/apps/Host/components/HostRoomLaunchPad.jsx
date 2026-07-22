@@ -504,6 +504,7 @@ const HostRoomLaunchPad = ({
     launchState,
     launchStateTone,
     launchAccessPending,
+    launchDraftOwnerKey,
     shouldShowSetupCard,
     canUseWorkspaceOnboarding,
     openOnboardingWizard,
@@ -715,6 +716,7 @@ const HostRoomLaunchPad = ({
             launchState={launchState}
             launchStateTone={launchStateTone}
             launchAccessPending={launchAccessPending}
+            launchDraftOwnerKey={launchDraftOwnerKey}
             launchOverviewStats={launchOverviewStats}
             roomCodeInput={roomCodeInput}
             setRoomCodeInput={setRoomCodeInput}

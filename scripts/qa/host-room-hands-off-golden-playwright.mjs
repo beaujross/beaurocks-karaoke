@@ -116,7 +116,7 @@ const advanceHostLaunchUi = async (page) => {
   const actions = [
     { locator: page.locator("[data-host-setup-skip-intro]").first(), delayMs: 1500 },
     { locator: page.getByRole("button", { name: /skip intro/i }).first(), delayMs: 1500 },
-    { locator: page.getByRole("button", { name: /start night/i }).first(), delayMs: 1800 },
+    { locator: page.getByRole("button", { name: /launch room|start night/i }).first(), delayMs: 1800 },
     { locator: page.getByRole("button", { name: /continue/i }).first(), delayMs: 1200 },
   ];
 
@@ -144,6 +144,46 @@ const readHostRoomCode = async (page) => {
   if (fromPageUrl) return fromPageUrl;
 
   return "";
+};
+
+const createFreshHostRoom = async ({ page, timeoutMs }) => {
+  const previousRoomCode = await readHostRoomCode(page);
+  if (previousRoomCode) {
+    const roomManagerButton = page.getByTitle(/Back to room manager and room creation/i).first();
+    await roomManagerButton.waitFor({ state: "visible", timeout: timeoutMs });
+    await roomManagerButton.click({ force: true });
+  }
+
+  const createRoomTab = page.getByRole("tab", { name: /Create Room/i }).first();
+  await createRoomTab.waitFor({ state: "visible", timeout: timeoutMs });
+  await createRoomTab.click({ force: true });
+
+  const uniqueSuffix = Date.now().toString(36).slice(-6).toUpperCase();
+  const requestedRoomCode = `QA${uniqueSuffix}`;
+  const roomNameInput = page.getByPlaceholder("Friday Karaoke").first();
+  const roomCodeInput = page.getByPlaceholder(/Choose a memorable code|Optional|AAHF/i).first();
+  await roomNameInput.waitFor({ state: "visible", timeout: timeoutMs });
+  await roomNameInput.fill(`QA Core Night ${uniqueSuffix}`);
+  await roomCodeInput.fill(requestedRoomCode);
+
+  const createButton = page.locator('[data-host-create-room-primary="true"]').first();
+  await createButton.waitFor({ state: "visible", timeout: timeoutMs });
+  await createButton.click({ timeout: timeoutMs });
+
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const nextRoomCode = await readHostRoomCode(page);
+    if (nextRoomCode && nextRoomCode !== previousRoomCode) {
+      if (nextRoomCode !== requestedRoomCode) {
+        throw new Error(`Fresh room opened with unexpected code ${nextRoomCode}; requested ${requestedRoomCode}.`);
+      }
+      return nextRoomCode;
+    }
+    await advanceHostLaunchUi(page);
+    await delay(700);
+  }
+
+  throw new Error(`Timed out after ${timeoutMs}ms creating fresh QA room ${requestedRoomCode}.`);
 };
 
 const runGuidedSetupWizardLaunch = async ({ page, timeoutMs }) => {
@@ -394,14 +434,31 @@ const gotoHostAccessAndLogin = async ({ page, rootUrl, email, password, timeoutM
 const ensureAutomationMenuOpen = async (page, timeoutMs) => {
   const toggle = page.locator('[data-feature-id="deck-automation-menu-toggle"]').first();
   await toggle.waitFor({ state: "visible", timeout: timeoutMs });
-  const automationHint = page
-    .getByText(/Live toggles stay here so you can tune pacing without leaving the host panel/i)
-    .first();
-  if (await automationHint.isVisible().catch(() => false)) {
+  const menu = page.locator('[data-feature-id="deck-automation-menu"]').first();
+  if (await menu.isVisible().catch(() => false)) {
     return;
   }
+  await toggle.click({ timeout: timeoutMs });
+  await menu.waitFor({ state: "visible", timeout: timeoutMs });
+};
+
+const closeAutomationMenuIfOpen = async (page) => {
+  const menu = page.locator('[data-feature-id="deck-automation-menu"]:visible').first();
+  if (!(await menu.count().catch(() => 0))) return;
+  const toggle = page.locator('[data-feature-id="deck-automation-menu-toggle"]:visible').first();
   await toggle.click({ force: true });
-  await automationHint.waitFor({ state: "visible", timeout: timeoutMs });
+  await menu.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+};
+
+const ensureQueueMenuOpen = async (page, timeoutMs) => {
+  const toggle = page.locator('[data-feature-id="deck-queue-menu-toggle"]').first();
+  await toggle.waitFor({ state: "visible", timeout: timeoutMs });
+  const stageStart = page.locator('[data-feature-id="deck-queue-stage-start-toggle"]').first();
+  if (await stageStart.isVisible().catch(() => false)) {
+    return;
+  }
+  await toggle.click({ timeout: timeoutMs });
+  await stageStart.waitFor({ state: "visible", timeout: timeoutMs });
 };
 
 const buttonStateText = async (button) =>
@@ -409,9 +466,11 @@ const buttonStateText = async (button) =>
 
 const escapeRegExp = (value = "") => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const ensureToggleOn = async ({ button, timeoutMs, allowArmed = false }) => {
-  const isOnText = (text) => /\bon\b/.test(text) || (allowArmed && /\barmed\b/.test(text));
-  const isOffText = (text) => /\boff\b/.test(text);
+const ensureToggleOn = async ({ button, timeoutMs, allowArmed = false, allowAuto = false }) => {
+  const isOnText = (text) => /\bon\b/.test(text)
+    || (allowArmed && /\barmed\b/.test(text))
+    || (allowAuto && /\bauto\b/.test(text));
+  const isOffText = (text) => /\boff\b/.test(text) || (allowAuto && /\bmanual\b/.test(text));
 
   const initialText = await buttonStateText(button);
   if (isOnText(initialText)) return `already_on (${initialText})`;
@@ -432,20 +491,21 @@ const ensureToggleOn = async ({ button, timeoutMs, allowArmed = false }) => {
 };
 
 const ensureHostQueueAddWorkspaceOpen = async ({ page, timeoutMs }) => {
-  const addPanel = page.locator('[data-feature-id="panel-add-to-queue"]').first();
+  await closeAutomationMenuIfOpen(page);
+  const addPanel = page.locator('[data-feature-id="panel-add-to-queue"]:visible').first();
   if (await addPanel.isVisible().catch(() => false)) {
     return "Add workspace already open.";
   }
 
-  const queueTab = page.locator('[data-host-tab="stage"]').first();
+  const queueTab = page.locator('[data-host-tab="stage"]:visible').first();
   if (await queueTab.isVisible().catch(() => false)) {
     await queueTab.click({ force: true });
     await delay(800);
   }
 
   const addWorkspaceButtons = [
-    page.locator('[data-feature-id="queue-surface-tab-add-desktop"]').first(),
-    page.locator('[data-feature-id="queue-surface-tab-add"]').first(),
+    page.locator('[data-feature-id="queue-surface-tab-add-desktop"]:visible').first(),
+    page.locator('[data-feature-id="queue-surface-tab-add"]:visible').first(),
   ];
   for (const button of addWorkspaceButtons) {
     if (!(await button.isVisible().catch(() => false))) continue;
@@ -459,17 +519,18 @@ const ensureHostQueueAddWorkspaceOpen = async ({ page, timeoutMs }) => {
 };
 
 const ensureHostQueueListWorkspaceOpen = async ({ page, timeoutMs }) => {
-  const queuePanel = page.locator('[data-feature-id="panel-queue-list"]').first();
+  await closeAutomationMenuIfOpen(page);
+  const queuePanel = page.locator('[data-feature-id="panel-queue-list"]:visible').first();
   if (!(await queuePanel.isVisible().catch(() => false))) {
-    const queueTab = page.locator('[data-host-tab="stage"]').first();
+    const queueTab = page.locator('[data-host-tab="stage"]:visible').first();
     if (await queueTab.isVisible().catch(() => false)) {
       await queueTab.click({ force: true });
       await delay(800);
     }
 
     const queueWorkspaceButtons = [
-      page.locator('[data-feature-id="queue-surface-tab-queue-desktop"]').first(),
-      page.locator('[data-feature-id="queue-surface-tab-queue"]').first(),
+      page.locator('[data-feature-id="queue-surface-tab-queue-desktop"]:visible').first(),
+      page.locator('[data-feature-id="queue-surface-tab-queue"]:visible').first(),
     ];
     for (const button of queueWorkspaceButtons) {
       if (!(await button.isVisible().catch(() => false))) continue;
@@ -486,6 +547,36 @@ const ensureHostQueueListWorkspaceOpen = async ({ page, timeoutMs }) => {
     await delay(700);
   }
   return "Queue workspace open.";
+};
+
+const closeHostRoomAndWaitForConfirmation = async ({ page, timeoutMs }) => {
+  await closeAutomationMenuIfOpen(page);
+  const adminTab = page.locator('[data-host-tab="admin"]:visible').first();
+  await adminTab.waitFor({ state: "visible", timeout: timeoutMs });
+  await adminTab.click({ force: true });
+
+  await page.locator("[data-admin-workspace]:visible").first().waitFor({
+    state: "visible",
+    timeout: timeoutMs,
+  });
+  const anyCloseButton = page.locator("[data-host-close-room-recap]").first();
+  const containingDisclosure = page.locator("details").filter({ has: anyCloseButton }).first();
+  if (await containingDisclosure.count().catch(() => 0)) {
+    await containingDisclosure.evaluate((node) => {
+      node.open = true;
+    });
+  }
+  const closeButton = page.locator("[data-host-close-room-recap]:visible").first();
+  await closeButton.waitFor({ state: "visible", timeout: timeoutMs });
+
+  page.once("dialog", async (dialog) => {
+    await dialog.accept().catch(() => {});
+  });
+  await closeButton.click({ force: true });
+
+  const closedNotice = page.getByText(/Room closed\./i).first();
+  await closedNotice.waitFor({ state: "visible", timeout: timeoutMs });
+  return String(await closedNotice.innerText().catch(() => "Room closed.")).trim();
 };
 
 const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
@@ -813,6 +904,7 @@ const run = async () => {
   let joinUrl = "";
   let tvQueueBaseline = 0;
   let scenarioFailure = false;
+  let roomCloseAttempted = false;
 
   const hostContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   await applyQaAppCheckDebugInitScript(hostContext);
@@ -842,7 +934,7 @@ const run = async () => {
     await runCheck(checks, "host_create_new_room", async () => {
       await hostPage.goto(hostUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
       await delay(2500);
-      roomCode = await waitForHostRoomCode({ page: hostPage, timeoutMs });
+      roomCode = await createFreshHostRoom({ page: hostPage, timeoutMs });
       if (!roomCode) throw new Error("No room code found after host room creation.");
       return `Created room ${roomCode}.`;
     });
@@ -853,27 +945,31 @@ const run = async () => {
       await ensureHostControlBar({ page: hostPage, timeoutMs });
       await ensureAutomationMenuOpen(hostPage, timeoutMs);
 
-      const autoPlayButton = hostPage.getByRole("button", { name: /Auto Stage Playback/i }).first();
-      const autoBgButton = hostPage.getByRole("button", { name: /Auto BG Music/i }).first();
-      const autoDjButton = hostPage.getByRole("button", { name: /Auto DJ/i }).first();
-      const autoLyricsButton = hostPage.getByRole("button", { name: /Auto Lyrics/i }).first();
-      const popTriviaButton = hostPage.getByRole("button", { name: /Pop Trivia/i }).first();
+      const autoBgButton = hostPage.locator('[data-feature-id="deck-automation-autoBg"]').first();
+      const autoDjButton = hostPage.locator('[data-feature-id="deck-automation-autoDj"]').first();
+      const autoLyricsButton = hostPage.locator('[data-feature-id="deck-automation-autoLyrics"]').first();
+      const popTriviaButton = hostPage.locator('[data-feature-id="deck-automation-popTrivia"]').first();
 
       await Promise.all([
-        autoPlayButton.waitFor({ state: "visible", timeout: timeoutMs }),
         autoBgButton.waitFor({ state: "visible", timeout: timeoutMs }),
         autoDjButton.waitFor({ state: "visible", timeout: timeoutMs }),
         autoLyricsButton.waitFor({ state: "visible", timeout: timeoutMs }),
         popTriviaButton.waitFor({ state: "visible", timeout: timeoutMs }),
       ]);
 
-      const autoPlayDetail = await ensureToggleOn({ button: autoPlayButton, timeoutMs });
       const autoBgDetail = await ensureToggleOn({ button: autoBgButton, timeoutMs });
       const autoDjDetail = await ensureToggleOn({ button: autoDjButton, timeoutMs });
       const autoLyricsDetail = await ensureToggleOn({ button: autoLyricsButton, timeoutMs, allowArmed: true });
       const popTriviaDetail = await ensureToggleOn({ button: popTriviaButton, timeoutMs });
+      await ensureQueueMenuOpen(hostPage, timeoutMs);
+      const stageStartButton = hostPage.locator('[data-feature-id="deck-queue-stage-start-toggle"]').first();
+      const stageStartDetail = await ensureToggleOn({
+        button: stageStartButton,
+        timeoutMs,
+        allowAuto: true,
+      });
 
-      return `Auto-play=${autoPlayDetail}; bg=${autoBgDetail}; autoDj=${autoDjDetail}; lyrics=${autoLyricsDetail}; popTrivia=${popTriviaDetail}`;
+      return `stageStart=${stageStartDetail}; bg=${autoBgDetail}; autoDj=${autoDjDetail}; lyrics=${autoLyricsDetail}; popTrivia=${popTriviaDetail}`;
     });
 
     await runCheck(checks, "host_share_link_available", async () => {
@@ -925,21 +1021,14 @@ const run = async () => {
       const searchInput = hostPage.getByPlaceholder(/Search songs/i).first();
       await searchInput.waitFor({ state: "visible", timeout: timeoutMs });
 
-      const quickAddCheckbox = hostPage.locator('.host-autocomplete-shell input[type="checkbox"]').first();
-      if (await quickAddCheckbox.isVisible().catch(() => false)) {
-        const isChecked = await quickAddCheckbox.isChecked().catch(() => true);
-        if (!isChecked) {
-          await quickAddCheckbox.click({ force: true });
-          await delay(250);
-        }
-      }
-
       await searchInput.fill(hostSearchQuery);
       await delay(1800);
 
       const firstResultRow = hostPage.locator('.host-autocomplete-result-row').first();
       await firstResultRow.waitFor({ state: "visible", timeout: timeoutMs });
-      await firstResultRow.click({ force: true });
+      const addResultButton = firstResultRow.locator('[data-feature-id="performance-result-queue-only"]').first();
+      await addResultButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await addResultButton.click({ force: true });
 
       const quickAddNotice = hostPage.getByText(/^Queued:/i).first();
       await quickAddNotice.waitFor({ state: "visible", timeout: timeoutMs });
@@ -1024,20 +1113,29 @@ const run = async () => {
     });
 
     await runCheck(checks, "audience_adds_song_request", async () => {
-      const hidePopTriviaButton = audiencePage.getByRole("button", { name: /Hide pop-up trivia/i }).first();
+      const hidePopTriviaButton = audiencePage
+        .locator('button[aria-label="Hide pop-up trivia"]:visible')
+        .first();
       if (await hidePopTriviaButton.isVisible().catch(() => false)) {
         await hidePopTriviaButton.click({ force: true }).catch(() => {});
         await delay(500);
       }
 
-      const getSongTitleInput = () => audiencePage.locator('[data-feature-id="singer-request-song-title"]').first();
-      const getArtistInput = () => audiencePage.locator('[data-feature-id="singer-request-artist"]').first();
+      const getSongTitleInput = () => audiencePage
+        .locator('[data-feature-id="singer-request-song-title"]:visible')
+        .first();
+      const getArtistInput = () => audiencePage
+        .locator('[data-feature-id="singer-request-artist"]:visible')
+        .first();
       const songTitleInput = getSongTitleInput();
       const artistInput = getArtistInput();
 
       if (!(await songTitleInput.isVisible().catch(() => false))) {
-        const songsNav = audiencePage.locator('[data-feature-id="singer-nav-songs"]').first();
-        const fallbackSongsNav = audiencePage.getByRole("button", { name: /^SONGS$/i }).first();
+        const songsNav = audiencePage.locator('[data-feature-id="singer-nav-songs"]:visible').first();
+        const fallbackSongsNav = audiencePage
+          .locator("button:visible")
+          .filter({ hasText: /^SONGS$/i })
+          .first();
         const activeSongsNav = await songsNav.isVisible().catch(() => false)
           ? songsNav
           : fallbackSongsNav;
@@ -1046,8 +1144,11 @@ const run = async () => {
         await delay(600);
       }
       if (!(await getSongTitleInput().isVisible().catch(() => false))) {
-        const requestsTab = audiencePage.locator('[data-feature-id="singer-requests-tab"]').first();
-        const fallbackRequestsTab = audiencePage.getByRole("button", { name: /^REQUESTS$/i }).first();
+        const requestsTab = audiencePage.locator('[data-feature-id="singer-requests-tab"]:visible').first();
+        const fallbackRequestsTab = audiencePage
+          .locator("button:visible")
+          .filter({ hasText: /^REQUESTS$/i })
+          .first();
         const activeRequestsTab = await requestsTab.isVisible().catch(() => false)
           ? requestsTab
           : fallbackRequestsTab;
@@ -1058,6 +1159,7 @@ const run = async () => {
       }
       if (!(await getSongTitleInput().isVisible().catch(() => false))) {
         const manualEntryButtons = [
+          audiencePage.locator('[data-feature-id="singer-manual-request-open"]:visible').first(),
           audiencePage.getByRole("button", { name: /Type it manually/i }).first(),
           audiencePage.getByRole("button", { name: /Manual Entry/i }).first(),
         ];
@@ -1134,6 +1236,14 @@ const run = async () => {
       });
       return `TV matched via ${tvState.matched}; queue=${tvState.queueCount}.`;
     });
+
+    await runCheck(checks, "host_closes_room_and_generates_private_recap", async () => {
+      roomCloseAttempted = true;
+      return closeHostRoomAndWaitForConfirmation({
+        page: hostPage,
+        timeoutMs: Math.min(timeoutMs, 30000),
+      });
+    });
   } catch (error) {
     scenarioFailure = true;
     checks.push({
@@ -1147,7 +1257,39 @@ const run = async () => {
     } catch {
       // ignore screenshot errors
     }
+    try {
+      await audiencePage.screenshot({
+        path: failureScreenshotPath.replace(/\.png$/i, "-audience.png"),
+        fullPage: true,
+      });
+    } catch {
+      // ignore screenshot errors
+    }
+    try {
+      await tvPage.screenshot({
+        path: failureScreenshotPath.replace(/\.png$/i, "-tv.png"),
+        fullPage: true,
+      });
+    } catch {
+      // ignore screenshot errors
+    }
   } finally {
+    if (scenarioFailure && roomCode && !roomCloseAttempted && !hostPage.isClosed()) {
+      roomCloseAttempted = true;
+      const cleanupStartedAt = Date.now();
+      try {
+        const detail = await closeHostRoomAndWaitForConfirmation({
+          page: hostPage,
+          timeoutMs: Math.min(timeoutMs, 20000),
+        });
+        checks.push({ name: "host_room_cleanup_after_failure", pass: true, detail });
+        console.error(`[qa:core-night] PASS host_room_cleanup_after_failure (${Date.now() - cleanupStartedAt}ms)`);
+      } catch (cleanupError) {
+        const detail = String(cleanupError?.message || cleanupError);
+        checks.push({ name: "host_room_cleanup_after_failure", pass: false, detail });
+        console.error(`[qa:core-night] FAIL host_room_cleanup_after_failure (${Date.now() - cleanupStartedAt}ms): ${detail}`);
+      }
+    }
     const teardownTimeoutMs = Math.max(3000, Number(process.env.QA_TEARDOWN_TIMEOUT_MS || 10000));
     await withDeadline(audienceContext.close().catch(() => {}), teardownTimeoutMs, "Audience context teardown").catch((error) => console.error(`[qa:core-night] ${error.message}`));
     await withDeadline(tvContext.close().catch(() => {}), teardownTimeoutMs, "TV context teardown").catch((error) => console.error(`[qa:core-night] ${error.message}`));
@@ -1171,6 +1313,12 @@ const run = async () => {
     checks,
     failedCount: failed.length,
     failureScreenshotPath: scenarioFailure ? failureScreenshotPath : "",
+    audienceFailureScreenshotPath: scenarioFailure
+      ? failureScreenshotPath.replace(/\.png$/i, "-audience.png")
+      : "",
+    tvFailureScreenshotPath: scenarioFailure
+      ? failureScreenshotPath.replace(/\.png$/i, "-tv.png")
+      : "",
     timestamp: new Date().toISOString(),
   };
 

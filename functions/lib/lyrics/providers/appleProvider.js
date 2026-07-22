@@ -80,12 +80,14 @@ const resolveAppleLyrics = async (
     const text = await lyricsResponse.text();
     const needsUserToken = lyricsResponse.status === 400 && text.includes("\"code\":\"40012\"");
     if (needsUserToken) {
+      const userAuthorizationMissing = !safeMusicUserToken;
       return {
         found: false,
-        resolution: "apple_needs_user_token",
+        resolution: userAuthorizationMissing ? "apple_needs_user_token" : "apple_permission_denied",
         hasLyrics: false,
         hasTimedLyrics: false,
-        needsUserToken: !safeMusicUserToken,
+        needsUserToken: userAuthorizationMissing,
+        accessDenied: !userAuthorizationMissing,
         appleMusicId,
         title: resolvedTitle,
         artist: resolvedArtist,
@@ -149,4 +151,3 @@ const resolveAppleLyrics = async (
 module.exports = {
   resolveAppleLyrics,
 };
-

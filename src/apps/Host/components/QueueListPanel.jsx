@@ -221,24 +221,24 @@ export const QueueSummaryBar = ({
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
                         type="button"
-                        onClick={() => onAddQuickRunOfShowMoment?.('trivia_break', { placement: 'next' })}
+                        onClick={() => onAddQuickRunOfShowMoment?.('trivia_break', { destination: 'queue', placement: 'append' })}
                         className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
                     >
-                        Trivia Next
+                        Add Trivia to Queue
                     </button>
                     <button
                         type="button"
-                        onClick={() => onAddQuickRunOfShowMoment?.('winner_declaration', { placement: 'next' })}
+                        onClick={() => onAddQuickRunOfShowMoment?.('winner_declaration', { destination: 'queue', placement: 'append' })}
                         className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
                     >
-                        Winner Next
+                        Add Winner to Queue
                     </button>
                     <button
                         type="button"
-                        onClick={() => onAddQuickRunOfShowMoment?.('would_you_rather', { placement: 'next' })}
+                        onClick={() => onAddQuickRunOfShowMoment?.('would_you_rather', { destination: 'queue', placement: 'append' })}
                         className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
                     >
-                        Vote Next
+                        Add Vote to Queue
                     </button>
                 </div>
             ) : null}

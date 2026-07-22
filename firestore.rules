@@ -544,11 +544,20 @@ service cloud.firestore {
     }
 
     function requestsHostRole(data) {
-      return data.roles is list
+      return data.keys().hasAny(['roles'])
+        && data.roles is list
         && (
           "host" in data.roles
           || "venue_owner" in data.roles
         );
+    }
+
+    function directoryProfileServerManagedKeys() {
+      return [
+        'publicVibeIndex',
+        'publicVibeIndexRollupVersion',
+        'publicVibeIndexUpdatedAt'
+      ];
     }
 
     function isDirectoryModerator() {
@@ -706,8 +715,17 @@ service cloud.firestore {
       allow read: if isPublicApproved(resource.data)
         || (isAuthed() && request.auth.uid == uid)
         || isDirectoryModerator();
-      allow create, update: if isAuthed()
+      allow create: if isAuthed()
         && request.auth.uid == uid
+        && !request.resource.data.keys().hasAny(directoryProfileServerManagedKeys())
+        && (
+          !requestsHostRole(request.resource.data)
+          || hasHostApproval(uid)
+          || isDirectoryModerator()
+        );
+      allow update: if isAuthed()
+        && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(directoryProfileServerManagedKeys())
         && (
           !requestsHostRole(request.resource.data)
           || hasHostApproval(uid)
@@ -911,6 +929,23 @@ service cloud.firestore {
     match /directory_sync_jobs/{docId} {
       allow read: if isDirectoryModerator();
       allow write: if false;
+    }
+
+    match /public_vibe_index_jobs/{jobId} {
+      allow read: if isDirectoryModerator();
+      allow write: if false;
+
+      match /changes/{changeId} {
+        allow read: if isDirectoryModerator();
+        allow write: if false;
+      }
+    }
+
+    // Attendance-linked evidence contains internal actor and provenance data.
+    // It is written and consumed only by trusted server operations; client
+    // applications receive bounded aggregates through callables instead.
+    match /public_vibe_evidence/{evidenceId} {
+      allow read, write: if false;
     }
 
     match /directory_regions/{regionId} {

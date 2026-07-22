@@ -1,10 +1,10 @@
 {
   "source": "firestore",
-  "generatedAt": "2026-07-15T01:23:56.476Z",
+  "generatedAt": "2026-07-22T01:06:28.416Z",
   "counts": {
     "venues": 32,
     "events": 73,
-    "sessions": 9,
+    "sessions": 11,
     "profiles": 1,
     "hosts": 1,
     "performers": 1,

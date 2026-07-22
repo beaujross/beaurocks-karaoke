@@ -1,6 +1,6 @@
 const PERFORMED_STATUSES = new Set(["performed", "completed", "done"]);
 
-export const RECAP_SUMMARY_VERSION = 2;
+export const RECAP_SUMMARY_VERSION = 3;
 
 export const safeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -41,6 +41,83 @@ export const buildRoomRecapUrl = (roomCode = "", origin = "") => {
 };
 
 const labelFor = (value = "", fallback = "") => String(value || "").trim() || fallback;
+
+const normalizeGameRound = (entry = {}, fallbackType = "") => {
+  const type = String(entry?.type || entry?.voteType || fallbackType || "").trim().toLowerCase();
+  const normalizedType = type.includes("wyr") ? "wyr" : type.includes("trivia") ? "trivia" : "";
+  const questionId = String(entry?.questionId || entry?.id || "").trim();
+  const question = labelFor(entry?.question || entry?.q, "");
+  if (!normalizedType || !questionId || !question) return null;
+  const options = Array.isArray(entry?.options)
+    ? entry.options.map((option) => String(option || "").trim()).filter(Boolean).slice(0, 8)
+    : normalizedType === "wyr"
+      ? [entry?.optionA, entry?.optionB].map((option) => String(option || "").trim()).filter(Boolean)
+      : [];
+  return {
+    id: questionId,
+    questionId,
+    type: normalizedType,
+    question,
+    options,
+    correct: normalizedType === "trivia" && Number.isFinite(Number(entry?.correct)) ? Number(entry.correct) : null,
+    bankId: String(entry?.bankId || "").trim(),
+    startedAt: toMillis(entry?.startedAt) || safeNumber(entry?.startedAt, 0),
+    durationSec: Math.max(0, safeNumber(entry?.durationSec, 0)),
+  };
+};
+
+const buildRoomGameRounds = ({ room = {}, promptVotes = [] } = {}) => {
+  const byId = new Map();
+  const register = (entry, fallbackType = "") => {
+    const normalized = normalizeGameRound(entry, fallbackType);
+    if (!normalized) return;
+    byId.set(normalized.questionId, {
+      ...(byId.get(normalized.questionId) || {}),
+      ...normalized,
+    });
+  };
+  (Array.isArray(room?.gameRoundHistory) ? room.gameRoundHistory : []).forEach((entry) => register(entry));
+  register(room?.triviaQuestion, "trivia");
+  register(room?.wyrData, "wyr");
+
+  const votesByQuestion = new Map();
+  (Array.isArray(promptVotes) ? promptVotes : []).forEach((vote) => {
+    const questionId = String(vote?.questionId || "").trim();
+    if (!questionId) return;
+    const bucket = votesByQuestion.get(questionId) || [];
+    bucket.push(vote);
+    votesByQuestion.set(questionId, bucket);
+  });
+
+  return [...byId.values()]
+    .map((round) => {
+      const votes = votesByQuestion.get(round.questionId) || [];
+      const counts = {};
+      const responses = votes.map((vote) => {
+        const rawAnswer = vote?.val;
+        const optionIndex = round.type === "trivia" ? Number(rawAnswer) : -1;
+        const answer = round.type === "wyr"
+          ? (String(rawAnswer || "").trim().toUpperCase() === "A" ? round.options[0] : round.options[1]) || String(rawAnswer || "")
+          : round.options[optionIndex] || String(rawAnswer ?? "");
+        const countKey = answer || "No answer";
+        counts[countKey] = (counts[countKey] || 0) + 1;
+        return {
+          name: labelFor(vote?.userName || vote?.name, "Guest"),
+          avatar: labelFor(vote?.avatar, ""),
+          answer: countKey,
+          timestamp: toMillis(vote?.timestamp),
+        };
+      });
+      return {
+        ...round,
+        responseCount: responses.length,
+        counts,
+        responses,
+      };
+    })
+    .sort((left, right) => safeNumber(left?.startedAt, 0) - safeNumber(right?.startedAt, 0))
+    .slice(-60);
+};
 
 export const getSongArtworkUrl = (song = {}) =>
   String(
@@ -167,6 +244,7 @@ export const buildRoomRecapSummary = ({
   crowdSelfies = [],
   chatMessages = [],
   uploads = [],
+  promptVotes = [],
   generatedAtMs = Date.now(),
   source = "room_close",
   window = null,
@@ -179,6 +257,9 @@ export const buildRoomRecapSummary = ({
   const safeCrowdSelfies = Array.isArray(crowdSelfies) ? crowdSelfies : [];
   const safeChatMessages = Array.isArray(chatMessages) ? chatMessages : [];
   const safeUploads = Array.isArray(uploads) ? uploads : [];
+  const safePromptVotes = Array.isArray(promptVotes) ? promptVotes : [];
+  const gameRounds = buildRoomGameRounds({ room, promptVotes: safePromptVotes });
+  const gameResponseCount = gameRounds.reduce((sum, round) => sum + Math.max(0, safeNumber(round?.responseCount, 0)), 0);
   const safePerformedSongs = Array.isArray(performedSongs)
     ? performedSongs
     : safeSongs.filter((song) => PERFORMED_STATUSES.has(String(song?.status || "").trim().toLowerCase()));
@@ -357,6 +438,7 @@ export const buildRoomRecapSummary = ({
     ...safeChatMessages.map((entry) => toMillis(entry?.timestamp || entry?.createdAt || entry?.updatedAt)),
     ...safeQueuedSongs.map((entry) => toMillis(entry?.timestamp || entry?.createdAt || entry?.updatedAt)),
     ...safePerformedSongs.map((entry) => toMillis(entry?.performingStartedAt || entry?.completedAt || entry?.endedAt)),
+    ...safePromptVotes.map((entry) => toMillis(entry?.timestamp || entry?.createdAt || entry?.updatedAt)),
   ].filter((value) => value > 0);
 
   const firstEventMs = timelineMs.length ? Math.min(...timelineMs) : 0;
@@ -397,6 +479,7 @@ export const buildRoomRecapSummary = ({
     topReactors,
     topPerformances,
     topReactionTypes,
+    gameRounds,
     loudestPerformance,
     photos: photoReactions.slice(0, 24),
     crowdSelfies: approvedCrowdSelfies.slice(0, 24),
@@ -431,6 +514,8 @@ export const buildRoomRecapSummary = ({
       activityEvents: safeActivities.length,
       chatMessages: safeChatMessages.length,
       uploads: safeUploads.length,
+      gameRounds: gameRounds.length,
+      gameResponses: gameResponseCount,
       performancesPerHour,
       reactionsPerPerformance,
     },
@@ -445,6 +530,8 @@ export const buildRoomRecapSummary = ({
       activityEvents: safeActivities.length,
       chatMessages: safeChatMessages.length,
       uploads: safeUploads.length,
+      gameRounds: gameRounds.length,
+      gameResponses: gameResponseCount,
       crowdSelfies: approvedCrowdSelfies.length,
       performancesPerHour,
       reactionsPerPerformance,

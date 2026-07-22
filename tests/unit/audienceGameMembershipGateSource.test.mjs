@@ -34,5 +34,7 @@ test('game-first join gate reuses the canonical join transaction and preserves t
 test('already joined guests and deterministic fixtures bypass the join-first gate contract', () => {
   assert.match(source, /hasRoomUser: !!user/);
   assert.match(source, /isDemoFixture: isMarketingDemoFixture/);
-  assert.match(source, /if\(!user && !isMarketingDemoFixture\) return joinScreen/);
+  assert.match(source, /if \(!user && !roomUserMembershipResolved && activeUid && !isMarketingDemoFixture\)/);
+  assert.match(source, /data-singer-view="membership-connecting"/);
+  assert.match(source, /if \(!user && !isMarketingDemoFixture\) return joinScreen/);
 });

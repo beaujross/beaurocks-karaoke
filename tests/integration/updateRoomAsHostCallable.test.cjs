@@ -74,6 +74,15 @@ async function runCase(name, fn) {
 
 async function run() {
   const checks = [
+    ["existing Room stays operable without a current room-creation entitlement", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        autoDj: true,
+      }));
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, ["autoDj"]);
+      assert.equal((await roomRef.get()).get("autoDj"), true);
+    }],
+
     ["host can require, rotate, and remove a guest passcode without exposing it on the room", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         audienceJoinPolicy: { accessMode: "passcode_required" },
@@ -137,7 +146,18 @@ async function run() {
             status: 400,
             message: "Apple Music picker test diagnostic",
           },
-        },        hostNightPresetConfig: {
+        },
+        gameRoundHistory: [{
+          id: "trivia-1",
+          questionId: "trivia-1",
+          type: "trivia",
+          question: "Which city is called the Emerald City?",
+          options: ["Seattle", "Portland", "Austin", "Miami"],
+          correct: 0,
+          startedAt: 1000,
+          durationSec: 20,
+        }],
+        hostNightPresetConfig: {
           id: "festival_custom",
           label: "Festival Custom",
           basePresetId: "competition",
@@ -216,6 +236,7 @@ async function run() {
           "audienceFeatureAccess",
           "searchSources",
           "hostDiagnostics",
+          "gameRoundHistory",
           "hostNightPresetConfig",
           "lobbyOrbSkinUrl",
           "eventCredits",
@@ -241,6 +262,7 @@ async function run() {
       assert.equal(snap.get("audienceShellVariant"), "streamlined");
       assert.equal(snap.get("hostDiagnostics.appleMusic.stage"), "picker_path");
       assert.equal(snap.get("hostDiagnostics.appleMusic.status"), 400);
+      assert.equal((snap.get("gameRoundHistory") || [])[0]?.questionId, "trivia-1");
       assert.equal(snap.get("audienceFeatureAccess.features.customEmoji"), "account_required");
       assert.equal(snap.get("hostNightPresetConfig.id"), "festival_custom");
       assert.equal(snap.get("lobbyOrbSkinUrl"), "https://example.com/orb.png");

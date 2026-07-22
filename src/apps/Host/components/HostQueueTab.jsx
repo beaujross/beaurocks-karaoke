@@ -45,7 +45,6 @@ import {
   searchYouTubeCatalog,
 } from '../../../lib/youtubeSearchClient';
 import { searchAppleCatalog } from '../../../lib/appleSearchClient';
-import { generateAiContentRequest } from '../../../lib/aiGenerationClient';
 import { SOUNDS } from '../../../lib/gameDataConstants';
 import { createLogger } from '../../../lib/logger';
 import { POP_TRIVIA_VOTE_TYPE } from '../../../lib/popTrivia';
@@ -431,30 +430,6 @@ const prioritizeQueueReviewCandidates = (candidates = []) => (
 
 const pickPreferredQueueReviewCandidate = (candidates = []) => prioritizeQueueReviewCandidates(candidates)[0] || null;
 
-const getRoomCodeFromLocation = () => {
-  if (typeof window === 'undefined') return '';
-  try {
-    return String(new URLSearchParams(window.location.search).get('room') || '').trim().toUpperCase();
-  } catch {
-    return '';
-  }
-};
-
-const generateAIContent = async (type, context) => {
-  try {
-    const roomCode = getRoomCodeFromLocation();
-    return await generateAiContentRequest({
-      type,
-      context,
-      roomCode,
-      usageSource: `host_${type}`,
-    });
-  } catch (error) {
-    hostLogger.error('AI Error', error);
-    return null;
-  }
-};
-
 const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search', hideNonEmbeddable = false } = {}) => (
   (rawItems || [])
     .map((item) => {
@@ -601,7 +576,7 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -630,7 +605,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         manual,
         setManual,
         quickAddOnResultClick,
-        setQuickAddOnResultClick,
         quickAddLoadingKey,
         setQuickAddLoadingKey,
         quickAddNotice,
@@ -1459,9 +1433,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             mediaUrl: stageMediaUrl,
             appleMusicId: current?.appleMusicId
         });
+        const applePlaybackType = String(room?.appleMusicPlayback?.type || '').trim().toLowerCase();
         const appleStatus = (room?.appleMusicPlayback?.status || '').toLowerCase();
-        const shouldStopApple = !!effectiveBacking.mediaUrl && (appleStatus === 'playing' || appleStatus === 'paused' || appleMusicPlaying);
-        if (!shouldStopApple) {
+        const shouldPauseApple = !!effectiveBacking.mediaUrl && (appleStatus === 'playing' || appleMusicPlaying);
+        if (!shouldPauseApple) {
             mediaOverrideStopRef.current = '';
             return;
         }
@@ -1471,8 +1446,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         let cancelled = false;
         (async () => {
             try {
-                await stopAppleMusic?.();
-                if (!cancelled) {
+                if (applePlaybackType === 'playlist') {
+                    await pauseAppleMusic?.();
+                } else {
+                    await stopAppleMusic?.();
+                }
+                if (!cancelled && applePlaybackType !== 'playlist') {
                     await updateRoom({ appleMusicPlayback: null });
                 }
             } catch (err) {
@@ -1480,7 +1459,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             }
         })();
         return () => { cancelled = true; };
-    }, [current?.id, current?.mediaUrl, current?.appleMusicId, room?.mediaUrl, room?.appleMusicPlayback?.status, appleMusicPlaying, stopAppleMusic, updateRoom, current, room]);
+    }, [current?.id, current?.mediaUrl, current?.appleMusicId, room?.mediaUrl, room?.appleMusicPlayback?.status, appleMusicPlaying, pauseAppleMusic, stopAppleMusic, updateRoom, current, room]);
     useEffect(() => () => {
         if (hallOfFameTimerRef.current) clearTimeout(hallOfFameTimerRef.current);
         if (autoDjApplauseFallbackTimerRef.current) {
@@ -1594,19 +1573,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             statusText: `${queued.statusText || 'Queued'} - linked to ${slotLabel || 'planned slot'}`
         };
     }, [onAssignQueueSongToRunOfShowItem]);
-    const generateManualLyrics = async () => {
-        if (!manual.song || !manual.artist) return toast('Need Song & Artist');
-        toast('Generating Lyrics...');
-        const res = await generateAIContent('lyrics', { title: manual.song, artist: manual.artist });
-        if (res && res.lyrics) {
-            setManual(prev => ({ ...prev, lyrics: res.lyrics, lyricsTimed: null, appleMusicId: '' }));
-            setLyricsOpen(true);
-            toast('Lyrics Generated!');
-        } else {
-            toast('Gen Failed');
-        }
-    };
-
     const {
         dragQueueId,
         setDragQueueId,
@@ -1671,7 +1637,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         addSongFromResult,
         startEdit,
         saveEdit,
-        generateLyrics,
         syncEditDuration,
         addBonusToCurrent,
         retryLyricsForSong,
@@ -1679,6 +1644,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     } = useQueueSongActions({
         roomCode,
         room,
+        songs,
         hostName,
         manual,
         setManual,
@@ -1690,59 +1656,43 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         setEditForm,
         isAudioUrl,
         resolveDurationForUrl,
-        generateAIContent,
         getAppleMusicUserToken,
         onPersistTrustedCatalogChoice: (...args) => persistTrustedCatalogChoiceRef.current?.(...args),
         onUpsertYtIndexEntries: (...args) => upsertYtIndexEntriesRef.current?.(...args),
         toast
     });
     const queuePerformanceResultWithPlacement = useCallback(async (result, options = {}) => {
-        const queued = await addSongFromResult(result);
-        if (!queued?.id) return queued;
-        let nextQueued = queued;
-        if (options?.slotId) {
-            try {
-                nextQueued = await queuePerformanceToSlot({
-                    queued,
-                    slotId: options.slotId,
-                    slotLabel: options.slotLabel || '',
-                });
-            } catch (error) {
-                hostLogger.warn('Queued performance could not link to planned slot', error);
-                toast(`Queued ${queued.songTitle || 'performance'}, but link to ${options.slotLabel || 'the planned slot'} failed.`);
-                nextQueued = {
-                    ...queued,
-                    statusText: `${queued.statusText || 'Queued'} - slot link failed`
-                };
+        if (quickAddLoadingKey) return null;
+        const rowKey = `${result?.source || 'song'}_${result?.trackId || result?.videoId || result?.url || result?.trackName || 'result'}`;
+        setQuickAddLoadingKey(rowKey);
+        try {
+            const queued = await addSongFromResult(result);
+            if (!queued?.id) return queued;
+            let nextQueued = queued;
+            if (options?.slotId) {
+                try {
+                    nextQueued = await queuePerformanceToSlot({
+                        queued,
+                        slotId: options.slotId,
+                        slotLabel: options.slotLabel || '',
+                    });
+                } catch (error) {
+                    hostLogger.warn('Queued performance could not link to planned slot', error);
+                    toast(`Queued ${queued.songTitle || 'performance'}, but link to ${options.slotLabel || 'the planned slot'} failed.`);
+                    nextQueued = {
+                        ...queued,
+                        statusText: `${queued.statusText || 'Queued'} - slot link failed`
+                    };
+                }
             }
+            setResults([]);
+            setSearchQ('');
+            handleQueuedSongNotice(nextQueued);
+            return nextQueued;
+        } finally {
+            setQuickAddLoadingKey('');
         }
-        handleQueuedSongNotice(nextQueued);
-        return nextQueued;
-    }, [addSongFromResult, handleQueuedSongNotice, queuePerformanceToSlot, toast]);
-    const queueManualPerformanceWithPlacement = useCallback(async (options = {}) => {
-        const queued = await addSong();
-        if (!queued?.id) return queued;
-        let nextQueued = queued;
-        if (options?.slotId) {
-            try {
-                nextQueued = await queuePerformanceToSlot({
-                    queued,
-                    slotId: options.slotId,
-                    slotLabel: options.slotLabel || '',
-                });
-            } catch (error) {
-                hostLogger.warn('Manual performance could not link to planned slot', error);
-                toast(`Queued ${queued.songTitle || 'performance'}, but link to ${options.slotLabel || 'the planned slot'} failed.`);
-                nextQueued = {
-                    ...queued,
-                    statusText: `${queued.statusText || 'Queued'} - slot link failed`
-                };
-            }
-        }
-        handleQueuedSongNotice(nextQueued);
-        return nextQueued;
-    }, [addSong, handleQueuedSongNotice, queuePerformanceToSlot, toast]);
-
+    }, [addSongFromResult, handleQueuedSongNotice, queuePerformanceToSlot, quickAddLoadingKey, setQuickAddLoadingKey, setResults, setSearchQ, toast]);
     // Hybrid Search Logic
     useEffect(() => { 
         if(searchQ.length < 3) {
@@ -1878,9 +1828,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
     };
 
-    const handleResultClick = async (r, idx = 0) => {
+    const handleResultClick = async (r, idx = 0, options = {}) => {
         const rowKey = getResultRowKey(r, idx);
-        if (quickAddOnResultClick) {
+        const queueOnClick = options?.queueOnClick !== undefined
+            ? options.queueOnClick === true
+            : quickAddOnResultClick;
+        if (queueOnClick) {
             if (quickAddLoadingKey) return;
             setQuickAddLoadingKey(rowKey);
             setResults([]);
@@ -2697,6 +2650,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     isAudioUrl,
                     holdAutoBgDuringStageActivation,
                     playAppleMusicTrack,
+                    pauseAppleMusic,
                     stopAppleMusic,
                     updateRoom,
                     logActivity,
@@ -2925,7 +2879,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     recapLedgerSource: reconciled?.source || null,
                     recapEventCount: Number(reconciled?.eventCount || 0)
                 };
-                await stopAppleMusic?.();
+                const activeApplePlayback = room?.appleMusicPlayback || null;
+                const preservedAppleBackgroundPlayback = String(activeApplePlayback?.type || '').trim().toLowerCase() === 'playlist'
+                    ? { ...activeApplePlayback, status: 'paused' }
+                    : null;
+                if (!preservedAppleBackgroundPlayback) await stopAppleMusic?.();
                 await updateRoom({
                     lastPerformance: recapPayload,
                     activeMode: 'karaoke',
@@ -2945,7 +2903,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     showLyricsTv: false,
                     showVisualizerTv: false,
                     showLyricsSinger: false,
-                    appleMusicPlayback: null
+                    appleMusicPlayback: preservedAppleBackgroundPlayback
                 });
                 await logPerformance(recapPayload);
                 pushAutoDjEvent(AUTO_DJ_EVENTS.SCORING_COMPLETE, { songId: id });
@@ -4396,7 +4354,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const addToQueueSection = (
         <div className={`border-b border-white/10 relative ${addToQueueWorkspaceActive && !queueSurface.isCompactQueueSurface ? 'flex min-h-0 flex-1 flex-col p-3 overflow-hidden' : 'p-3'} ${addToQueueWorkspaceActive ? 'bg-fuchsia-500/[0.04]' : 'bg-black/20'}`}>
             <SectionHeader
-                label="Build Next Performer"
+                label="Build a Moment"
                 open={addToQueueSectionOpen}
                 onToggle={() => {
                     if (addToQueueWorkspaceActive) {
@@ -4417,8 +4375,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     youtubeSearchMode={youtubeSearchMode}
                     setYoutubeSearchMode={setYoutubeSearchMode}
                     styles={STYLES}
-                    quickAddOnResultClick={quickAddOnResultClick}
-                    setQuickAddOnResultClick={setQuickAddOnResultClick}
                     results={groupUnifiedCatalogResults(results)}
                     queueSearchSourceNote={queueSearchSourceNote}
                     queueSearchNoResultHint={queueSearchNoResultHint}
@@ -4439,21 +4395,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     statusPill={statusPill}
                     lyricsOpen={lyricsOpen}
                     setLyricsOpen={setLyricsOpen}
-                    onGenerateManualLyrics={generateManualLyrics}
                     openYtSearch={openYtSearch}
                     addSong={addSong}
                     appleMusicAuthorized={appleMusicAuthorized}
                     dockResults={addToQueueWorkspaceActive && !queueSurface.isCompactQueueSurface}
-                    onOpenPlanner={onOpenRunOfShow}
                     onOpenTvLibrary={() => setSceneLibraryOpen(true)}
                     scenePresets={scenePresets}
                     onQueueScenePreset={onQueueScenePreset}
-                    onAddScenePresetToRunOfShow={onAddScenePresetToRunOfShow}
                     onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
-                    runOfShowOpenSlots={runOfShowOpenSlots}
                     onManualQueueResult={handleQueuedSongNotice}
                     onQueuePerformanceResult={queuePerformanceResultWithPlacement}
-                    onQueueManualPerformance={queueManualPerformanceWithPlacement}
                 />
             )}
         </div>
@@ -6326,12 +6277,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         setEditForm={setEditForm}
                         openYtSearch={openYtSearch}
                         syncEditDuration={syncEditDuration}
-                        generateLyrics={generateLyrics}
                         onRetryLyrics={retryLyricsForSong}
                         onFetchTimedLyrics={fetchTimedLyricsForSong}
                         onCancel={() => setEditingSongId(null)}
                         onSave={saveEdit}
-                        emoji={EMOJI}
                     />
                 </React.Suspense>
             ) : null}

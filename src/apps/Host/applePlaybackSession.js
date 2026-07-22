@@ -30,12 +30,24 @@ const resolveAppleTrackId = (value = {}) =>
     );
 
 const normalizeApplePlaybackStatus = ({ instance = null, fallbackStatus = '' } = {}) => {
-    const rawPlaybackState = normalizeKey(instance?.playbackState || instance?.playerState || '');
+    const rawPlaybackValue = instance?.playbackState
+        ?? instance?.playerState
+        ?? instance?.player?.playbackState
+        ?? instance?.player?.playerState
+        ?? '';
+    const rawPlaybackState = normalizeKey(rawPlaybackValue);
+    const numericPlaybackState = Number(rawPlaybackValue);
+    if (Number.isFinite(numericPlaybackState)) {
+        if (numericPlaybackState === 2) return 'playing';
+        if (numericPlaybackState === 3) return 'paused';
+        if (numericPlaybackState === 4) return 'stopped';
+        if (numericPlaybackState === 5 || numericPlaybackState === 10) return 'ended';
+    }
     if (rawPlaybackState.includes('play')) return 'playing';
     if (rawPlaybackState.includes('pause')) return 'paused';
     if (rawPlaybackState.includes('stop')) return 'stopped';
     if (rawPlaybackState.includes('end') || rawPlaybackState.includes('complete')) return 'ended';
-    if (instance?.isPlaying === true) return 'playing';
+    if (instance?.isPlaying === true || instance?.player?.isPlaying === true) return 'playing';
     const fallback = normalizeKey(fallbackStatus);
     if (fallback === 'playing' || fallback === 'paused' || fallback === 'ended' || fallback === 'stopped') {
         return fallback;
@@ -49,17 +61,27 @@ export const getApplePlaybackSnapshot = (instance = null, {
     fallbackStatus = ''
 } = {}) => {
     if (!instance) return null;
-    const nowPlayingItem = instance?.nowPlayingItem || instance?.queue?.currentItem || null;
+    const player = instance?.player || null;
+    const nowPlayingItem = instance?.nowPlayingItem
+        || instance?.queue?.currentItem
+        || player?.nowPlayingItem
+        || player?.queue?.currentItem
+        || null;
     const durationSec = normalizeDurationSec(
         toFiniteNumber(instance?.currentPlaybackDuration, 0),
         toFiniteNumber(instance?.nowPlayingItem?.attributes?.durationInMillis, 0) / 1000,
         toFiniteNumber(instance?.nowPlayingItem?.durationInMillis, 0) / 1000,
+        toFiniteNumber(player?.currentPlaybackDuration, 0),
+        toFiniteNumber(player?.nowPlayingItem?.attributes?.durationInMillis, 0) / 1000,
+        toFiniteNumber(player?.nowPlayingItem?.durationInMillis, 0) / 1000,
         fallbackDurationSec
     );
     const currentTimeSec = Math.max(
         0,
         toFiniteNumber(instance?.currentPlaybackTime, -1),
         toFiniteNumber(instance?.playbackTime, -1),
+        toFiniteNumber(player?.currentPlaybackTime, -1),
+        toFiniteNumber(player?.playbackTime, -1),
         0
     );
     return {
@@ -67,8 +89,29 @@ export const getApplePlaybackSnapshot = (instance = null, {
         currentTimeSec: Number.isFinite(currentTimeSec) ? currentTimeSec : 0,
         durationSec,
         status: normalizeApplePlaybackStatus({ instance, fallbackStatus }),
-        rawPlaybackState: normalizeKey(instance?.playbackState || instance?.playerState || '')
+        rawPlaybackState: normalizeKey(
+            instance?.playbackState
+            || instance?.playerState
+            || player?.playbackState
+            || player?.playerState
+            || ''
+        )
     };
+};
+
+export const shouldPauseApplePlaybackTransport = (instance = null) => {
+    if (!instance) return false;
+    const snapshot = getApplePlaybackSnapshot(instance, { fallbackStatus: '' });
+    if (snapshot?.status !== 'playing') return false;
+    const hasCurrentEntry = !!(
+        instance?.nowPlayingItem
+        || instance?.queue?.currentItem
+        || instance?.player?.nowPlayingItem
+        || instance?.player?.queue?.currentItem
+    );
+    return hasCurrentEntry
+        || instance?.isPlaying === true
+        || instance?.player?.isPlaying === true;
 };
 
 
@@ -119,7 +162,11 @@ export const buildApplePlaybackSyncPatch = ({
     if (!snapshot) return null;
     const normalizedSessionSource = normalizeKey(session?.sourceType);
     const sessionTrackId = normalizeText(session?.appleMusicId);
-    const playbackTrackId = normalizeText(applePlayback?.id);
+    const playbackType = normalizeKey(applePlayback?.type);
+    const playbackIsPlaylist = playbackType === 'playlist';
+    const playbackTrackId = normalizeText(
+        playbackIsPlaylist ? applePlayback?.trackId : applePlayback?.id
+    );
     const snapshotTrackId = normalizeText(snapshot?.trackId);
     const effectiveTrackId = snapshotTrackId || sessionTrackId || playbackTrackId;
     const sessionOwnsPlayback = normalizedSessionSource === 'apple_music'
@@ -142,7 +189,7 @@ export const buildApplePlaybackSyncPatch = ({
     const patch = {};
 
     if (effectiveTrackId && effectiveTrackId !== playbackTrackId) {
-        patch['appleMusicPlayback.id'] = effectiveTrackId;
+        patch[playbackIsPlaylist ? 'appleMusicPlayback.trackId' : 'appleMusicPlayback.id'] = effectiveTrackId;
     }
     if (durationSec > 0) {
         patch['appleMusicPlayback.durationSec'] = durationSec;

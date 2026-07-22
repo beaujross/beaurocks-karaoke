@@ -28,6 +28,7 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 const trackedPublicDir = path.join(projectRoot, "public");
 const require = createRequire(import.meta.url);
+const { buildPublicVibeIndexProjection } = require("../functions/lib/publicVibeIndex");
 
 const ROUTE_DETAIL_PAGES = new Set([
   MARKETING_ROUTE_PAGES.venue,
@@ -44,6 +45,10 @@ const PUBLIC_CORE_ROUTE_PAGES = [
   MARKETING_ROUTE_PAGES.forVenues,
   MARKETING_ROUTE_PAGES.forPerformers,
   MARKETING_ROUTE_PAGES.forFans,
+];
+
+const PRERENDER_ONLY_ROUTE_PAGES = [
+  MARKETING_ROUTE_PAGES.hostAccess,
 ];
 
 const LEGAL_ROUTE_DEFINITIONS = Object.freeze([
@@ -112,9 +117,9 @@ const PAGE_KICKER = Object.freeze({
   [MARKETING_ROUTE_PAGES.performer]: "Performer",
 });
 
-const MARKETING_FAVICON_PATH = "/images/logo-library/bross-ent-favicon-1.png";
-const MARKETING_APPLE_TOUCH_ICON_PATH = "/images/logo-library/bross-ent-favicon-1.png";
-const MARKETING_LOGO_CARD_PATH = "/images/logo-library/bross-ent-favicon-1.png";
+const MARKETING_FAVICON_PATH = "/images/logo-library/beaurocks-logo-neon%20trasnparent.png";
+const MARKETING_APPLE_TOUCH_ICON_PATH = "/images/logo-library/beaurocks-logo-neon%20trasnparent.png";
+const MARKETING_LOGO_CARD_PATH = "/images/logo-library/beaurocks-logo-neon trasnparent.png";
 const MARKETING_SOCIAL_DIR = "images/social";
 const CARD_WIDTH = 1200;
 const CARD_HEIGHT = 630;
@@ -467,7 +472,7 @@ const loadSeoManifestCache = async (outputDir) => {
 const buildCachedRouteSpecsFromLegacyManifest = (manifest = {}) => {
   const specs = [];
 
-  PUBLIC_CORE_ROUTE_PAGES.forEach((page) => {
+  [...PUBLIC_CORE_ROUTE_PAGES, ...PRERENDER_ONLY_ROUTE_PAGES].forEach((page) => {
     specs.push({ route: { page, id: "", params: {} }, entity: null });
   });
 
@@ -547,6 +552,7 @@ const normalizeCachedSeoRecord = (record = {}, baseUrl = readSiteUrl()) => {
       path: imagePath || baseRecord.image.path,
     },
     jsonLd: Array.isArray(record.jsonLd) && record.jsonLd.length ? record.jsonLd : baseRecord.jsonLd,
+    staticContent: record?.staticContent && typeof record.staticContent === "object" ? record.staticContent : null,
     indexable,
     sitemapImages: indexable && imageUrl ? [imageUrl] : [],
   };
@@ -591,7 +597,7 @@ const summarizeRouteDataFromRecords = (records = [], source = "seo_cache") => {
 };
 
 const buildRouteSpecs = (routeData = {}) => {
-  const staticRoutes = PUBLIC_CORE_ROUTE_PAGES.map((page) => ({
+  const staticRoutes = [...PUBLIC_CORE_ROUTE_PAGES, ...PRERENDER_ONLY_ROUTE_PAGES].map((page) => ({
     route: { page, id: "", params: {} },
     entity: {
       pageType: page,
@@ -859,6 +865,161 @@ const createSocialCard = async ({ route = {}, entity = null, routeRecord = null,
   return publicCardPath;
 };
 
+const toMillis = (value = 0) => {
+  if (value && typeof value.toMillis === "function") return Number(value.toMillis() || 0);
+  if (value && typeof value === "object" && Number.isFinite(Number(value.seconds))) {
+    return Number(value.seconds) * 1000;
+  }
+  return Number(value || 0) || 0;
+};
+
+const formatPublicDate = (value = 0) => {
+  const ms = toMillis(value);
+  if (!ms) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(ms));
+};
+
+const entityTitle = (entity = {}) => cleanText(
+  entity.title || entity.displayName || entity.venueName || entity.hostName || entity.name || entity.handle
+);
+
+const entityLocation = (entity = {}) => [
+  entity.city || entity.location?.city || entity.geo?.city,
+  entity.state || entity.stateCode || entity.location?.state || entity.geo?.state,
+].map((value) => cleanText(value)).filter(Boolean).join(", ");
+
+const eventStartsAtMs = (event = {}) => toMillis(event.startsAtMs || event.startAtMs || event.startsAt || event.startAt);
+
+const isUpcomingWithin = (event = {}, days = 30, nowMs = Date.now()) => {
+  const startsAtMs = eventStartsAtMs(event);
+  return startsAtMs >= nowMs && startsAtMs <= nowMs + (days * 24 * 60 * 60 * 1000);
+};
+
+const matchesVenue = (event = {}, entity = {}) => {
+  const venueId = cleanText(entity.id);
+  const venueName = entityTitle(entity).toLowerCase();
+  const eventVenueId = cleanText(event.venueId || event.venueListingId || event.directoryVenueId);
+  const eventVenueName = cleanText(event.venueName || event.locationName).toLowerCase();
+  return !!((venueId && eventVenueId === venueId) || (venueName && eventVenueName === venueName));
+};
+
+const matchesHost = (event = {}, entity = {}) => {
+  const hostId = cleanText(entity.id);
+  const hostName = entityTitle(entity).toLowerCase();
+  const eventHostId = cleanText(event.hostId || event.hostUid || event.hostProfileId || event.directoryHostId);
+  const eventHostName = cleanText(event.hostName || event.hostDisplayName).toLowerCase();
+  return !!((hostId && eventHostId === hostId) || (hostName && eventHostName === hostName));
+};
+
+const matchesGeo = (item = {}, route = {}) => {
+  const page = String(route?.page || "");
+  const itemState = normalizeToken(item.state || item.stateCode || item.location?.state || item.geo?.state || "");
+  const itemCity = normalizeCityToken(item.city || item.location?.city || item.geo?.city || "");
+  if (page === MARKETING_ROUTE_PAGES.geoCity) {
+    return itemState === normalizeToken(route?.params?.state || "")
+      && itemCity === normalizeCityToken(route?.params?.city || "");
+  }
+  if (page === MARKETING_ROUTE_PAGES.geoRegion) {
+    const requested = canonicalizeRegionToken(route?.params?.regionToken || route?.id || "");
+    if (requested === "nationwide") return true;
+    const itemRegion = canonicalizeRegionToken(item.region || item.regionToken || item.location?.region || "");
+    return !!itemRegion && itemRegion === requested;
+  }
+  return false;
+};
+
+const buildPublicStaticContent = ({ route = {}, entity = null, routeData = {}, routeRecord = {} } = {}) => {
+  const page = String(route?.page || "");
+  const events = [...(routeData.events || []), ...(routeData.sessions || [])];
+  const nowMs = Date.now();
+  let relatedEvents = [];
+  let geoListings = [];
+  if (page === MARKETING_ROUTE_PAGES.venue) relatedEvents = events.filter((item) => matchesVenue(item, entity || {}));
+  if (page === MARKETING_ROUTE_PAGES.host) relatedEvents = events.filter((item) => matchesHost(item, entity || {}));
+  if (page === MARKETING_ROUTE_PAGES.geoCity || page === MARKETING_ROUTE_PAGES.geoRegion) {
+    geoListings = [
+      ...(routeData.venues || []),
+      ...(routeData.events || []),
+      ...(routeData.hosts || []),
+    ].filter((item) => matchesGeo(item, route));
+    relatedEvents = (routeData.events || []).filter((item) => matchesGeo(item, route));
+  }
+  if (page === MARKETING_ROUTE_PAGES.event && entity) relatedEvents = [entity];
+
+  const upcomingEvents = relatedEvents
+    .filter((item) => isUpcomingWithin(item, 30, nowMs))
+    .sort((left, right) => eventStartsAtMs(left) - eventStartsAtMs(right));
+  const source = entity || {};
+  const vibe = buildPublicVibeIndexProjection({
+    publicVibeIndex: source.publicVibeIndex,
+  });
+
+  const facts = [];
+  const location = entityLocation(source);
+  if (location) facts.push({ label: "Location", value: location });
+  if (cleanText(source.karaokeNightsLabel)) facts.push({ label: "Schedule", value: cleanText(source.karaokeNightsLabel) });
+  if (formatPublicDate(source.startsAtMs)) facts.push({ label: "Starts", value: formatPublicDate(source.startsAtMs) });
+  if (cleanText(source.hostName || source.hostDisplayName)) facts.push({ label: "Host", value: cleanText(source.hostName || source.hostDisplayName) });
+  if (cleanText(source.venueName || source.locationName)) facts.push({ label: "Venue", value: cleanText(source.venueName || source.locationName) });
+  if (upcomingEvents.length) facts.push({ label: "Next 30 days", value: `${upcomingEvents.length} public ${upcomingEvents.length === 1 ? "night" : "nights"}` });
+  if (vibe.status === "published") facts.push({ label: "BeauRocks Vibe Index", value: `${vibe.score}/100 - ${vibe.label.replace(/_/g, " ")}` });
+
+  const links = [
+    { href: buildMarketingPath({ page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} }), label: "Find karaoke nights" },
+    { href: buildMarketingPath({ page: MARKETING_ROUTE_PAGES.charts, id: "", params: {} }), label: "Explore karaoke charts" },
+    ...upcomingEvents.slice(0, 6).map((item) => ({
+      href: buildMarketingPath({ page: MARKETING_ROUTE_PAGES.event, id: item.id, params: {} }),
+      label: entityTitle(item) || `Karaoke night ${formatPublicDate(item.startsAtMs)}`,
+    })),
+  ].filter((item) => cleanText(item.href) && cleanText(item.label));
+
+  const isGeo = page === MARKETING_ROUTE_PAGES.geoCity || page === MARKETING_ROUTE_PAGES.geoRegion;
+  return {
+    heading: cleanText(routeRecord.title).replace(/\s*\|.*$/, "") || "BeauRocks Karaoke",
+    summary: cleanText(routeRecord.description, "Find public karaoke nights, hosts, venues, and community charts with BeauRocks Karaoke."),
+    facts: facts.slice(0, 7),
+    links,
+    publicVibeIndex: vibe.status === "published" ? vibe : null,
+    hasMeaningfulData: !isGeo || geoListings.length > 0,
+    listingCount: isGeo ? geoListings.length : undefined,
+  };
+};
+
+const buildStaticBody = (routeRecord = {}) => {
+  const content = routeRecord?.staticContent && typeof routeRecord.staticContent === "object"
+    ? routeRecord.staticContent
+    : {};
+  const heading = cleanText(content.heading, cleanText(routeRecord.title).replace(/\s*\|.*$/, ""));
+  const summary = cleanText(content.summary, routeRecord.description);
+  const facts = Array.isArray(content.facts) ? content.facts : [];
+  const links = Array.isArray(content.links) && content.links.length
+    ? content.links
+    : [{ href: "/discover", label: "Find karaoke nights" }, { href: "/charts", label: "Explore karaoke charts" }];
+  if (String(routeRecord?.route?.page || "") === MARKETING_ROUTE_PAGES.hostAccess) {
+    return `<main class="seo-static-shell seo-static-shell--host-access" data-seo-static="true" data-host-access-boot="true" aria-busy="true">
+      <article class="seo-static-auth-card">
+        <div class="seo-static-auth-mark" aria-hidden="true">BR</div>
+        <p class="seo-static-auth-kicker">Secure host access</p>
+        <h1>Opening Host Login</h1>
+        <p>Checking your BeauRocks account and loading the Host workspace.</p>
+        <div class="seo-static-auth-progress" aria-hidden="true"><span></span></div>
+      </article>
+    </main>`;
+  }
+  return `<main class="seo-static-shell" data-seo-static="true">
+    <header><a class="seo-static-brand" href="/">BeauRocks Karaoke</a><p>Public beta - private events</p></header>
+    <article><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(summary)}</p>
+    ${facts.length ? `<dl>${facts.map((fact) => `<div><dt>${escapeHtml(fact.label)}</dt><dd>${escapeHtml(fact.value)}</dd></div>`).join("")}</dl>` : ""}
+    <nav aria-label="Related BeauRocks pages">${links.map((link) => `<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`).join("")}</nav></article>
+  </main>`;
+};
+
 const buildRouteHtml = (templateHtml = "", routeRecord = {}) => {
   const jsonLdText = JSON.stringify(routeRecord.jsonLd).replace(/</g, "\\u003c");
   const headTags = [
@@ -881,25 +1042,29 @@ const buildRouteHtml = (templateHtml = "", routeRecord = {}) => {
     `    <link rel="canonical" href="${escapeHtml(routeRecord.canonicalUrl)}" />`,
     `    <link rel="icon" type="image/png" href="${MARKETING_FAVICON_PATH}" />`,
     `    <link rel="apple-touch-icon" href="${MARKETING_APPLE_TOUCH_ICON_PATH}" />`,
+    `    <style>.seo-static-shell{min-height:100vh;padding:24px;background:#090612;color:#fff;font:16px/1.5 system-ui,sans-serif}.seo-static-shell header,.seo-static-shell article{max-width:880px;margin:auto}.seo-static-shell header{display:flex;justify-content:space-between;gap:16px}.seo-static-brand,.seo-static-shell nav a{color:#79f7ef;font-weight:800}.seo-static-shell h1{font-size:clamp(2rem,7vw,4.75rem);line-height:1.02;margin:12vh 0 20px}.seo-static-shell article>p{max-width:700px;color:#d7d2e4;font-size:1.15rem}.seo-static-shell dl{display:flex;flex-wrap:wrap;gap:10px;margin:32px 0}.seo-static-shell dl div{padding:10px 14px;border:1px solid #543b69;border-radius:14px}.seo-static-shell dt{color:#b9abc8;font-size:.75rem;text-transform:uppercase}.seo-static-shell dd{margin:2px 0 0;font-weight:700}.seo-static-shell nav{display:flex;flex-wrap:wrap;gap:18px;margin-top:30px}.seo-static-shell--host-access{box-sizing:border-box;display:grid;place-items:center;overflow:hidden;background:radial-gradient(circle at 18% 12%,rgba(236,72,153,.2),transparent 34%),radial-gradient(circle at 82% 18%,rgba(34,211,238,.18),transparent 34%),linear-gradient(145deg,#080914,#071521 55%,#18091c)}.seo-static-auth-card{box-sizing:border-box;width:min(100%,480px);padding:40px;border:1px solid rgba(103,232,249,.2);border-radius:28px;background:linear-gradient(145deg,rgba(13,20,34,.94),rgba(20,9,27,.94));box-shadow:0 30px 90px rgba(0,0,0,.45),0 0 46px rgba(34,211,238,.08);text-align:center}.seo-static-auth-mark{display:grid;width:58px;height:58px;margin:0 auto 24px;place-items:center;border:1px solid rgba(244,114,182,.3);border-radius:18px;background:linear-gradient(145deg,rgba(236,72,153,.22),rgba(34,211,238,.18));font-weight:900;letter-spacing:.05em}.seo-static-auth-kicker{margin:0;color:#f9a8d4;font-size:.7rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase}.seo-static-shell--host-access h1{margin:12px 0 12px;font-size:clamp(2rem,9vw,3.2rem);letter-spacing:-.04em}.seo-static-shell--host-access .seo-static-auth-card>p:last-of-type{margin:0 auto;color:#c8d7df;font-size:.95rem}.seo-static-auth-progress{height:4px;margin:28px auto 0;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.08)}.seo-static-auth-progress span{display:block;width:45%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#ec4899,#22d3ee);animation:brHostBoot 1.15s ease-in-out infinite alternate}@keyframes brHostBoot{from{transform:translateX(-35%)}to{transform:translateX(155%)}}@media(max-width:520px){.seo-static-shell--host-access{padding:18px}.seo-static-auth-card{padding:32px 24px;border-radius:24px}}</style>`,
     `    <script type="application/ld+json">${jsonLdText}</script>`,
   ].join("\n");
 
   const routePayloadScript = `    <script>window.__MARKETING_PRERENDER_ROUTE__=${JSON.stringify(routeRecord.route)};</script>`;
   const sanitizedTemplate = templateHtml
     .replace(/<title>.*?<\/title>\s*/i, "")
-    .replace(/<meta\s+name="description"[^>]*>\s*/i, "")
-    .replace(/<meta\s+name="robots"[^>]*>\s*/i, "")
-    .replace(/<meta\s+property="og:site_name"[^>]*>\s*/i, "")
-    .replace(/<link\s+rel="icon"[^>]*>\s*/i, "")
-    .replace(/<link\s+rel="apple-touch-icon"[^>]*>\s*/i, "");
+    .replace(/<meta\s+name="(?:description|robots|twitter:[^"]+)"[^>]*>\s*/gi, "")
+    .replace(/<meta\s+property="og:[^"]+"[^>]*>\s*/gi, "")
+    .replace(/<link\s+rel="canonical"[^>]*>\s*/gi, "")
+    .replace(/<link\s+rel="icon"[^>]*>\s*/gi, "")
+    .replace(/<link\s+rel="apple-touch-icon"[^>]*>\s*/gi, "")
+    .replace(/<script\s+type="application\/ld\+json">[\s\S]*?<\/script>\s*/gi, "");
   const injectedHead = sanitizedTemplate.replace("</head>", `${headTags}\n${routePayloadScript}\n  </head>`);
-  return injectedHead;
+  return injectedHead.replace(/<div\s+id="root"\s*><\/div>/i, `<div id="root">${buildStaticBody(routeRecord)}</div>`);
 };
 
 const writePrerenderedHtml = async ({ templateHtml = "", routeRecord = {}, outputDir = trackedPublicDir }) => {
   const routePath = String(routeRecord.routePath || "").trim();
-  if (!routePath || routePath === "/") return;
-  const destination = path.join(outputDir, trimSlashes(routePath), "index.html");
+  if (!routePath) return;
+  const destination = routePath === "/"
+    ? path.join(outputDir, "index.html")
+    : path.join(outputDir, trimSlashes(routePath), "index.html");
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.writeFile(destination, buildRouteHtml(templateHtml, routeRecord), "utf8");
 };
@@ -1104,12 +1269,38 @@ const run = async () => {
           socialCardPath,
         },
       });
+      const staticContent = buildPublicStaticContent({
+        route: spec.route,
+        entity: spec.entity,
+        routeData,
+        routeRecord: record,
+      });
+      const finalRecord = staticContent.hasMeaningfulData === false
+        ? buildSeoRouteRecord(spec.route, {
+          baseUrl: siteUrl,
+          entity: { ...(spec.entity || {}), socialCardPath },
+          indexable: false,
+        })
+        : record;
       records.push({
-        ...record,
+        ...finalRecord,
+        staticContent,
         lastmod: nowIso(),
-        priority: getRoutePriority(record.route.page),
+        priority: getRoutePriority(finalRecord.route.page),
       });
     }
+  }
+
+  for (const page of PRERENDER_ONLY_ROUTE_PAGES) {
+    if (records.some((record) => String(record?.route?.page || "") === page)) continue;
+    const route = { page, id: "", params: {} };
+    const record = buildSeoRouteRecord(route, { baseUrl: siteUrl, indexable: false });
+    records.push({
+      ...record,
+      staticContent: buildPublicStaticContent({ route, routeData, routeRecord: record }),
+      lastmod: nowIso(),
+      priority: getRoutePriority(page),
+    });
   }
 
   const legalRecords = buildLegalRouteRecords(siteUrl);

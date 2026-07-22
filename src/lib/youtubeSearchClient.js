@@ -17,7 +17,8 @@ const youtubeSearchListLimit = readConfiguredQuotaLimit('VITE_YOUTUBE_DAILY_SEAR
 const youtubeGeneralDataUnitLimit = readConfiguredQuotaLimit('VITE_YOUTUBE_DAILY_GENERAL_DATA_UNIT_LIMIT', 10000);
 const YOUTUBE_DAILY_SEARCH_LIST_CALLS = youtubeSearchListLimit.value;
 const YOUTUBE_DAILY_GENERAL_DATA_UNITS = youtubeGeneralDataUnitLimit.value;
-const YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH = 1;
+// YouTube Data API search.list costs 100 quota units per request.
+const YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH = 100;
 const YOUTUBE_ESTIMATED_SEARCH_LIST_CALLS_PER_LIVE_SEARCH = 1;
 const YOUTUBE_SEARCH_INTENT_STOPWORDS = new Set([
     'karaoke',
@@ -99,6 +100,20 @@ const readYouTubeQuotaBlockedUntilMs = () => {
 };
 
 let youtubeQuotaBlockedUntilMs = readYouTubeQuotaBlockedUntilMs();
+let youtubeProviderQuotaStatus = {
+    state: 'unknown',
+    quotaBlocked: false,
+    quotaKind: '',
+    reason: '',
+    blockedUntilMs: 0,
+    checkedAtMs: 0,
+    projectDayKey: '',
+    projectSearchListCalls: 0,
+    projectVideosListCalls: 0,
+    projectPlaylistItemsListCalls: 0,
+    projectTotalCalls: 0,
+    projectDailySearchListCallLimit: YOUTUBE_DAILY_SEARCH_LIST_CALLS,
+};
 
 const readYouTubeDailyBudgetStats = () => {
     const base = {
@@ -205,6 +220,18 @@ const buildYouTubeSearchTelemetrySnapshot = () => {
         todayEstimatedUnitsRemaining: YOUTUBE_DAILY_GENERAL_DATA_UNITS,
         todayEstimatedFreshSearchesLeft: YOUTUBE_DAILY_SEARCH_LIST_CALLS,
         todayCacheHitPct: 0,
+        providerState: youtubeProviderQuotaStatus.state,
+        providerQuotaBlocked: youtubeProviderQuotaStatus.quotaBlocked === true,
+        providerQuotaKind: youtubeProviderQuotaStatus.quotaKind,
+        providerQuotaReason: youtubeProviderQuotaStatus.reason,
+        providerBlockedUntilMs: Math.max(0, Number(youtubeProviderQuotaStatus.blockedUntilMs || 0)),
+        providerCheckedAtMs: Math.max(0, Number(youtubeProviderQuotaStatus.checkedAtMs || 0)),
+        projectDayKey: String(youtubeProviderQuotaStatus.projectDayKey || '').trim(),
+        projectSearchListCalls: Math.max(0, Number(youtubeProviderQuotaStatus.projectSearchListCalls || 0)),
+        projectVideosListCalls: Math.max(0, Number(youtubeProviderQuotaStatus.projectVideosListCalls || 0)),
+        projectPlaylistItemsListCalls: Math.max(0, Number(youtubeProviderQuotaStatus.projectPlaylistItemsListCalls || 0)),
+        projectTotalCalls: Math.max(0, Number(youtubeProviderQuotaStatus.projectTotalCalls || 0)),
+        projectDailySearchListCallLimit: Math.max(1, Number(youtubeProviderQuotaStatus.projectDailySearchListCallLimit || YOUTUBE_DAILY_SEARCH_LIST_CALLS)),
     };
     for (const event of youtubeSearchTelemetryEvents) {
         const kind = String(event?.kind || '').trim().toLowerCase();
@@ -319,13 +346,30 @@ const isYouTubeQuotaBlocked = () => (
     Number(youtubeQuotaBlockedUntilMs || 0) > nowMs()
 );
 
-const buildYouTubeQuotaBlockedError = (message = '') => {
+const normalizeYouTubeQuotaErrorDetails = (error = null) => {
+    const details = error?.details && typeof error.details === 'object' ? error.details : {};
+    return {
+        provider: String(details.provider || '').trim().toLowerCase(),
+        quotaBlocked: details.quotaBlocked === true,
+        quotaKind: String(details.quotaKind || error?.quotaKind || '').trim().toLowerCase(),
+        reason: String(details.reason || error?.quotaReason || '').trim(),
+        blockedUntilMs: Math.max(0, Number(details.blockedUntilMs || error?.retryAtMs || 0)),
+    };
+};
+
+const buildYouTubeQuotaBlockedError = (message = '', details = {}) => {
+    const safeDetails = details && typeof details === 'object' ? details : {};
     const error = new Error(
-        message || 'Live YouTube search is temporarily paused because the YouTube quota is exhausted.'
+        message || 'Live YouTube search is temporarily unavailable. Cached and indexed tracks still work.'
     );
     error.code = 'resource-exhausted';
     error.youtubeQuotaBlocked = true;
-    error.retryAtMs = Number(youtubeQuotaBlockedUntilMs || 0);
+    error.quotaKind = String(safeDetails.quotaKind || '').trim().toLowerCase();
+    error.quotaReason = String(safeDetails.reason || '').trim();
+    error.retryAtMs = Math.max(
+        Number(youtubeQuotaBlockedUntilMs || 0),
+        Number(safeDetails.blockedUntilMs || 0)
+    );
     return error;
 };
 
@@ -339,13 +383,18 @@ const clearYouTubeQuotaBlocked = () => {
 
 const isYouTubeQuotaError = (error = null) => {
     if (error?.youtubeQuotaBlocked === true) return true;
-    const code = String(error?.code || '').trim().toLowerCase();
+    const details = normalizeYouTubeQuotaErrorDetails(error);
     const message = String(error?.message || '').trim().toLowerCase();
     return (
-        code.includes('resource-exhausted')
-        || message.includes('quota')
-        || message.includes('rate limit')
-        || message.includes('rate_limit')
+        (details.provider === 'youtube' && details.quotaBlocked)
+        || (
+            message.includes('youtube')
+            && (
+                message.includes('quota')
+                || message.includes('rate limit')
+                || message.includes('rate_limit')
+            )
+        )
     );
 };
 
@@ -364,6 +413,35 @@ export const isYouTubeQuotaBlockedError = (error = null) => isYouTubeQuotaError(
 export const getYouTubeQuotaBlockedUntilMs = () => Number(youtubeQuotaBlockedUntilMs || 0);
 
 export const getYouTubeSearchTelemetrySnapshot = () => buildYouTubeSearchTelemetrySnapshot();
+
+export const refreshYouTubeProviderQuotaStatus = async ({ roomCode = '' } = {}) => {
+    const data = await callFunction('youtubeQuotaStatus', { roomCode });
+    const checkedAtMs = Math.max(0, Number(data?.checkedAtMs || nowMs()));
+    const blockedUntilMs = Math.max(0, Number(data?.blockedUntilMs || 0));
+    const quotaBlocked = data?.quotaBlocked === true && blockedUntilMs > nowMs();
+    const dailyUsage = data?.dailyUsage && typeof data.dailyUsage === 'object' ? data.dailyUsage : {};
+    youtubeProviderQuotaStatus = {
+        state: quotaBlocked ? 'paused' : 'available',
+        quotaBlocked,
+        quotaKind: String(data?.quotaKind || '').trim().toLowerCase(),
+        reason: String(data?.reason || '').trim(),
+        blockedUntilMs,
+        checkedAtMs,
+        projectDayKey: String(dailyUsage.dateKey || '').trim(),
+        projectSearchListCalls: Math.max(0, Number(dailyUsage.searchListCalls || 0)),
+        projectVideosListCalls: Math.max(0, Number(dailyUsage.videosListCalls || 0)),
+        projectPlaylistItemsListCalls: Math.max(0, Number(dailyUsage.playlistItemsListCalls || 0)),
+        projectTotalCalls: Math.max(0, Number(dailyUsage.totalCalls || 0)),
+        projectDailySearchListCallLimit: Math.max(1, Number(data?.dailySearchListCallLimit || YOUTUBE_DAILY_SEARCH_LIST_CALLS)),
+    };
+    if (quotaBlocked) {
+        persistYouTubeQuotaBlockedUntilMs(blockedUntilMs);
+    } else {
+        clearYouTubeQuotaBlocked();
+    }
+    notifyYouTubeSearchTelemetrySubscribers();
+    return { ...youtubeProviderQuotaStatus };
+};
 
 export const subscribeToYouTubeSearchTelemetry = (listener) => {
     if (typeof listener !== 'function') return () => {};
@@ -433,10 +511,26 @@ export const searchYouTubeCatalog = async ({
         };
     } catch (error) {
         if (isYouTubeQuotaError(error)) {
-            markYouTubeQuotaBlocked();
+            const details = normalizeYouTubeQuotaErrorDetails(error);
+            const retryDurationMs = details.blockedUntilMs > nowMs()
+                ? details.blockedUntilMs - nowMs()
+                : YOUTUBE_QUOTA_COOLDOWN_MS;
+            markYouTubeQuotaBlocked(retryDurationMs);
             recordYouTubeSearchTelemetryEvent('quota_error');
+            youtubeProviderQuotaStatus = {
+                state: 'paused',
+                quotaBlocked: true,
+                quotaKind: details.quotaKind,
+                reason: details.reason,
+                blockedUntilMs: Math.max(details.blockedUntilMs, getYouTubeQuotaBlockedUntilMs()),
+                checkedAtMs: nowMs(),
+            };
+            notifyYouTubeSearchTelemetrySubscribers();
             throw buildYouTubeQuotaBlockedError(
-                'Live YouTube search is temporarily paused because the YouTube quota is exhausted. Use indexed tracks or paste a direct URL for now.'
+                details.quotaKind === 'daily'
+                    ? 'The shared YouTube daily search allowance has been reached. Cached and indexed tracks still work.'
+                    : 'Live YouTube search is temporarily unavailable. Cached and indexed tracks still work.',
+                details
             );
         }
         throw error;

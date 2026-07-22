@@ -76,6 +76,7 @@ import {
     getYouTubeSearchTelemetrySnapshot,
     getYouTubeQuotaBlockedUntilMs,
     isYouTubeQuotaBlockedError,
+    refreshYouTubeProviderQuotaStatus,
     subscribeToYouTubeSearchTelemetry,
     searchYouTubeCatalog
 } from '../../lib/youtubeSearchClient';
@@ -329,6 +330,7 @@ import {
 import {
     buildApplePlaybackSyncPatch,
     getApplePlaybackSnapshot,
+    shouldPauseApplePlaybackTransport,
     shouldWriteApplePlaybackSyncPatch
 } from './applePlaybackSession';
 import { normalizeHostPermissionLevel } from './launchAccess';
@@ -1157,7 +1159,7 @@ const startQueueSongOnStage = async ({
     isAudioUrl,
     holdAutoBgDuringStageActivation,
     playAppleMusicTrack,
-    stopAppleMusic,
+    pauseAppleMusic,
     updateRoom,
     logActivity,
     performanceMetaExtras = {},
@@ -1291,7 +1293,7 @@ const startQueueSongOnStage = async ({
             ...extraRoomUpdates
         });
     } else {
-        await stopAppleMusic?.();
+        await pauseAppleMusic?.();
         await updateRoom({
             activeMode: 'karaoke',
             bonusDrop: null,
@@ -1319,8 +1321,7 @@ const startQueueSongOnStage = async ({
             currentPerformanceSession,
             videoVolume: 100,
             ...stageDisplayFlags,
-            ...extraRoomUpdates,
-            appleMusicPlayback: null
+            ...extraRoomUpdates
         });
     }
 
@@ -2022,7 +2023,7 @@ const clearMediaElementSource = (audio = null) => {
     }
     try {
         audio.removeAttribute?.('src');
-        if (currentSrc && !currentSrc.startsWith('blob:')) audio.load?.();
+        if (currentSrc) audio.load?.();
     } catch (_error) {
         // Revoked blob URLs can throw while the browser tears down the old source.
     }
@@ -2054,9 +2055,26 @@ const waitForAppleMusicPlaybackStart = async (instance = null, { timeoutMs = APP
     const startedAt = Date.now();
     while (Date.now() - startedAt <= timeoutMs) {
         const snapshot = getApplePlaybackSnapshot(instance, { fallbackStatus: '' });
-        const rawState = String(instance?.playbackState || instance?.playerState || snapshot?.rawPlaybackState || '').toLowerCase();
-        const hasLoadedItem = !!(instance?.nowPlayingItem || instance?.queue?.currentItem || snapshot?.trackId || snapshot?.durationSec > 0);
-        const isPlaying = instance?.isPlaying === true || snapshot?.status === 'playing' || rawState.includes('play');
+        const rawState = String(
+            instance?.playbackState
+            || instance?.playerState
+            || instance?.player?.playbackState
+            || instance?.player?.playerState
+            || snapshot?.rawPlaybackState
+            || ''
+        ).toLowerCase();
+        const hasLoadedItem = !!(
+            instance?.nowPlayingItem
+            || instance?.queue?.currentItem
+            || instance?.player?.nowPlayingItem
+            || instance?.player?.queue?.currentItem
+            || snapshot?.trackId
+            || snapshot?.durationSec > 0
+        );
+        const isPlaying = instance?.isPlaying === true
+            || instance?.player?.isPlaying === true
+            || snapshot?.status === 'playing'
+            || rawState.includes('play');
         if (isPlaying && hasLoadedItem) return snapshot || { status: 'playing' };
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
@@ -2064,7 +2082,7 @@ const waitForAppleMusicPlaybackStart = async (instance = null, { timeoutMs = APP
 };
 
 const stopAppleMusicForQueueRetry = async (instance = null) => {
-    if (!instance) return;
+    if (!shouldPauseApplePlaybackTransport(instance)) return;
     try {
         if (typeof instance.stop === 'function') await instance.stop();
         else if (typeof instance.pause === 'function') await instance.pause();
@@ -2106,7 +2124,6 @@ const startAppleMusicQueuePlayback = async (instance = null, queue = null) => {
     const firstItemIsUnavailable = firstPlayableIndex > 0 && items[0]?.isPlayable === false;
     if (firstItemIsUnavailable && typeof instance?.changeToMediaAtIndex === 'function') {
         await instance.changeToMediaAtIndex(firstPlayableIndex);
-        return;
     }
     await instance.play();
 };
@@ -2200,7 +2217,9 @@ const normalizeAppleMusicPlaylistChoice = (item = {}, mode = 'library') => {
     const playParamsId = String(playParams.id || '').trim();
     return {
         id,
-        playbackId: catalogId || playParamsId || id,
+        playbackId: sourceType === 'library_playlist'
+            ? (playParamsId || id || catalogId)
+            : (catalogId || playParamsId || id),
         catalogId,
         playParamsId,
         alternatePlaylistIds: [catalogId, playParamsId].filter(Boolean),
@@ -2691,7 +2710,7 @@ const ToggleSwitch = ({ checked, onChange, icon, label }) => {
 // --- SUB-COMPONENTS ---
 
 // 1. Edit Modal
-const EditSongModal = ({ song, onClose, onSave, onGenerateLyrics }) => {
+const EditSongModal = ({ song, onClose, onSave }) => {
     const [form, setForm] = useState({ 
         title: song.songTitle || '', artist: song.artist || '', singer: song.singerName || '', 
         url: song.mediaUrl || '', art: song.albumArtUrl || '', lyrics: song.lyrics || '', duration: song.duration || 180 
@@ -2723,8 +2742,6 @@ const EditSongModal = ({ song, onClose, onSave, onGenerateLyrics }) => {
                 </div>
                 <div className="host-form-helper">Used only when lyrics have no sync data (AI or manual). Sets scroll speed.</div>
                 <textarea value={form.lyrics} onChange={e=>setForm({...form, lyrics:e.target.value})} className={`${STYLES.input} h-32 font-mono host-lyrics-input`} placeholder="Paste lyrics here..."></textarea>
-                
-                <button onClick={() => onGenerateLyrics(form, (l) => setForm(p => ({...p, lyrics:l})))} className={`${STYLES.btnStd} ${STYLES.btnInfo} w-full`}><i className="fa-solid fa-robot mr-2"></i> Auto-generate lyrics (AI)</button>
                 
                 <div className="flex gap-2 justify-end mt-4 pt-4 border-t border-white/10">
                     <button onClick={onClose} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Cancel</button>
@@ -5036,6 +5053,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const appleMusicRef = useRef(null);
     const appleMusicPlaylistStartRef = useRef({ key: '', promise: null, failedAtMs: 0 });
+    const appleMusicTransportRef = useRef({ action: '', promise: null });
     const appleMusicDeveloperTokenRef = useRef('');
     const appleMusicVolumeRef = useRef(0.3);
     const applePlaybackSyncKeyRef = useRef('');
@@ -5104,7 +5122,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!shouldTrackSession && !shouldTrackPlayback) return;
 
         const snapshot = getApplePlaybackSnapshot(appleMusicRef.current, {
-            fallbackTrackId: session?.appleMusicId || applePlayback?.id || '',
+            fallbackTrackId: session?.appleMusicId || applePlayback?.trackId || applePlayback?.id || '',
             fallbackDurationSec: session?.playerReportedDurationSec
                 || session?.expectedDurationSec
                 || applePlayback?.durationSec
@@ -5171,7 +5189,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAppleMusicReady(true);
         setAppleMusicAuthorized(!!instance.isAuthorized);
         instance.addEventListener('playbackStateDidChange', () => {
-            setAppleMusicPlaying(instance.isPlaying);
+            const snapshot = getApplePlaybackSnapshot(instance, { fallbackStatus: '' });
+            setAppleMusicPlaying(snapshot?.status === 'playing');
             syncApplePlaybackStateRef.current({ force: true }).catch((error) => {
                 hostLogger.debug('Apple playback event sync failed', error);
             });
@@ -5246,49 +5265,98 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     }, [ensureAppleMusic, roomCode, updateRoom]);
 
-    const pauseAppleMusic = async () => {
-        const instance = appleMusicRef.current;
-        if (!instance) return;
-        await instance.pause();
-        setAppleMusicPlaying(false);
-        if (roomCode) {
-            await updateRoom({
-                appleMusicPlayback: {
-                    ...(room?.appleMusicPlayback || {}),
-                    status: 'paused',
-                    pausedAt: nowMs()
-                }
+    const pauseAppleMusic = useCallback(async () => {
+        const currentTransport = appleMusicTransportRef.current;
+        if (currentTransport.promise && currentTransport.action === 'pause') return currentTransport.promise;
+        const pausePlayback = async () => {
+            const instance = appleMusicRef.current;
+            if (!instance) return null;
+            if (shouldPauseApplePlaybackTransport(instance)) {
+                await instance.pause();
+            }
+            setAppleMusicPlaying(false);
+            const liveRoom = roomRef.current || {};
+            const previousPlayback = liveRoom?.appleMusicPlayback || {};
+            const snapshot = getApplePlaybackSnapshot(instance, {
+                fallbackTrackId: previousPlayback?.trackId || previousPlayback?.id || '',
+                fallbackStatus: 'paused'
             });
+            const nextPlayback = {
+                ...previousPlayback,
+                ...(snapshot?.trackId ? { trackId: snapshot.trackId } : {}),
+                ...(Number.isFinite(snapshot?.currentTimeSec) ? { positionSec: snapshot.currentTimeSec } : {}),
+                status: 'paused',
+                pausedAt: nowMs()
+            };
+            roomRef.current = { ...liveRoom, appleMusicPlayback: nextPlayback };
+            if (roomCode) await updateRoom({ appleMusicPlayback: nextPlayback });
+            return nextPlayback;
+        };
+        const pausePromise = currentTransport.promise
+            ? Promise.resolve(currentTransport.promise).catch(() => {}).then(pausePlayback)
+            : pausePlayback();
+        appleMusicTransportRef.current = { action: 'pause', promise: pausePromise };
+        try {
+            return await pausePromise;
+        } finally {
+            if (appleMusicTransportRef.current.promise === pausePromise) {
+                appleMusicTransportRef.current = { action: '', promise: null };
+            }
         }
-    };
+    }, [roomCode, updateRoom]);
 
-    const resumeAppleMusic = async () => {
-        const instance = appleMusicRef.current;
-        if (!instance) return;
-        await instance.play();
-        setAppleMusicPlaying(true);
-        if (roomCode) {
+    const resumeAppleMusic = useCallback(async () => {
+        const currentTransport = appleMusicTransportRef.current;
+        if (currentTransport.promise && currentTransport.action === 'resume') return currentTransport.promise;
+        const resumePlayback = async () => {
+            const instance = appleMusicRef.current;
+            if (!instance) return null;
+            await instance.play();
+            setAppleMusicPlaying(true);
             const now = nowMs();
-            const previousPlayback = room?.appleMusicPlayback || {};
+            const liveRoom = roomRef.current || {};
+            const previousPlayback = liveRoom?.appleMusicPlayback || {};
             const previousStartedAt = Number(previousPlayback?.startedAt || 0);
             const pausedAt = Number(previousPlayback?.pausedAt || 0);
             const adjustedStartedAt = previousStartedAt > 0 && pausedAt > 0
                 ? previousStartedAt + Math.max(0, now - pausedAt)
                 : (previousStartedAt || now);
-            await updateRoom({
-                appleMusicPlayback: {
-                    ...previousPlayback,
-                    status: 'playing',
-                    startedAt: adjustedStartedAt,
-                    resumedAt: now,
-                    pausedAt: null
-                }
+            const snapshot = getApplePlaybackSnapshot(instance, {
+                fallbackTrackId: previousPlayback?.trackId || previousPlayback?.id || '',
+                fallbackStatus: 'playing'
             });
+            const nextPlayback = {
+                ...previousPlayback,
+                ...(snapshot?.trackId ? { trackId: snapshot.trackId } : {}),
+                ...(Number.isFinite(snapshot?.currentTimeSec) ? { positionSec: snapshot.currentTimeSec } : {}),
+                status: 'playing',
+                startedAt: adjustedStartedAt,
+                resumedAt: now,
+                pausedAt: null
+            };
+            roomRef.current = { ...liveRoom, appleMusicPlayback: nextPlayback };
+            if (roomCode) await updateRoom({ appleMusicPlayback: nextPlayback });
+            return nextPlayback;
+        };
+        const resumePromise = currentTransport.promise
+            ? Promise.resolve(currentTransport.promise).catch(() => {}).then(resumePlayback)
+            : resumePlayback();
+        appleMusicTransportRef.current = { action: 'resume', promise: resumePromise };
+        try {
+            return await resumePromise;
+        } finally {
+            if (appleMusicTransportRef.current.promise === resumePromise) {
+                appleMusicTransportRef.current = { action: '', promise: null };
+            }
         }
-    };
+    }, [roomCode, updateRoom]);
     const stopAppleMusic = useCallback(async () => {
         const instance = appleMusicRef.current;
         if (!instance) return;
+        if (!shouldPauseApplePlaybackTransport(instance)) {
+            setAppleMusicPlaying(false);
+            return;
+        }
         try {
             if (typeof instance.pause === 'function') {
                 await instance.pause();
@@ -5363,12 +5431,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!playlistId) return;
         const startKey = buildAppleMusicPlaylistStartKey(playlistId, meta);
         const currentStart = appleMusicPlaylistStartRef.current;
-        if (currentStart.promise && currentStart.key === startKey) return currentStart.promise;
+        if (currentStart.promise && (currentStart.key === startKey || meta.automatic === true)) return currentStart.promise;
         if (meta.automatic === true && isAppleMusicAutomaticRetryCoolingDown(currentStart, startKey)) {
             throw createAppleMusicAutomaticRetryError();
         }
 
         const startPlayback = async () => {
+            bgPlaybackOperationRef.current += 1;
+            clearMediaElementSource(bgAudio.current);
+            playingBgRef.current = false;
+            setPlayingBg(false);
             const instance = await ensureAppleMusic();
             if (!instance.isAuthorized) {
                 await authorizeAppleMusicInstance(instance);
@@ -5376,18 +5448,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             const resolvedTitle = meta.title || await fetchAppleMusicPlaylistTitle(playlistId) || '';
             applyAppleMusicOutputVolume(instance, appleMusicVolumeRef.current);
-            await playAppleMusicPlaylistQueueWithFallback(instance, playlistId, meta);
+            const queueResult = await playAppleMusicPlaylistQueueWithFallback(instance, playlistId, meta);
             setAppleMusicPlaying(true);
             if (roomCode) {
-                await updateRoom({
-                    appleMusicPlayback: {
-                        type: 'playlist',
-                        id: String(playlistId),
-                        title: resolvedTitle || meta.title || '',
-                        startedAt: nowMs(),
-                        status: 'playing'
-                    }
-                });
+                const nextPlayback = {
+                    type: 'playlist',
+                    id: String(playlistId),
+                    ...(queueResult?.snapshot?.trackId ? { trackId: queueResult.snapshot.trackId } : {}),
+                    ...(Number.isFinite(queueResult?.snapshot?.currentTimeSec) ? { positionSec: queueResult.snapshot.currentTimeSec } : {}),
+                    title: resolvedTitle || meta.title || '',
+                    startedAt: nowMs(),
+                    status: 'playing'
+                };
+                const nextRoomPatch = {
+                    bgMusicPlaying: false,
+                    bgMusicUrl: '',
+                    backgroundAudioPlayback: null,
+                    appleMusicPlayback: nextPlayback
+                };
+                roomRef.current = { ...(roomRef.current || {}), ...nextRoomPatch };
+                await updateRoom(nextRoomPatch);
             }
             return { playlistId: String(playlistId), title: resolvedTitle || meta.title || '' };
         };
@@ -6754,11 +6834,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => window.clearInterval(intervalId);
     }, []);
     useEffect(() => subscribeToYouTubeSearchTelemetry(setYouTubeSearchTelemetry), []);
+    useEffect(() => {
+        let canceled = false;
+        const refresh = async () => {
+            try {
+                await refreshYouTubeProviderQuotaStatus({ roomCode });
+            } catch (error) {
+                if (!canceled) hostLogger.warn('[HostApp] YouTube provider status refresh failed', error);
+            }
+        };
+        refresh();
+        const intervalId = window.setInterval(refresh, 60 * 1000);
+        return () => {
+            canceled = true;
+            window.clearInterval(intervalId);
+        };
+    }, [roomCode]);
     useEffect(() => subscribeToAppleSearchTelemetry(setAppleSearchTelemetry), []);
     useEffect(() => subscribeToAiGenerationTelemetry(setAiGenerationTelemetry), []);
     const hostOpsStatus = useMemo(() => {
         const youtubeQuotaBlockedUntilMs = Number(getYouTubeQuotaBlockedUntilMs() || 0);
-        const youtubeQuotaPaused = youtubeQuotaBlockedUntilMs > opsStripNowMs;
+        const sharedProviderPaused = youtubeSearchTelemetry?.providerQuotaBlocked === true
+            && Number(youtubeSearchTelemetry?.providerBlockedUntilMs || 0) > opsStripNowMs;
+        const youtubeQuotaPaused = sharedProviderPaused || youtubeQuotaBlockedUntilMs > opsStripNowMs;
         const youtubeRatio = getMeterUsageRatio(youtubeUsageMeter);
         const aiRatio = getMeterUsageRatio(aiUsageMeter);
         const recentSearches = Number(youtubeSearchTelemetry?.recentSearches || 0);
@@ -6777,7 +6875,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             youtubeState = 'Paused';
             youtubeToneClass = 'border-rose-400/25 bg-rose-500/10 text-rose-100';
             youtubeActive = false;
-            youtubeTitle = `Live YouTube search is paused for about ${formatOpsCountdown(youtubeQuotaBlockedUntilMs, opsStripNowMs)} while quota recovers.`;
+            const sharedBlockedUntilMs = Number(youtubeSearchTelemetry?.providerBlockedUntilMs || 0);
+            const effectiveBlockedUntilMs = Math.max(youtubeQuotaBlockedUntilMs, sharedBlockedUntilMs);
+            youtubeTitle = youtubeSearchTelemetry?.providerQuotaKind === 'daily'
+                ? `The shared YouTube project daily search allowance is reached. Indexed and cached tracks remain available; provider status rechecks in ${formatOpsCountdown(effectiveBlockedUntilMs, opsStripNowMs)}.`
+                : `Live YouTube search is paused for about ${formatOpsCountdown(effectiveBlockedUntilMs, opsStripNowMs)} while provider capacity recovers.`;
         } else if (youtubeUsageMeter?.hardLimitReached) {
             youtubeState = 'Capped';
             youtubeToneClass = 'border-rose-400/25 bg-rose-500/10 text-rose-100';
@@ -6915,13 +7017,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [aiGenerationTelemetry, aiUsageMeter, appleMusicAuthorized, appleSearchTelemetry, canUseAiTools, opsStripNowMs, usageSummary?.loading, youtubeSearchTelemetry, youtubeUsageMeter]);
     const topChromeYouTubeBudget = useMemo(() => {
         const youtubeQuotaBlockedUntilMs = Number(getYouTubeQuotaBlockedUntilMs() || 0);
-        const quotaPaused = youtubeQuotaBlockedUntilMs > opsStripNowMs;
-        const freshSearchesLeft = Math.max(0, Number(youtubeSearchTelemetry?.todayEstimatedFreshSearchesLeft || 0));
+        const sharedProviderPaused = youtubeSearchTelemetry?.providerQuotaBlocked === true
+            && Number(youtubeSearchTelemetry?.providerBlockedUntilMs || 0) > opsStripNowMs;
+        const quotaPaused = sharedProviderPaused || youtubeQuotaBlockedUntilMs > opsStripNowMs;
+        const hasProjectUsage = Number(youtubeSearchTelemetry?.providerCheckedAtMs || 0) > 0
+            && !!String(youtubeSearchTelemetry?.projectDayKey || '').trim();
+        const projectSearchLimit = Math.max(1, Number(youtubeSearchTelemetry?.projectDailySearchListCallLimit || 100));
+        const projectSearchCalls = Math.max(0, Number(youtubeSearchTelemetry?.projectSearchListCalls || 0));
+        const localFreshSearchesLeft = Math.max(0, Number(youtubeSearchTelemetry?.todayEstimatedFreshSearchesLeft || 0));
+        const freshSearchesLeft = hasProjectUsage
+            ? Math.max(0, projectSearchLimit - projectSearchCalls)
+            : localFreshSearchesLeft;
         const estimatedUnitsUsed = Math.max(0, Number(youtubeSearchTelemetry?.todayEstimatedUnitsUsed || 0));
         const dailyQuotaUnits = Math.max(1, Number(youtubeSearchTelemetry?.dailyQuotaUnits || 10000));
         const todayLiveCalls = Math.max(0, Number(youtubeSearchTelemetry?.todayLiveCalls || 0));
         const todayCacheHitPct = Math.max(0, Number(youtubeSearchTelemetry?.todayCacheHitPct || 0));
-        const usageRatio = estimatedUnitsUsed / dailyQuotaUnits;
+        const usageRatio = hasProjectUsage
+            ? projectSearchCalls / projectSearchLimit
+            : estimatedUnitsUsed / dailyQuotaUnits;
         let state = 'Healthy';
         let active = true;
         let toneClass = 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100';
@@ -6936,15 +7049,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             state = 'Watch';
             toneClass = 'border-amber-400/35 bg-amber-500/10 text-amber-100';
         }
+        const sharedBlockedUntilMs = Number(youtubeSearchTelemetry?.providerBlockedUntilMs || 0);
+        const effectiveBlockedUntilMs = Math.max(youtubeQuotaBlockedUntilMs, sharedBlockedUntilMs);
         const title = quotaPaused
-            ? `Live YouTube search is paused for about ${formatOpsCountdown(youtubeQuotaBlockedUntilMs, opsStripNowMs)}. Estimated fresh searches left today: ${freshSearchesLeft}.`
-            : `Estimated fresh YouTube searches left today: ${freshSearchesLeft}. ${todayLiveCalls} live misses so far today, about ${estimatedUnitsUsed.toLocaleString()} of ${dailyQuotaUnits.toLocaleString()} estimated quota units used. ${todayCacheHitPct}% cache hit today.`;
+            ? youtubeSearchTelemetry?.providerQuotaKind === 'daily'
+                ? `Shared provider status: the YouTube project daily search allowance is reached. Cached and indexed tracks remain available. Recheck in ${formatOpsCountdown(effectiveBlockedUntilMs, opsStripNowMs)}.`
+                : `Shared provider status: live YouTube search is paused for about ${formatOpsCountdown(effectiveBlockedUntilMs, opsStripNowMs)}.`
+            : hasProjectUsage
+                ? `Server-wide BeauRocks ledger: ${projectSearchCalls.toLocaleString()} of ${projectSearchLimit.toLocaleString()} YouTube Search Queries calls recorded today (${youtubeSearchTelemetry?.projectDayKey}, Pacific quota day). Google Cloud remains authoritative; ${todayCacheHitPct}% cache hit on this browser.`
+                : `This-device estimate only: about ${freshSearchesLeft} fresh searches remain based on ${todayLiveCalls} live searches from this browser. It does not represent audience devices or Google project-wide quota. About ${estimatedUnitsUsed.toLocaleString()} of ${dailyQuotaUnits.toLocaleString()} locally estimated units used; ${todayCacheHitPct}% cache hit.`;
         return {
-            label: 'YT Budget',
-            value: freshSearchesLeft,
+            label: 'YT Search',
+            value: quotaPaused ? 0 : freshSearchesLeft,
             detail: quotaPaused
-                ? 'cooldown'
-                : `${todayLiveCalls} live today`,
+                ? 'shared provider paused'
+                : hasProjectUsage
+                    ? `${projectSearchCalls}/${projectSearchLimit} project calls`
+                    : `${todayLiveCalls} live on this device`,
             state,
             active,
             toneClass,
@@ -8112,6 +8233,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const director = getCurrentRunOfShowDirector();
         const targetItem = director.items.find((item) => item.id === itemId);
         if (!targetItem) return director;
+        if (targetItem?.destination === 'planner') {
+            toast('Add this Planner moment to Queue or Run of Show before staging it.');
+            return director;
+        }
         const ready = isRunOfShowItemReady(targetItem);
         const nextDirector = normalizeRunOfShowDirector({
             ...director,
@@ -8181,6 +8306,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const startRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const requestedItem = currentDirector.items.find((item) => item.id === itemId) || null;
+        if (requestedItem?.destination === 'planner') {
+            toast('Add this Planner moment to Queue or Run of Show before starting it.');
+            return currentDirector;
+        }
         const requestedGameMode = getRunOfShowGameMode(requestedItem);
         if (requestedGameMode) {
             const compatibility = getRoomGameLaunchPreflight({
@@ -8301,6 +8430,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
+        if (targetItem?.destination === 'planner') {
+            toast('Planner moments are completed from Planner, not the live show controls.');
+            return currentDirector;
+        }
         const completionDecision = getRunOfShowProgressionDecision({
             director: currentDirector,
             item: targetItem,
@@ -8810,12 +8943,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
         const pack = packs[safePackId] || buildGameBreakPack(safePackId);
         if (!pack) return null;
-        const placement = String(options?.placement || '').trim().toLowerCase() === 'append' ? 'append' : 'next';
-        const persistedDirector = await addRunOfShowItem(pack.type, mergeQuickMomentOverrides(pack.overrides), {
-            placement,
-            activateShow: true
+        const destination = ['queue', 'planner', 'run_of_show'].includes(String(options?.destination || '').trim().toLowerCase())
+            ? String(options.destination).trim().toLowerCase()
+            : 'queue';
+        const persistedDirector = await addRunOfShowItem(pack.type, mergeQuickMomentOverrides({
+            ...(pack.overrides || {}),
+            destination,
+        }), {
+            placement: 'append',
         });
-        toast(`${pack.label} added ${placement === 'append' ? 'later in Planner.' : 'next in the live plan.'}`);
+        toast(destination === 'planner'
+            ? `${pack.label} saved to Planner.`
+            : destination === 'run_of_show'
+                ? `${pack.label} added to the end of Run of Show.`
+                : `${pack.label} added to the end of Live Queue.`);
         return persistedDirector;
     }, [addRunOfShowItem, toast]);
     const importRunOfShowCsv = useCallback(async (csvText = '', options = {}) => {
@@ -8945,31 +9086,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return null;
         }
         const director = getCurrentRunOfShowDirector();
-        const nextItem = createRunOfShowItem('announcement', buildScenePresetRunOfShowOverrides(preset));
+        const destination = ['queue', 'planner', 'run_of_show'].includes(String(options?.destination || '').trim().toLowerCase())
+            ? String(options.destination).trim().toLowerCase()
+            : 'queue';
+        const nextItem = createRunOfShowItem('announcement', {
+            ...buildScenePresetRunOfShowOverrides(preset),
+            destination,
+        });
         const items = Array.isArray(director?.items) ? [...director.items] : [];
-        const liveIndex = items.findIndex((item) => String(item?.status || '').trim().toLowerCase() === 'live');
-        const insertIndex = options?.placement === 'append'
-            ? items.length
-            : liveIndex >= 0
-                ? liveIndex + 1
-                : 0;
-        items.splice(insertIndex, 0, nextItem);
+        items.push(nextItem);
         const nextDirector = normalizeRunOfShowDirector({
             ...director,
             items: resequenceRunOfShowItems(items)
         });
-        const persistedDirector = await persistRunOfShowDirector(
-            nextDirector,
-            options?.activateShow === true
-                ? {
-                    programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
-                    runOfShowEnabled: true
-                }
-                : {}
-        );
-        toast(options?.placement === 'append'
-            ? 'Scene added to Run of Show.'
-            : 'Scene queued as the next conveyor moment.');
+        const persistedDirector = await persistRunOfShowDirector(nextDirector);
+        toast(destination === 'planner'
+            ? 'Scene saved to Planner.'
+            : destination === 'run_of_show'
+                ? 'Scene added to the end of Run of Show.'
+                : 'Scene added to the end of Live Queue.');
         return persistedDirector;
     }, [buildScenePresetRunOfShowOverrides, getCurrentRunOfShowDirector, persistRunOfShowDirector, toast]);
     const duplicateRunOfShowItem = useCallback(async (itemId) => {
@@ -9098,7 +9233,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast(`Media attached to ${activeTarget.title || 'the active scene slot'}.`);
             return persistedDirector;
         }
-        const persistedDirector = await queueScenePresetAsMoment(preset, { placement: 'append' });
+        const persistedDirector = await queueScenePresetAsMoment(preset, {
+            destination: 'run_of_show',
+            placement: 'append',
+        });
         if (persistedDirector) {
             trackHostOperatorEvent('host_run_of_show_media_attached', {
                 host_tab: String(tab || '').trim(),
@@ -11304,11 +11442,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             isAudioUrl,
             holdAutoBgDuringStageActivation,
             playAppleMusicTrack,
-            stopAppleMusic,
+            pauseAppleMusic,
             updateRoom,
             logActivity
         });
-    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, performanceRecapAutoDjHoldMs, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowPendingCountsById, runOfShowPolicy, runOfShowReleaseWindowPending, runOfShowStagedItem, stopAppleMusic, updateRoom]);
+    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, pauseAppleMusic, performanceRecapAutoDjHoldMs, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowPendingCountsById, runOfShowPolicy, runOfShowReleaseWindowPending, runOfShowStagedItem, updateRoom]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -11498,13 +11636,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const playbackType = String(room?.appleMusicPlayback?.type || '').trim().toLowerCase();
         const playbackId = String(room?.appleMusicPlayback?.id || '').trim();
         const playbackStatus = String(room?.appleMusicPlayback?.status || '').trim().toLowerCase();
-        if (playbackType === 'playlist' && playbackId === playlistId && playbackStatus === 'playing') return;
+        if (playbackType === 'playlist' && playbackId === playlistId) {
+            if (playbackStatus === 'playing' && appleMusicPlaying) return;
+            if (playbackStatus === 'paused' && appleMusicRef.current) {
+                resumeAppleMusic().catch((error) => {
+                    hostLogger.warn('Auto DJ failed to resume Apple Music playlist', error);
+                });
+                return;
+            }
+        }
         playAppleMusicPlaylist(playlistId, { title: room?.appleMusicAutoPlaylistTitle || '', automatic: true })
             .catch((error) => {
                 if (isAppleMusicAutomaticRetryError(error)) return;
                 hostLogger.warn('Auto DJ failed to start Apple Music playlist', error);
             });
-    }, [autoDjEnabled, queuedCount, performingCount, room?.appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistTitle, room?.appleMusicPlayback?.id, room?.appleMusicPlayback?.status, room?.appleMusicPlayback?.type, playAppleMusicPlaylist]);
+    }, [appleMusicPlaying, autoDjEnabled, queuedCount, performingCount, room?.appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistTitle, room?.appleMusicPlayback?.id, room?.appleMusicPlayback?.status, room?.appleMusicPlayback?.type, playAppleMusicPlaylist, resumeAppleMusic]);
     useEffect(() => {
         return () => {
             if (readyCheckTimerRef.current) clearTimeout(readyCheckTimerRef.current);
@@ -12026,9 +12172,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const playback = room?.appleMusicPlayback || {};
         const applePlaylistActive = String(playback?.type || '').trim().toLowerCase() === 'playlist'
             && ['playing', 'paused'].includes(String(playback?.status || '').trim().toLowerCase());
-        if (!bgAudio.current || playingBgRef.current || !activeBgTrack?.url || applePlaylistActive) return;
+        const configuredApplePlaylistId = parseAppleMusicPlaylistId(
+            appleMusicAutoPlaylistId || room?.appleMusicAutoPlaylistId || ''
+        );
+        if (!bgAudio.current || playingBgRef.current || !activeBgTrack?.url || applePlaylistActive || configuredApplePlaylistId) return;
         bgAudio.current.src = activeBgTrack.url;
-    }, [activeBgTrack?.url, room?.appleMusicPlayback]);
+    }, [activeBgTrack?.url, appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistId, room?.appleMusicPlayback]);
     const getAppleBackgroundPlaylistConfig = useCallback(() => {
         const liveRoom = roomRef.current || room || {};
         const playlistId = parseAppleMusicPlaylistId(appleMusicAutoPlaylistId || liveRoom?.appleMusicAutoPlaylistId || '');
@@ -12037,24 +12186,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             title: String(appleMusicAutoPlaylistTitle || liveRoom?.appleMusicAutoPlaylistTitle || '').trim()
         };
     }, [appleMusicAutoPlaylistId, appleMusicAutoPlaylistTitle, room]);
-    const appleMusicBackgroundActive = useMemo(() => {
+    const appleMusicBackgroundSelected = useMemo(() => {
         const playback = room?.appleMusicPlayback || {};
         const status = String(playback?.status || '').trim().toLowerCase();
+        const configuredPlaylistId = parseAppleMusicPlaylistId(
+            appleMusicAutoPlaylistId || room?.appleMusicAutoPlaylistId || ''
+        );
+        return !!configuredPlaylistId || (
+            String(playback?.type || '').trim().toLowerCase() === 'playlist'
+            && ['playing', 'paused'].includes(status)
+        );
+    }, [appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistId, room?.appleMusicPlayback]);
+    const appleMusicBackgroundPlaying = useMemo(() => {
+        const playback = room?.appleMusicPlayback || {};
         return String(playback?.type || '').trim().toLowerCase() === 'playlist'
-            && ['playing', 'paused'].includes(status);
+            && String(playback?.status || '').trim().toLowerCase() === 'playing';
     }, [room?.appleMusicPlayback]);
-    const backgroundMusicActive = !!playingBg || appleMusicBackgroundActive;
-    const backgroundMusicSourceLabel = appleMusicBackgroundActive
+    const backgroundMusicActive = !!playingBg || (appleMusicBackgroundPlaying && appleMusicPlaying);
+    const backgroundMusicSourceLabel = appleMusicBackgroundSelected
         ? (room?.appleMusicPlayback?.title || appleMusicAutoPlaylistTitle || 'Apple Music background')
         : (activeBgTrack?.name || 'BG Track');
     useEffect(() => {
-        if (!appleMusicBackgroundActive) return;
+        if (!appleMusicBackgroundSelected) return;
         playingBgRef.current = false;
         setPlayingBg(false);
         const audio = bgAudio.current;
         if (!audio) return;
         clearMediaElementSource(audio);
-    }, [appleMusicBackgroundActive]);
+    }, [appleMusicBackgroundSelected]);
     const startLocalBackgroundTrack = useCallback(async (track = {}) => {
         const audio = bgAudio.current;
         const url = String(track?.url || track?.mediaUrl || '').trim();
@@ -12118,15 +12277,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             clearMediaElementSource(bgAudio.current);
             playingBgRef.current = false;
             setPlayingBg(false);
-            await updateRoom({ bgMusicPlaying: false, bgMusicUrl: '', backgroundAudioPlayback: null });
-            if (configuredApplePlaylistIsActive && livePlaybackStatus === 'playing') return;
+            if (configuredApplePlaylistIsActive && livePlaybackStatus === 'playing' && appleMusicPlaying) return;
+            if (configuredApplePlaylistIsActive && livePlaybackStatus === 'paused' && appleMusicRef.current) {
+                await resumeAppleMusic();
+                return;
+            }
             await playAppleMusicPlaylist(playlistId, { title, automatic });
             return;
         }
 
         if (!next && applePlaylistIsActive) {
-            await stopAppleMusic?.();
-            await updateRoom({ appleMusicPlayback: null });
+            await pauseAppleMusic();
+            return;
         }
 
         if (!bgAudio.current) return;
@@ -12147,7 +12309,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 ? buildLocalBackgroundPlayback({ track: activeBgTrack, status: 'paused' })
                 : null,
         });
-    }, [activeBgTrack, getAppleBackgroundPlaylistConfig, playAppleMusicPlaylist, room?.appleMusicPlayback, startLocalBackgroundTrack, stopAppleMusic, updateRoom]);
+    }, [activeBgTrack, appleMusicPlaying, getAppleBackgroundPlaylistConfig, pauseAppleMusic, playAppleMusicPlaylist, resumeAppleMusic, room?.appleMusicPlayback, startLocalBackgroundTrack, updateRoom]);
 
     useEffect(() => {
         if (!roomCode || !autoBgMusic) return;
@@ -12159,7 +12321,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const playbackStatus = String(room?.appleMusicPlayback?.status || '').trim().toLowerCase();
         const applePlaylistAlreadyPlaying = playbackType === 'playlist'
             && playbackId === playlistId
-            && playbackStatus === 'playing';
+            && playbackStatus === 'playing'
+            && appleMusicPlaying;
         if (applePlaylistAlreadyPlaying) return;
         setBgMusicState(true, { automatic: true }).catch((error) => {
             if (isAppleMusicAutomaticRetryError(error)) return;
@@ -12172,6 +12335,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
     }, [
         autoBgMusic,
+        appleMusicPlaying,
         getAppleBackgroundPlaylistConfig,
         room?.appleMusicAutoPlaylistId,
         room?.appleMusicAutoPlaylistTitle,
@@ -13082,12 +13246,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await setBgMusicState(!backgroundMusicActive);
     };
     const skipBg = useCallback(() => {
-        if (appleMusicBackgroundActive) {
+        if (appleMusicBackgroundSelected) {
             toast('Use Apple Music to skip playlist tracks.');
             return;
         }
         advanceBgTrack({ shouldPlay: playingBgRef.current, syncRoom: playingBgRef.current });
-    }, [advanceBgTrack, appleMusicBackgroundActive, toast]);
+    }, [advanceBgTrack, appleMusicBackgroundSelected, toast]);
     useEffect(() => {
         if (!autoBgMusic) return;
         if (stageActivationPendingRef.current) return;
@@ -14612,7 +14776,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             isAudioUrl,
             holdAutoBgDuringStageActivation,
             playAppleMusicTrack,
-            stopAppleMusic,
+            pauseAppleMusic,
             updateRoom,
             logActivity
         });
@@ -15748,13 +15912,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode) return;
         setExportingRoom(true);
         try {
-            const [roomSnap, songsSnap, usersSnap, activitiesSnap, reactionsSnap, uploadsSnap] = await Promise.all([
+            const [roomSnap, songsSnap, usersSnap, activitiesSnap, reactionsSnap, uploadsSnap, promptVotesSnap] = await Promise.all([
                 getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode)),
                 getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode))),
                 getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode))),
                 getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), where('roomCode', '==', roomCode))),
                 getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode))),
-                getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode)))
+                getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode))),
+                getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'prompt_votes'), where('roomCode', '==', roomCode)))
             ]);
             const payload = {
                 roomCode,
@@ -15764,7 +15929,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 users: usersSnap.docs.map(d => ({ id: d.id, ...d.data() })),
                 activities: activitiesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
                 reactions: reactionsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-                uploads: uploadsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+                uploads: uploadsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+                promptVotes: promptVotesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             };
             downloadJson(`bross-room-${roomCode}-export.json`, payload);
             toast('Room data exported');
@@ -15787,6 +15953,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const reactions = reactionSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             const crowdSelfieSnap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'crowd_selfie_submissions'), where('roomCode', '==', roomCode)));
             const crowdSelfies = crowdSelfieSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const promptVoteSnap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'prompt_votes'), where('roomCode', '==', roomCode)));
+            const promptVotes = promptVoteSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
             const tournament = (() => {
                 const roomSummary = room?.bracketLastSummary || null;
                 if (roomSummary?.summaryVersion) {
@@ -15814,6 +15982,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 reactions,
                 activities,
                 crowdSelfies,
+                promptVotes,
                 generatedAtMs: closedAtMs,
                 source: 'room_close',
                 window: {
@@ -16444,12 +16613,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (roomReadinessLaunching) return;
         setRoomReadinessLaunching(true);
         try {
-            await launchNightSetupPackage();
-            updateStageQuickStartProgress({
-                tvOpened: true,
-                joinLinkCopied: true,
-                roomSetupOpened: true
-            });
+            const launchResult = await launchNightSetupPackage();
+            if (launchResult?.applied) {
+                updateStageQuickStartProgress({
+                    tvOpened: launchResult.tvOpened === true,
+                    joinLinkCopied: launchResult.joinLinkCopied === true,
+                    roomSetupOpened: true
+                });
+            }
         } finally {
             setRoomReadinessLaunching(false);
         }
@@ -16767,11 +16938,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (subscriptionActionLoading) return;
         setSubscriptionActionLoading(planId);
         try {
-            const safeOrgName = String(orgNameOverride || onboardingWorkspaceName || hostName || 'BROSS Workspace').trim() || 'BROSS Workspace';
+            const safeOrgName = String(orgNameOverride || onboardingWorkspaceName || hostName || 'Host Workspace').trim() || 'Host Workspace';
+            const requestId = typeof globalThis.crypto?.randomUUID === 'function'
+                ? globalThis.crypto.randomUUID()
+                : `subscription_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
             const payload = await callFunction('createSubscriptionCheckout', {
                 planId,
                 origin: window.location.origin,
-                orgName: safeOrgName
+                orgName: safeOrgName,
+                requestId
             });
             if (payload?.url) {
                 window.location.href = payload.url;
@@ -17007,9 +17182,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         showReactions,
         maxVisible,
     } = {}, successMessage = 'Audience TV layer updated.') => {
+        const previousAudienceDisplay = roomRef.current?.audienceDisplay || room?.audienceDisplay || null;
+        let optimisticAudienceDisplay = null;
         try {
             const patch = buildAudienceDisplayPatch({
-                current: room?.audienceDisplay || {},
+                current: previousAudienceDisplay || {},
                 mode,
                 selectedUids,
                 roleSource,
@@ -17017,13 +17194,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 maxVisible,
                 nowMs: Date.now(),
             });
-            await updateRoom(patch);
+            const nextAudienceDisplay = patch.audienceDisplay;
+            optimisticAudienceDisplay = nextAudienceDisplay;
+            roomRef.current = roomRef.current
+                ? { ...roomRef.current, audienceDisplay: nextAudienceDisplay }
+                : roomRef.current;
+            setRoom((currentRoom) => currentRoom
+                ? { ...currentRoom, audienceDisplay: nextAudienceDisplay }
+                : currentRoom);
+            if (!isMarketingDemoFixture) await updateRoom(patch);
             toast(successMessage);
         } catch (error) {
+            if (roomRef.current?.audienceDisplay === optimisticAudienceDisplay) {
+                roomRef.current = roomRef.current
+                    ? { ...roomRef.current, audienceDisplay: previousAudienceDisplay }
+                    : roomRef.current;
+            }
+            setRoom((currentRoom) => {
+                if (currentRoom?.audienceDisplay !== optimisticAudienceDisplay) return currentRoom;
+                return { ...currentRoom, audienceDisplay: previousAudienceDisplay };
+            });
             hostLogger.error('Audience TV display update failed', error);
             toast('Could not update the audience TV layer.');
         }
-    }, [hostLogger, room?.audienceDisplay, toast, updateRoom]);
+    }, [hostLogger, isMarketingDemoFixture, room?.audienceDisplay, toast, updateRoom]);
 
     const addAudienceDisplayUid = useCallback(async (roomUser = selectedLobbyUser) => {
         const safeUid = resolveRoomUserUid(roomUser);
@@ -17049,6 +17243,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             roleSource: AUDIENCE_DISPLAY_ROLE_SOURCES.manual,
         }, 'Audience TV row updated.');
     }, [audienceDisplay.mode, audienceDisplay.selectedUids, setAudienceTvDisplay]);
+
+    const toggleAudienceDisplayUid = useCallback(async (roomUser = selectedLobbyUser) => {
+        const safeUid = resolveRoomUserUid(roomUser);
+        if (!safeUid) {
+            toast('Pick a lobby guest first.');
+            return;
+        }
+        if (audienceDisplay.selectedUids.includes(safeUid)) {
+            await removeAudienceDisplayUid(safeUid);
+            return;
+        }
+        await addAudienceDisplayUid(roomUser);
+    }, [addAudienceDisplayUid, audienceDisplay.selectedUids, removeAudienceDisplayUid, selectedLobbyUser, toast]);
 
     const fillAudienceDisplayFromCoHosts = useCallback(async () => {
         const nextUids = (Array.isArray(runOfShowRoles?.coHosts) ? runOfShowRoles.coHosts : [])
@@ -19255,7 +19462,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 setSettingsTab('general');
                             }}
                             onSaveDraft={() => applyNightSetupWizard({ intent: 'save' })}
-                            onStartNight={() => applyNightSetupWizard({ intent: 'start_match' })}
                             onLaunchPackage={launchNightSetupPackage}
                         />
                     )}
@@ -19604,18 +19810,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             {nightSetupApplying ? 'Saving...' : 'Save + Close'}
                                         </button>
                                         <button
-                                            onClick={() => applyNightSetupWizard({ intent: 'start_match' })}
+                                            onClick={launchNightSetupPackage}
                                             disabled={nightSetupApplying}
                                             className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
-                                            {nightSetupApplying ? 'Starting...' : 'Save + Start Match'}
-                                        </button>
-                                        <button
-                                            onClick={launchNightSetupPackage}
-                                            disabled={nightSetupApplying}
-                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                        >
-                                            {nightSetupApplying ? 'Launching...' : 'Launch Package'}
+                                            {nightSetupApplying ? 'Launching...' : 'Launch Room'}
                                         </button>
                                     </div>
                                 )}
@@ -19648,6 +19847,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 launchStateTone={launchStateTone}
                 launchStateHelp={launchStateHelp}
                 launchAccessPending={launchAccessPending}
+                launchDraftOwnerKey={hostViewerUid}
                 shouldShowSetupCard={shouldShowSetupCard}
                 canUseWorkspaceOnboarding={canUseWorkspaceOnboarding}
                 openOnboardingWizard={openOnboardingWizard}
@@ -21561,7 +21761,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onCreateScenePreset: createScenePresetFromFile,
         onUpdateScenePreset: updateScenePreset,
         onLaunchScenePreset: launchScenePreset,
-        onQueueScenePreset: (preset) => queueScenePresetAsMoment(preset, { placement: 'next', activateShow: true }),
+        onQueueScenePreset: (preset, options = {}) => queueScenePresetAsMoment(preset, {
+            ...options,
+            placement: 'append',
+        }),
         onAddScenePresetToRunOfShow: addScenePresetToRunOfShow,
         onClearScenePreset: clearScenePreset,
         onDeleteScenePreset: deleteScenePreset,
@@ -21818,8 +22021,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     setBgVolume={setBgVolume}
                     toggleBgMusic={toggleBgMusic}
                     playingBg={backgroundMusicActive}
+                    backgroundSourceType={appleMusicBackgroundSelected ? 'apple' : 'local'}
+                    backgroundSourceStatus={backgroundMusicActive ? 'playing' : 'stopped'}
                     skipBg={skipBg}
-                    canSkipBg={!appleMusicBackgroundActive}
+                    canSkipBg={!appleMusicBackgroundSelected}
                     autoBgMusic={autoBgMusic}
                     setAutoBgMusic={setAutoBgMusic}
                     autoPlayMedia={autoPlayMedia}
@@ -22274,8 +22479,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 <div className="mt-1 text-sm text-zinc-400">A compact bottom rail for co-hosts, judges, or featured fans to react from.</div>
                                             </div>
                                             <div className="flex flex-wrap gap-2">
-                                                <button type="button" onClick={() => addAudienceDisplayUid(selectedLobbyUser)} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1.5 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                                                    Add Selected
+                                                <button type="button" onClick={() => toggleAudienceDisplayUid(selectedLobbyUser)} disabled={!selectedLobbyUserUid} className={`${STYLES.btnStd} ${selectedLobbyUserOnAudienceDisplay ? STYLES.btnDanger : STYLES.btnHighlight} px-3 py-1.5 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                                                    {selectedLobbyUserOnAudienceDisplay ? 'Remove Selected' : 'Add Selected'}
                                                 </button>
                                                 <button type="button" onClick={fillAudienceDisplayFromCoHosts} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-xs`}>
                                                     Use Co-hosts
@@ -22607,11 +22812,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     Spotlight On Stage
                                                 </button>
                                                 <button
-                                                    onClick={() => addAudienceDisplayUid(selectedLobbyUser)}
-                                                    disabled={!selectedLobbyUserUid || selectedLobbyUserOnAudienceDisplay}
-                                                    className={`${STYLES.btnStd} ${selectedLobbyUserOnAudienceDisplay ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs ${(!selectedLobbyUserUid || selectedLobbyUserOnAudienceDisplay) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    onClick={() => toggleAudienceDisplayUid(selectedLobbyUser)}
+                                                    disabled={!selectedLobbyUserUid}
+                                                    aria-label={selectedLobbyUserOnAudienceDisplay ? 'REMOVE FROM COMMENTATOR ROW' : 'ADD TO COMMENTATOR ROW'}
+                                                    title={selectedLobbyUserOnAudienceDisplay ? 'REMOVE FROM COMMENTATOR ROW' : 'ADD TO COMMENTATOR ROW'}
+                                                    className={`${STYLES.btnStd} ${selectedLobbyUserOnAudienceDisplay ? STYLES.btnDanger : STYLES.btnSecondary} px-3 py-1 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
-                                                    {selectedLobbyUserOnAudienceDisplay ? 'On TV Row' : 'Add To TV Row'}
+                                                    {selectedLobbyUserOnAudienceDisplay ? 'Remove From TV Row' : 'Add To TV Row'}
                                                 </button>
                                                 <button
                                                     onClick={() => toggleLobbyUserCoHost(selectedLobbyUser)}
@@ -22816,11 +23023,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             Stage
                                                         </button>
                                                         <button
-                                                            onClick={() => addAudienceDisplayUid(u)}
-                                                            disabled={!userUid || audienceDisplay.selectedUids.includes(userUid)}
-                                                            className={`${STYLES.btnStd} ${audienceDisplay.selectedUids.includes(userUid) ? STYLES.btnNeutral : STYLES.btnSecondary} px-2 py-1.5 text-[10px] ${(!userUid || audienceDisplay.selectedUids.includes(userUid)) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                            onClick={() => toggleAudienceDisplayUid(u)}
+                                                            disabled={!userUid}
+                                                            aria-label={audienceDisplay.selectedUids.includes(userUid) ? 'REMOVE FROM COMMENTATOR ROW' : 'ADD TO COMMENTATOR ROW'}
+                                                            title={audienceDisplay.selectedUids.includes(userUid) ? 'REMOVE FROM COMMENTATOR ROW' : 'ADD TO COMMENTATOR ROW'}
+                                                            className={`${STYLES.btnStd} ${audienceDisplay.selectedUids.includes(userUid) ? STYLES.btnDanger : STYLES.btnSecondary} px-2 py-1.5 text-[10px] ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                         >
-                                                            {audienceDisplay.selectedUids.includes(userUid) ? 'TV Row On' : 'TV Row'}
+                                                            {audienceDisplay.selectedUids.includes(userUid) ? 'Remove Row' : 'TV Row'}
                                                         </button>
                                                         <button
                                                             onClick={() => queueRandomTight15ForUser(u, {
@@ -23444,23 +23653,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </button>
                             </div>
                         </div>
-                        <div data-feature-id="admin-audience-host-layout-card" className="rounded-2xl border border-cyan-500/25 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 p-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div className="max-w-2xl">
-                                    <div className="text-sm uppercase tracking-widest text-cyan-300">Audience + Host Layout</div>
-                                    <div className="mt-1 text-lg font-semibold text-white">Keep the guest shell and the host panel layouts together here.</div>
-                                    <div className="mt-1 text-sm text-zinc-300">
-                                        Change the audience app flow and the host panel shell from one place, then use the preview toggles below to verify both surfaces.
+                        <details data-feature-id="admin-audience-host-layout-card" className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
+                            <summary className="cursor-pointer list-none">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-white">App layouts</div>
+                                        <div className="mt-1 text-xs text-zinc-400">Audience: {audienceShellVariant === 'streamlined' ? 'Streamlined' : 'Classic'} · Host: {experimentalHostPanelActive ? 'Experimental' : 'Classic'}</div>
                                     </div>
+                                    <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">Advanced</span>
                                 </div>
-                                <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
-                                    audienceShellVariant === 'streamlined'
-                                        ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-100'
-                                        : 'border-white/15 bg-black/25 text-zinc-200'
-                                }`}>
-                                    {audienceShellVariant === 'streamlined' ? 'Streamlined On' : 'Classic On'}
-                                </span>
-                            </div>
+                            </summary>
                             <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
                                 <div className="rounded-2xl border border-cyan-300/20 bg-black/20 p-4">
                                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -23614,16 +23816,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/8 p-4">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div className="max-w-2xl">
-                                        <div className="text-[10px] uppercase tracking-[0.22em] text-amber-200">Audience Access</div>
-                                        <div className="mt-1 text-base font-semibold text-white">Custom emoji and featured voting reactions can require a BeauRocks account.</div>
-                                        <div className="mt-1 text-sm text-zinc-300">
-                                            Core requests stay open. This gates custom profile emojis and the featured reaction buttons guests use while voting/hyping.
+                        </details>
+                        <details className="rounded-2xl border border-amber-400/20 bg-amber-500/8 px-4 py-3">
+                                <summary className="cursor-pointer list-none">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-semibold text-white">Account-gated reactions</div>
+                                            <div className="mt-1 text-xs text-zinc-400">Song requests stay open.</div>
                                         </div>
-                                    </div>
                                     <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
                                         customEmojiAccountRequired
                                             ? 'border-amber-300/40 bg-amber-400/14 text-amber-100'
@@ -23632,6 +23832,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         {customEmojiAccountRequired ? 'Account Required' : 'Guest Open'}
                                     </span>
                                 </div>
+                                </summary>
                                 <button
                                     type="button"
                                     onClick={() => setAudienceFeatureAccess((prev) => normalizeAudienceFeatureAccess({
@@ -23666,7 +23867,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                     </div>
                                 </button>
-                            </div>
+                            </details>
                         </div>
                         <details className={`mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 ${settingsTab === 'audience_setup' ? 'hidden' : ''}`}>
                             <summary className="cursor-pointer list-none">
@@ -24032,10 +24233,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                       onChange={e => setAutoLyricsOnQueue(e.target.checked)}
                                       className="accent-[#00C4D9]"
                                   />
-                                  Auto-generate lyrics on queue
+                                  Resolve lyrics when queued
                               </label>
                               <div className="host-form-helper">
-                                  When no lyrics are available, BeauRocks checks cache, Apple lyrics, and AI fallback for queued songs.
+                                  When no lyrics are attached, BeauRocks checks approved cached and timed sources. Apple songs are retried through the connected host account.
                               </div>
                               <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
                                   <input
@@ -25592,12 +25793,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                         </div>
                                         <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
-                                            <div className="text-xs uppercase tracking-widest text-zinc-500">YouTube Requests (Quick View)</div>
+                                            <div className="text-xs uppercase tracking-widest text-zinc-500">Workspace YouTube Request Allowance</div>
                                             <div className="text-white font-semibold mt-1">
                                                 {Number(youtubeUsageMeter?.used || 0).toLocaleString()} / {Number(youtubeUsageMeter?.included || 0).toLocaleString()} included
                                             </div>
                                             <div className="text-xs text-zinc-400 mt-1">
                                                 Hard limit: {Number(youtubeUsageMeter?.hardLimit || 0).toLocaleString()}
+                                            </div>
+                                            <div className="text-[11px] text-zinc-500 mt-1">
+                                                App request allowance—not Google project quota.
                                             </div>
                                         </div>
                                     </div>

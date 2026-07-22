@@ -23,7 +23,7 @@ test('AAHF launch flow defaults the requested room code and exposes join poster 
   const workspaceStateSource = readFileSync('src/apps/Host/hooks/useHostWorkspaceState.js', 'utf8');
   assert.match(
     workspaceStateSource,
-    /const \[rawLaunchRoomName, setLaunchRoomName\] = useState\(null\);[\s\S]*if \(rawLaunchRoomName !== null\) return rawLaunchRoomName;/,
+    /const \[rawLaunchRoomName, setLaunchRoomName\] = useState\(\(\) => \{[\s\S]*if \(rawLaunchRoomName !== null\) return rawLaunchRoomName;/,
     'Room name drafts should distinguish untouched defaults from an intentionally empty input',
   );
   assert.match(
@@ -75,6 +75,8 @@ test('room browser keeps results adjacent to folders, supports pinning, and does
   assert.match(browserSource, /xl:col-start-3 xl:row-start-1/);
   assert.ok(browserSource.includes("openExistingRoomWorkspace(roomItem.code, 'ops.room_setup')"));
   assert.match(browserSource, /\{roomPinned \? 'Pinned' : 'Pin'\}/);
+  assert.match(browserSource, /roomItem\.hasRecap && audienceBase[\s\S]*runFeaturedAction\('recap', roomItem\)[\s\S]*Recap/);
+  assert.match(browserSource, /selectedRoom\.hasRecap && audienceBase[\s\S]*View Recap/);
   assert.match(browserSource, /Pin Room/);
   assert.match(launchPadSource, /ROOM_BROWSER_PIN_STORAGE_KEY/);
   assert.match(launchPadSource, /pinnedRoomCodeSet\.has/);
@@ -128,6 +130,19 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
 test('quick setup compiles night outcomes and hides overlapping primitives by default', () => {
   const source = readFileSync(launchPadBrowserPath, 'utf8');
 
+  assert.match(source, /data-launch-core-setup="true"/);
+  assert.match(source, /data-room-create-premium="true"/);
+  assert.match(source, /Name it, keep it private or list it, choose who can join, and decide how hands-on you want to be\./);
+  assert.match(source, /data-launch-room-control="true"/);
+  assert.match(source, /data-launch-guest-access="true"/);
+  assert.match(source, /data-launch-room-privacy="true"/);
+  assert.match(source, /data-launch-media-readiness="true"/);
+  assert.match(source, /Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
+  assert.match(source, /openNightSetup: true/);
+  assert.match(source, /Continue to Room Readiness/);
+  assert.match(source, /Launch Room to open Public TV and copy the Audience App link/);
+  assert.match(source, /Custom room code/);
+  assert.match(source, /data-launch-configuration-contract="true"/);
   assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Open Karaoke[\s\S]*Hosted Showcase[\s\S]*Crowd-Led Party[\s\S]*Fundraiser Night/);
   assert.match(source, /data-launch-night-type-card=\{option\.id\}/);
   assert.match(
@@ -156,4 +171,12 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /data-launch-effective-domain=\{domain\.key\}/);
   assert.match(source, /nightPresetPayload: launchPresetPayloadPreview/);
   assert.doesNotMatch(source, /nightPresetPayload: buildLaunchPresetPayload\(\)/);
+  assert.match(source, /Draft restored from this browser\. Guest and promo codes are never saved\./);
+  assert.match(source, /HOST_LAUNCH_EXPERIENCE_DRAFT_KEY/);
+  assert.match(source, /buildHostLaunchDraftKey/);
+  assert.match(
+    source,
+    /persistHostLaunchDraftPart\(launchExperienceDraftKey, \{\s*joinAccessMode: launchJoinAccessMode,\s*operatingModel: launchOperatingModel,\s*nightType: launchNightType,\s*\}\);/,
+    'Recovered experience drafts should store only non-secret setup choices',
+  );
 });

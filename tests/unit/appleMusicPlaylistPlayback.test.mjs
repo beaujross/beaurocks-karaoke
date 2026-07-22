@@ -34,7 +34,7 @@ describe('Apple Music playlist playback planning', () => {
     );
   });
 
-  test('prefers a library playlist catalog/global playback id when Apple supplies one', () => {
+  test('prefers a personal-library playlist id before catalog fallbacks', () => {
     assert.deepEqual(
       buildAppleMusicPlaylistQueueAttempts('p.personal123', {
         sourceType: 'library_playlist',
@@ -43,8 +43,8 @@ describe('Apple Music playlist playback planning', () => {
         playParamsId: 'p.personal123',
       }),
       [
-        { playlist: 'pl.global123' },
         { playlist: 'p.personal123' },
+        { playlist: 'pl.global123' },
       ],
     );
   });

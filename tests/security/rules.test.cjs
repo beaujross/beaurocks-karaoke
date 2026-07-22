@@ -256,6 +256,81 @@ async function run() {
       );
     }],
 
+    ["firestore: host can update safe fields but cannot inject a public Vibe Index", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`directory_profiles/${HOST_UID}`).update({ bio: "Safe host profile edit" })
+      );
+      await assertFails(
+        db.doc(`directory_profiles/${HOST_UID}`).update({
+          publicVibeIndex: {
+            scoreVersion: "vibe_v1",
+            status: "published",
+            score: 100,
+            minimumThresholdMet: true,
+          },
+        })
+      );
+    }],
+
+    ["firestore: profile owner cannot create server-managed Vibe fields", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`directory_profiles/${GUEST_UID}`).set({
+          uid: GUEST_UID,
+          displayName: "Guest",
+          status: "approved",
+          visibility: "public",
+          publicVibeIndexRollupVersion: "rollup_v1",
+        })
+      );
+    }],
+
+    ["firestore: Vibe audit jobs are moderator-readable and never client-writable", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(`directory_roles/${MOD_UID}`).set({ roles: ["directory_editor"] });
+        await db.doc("public_vibe_index_jobs/job_rules_1").set({ status: "completed" });
+        await db.doc("public_vibe_index_jobs/job_rules_1/changes/change_1").set({
+          targetType: "venue",
+          targetId: VENUE_ID,
+        });
+      });
+      const moderatorDb = testEnv.authenticatedContext(MOD_UID).firestore();
+      await assertSucceeds(moderatorDb.doc("public_vibe_index_jobs/job_rules_1").get());
+      await assertSucceeds(moderatorDb.doc("public_vibe_index_jobs/job_rules_1/changes/change_1").get());
+      await assertFails(moderatorDb.doc("public_vibe_index_jobs/job_rules_1").update({ status: "rolled_back" }));
+      const userDb = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(userDb.doc("public_vibe_index_jobs/job_rules_1").get());
+    }],
+
+    ["firestore: Vibe evidence is never client-readable or writable", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(`directory_roles/${MOD_UID}`).set({ roles: ["directory_editor"] });
+        await db.doc("public_vibe_evidence/evidence_rules_1").set({
+          evidenceType: "authenticated_checkin",
+          targetType: "venue",
+          targetId: VENUE_ID,
+          actorKey: "actor_rules_fixture",
+          serverVerified: true,
+        });
+      });
+      const anonymousDb = testEnv.unauthenticatedContext().firestore();
+      const guestDb = nonAnonymousContext(GUEST_UID).firestore();
+      const moderatorDb = nonAnonymousContext(MOD_UID).firestore();
+      await assertFails(anonymousDb.doc("public_vibe_evidence/evidence_rules_1").get());
+      await assertFails(guestDb.doc("public_vibe_evidence/evidence_rules_1").get());
+      await assertFails(moderatorDb.doc("public_vibe_evidence/evidence_rules_1").get());
+      await assertFails(guestDb.doc("public_vibe_evidence/forged").set({
+        evidenceType: "authenticated_checkin",
+        targetType: "venue",
+        targetId: VENUE_ID,
+        actorKey: "actor_forged",
+        serverVerified: true,
+      }));
+    }],
+
     ["firestore: unauthenticated can read approved venue listing", async () => {
       const db = testEnv.unauthenticatedContext().firestore();
       await assertSucceeds(db.doc(`venues/${VENUE_ID}`).get());

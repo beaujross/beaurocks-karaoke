@@ -487,7 +487,7 @@ test("Host scene presets can be slotted into the conveyor from the media library
   assert.match(hostSource, /const addScenePresetToRunOfShow = useCallback\(async \(preset = \{\}\) => \{/);
   assert.match(hostSource, /const applyScenePresetToRunOfShow = addScenePresetToRunOfShow;/);
   assert.match(hostSource, /Scene media needs an uploaded cloud URL before it can join Run Of Show\./);
-  assert.match(hostSource, /onQueueScenePreset:\s*\(preset\)\s*=>\s*queueScenePresetAsMoment/);
+  assert.match(hostSource, /onQueueScenePreset:\s*\(preset, options = \{\}\)\s*=>\s*queueScenePresetAsMoment/);
   assert.match(hostSource, /onAddScenePresetToRunOfShow:\s*addScenePresetToRunOfShow/);
   assert.match(hostSource, /sceneLibrarySeedPack:\s*isAahfSceneLibraryTargetRoom\(roomCode\)/);
   assert.match(hostSource, /runOfShowSelectedItemId/);

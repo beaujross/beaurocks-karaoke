@@ -97,12 +97,16 @@ export const startStaticDistServer = async ({ distDir, port = 0, host = "127.0.0
 };
 
 export const runCheck = async (checks, name, fn) => {
+  console.log(`RUN  ${name}`);
   try {
     const detail = await fn();
     checks.push({ name, pass: true, detail: detail || "" });
+    console.log(`PASS ${name}`);
     return true;
   } catch (error) {
     checks.push({ name, pass: false, detail: String(error?.message || error) });
+    console.log(`FAIL ${name}: ${String(error?.message || error)}`);
+    if (String(process.env.QA_FAIL_FAST || "").trim() === "1") throw error;
     return false;
   }
 };

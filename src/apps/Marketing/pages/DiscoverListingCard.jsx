@@ -64,13 +64,20 @@ const DiscoverListingCard = ({
   const isBeauRocksPowered = isBeauRocksPoweredListing(entry) || !!experience?.isBeauRocksPowered;
   const isOfficialBeauRocks = !!entry?.isOfficialBeauRocksListing || !!entry?.isOfficialBeauRocksRoom || !!entry?.isBeauRocksElevated;
   const beauRocksBadgeLabel = getBeauRocksBadgeLabel(entry, { defaultLabel: "BeauRocks-powered" });
+  const vibeIndex = entry?.publicVibeIndex && typeof entry.publicVibeIndex === "object" ? entry.publicVibeIndex : null;
+  const vibePublished = vibeIndex?.status === "published"
+    && Number.isFinite(Number(vibeIndex?.score))
+    && Number(vibeIndex.score) > 0;
   const badgeImageUrl = entry?.officialBadgeImageUrl || MARKETING_BRAND_BADGE_URL;
   const isRoomSession = entry?.listingType === "room_session";
   const isJoinableRoomSession = isRoomSession && !!cleanText(entry?.roomCode);
   const roomSupportBadge = entry?.roomSupportBadge || null;
-  const sessionEnded = Number(entry?.endsAtMs || 0) > 0 && Number(entry?.endsAtMs || 0) <= Number(entry?.currentTimeMs || 0);
+  const currentTimeMs = Number(entry?.currentTimeMs || 0);
+  const startsAtMs = Number(entry?.startsAtMs || 0);
+  const sessionEnded = Number(entry?.endsAtMs || 0) > 0 && Number(entry?.endsAtMs || 0) <= currentTimeMs;
+  const sessionUpcoming = startsAtMs > currentTimeMs;
   const recapUrl = cleanText(entry?.recapUrl);
-  const hasPublicRecap = isRoomSession && sessionEnded && !!recapUrl;
+  const hasPublicRecap = isRoomSession && !!entry?.hasPublicRecap && !!recapUrl;
   const highlightBadges = Array.from(new Set([
     ...(Array.isArray(experience?.capabilityBadges) ? experience.capabilityBadges : []),
     ...(Array.isArray(experience?.funBadges) ? experience.funBadges : []),
@@ -200,13 +207,34 @@ const DiscoverListingCard = ({
       <div className="mk3-discover-body">
         {isRoomSession && (
           <div className="mk3-discover-room-kicker">
-            <span>{hasPublicRecap ? "Past event" : entry?.requiresGuestPasscode ? "Passcode-gated room" : isJoinableRoomSession ? "Live room" : "Room session"}</span>
+            <span>{
+              hasPublicRecap
+                ? "Past event"
+                : sessionUpcoming
+                  ? "Upcoming room"
+                  : sessionEnded
+                    ? "Ended room"
+                    : entry?.requiresGuestPasscode
+                      ? "Passcode-gated room"
+                      : isJoinableRoomSession
+                        ? "Join-ready room"
+                        : "Room session"
+            }</span>
             {roomCode && <strong>{roomCode}</strong>}
           </div>
         )}
         <h3>{entry.title}</h3>
         {subtitle && <div className="mk3-card-subtitle">{subtitle}</div>}
         {metaLine && <div className="mk3-discover-meta-row">{metaLine}</div>}
+        {vibePublished && (
+          <div className="mk3-vibe-index" aria-label={`BeauRocks Karaoke Vibe Index ${vibeIndex.score} out of 100`}>
+            <strong>{vibeIndex.score}</strong>
+            <span>
+              BeauRocks Vibe Index · {String(vibeIndex.label || "building").replace(/_/g, " ")}
+            </span>
+            <small>{vibeIndex.confidence || "low"} confidence</small>
+          </div>
+        )}
         {supportLine && <div className="mk3-discover-support">{supportLine}</div>}
         {!!highlightBadges.length && (
           <div className="mk3-day-badge-row">

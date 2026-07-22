@@ -461,12 +461,17 @@ test('HostQueueTab keeps add-to-queue search controls visible inside the dedicat
   assert.match(markup, /TV/);
   assert.match(markup, /Announcement/);
   assert.match(markup, /Search songs or backing tracks/);
-  assert.match(markup, /Search YouTube/);
+  assert.match(markup, /Expand Search/);
+  assert.match(markup, /Backing source/);
+  assert.match(markup, /YouTube filter/);
+  assert.doesNotMatch(markup, /More YouTube|Open YouTube search/);
   assert.match(markup, /Manual/);
   assert.match(markup, /Results/);
+  assert.match(markup, /Add to Queue/);
+  assert.doesNotMatch(markup, /Enter a Song Title/);
 });
 
-test('HostQueueTab add workspace exposes explicit performance placement actions when plan slots are open', async () => {
+test('HostQueueTab keeps performance creation append-only even when show slots are open', async () => {
   mockHostQueueTabDependencies();
   mockDesktopQueueSurfaceTab('add');
 
@@ -477,11 +482,12 @@ test('HostQueueTab add workspace exposes explicit performance placement actions 
     ],
   });
 
-  assert.match(markup, /Next: #2 Performance Slot/);
-  assert.match(markup, /Later target/);
+  assert.match(markup, /Build a Moment/);
   assert.match(markup, /Add to Queue/);
-  assert.match(markup, /Save to Planner/);
-  assert.match(markup, /Queue Only/);
+  assert.doesNotMatch(markup, /Next: #2 Performance Slot/);
+  assert.doesNotMatch(markup, /Later target/);
+  assert.doesNotMatch(markup, /Queue Only/);
+  assert.doesNotMatch(markup, /Tap to queue/);
 });
 
 test('HostQueueTab protects the live lineup and exposes quick between-song inserts in queue view', async () => {

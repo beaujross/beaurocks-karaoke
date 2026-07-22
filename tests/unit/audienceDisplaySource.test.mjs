@@ -23,6 +23,16 @@ test('host audience tab exposes reusable audience TV display controls', () => {
   assert.match(hostSource, /onSetAudienceDisplayMode: setAudienceDisplayModeQuick/);
 });
 
+test('commentator row membership can be removed from every fast lobby control', () => {
+  assert.match(hostSource, /const toggleAudienceDisplayUid = useCallback/);
+  assert.match(hostSource, /audienceDisplay\.selectedUids\.includes\(safeUid\)[\s\S]*await removeAudienceDisplayUid\(safeUid\)/);
+  assert.match(hostSource, /selectedLobbyUserOnAudienceDisplay \? 'Remove From TV Row' : 'Add To TV Row'/);
+  assert.match(hostSource, /audienceDisplay\.selectedUids\.includes\(userUid\) \? 'Remove Row' : 'TV Row'/);
+  assert.match(hostSource, /selectedLobbyUserOnAudienceDisplay \? 'Remove Selected' : 'Add Selected'/);
+  assert.doesNotMatch(hostSource, /disabled=\{!selectedLobbyUserUid \|\| selectedLobbyUserOnAudienceDisplay\}/);
+  assert.doesNotMatch(hostSource, /disabled=\{!userUid \|\| audienceDisplay\.selectedUids\.includes\(userUid\)\}/);
+});
+
 test('public tv renders audience display using existing room users and reactions', () => {
   assert.match(tvSource, /from '..\/..\/lib\/audienceDisplay'/);
   assert.match(tvSource, /const audienceDisplay = useMemo/);

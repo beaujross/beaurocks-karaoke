@@ -1,5 +1,12 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listHostWorkspaceOperators } from '../../../lib/firebase';
+import {
+    HOST_LAUNCH_IDENTITY_DRAFT_KEY,
+    buildHostLaunchDraftKey,
+    clearHostLaunchDraftPart,
+    loadHostLaunchDraftPart,
+    persistHostLaunchDraftPart,
+} from '../hostLaunchDraftStorage';
 
 const useHostWorkspaceState = ({
     audienceBase,
@@ -12,6 +19,10 @@ const useHostWorkspaceState = ({
     uid = '',
 }) => {
     const activeUid = String(currentUid || uid || '').trim();
+    const launchIdentityDraftKey = buildHostLaunchDraftKey(
+        HOST_LAUNCH_IDENTITY_DRAFT_KEY,
+        activeUid,
+    );
     const [lastProvisionedLaunchUrls, setLastProvisionedLaunchUrls] = useState({
         roomCode: '',
         hostUrl: '',
@@ -21,7 +32,14 @@ const useHostWorkspaceState = ({
     });
     const [entryError, setEntryError] = useState('');
     const [landingLaunchMode, setLandingLaunchMode] = useState('start');
-    const [rawLaunchRoomName, setLaunchRoomName] = useState(null);
+    const [rawLaunchRoomName, setLaunchRoomName] = useState(() => {
+        const recovered = loadHostLaunchDraftPart(launchIdentityDraftKey, {
+            roomName: null,
+        });
+        if (!recovered.restored) return null;
+        if (recovered.value?.roomName === null) return null;
+        return String(recovered.value?.roomName || '').slice(0, 180);
+    });
     const [launchCoHostUids, setLaunchCoHostUids] = useState([]);
     const [showLaunchCoHosts, setShowLaunchCoHostsState] = useState(false);
     const [launchCoHostSearch, setLaunchCoHostSearch] = useState('');
@@ -35,6 +53,16 @@ const useHostWorkspaceState = ({
         if (!seededHost) return '';
         return `${seededHost} Room`;
     }, [hostName, rawLaunchRoomName]);
+
+    useEffect(() => {
+        if (rawLaunchRoomName === null) {
+            clearHostLaunchDraftPart(launchIdentityDraftKey);
+            return;
+        }
+        persistHostLaunchDraftPart(launchIdentityDraftKey, {
+            roomName: String(rawLaunchRoomName || '').slice(0, 180),
+        });
+    }, [launchIdentityDraftKey, rawLaunchRoomName]);
 
     const refreshWorkspaceOperators = useCallback(async () => {
         if (!orgId || !activeUid) {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { buildDiscoverListing } from "../../src/apps/Marketing/pages/discoverListingViewModel.js";
+import { isEndedRoomSession } from "../../src/apps/Marketing/pages/discoverRoomSessionState.js";
 
 test("discoverListingViewModel.test builds room-session listing presentation", () => {
   const listing = buildDiscoverListing({
@@ -83,6 +84,14 @@ test("discoverListingViewModel.test only exposes public recap links for sessions
   });
   assert.equal(hostHistoryOnlyListing.hasPublicRecap, false);
   assert.equal(hostHistoryOnlyListing.recapUrl, "");
+});
+
+test("discover room lifecycle uses the documented six-hour fallback when an end time is missing", () => {
+  const startsAtMs = Date.now() - (7 * 60 * 60 * 1000);
+  assert.equal(isEndedRoomSession({ startsAtMs }, Date.now()), true);
+  assert.equal(isEndedRoomSession({
+    startsAtMs: Date.now() - (5 * 60 * 60 * 1000),
+  }, Date.now()), false);
 });
 
 test("discoverListingViewModel.test builds venue listing fallback presentation", () => {

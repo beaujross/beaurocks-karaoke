@@ -43,6 +43,11 @@ export const RUN_OF_SHOW_ITEM_STATUSES = Object.freeze([
     'skipped',
     'blocked'
 ]);
+export const RUN_OF_SHOW_ITEM_DESTINATIONS = Object.freeze([
+    'queue',
+    'planner',
+    'run_of_show'
+]);
 export const RUN_OF_SHOW_CONVEYOR_PHASES = Object.freeze([
     'planned',
     'warming',
@@ -97,6 +102,7 @@ export const RUN_OF_SHOW_BACKING_SOURCES = Object.freeze([
 
 const ALLOWED_ITEM_TYPES = new Set(RUN_OF_SHOW_ITEM_TYPES);
 const ALLOWED_STATUSES = new Set(RUN_OF_SHOW_ITEM_STATUSES);
+const ALLOWED_ITEM_DESTINATIONS = new Set(RUN_OF_SHOW_ITEM_DESTINATIONS);
 const ALLOWED_BACKING_SOURCES = new Set(RUN_OF_SHOW_BACKING_SOURCES);
 const ALLOWED_AUTOMATION_MODES = new Set(Object.values(RUN_OF_SHOW_AUTOMATION_MODES));
 const ALLOWED_ADVANCE_MODES = new Set(Object.values(RUN_OF_SHOW_ADVANCE_MODES));
@@ -680,6 +686,9 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
         plannedDurationSec,
         plannedDurationSource,
         status: normalizedStatus,
+        destination: ALLOWED_ITEM_DESTINATIONS.has(cleanText(overrides.destination).toLowerCase())
+            ? cleanText(overrides.destination).toLowerCase()
+            : 'run_of_show',
         beltPhase: ALLOWED_CONVEYOR_PHASES.has(cleanText(overrides.beltPhase).toLowerCase())
             ? cleanText(overrides.beltPhase).toLowerCase()
             : defaultBeltPhase,
@@ -1081,7 +1090,10 @@ export const previewRunOfShowCsvImport = (csvText = '') => {
 export const buildRunOfShowItemsFromCsvImport = (csvText = '') => previewRunOfShowCsvImport(csvText);
 
 const buildRunOfShowConveyorSnapshotFromItems = (items = []) => {
-    const activeItems = (Array.isArray(items) ? items : []).filter((item) => !['complete', 'skipped'].includes(item.status));
+    const activeItems = (Array.isArray(items) ? items : []).filter((item) => (
+        item?.destination !== 'planner'
+        && !['complete', 'skipped'].includes(item.status)
+    ));
     const liveItem = activeItems.find((item) => item.status === 'live') || null;
     const flightedItem = activeItems.find((item) => item.status === 'staged') || null;
     const queuedItems = activeItems.filter((item) => item.id !== liveItem?.id && item.id !== flightedItem?.id);
@@ -1102,7 +1114,9 @@ export const syncRunOfShowBeltPhases = (director = {}) => {
     const nextItems = items.map((item) => {
         const status = cleanText(item.status).toLowerCase();
         let beltPhase = 'planned';
-        if (status === 'live') {
+        if (item?.destination === 'planner') {
+            beltPhase = 'planned';
+        } else if (status === 'live') {
             beltPhase = 'live';
         } else if (status === 'staged') {
             beltPhase = 'flighted';
@@ -1177,6 +1191,9 @@ export const getRunOfShowProgressionDecision = ({
     if (!safeItem) {
         return { allowed: false, reason: 'missing_item' };
     }
+    if (safeItem?.destination === 'planner') {
+        return { allowed: false, reason: 'planner_only' };
+    }
     if (normalizedDirector.automationPaused) {
         return { allowed: false, reason: 'automation_paused' };
     }
@@ -1249,13 +1266,20 @@ export const updateRunOfShowItem = (director = {}, itemId = '', updater = null) 
 };
 
 export const getRunOfShowLiveItem = (director = {}) =>
-    normalizeRunOfShowDirector(director).items.find((item) => item.status === 'live') || null;
+    normalizeRunOfShowDirector(director).items.find((item) => (
+        item?.destination !== 'planner' && item.status === 'live'
+    )) || null;
 
 export const getRunOfShowStagedItem = (director = {}) =>
-    normalizeRunOfShowDirector(director).items.find((item) => item.status === 'staged') || null;
+    normalizeRunOfShowDirector(director).items.find((item) => (
+        item?.destination !== 'planner' && item.status === 'staged'
+    )) || null;
 
 export const getNextRunOfShowItem = (director = {}) =>
-    normalizeRunOfShowDirector(director).items.find((item) => !['complete', 'skipped', 'live'].includes(item.status)) || null;
+    normalizeRunOfShowDirector(director).items.find((item) => (
+        item?.destination !== 'planner'
+        && !['complete', 'skipped', 'live'].includes(item.status)
+    )) || null;
 
 export const getRunOfShowConveyorSnapshot = (director = {}) => {
     const normalizedDirector = normalizeRunOfShowDirector(director);
@@ -1267,6 +1291,7 @@ export const getRunOfShowConveyorPhase = (director = {}, item = null) => {
         ? createRunOfShowItem(item?.type || 'buffer', item)
         : null;
     if (!safeItem?.id) return RUN_OF_SHOW_CONVEYOR_PHASES[0];
+    if (safeItem?.destination === 'planner') return 'planned';
     const conveyor = getRunOfShowConveyorSnapshot(director);
     const status = cleanText(safeItem.status).toLowerCase();
     if (status === 'live') return 'live';
@@ -1520,7 +1545,10 @@ export const getRunOfShowPreflightReport = (director = {}, options = {}) => {
     const pendingCountsById = options?.pendingCountsById && typeof options.pendingCountsById === 'object'
         ? options.pendingCountsById
         : {};
-    const activeItems = normalized.items.filter((item) => !['complete', 'skipped', 'live'].includes(cleanText(item?.status).toLowerCase()));
+    const activeItems = normalized.items.filter((item) => (
+        item?.destination !== 'planner'
+        && !['complete', 'skipped', 'live'].includes(cleanText(item?.status).toLowerCase())
+    ));
     const itemReports = activeItems.map((item) => {
         const pendingSubmissionCount = clampInt(pendingCountsById[item.id], 0, 999, 0);
         const readiness = getRunOfShowItemReadiness(item, { pendingSubmissionCount });
@@ -1688,11 +1716,15 @@ export const getRunOfShowHudActionKey = ({
 };
 
 export const getRunOfShowPublicItems = (director = {}) =>
-    normalizeRunOfShowDirector(director).items.filter((item) => item.visibility === 'public');
+    normalizeRunOfShowDirector(director).items.filter((item) => (
+        item?.destination !== 'planner' && item.visibility === 'public'
+    ));
 
 export const getRunOfShowOpenSubmissionItems = (director = {}) =>
     normalizeRunOfShowDirector(director).items.filter((item) => (
-        item.type === 'performance' && item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission
+        item?.destination !== 'planner'
+        && item.type === 'performance'
+        && item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission
     ));
 
 export const buildRunOfShowQueueDocId = (roomCode = '', itemId = '') => {

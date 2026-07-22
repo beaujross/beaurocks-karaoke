@@ -25,13 +25,25 @@ export const buildAppleMusicPlaylistQueueDescriptor = (playlistId = '') => {
   return { playlist: id };
 };
 
-const getPlaylistCandidates = (playlistId = '', meta = {}) => [
-  meta.playbackId,
-  meta.catalogId,
-  playlistId,
-  meta.playParamsId,
-  ...(Array.isArray(meta.alternatePlaylistIds) ? meta.alternatePlaylistIds : []),
-];
+const getPlaylistCandidates = (playlistId = '', meta = {}) => {
+  const alternates = Array.isArray(meta.alternatePlaylistIds) ? meta.alternatePlaylistIds : [];
+  if (isAppleMusicLibraryPlaylistId(playlistId, meta.sourceType)) {
+    return [
+      meta.playParamsId,
+      playlistId,
+      meta.playbackId,
+      meta.catalogId,
+      ...alternates,
+    ];
+  }
+  return [
+    meta.playbackId,
+    meta.catalogId,
+    playlistId,
+    meta.playParamsId,
+    ...alternates,
+  ];
+};
 
 export const buildAppleMusicPlaylistQueueAttempts = (playlistId = '', meta = {}) => {
   const attempts = [];

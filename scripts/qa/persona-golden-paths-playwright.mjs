@@ -546,13 +546,15 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
           await createRoomInput.fill(`QA Setup Contract ${Date.now().toString(36).slice(-6)}`);
           await delay(350);
         }
-        const effectiveDomains = page.locator('[data-launch-effective-domain]');
-        const effectiveDomainCount = await effectiveDomains.count();
-        if (effectiveDomainCount !== 5) {
-          throw new Error(`Expected five effective setup domains before room creation; found ${effectiveDomainCount}.`);
+        const coreSetup = page.locator('[data-launch-core-setup="true"]').first();
+        if (!await coreSetup.isVisible().catch(() => false)) {
+          throw new Error('Expected the simplified room creation controls to be visible.');
         }
-        const domainKeys = await effectiveDomains.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-launch-effective-domain') || '').filter(Boolean));
-        setupContractDetailByPage.set(page, `Five-domain setup summary rendered (${domainKeys.join(', ')}).`);
+        const advancedContract = page.locator('[data-launch-configuration-contract="true"]').first();
+        if (await advancedContract.isVisible().catch(() => false)) {
+          throw new Error('Detailed launch configuration should stay hidden during room creation.');
+        }
+        setupContractDetailByPage.set(page, 'Core room name, starting style, and guest access controls rendered; detailed tuning deferred to the room.');
         const enabled = await createRoomPrimary.isEnabled().catch(() => false);
         if (enabled) {
           await createRoomPrimary.click({ force: true });

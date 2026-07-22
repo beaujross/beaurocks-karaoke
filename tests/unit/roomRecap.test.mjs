@@ -57,6 +57,47 @@ describe('roomRecap summary', () => {
     expect(getSongArtworkUrl({ albumArtUrl: 'https://example.com/album.jpg', artworkUrl100: 'https://example.com/100.jpg' })).toBe('https://example.com/album.jpg');
   });
 
+  test('keeps asked game rounds and aggregates each audience answer into the recap', () => {
+    const summary = buildRoomRecapSummary({
+      roomCode: 'game1',
+      room: {
+        gameRoundHistory: [{
+          id: 'trivia-1',
+          type: 'trivia',
+          question: 'Which city is called the Emerald City?',
+          options: ['Seattle', 'Portland', 'Austin', 'Miami'],
+          correct: 0,
+          startedAt: 1000,
+        }],
+        wyrData: {
+          id: 'wyr-1',
+          question: 'Would you rather sing first or last?',
+          optionA: 'First',
+          optionB: 'Last',
+          startedAt: 2000,
+        },
+      },
+      promptVotes: [
+        { questionId: 'trivia-1', voteType: 'vote_trivia', val: 0, userName: 'Alex' },
+        { questionId: 'trivia-1', voteType: 'vote_trivia', val: 1, userName: 'Sam' },
+        { questionId: 'wyr-1', voteType: 'vote_wyr', val: 'A', userName: 'Jordan' },
+      ],
+    });
+
+    expect(summary.gameRounds).toHaveLength(2);
+    expect(summary.gameRounds[0]).toMatchObject({
+      questionId: 'trivia-1',
+      responseCount: 2,
+      counts: { Seattle: 1, Portland: 1 },
+    });
+    expect(summary.gameRounds[1]).toMatchObject({
+      questionId: 'wyr-1',
+      responseCount: 1,
+      counts: { First: 1 },
+    });
+    expect(summary.stats).toMatchObject({ gameRounds: 2, gameResponses: 3 });
+  });
+
   test('builds stable public recap urls', () => {
     expect(buildRoomRecapUrl('aahf')).toBe('/recaps/AAHF');
     expect(buildRoomRecapUrl('vip777', 'https://app.beaurocks.app/')).toBe('https://app.beaurocks.app/recaps/VIP777');

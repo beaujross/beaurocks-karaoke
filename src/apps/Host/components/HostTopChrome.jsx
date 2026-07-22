@@ -125,6 +125,8 @@ const HostTopChrome = ({
     setBgVolume,
     toggleBgMusic,
     playingBg,
+    backgroundSourceType = 'local',
+    backgroundSourceStatus = 'stopped',
     skipBg,
     canSkipBg = true,
     autoBgMusic,
@@ -1374,6 +1376,7 @@ const HostTopChrome = ({
                                 type="button"
                                 data-host-tab={t.key}
                                 onClick={() => {
+                                    closeAllTopMenus();
                                     if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
                                         openAdminWorkspace('ops.room_setup');
                                         return;
@@ -1445,6 +1448,7 @@ const HostTopChrome = ({
                     type="button"
                     data-host-tab="admin"
                     onClick={() => {
+                        closeAllTopMenus();
                         if (typeof openAdminWorkspace === 'function') {
                             openAdminWorkspace('ops.room_setup');
                             return;
@@ -1495,13 +1499,12 @@ const HostTopChrome = ({
                                     type="button"
                                     data-host-tab={t.key}
                                     onClick={() => {
+                                        closeAllTopMenus();
                                         if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
                                             openAdminWorkspace('ops.room_setup');
-                                            setShowNavMenu(false);
                                             return;
                                         }
                                         setTab(t.key);
-                                        setShowNavMenu(false);
                                     }}
                                     className={`w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest ${tab === t.key ? 'text-[#00C4D9]' : 'text-zinc-300'} hover:bg-zinc-900 ${
                                         t.key === 'stage' && typeof onOpenHostDashboard !== 'function' ? 'rounded-t-xl' : ''
@@ -1691,6 +1694,23 @@ const HostTopChrome = ({
                                                     </button>
                                                 ) : null}
                                             </div>
+                                            {backgroundSourceType === 'apple' ? (
+                                                <div className='mt-2 flex items-center justify-between gap-2 rounded-lg border border-pink-300/15 bg-pink-500/8 px-2.5 py-2'>
+                                                    <div className='min-w-0'>
+                                                        <div className='text-[10px] font-black uppercase tracking-[0.12em] text-pink-100/60'>BG player - {backgroundSourceStatus}</div>
+                                                        <div className='truncate text-xs text-pink-100/80'>Apple Music owns background audio</div>
+                                                    </div>
+                                                    <button
+                                                        type='button'
+                                                        data-feature-id='deck-apple-background-transport'
+                                                        onClick={toggleBgMusic}
+                                                        className='host-btn flex-none rounded-lg border border-pink-300/30 bg-pink-500/12 px-2.5 py-1.5 text-xs font-bold text-pink-100'
+                                                    >
+                                                        <i className={playingBg ? 'fa-solid fa-pause' : 'fa-solid fa-play'}></i>
+                                                        {playingBg ? 'Stop Apple BG' : 'Start Apple BG'}
+                                                    </button>
+                                                </div>
+                                            ) : null}
                                             {appleMusicConnected ? (
                                                 <div className="mt-2 space-y-2">
                                                     <div className="grid grid-cols-3 gap-1.5">
@@ -1816,6 +1836,7 @@ const HostTopChrome = ({
                         <button
                             type="button"
                             data-feature-id="deck-automation-menu-toggle"
+                            aria-expanded={showAutomationQuickMenu}
                             onClick={() => {
                                 const next = !showAutomationQuickMenu;
                                 closeAllTopMenus();
@@ -1834,7 +1855,10 @@ const HostTopChrome = ({
                             <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showAutomationQuickMenu ? 'rotate-180' : ''}`}></i>
                         </button>
                         {showAutomationQuickMenu && (
-                            <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(500px,95vw)] max-h-[74vh] p-3.5`}>
+                            <div
+                                data-feature-id="deck-automation-menu"
+                                className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(500px,95vw)] max-h-[74vh] p-3.5`}
+                            >
                                 <div className={quickMenuSectionTitleClass}>Flow & Automation</div>
                                 <div className={quickMenuSectionHintClass}>
                                     Choose the room pacing model, then tune lightweight automation without leaving the host panel.
@@ -2068,6 +2092,7 @@ const HostTopChrome = ({
                                             <button
                                                 key={item.key}
                                                 type="button"
+                                                data-feature-id={`deck-automation-${item.key}`}
                                                 onClick={() => { item.onClick?.(); }}
                                                 className={`${styles.btnStd} ${item.active ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                             >
@@ -2265,6 +2290,7 @@ const HostTopChrome = ({
                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                                         <button
                                             type="button"
+                                            data-feature-id="deck-queue-stage-start-toggle"
                                             onClick={() => { void quickRoomControls.onToggleAutoPlayMedia?.(); }}
                                             aria-pressed={quickRoomControls.autoPlayMedia !== false}
                                             title="Choose whether staged songs start immediately or wait for a host-started track."

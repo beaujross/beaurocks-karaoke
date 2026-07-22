@@ -111,6 +111,11 @@ test('admin navigation keeps core config sections wired into the workspace regis
     'Workspace navigation should accept settings tab keys such as chat or moderation directly',
   );
   assert.match(
+    workspaceNavigationSource,
+    /normalizedTab !== 'admin'[\s\S]*setShowSettings\(false\)[\s\S]*section\.hostTab === normalizedTab[\s\S]*setActiveWorkspaceSection\(targetSection\.id\)/,
+    'Top-level Queue, Show, Games, and Audience tabs should close Admin and restore their canonical workspace section',
+  );
+  assert.match(
     hostEntryBootstrapSource,
     /view === 'audience'[\s\S]*const mappedTab = sectionToSettingsTab\[chosenSection\];[\s\S]*setTab\('admin'\);[\s\S]*setSettingsTab\(mappedTab\);[\s\S]*setTab\('lobby'\);/,
     'Audience workspace URLs should open Admin for mapped settings sections and only fall back to lobby for roster/member management',

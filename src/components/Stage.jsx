@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react'
 import AppleLyricsRenderer from './AppleLyricsRenderer';
 import { EMOJI } from '../lib/emoji';
 import { attachPerformancePlaybackContext } from '../lib/performanceSessionPlayback';
+import { resolveLyricsPlaybackClock } from '../lib/lyricsPlaybackClock';
 
 const nowMs = () => Date.now();
 const YOUTUBE_DEFAULT_FRAME_ORIGIN = 'https://www.youtube.com';
@@ -52,6 +53,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     const isBackingAudioOnly = current?.backingAudioOnly || false;
     const applePlayback = room?.appleMusicPlayback || null;
     const applePlaybackActive = !!applePlayback?.id;
+    const lyricsPlaybackClock = resolveLyricsPlaybackClock({ room, current });
     const roomCode = String(room?.roomCode || room?.code || '').trim().toUpperCase();
     const joinUrlLabel = String(room?.joinUrlLabel || '').trim();
     const showVisualizerTv = !!room?.showVisualizerTv;
@@ -541,9 +543,9 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                         title={current.songTitle}
                         artist={current.artist}
                         isActive={true} 
-                        startTime={room.videoStartTimestamp}
-                        pausedAt={room.pausedAt}
-                        isPlaying={room.videoPlaying}
+                        startTime={lyricsPlaybackClock.startTime}
+                        pausedAt={lyricsPlaybackClock.pausedAt}
+                        isPlaying={lyricsPlaybackClock.isPlaying}
                         showAll={room?.lyricsMode === 'full'}
                         scrollMode={room?.lyricsScrollMode || 'auto'}
                         overlayMode={showVisualizerTv}

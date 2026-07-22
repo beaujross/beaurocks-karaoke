@@ -2,6 +2,8 @@ const assert = require("node:assert/strict");
 const admin = require("../../functions/node_modules/firebase-admin");
 process.env.MARKETING_SMS_REMINDERS_ENABLED = process.env.MARKETING_SMS_REMINDERS_ENABLED || "true";
 process.env.MARKETING_PRIVATE_INVITE_CODE = process.env.MARKETING_PRIVATE_INVITE_CODE || "TEST123";
+process.env.PUBLIC_VIBE_INDEX_ROLL_MODE = "canary";
+process.env.PUBLIC_VIBE_INDEX_CANARY_TARGETS = "venue:venue_demo";
 const {
   ensureSong,
   ensureTrack,
@@ -15,6 +17,9 @@ const {
   unfollowDirectoryEntity,
   createDirectoryCheckin,
   submitDirectoryReview,
+  previewPublicVibeEvidenceBackfill,
+  refreshPublicVibeIndexes,
+  rollbackPublicVibeIndexJob,
   runExternalDirectoryIngestion,
   submitDirectoryClaimRequest,
   resolveDirectoryClaimRequest,
@@ -41,6 +46,10 @@ const {
   moderatePublicChartResult,
   previewPublicChartLaunch,
 } = require("../../functions/index.js");
+const {
+  buildPublicVibeActorKey,
+  buildPublicVibeSourceKey,
+} = require("../../functions/lib/publicVibeEvidenceLedger.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const MOD_UID = "directory-mod";
@@ -57,8 +66,14 @@ process.env.GCLOUD_PROJECT = PROJECT_ID;
 const db = admin.firestore();
 
 const requestFor = (uid, data = {}, options = {}) => ({
-  auth: uid ? { uid, token: { email: options.email || `${uid}@test.local` } } : null,
-  app: null,
+  auth: uid ? {
+    uid,
+    token: {
+      email: options.email || `${uid}@test.local`,
+      firebase: { sign_in_provider: options.authProvider || "password" },
+    },
+  } : null,
+  app: options.appCheck ? { appId: options.appId || "directory-test-app" } : null,
   data,
   rawRequest: {
     ip: "127.0.0.1",
@@ -82,6 +97,8 @@ async function resetState() {
     "reviews",
     "review_totals",
     "directory_sync_jobs",
+    "public_vibe_index_jobs",
+    "public_vibe_evidence",
     "external_source_links",
     "directory_claim_requests",
     "directory_rsvps",
@@ -113,11 +130,13 @@ async function resetState() {
     snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
     await batch.commit();
   }
-  const rootRooms = await db.collection("artifacts").doc("bross-app").collection("public").doc("data").collection("rooms").limit(500).get();
-  if (!rootRooms.empty) {
-    const batch = db.batch();
-    rootRooms.docs.forEach((docSnap) => batch.delete(docSnap.ref));
-    await batch.commit();
+  for (const rootCollection of ["rooms", "room_users"]) {
+    const rootSnap = await db.collection("artifacts").doc("bross-app").collection("public").doc("data").collection(rootCollection).limit(500).get();
+    if (!rootSnap.empty) {
+      const batch = db.batch();
+      rootSnap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+      await batch.commit();
+    }
   }
   await db.doc(`directory_roles/${MOD_UID}`).set({
     roles: ["directory_editor"],
@@ -983,7 +1002,7 @@ async function run() {
             title: "Songhouse",
             city: "Seattle",
             state: "WA",
-            region: "wa_seattle",
+            region: "nationwide",
           },
         })
       );
@@ -991,6 +1010,7 @@ async function run() {
       const snap = await db.doc(`directory_submissions/${result.submissionId}`).get();
       assert.equal(snap.exists, true);
       assert.equal(snap.get("status"), "pending");
+      assert.equal(snap.get("payload.region"), "wa_seattle");
     }],
 
     ["submitDirectoryListing geocodes missing location when address is present", async () => {
@@ -1115,6 +1135,59 @@ async function run() {
       assert.equal(totals.exists, true);
       assert.equal(Number(totals.get("totalCount") || 0), 1);
       assert.equal(Number(totals.get("publicCount") || 0), 0);
+      assert.equal((await db.collection("public_vibe_evidence").get()).empty, true);
+    }],
+
+    ["qualified check-ins create one server evidence record and reject replay, anonymous, and owner boosts", async () => {
+      await db.doc("venues/venue_demo").set({
+        title: "Evidence Venue",
+        status: "approved",
+        visibility: "public",
+        ownerUid: HOST_UID,
+      });
+      await db.doc("room_sessions/evidence_session").set({
+        title: "Evidence Night",
+        status: "approved",
+        visibility: "public",
+        roomCode: "VIBE1",
+        venueId: "venue_demo",
+        hostUid: HOST_UID,
+        hostUids: [HOST_UID],
+        ownerUid: HOST_UID,
+        startsAtMs: Date.now() - (60 * 60 * 1000),
+        endsAtMs: Date.now() + (3 * 60 * 60 * 1000),
+      });
+      await db.doc(`artifacts/bross-app/public/data/room_users/VIBE1_${USER_UID}`).set({ roomCode: "VIBE1", uid: USER_UID });
+      await db.doc(`artifacts/bross-app/public/data/room_users/VIBE1_${OTHER_UID}`).set({ roomCode: "VIBE1", uid: OTHER_UID });
+      await db.doc(`artifacts/bross-app/public/data/room_users/VIBE1_${HOST_UID}`).set({ roomCode: "VIBE1", uid: HOST_UID });
+
+      const payload = {
+        targetType: "venue",
+        targetId: "venue_demo",
+        roomSessionId: "evidence_session",
+        isPublic: false,
+      };
+      await createDirectoryCheckin.run(requestFor(USER_UID, payload));
+      await createDirectoryCheckin.run(requestFor(USER_UID, payload));
+      await createDirectoryCheckin.run(requestFor(OTHER_UID, payload, { authProvider: "anonymous" }));
+      await createDirectoryCheckin.run(requestFor(HOST_UID, payload));
+
+      const evidenceSnap = await db.collection("public_vibe_evidence").get();
+      assert.equal(evidenceSnap.size, 1);
+      const evidence = evidenceSnap.docs[0].data() || {};
+      assert.equal(evidence.evidenceType, "authenticated_checkin");
+      assert.equal(evidence.targetType, "venue");
+      assert.equal(evidence.targetId, "venue_demo");
+      assert.equal(evidence.sessionId, "evidence_session");
+      assert.match(evidence.actorKey, /^actor_[a-f0-9]{40}$/);
+      assert.notEqual(evidence.actorKey, USER_UID);
+      assert.equal(Object.hasOwn(evidence, "actorUid"), false);
+      assert.match(evidence.sourceKey, /^source_[a-f0-9]{40}$/);
+      assert.equal(Object.hasOwn(evidence, "sourceId"), false);
+      assert.equal(evidence.authenticated, true);
+      assert.equal(evidence.expiresAt?.toMillis?.() > Date.now(), true);
+      assert.equal(evidence.serverVerified, true);
+      assert.equal(evidence.scoreVersion, "vibe_v2");
     }],
 
     ["submitDirectoryReview validates and updates rollups", async () => {
@@ -1132,6 +1205,220 @@ async function run() {
       assert.equal(totals.exists, true);
       assert.equal(Number(totals.get("reviewCount") || 0), 1);
       assert.equal(Number(totals.get("ratingSum") || 0), 5);
+    }],
+
+    ["verified reviews write evidence only for an authenticated room member and real session", async () => {
+      await db.doc("venues/venue_demo").set({
+        title: "Evidence Venue",
+        status: "approved",
+        visibility: "public",
+        ownerUid: HOST_UID,
+      });
+      await db.doc("room_sessions/review_session").set({
+        title: "Review Night",
+        status: "approved",
+        visibility: "public",
+        roomCode: "VIBE2",
+        venueId: "venue_demo",
+        hostUid: HOST_UID,
+        ownerUid: HOST_UID,
+        startsAtMs: Date.now() - (2 * 60 * 60 * 1000),
+        endsAtMs: Date.now() - (60 * 60 * 1000),
+      });
+      await db.doc(`artifacts/bross-app/public/data/room_users/VIBE2_${USER_UID}`).set({ roomCode: "VIBE2", uid: USER_UID });
+
+      const payload = {
+        targetType: "venue",
+        targetId: "venue_demo",
+        roomSessionId: "review_session",
+        eventId: "review_session",
+        rating: 5,
+        tags: ["friendly"],
+      };
+      await submitDirectoryReview.run(requestFor(USER_UID, payload));
+      await submitDirectoryReview.run(requestFor(USER_UID, { ...payload, rating: 4 }));
+      await submitDirectoryReview.run(requestFor(USER_UID, {
+        ...payload,
+        roomSessionId: "forged_session",
+        eventId: "forged_session",
+      }));
+
+      const evidenceSnap = await db.collection("public_vibe_evidence").get();
+      assert.equal(evidenceSnap.size, 1);
+      const evidence = evidenceSnap.docs[0].data() || {};
+      assert.equal(evidence.evidenceType, "verified_review");
+      assert.match(evidence.actorKey, /^actor_[a-f0-9]{40}$/);
+      assert.notEqual(evidence.actorKey, USER_UID);
+      assert.equal(Object.hasOwn(evidence, "actorUid"), false);
+      assert.match(evidence.sourceKey, /^source_[a-f0-9]{40}$/);
+      assert.equal(Object.hasOwn(evidence, "sourceId"), false);
+      assert.equal(evidence.authenticated, true);
+      assert.equal(evidence.expiresAt?.toMillis?.() > Date.now(), true);
+      assert.equal(evidence.sessionId, "review_session");
+      assert.equal(evidence.verificationMethod, "authenticated_room_member_review");
+    }],
+
+    ["previewPublicVibeEvidenceBackfill is admin-only, aggregate-only, bounded, and read-only", async () => {
+      const nowMs = Date.now();
+      await db.doc("venues/venue_preview").set({
+        title: "Protected Preview Venue",
+        status: "approved",
+        visibility: "public",
+        ownerUid: HOST_UID,
+      });
+      const records = [
+        { type: "room_recap", sessionId: "preview_night_1", daysAgo: 3 },
+        { type: "room_recap", sessionId: "preview_night_2", daysAgo: 1 },
+        ...["preview_guest_1", "preview_guest_2", "preview_guest_3"].map((actorUid) => ({
+          type: "authenticated_checkin",
+          sessionId: "preview_night_1",
+          actorUid,
+          daysAgo: 3,
+        })),
+        ...["preview_guest_4", "preview_guest_5"].map((actorUid) => ({
+          type: "authenticated_checkin",
+          sessionId: "preview_night_2",
+          actorUid,
+          daysAgo: 1,
+        })),
+      ];
+      for (let index = 0; index < records.length; index += 1) {
+        const record = records[index];
+        const occurredAtMs = nowMs - (record.daysAgo * 24 * 60 * 60 * 1000);
+        await db.doc(`public_vibe_evidence/preview_evidence_${index}`).set({
+          evidenceType: record.type,
+          targetType: "venue",
+          targetId: "venue_preview",
+          sessionId: record.sessionId,
+          actorKey: record.actorUid ? buildPublicVibeActorKey(record.actorUid) : null,
+          sourceCollection: "protected_preview_fixture",
+          sourceKey: buildPublicVibeSourceKey("protected_preview_fixture", `source_${index}`),
+          occurredAtMs,
+          occurredAt: admin.firestore.Timestamp.fromMillis(occurredAtMs),
+          verifiedAtMs: occurredAtMs,
+          expiresAtMs: nowMs + (60 * 24 * 60 * 60 * 1000),
+          expiresAt: admin.firestore.Timestamp.fromMillis(nowMs + (60 * 24 * 60 * 60 * 1000)),
+          status: "active",
+          serverVerified: true,
+          authenticated: record.type !== "room_recap",
+        });
+      }
+      const beforeEvidenceIds = (await db.collection("public_vibe_evidence").get()).docs.map((doc) => doc.id).sort();
+      const beforeJobs = await db.collection("public_vibe_index_jobs").get();
+
+      await expectHttpsError(
+        () => previewPublicVibeEvidenceBackfill.run(requestFor("", {}, { appCheck: true })),
+        "unauthenticated"
+      );
+      await expectHttpsError(
+        () => previewPublicVibeEvidenceBackfill.run(requestFor(ADMIN_UID, {})),
+        "failed-precondition"
+      );
+      await expectHttpsError(
+        () => previewPublicVibeEvidenceBackfill.run(requestFor(MOD_UID, {}, { appCheck: true })),
+        "permission-denied"
+      );
+      const preview = await previewPublicVibeEvidenceBackfill.run(
+        requestFor(ADMIN_UID, { targetTypes: ["venue"], limit: 25 }, { appCheck: true })
+      );
+
+      assert.equal(preview.ok, true);
+      assert.equal(preview.dryRun, true);
+      assert.equal(preview.scoreVersion, "vibe_v2");
+      assert.equal(preview.sampleLimit, 25);
+      assert.equal(preview.targetCount, 1);
+      assert.equal(preview.eligibleTargetCount, 1);
+      assert.equal(preview.qualifiedEvidenceCount, 7);
+      assert.equal(preview.writesAttempted, 0);
+      assert.equal(preview.writesPerformed, 0);
+      assert.deepEqual(preview.selectedTargetTypes, ["venue"]);
+      assert.equal(preview.privacy.identifiersReturned, false);
+      assert.equal(preview.privacy.individualEvidenceReturned, false);
+      const serialized = JSON.stringify(preview);
+      assert.equal(serialized.includes("venue_preview"), false);
+      assert.equal(serialized.includes("preview_guest"), false);
+      assert.equal(serialized.includes("preview_night"), false);
+      assert.equal(serialized.includes("source_"), false);
+      const afterEvidenceIds = (await db.collection("public_vibe_evidence").get()).docs.map((doc) => doc.id).sort();
+      const afterJobs = await db.collection("public_vibe_index_jobs").get();
+      assert.deepEqual(afterEvidenceIds, beforeEvidenceIds);
+      assert.equal(beforeJobs.size, afterJobs.size);
+    }],
+
+    ["refreshPublicVibeIndexes previews, writes, and remains idempotent", async () => {
+      await db.doc("venues/venue_demo").set({
+        title: "Vibe Rollup Venue",
+        status: "approved",
+        visibility: "public",
+        city: "Seattle",
+        state: "WA",
+        karaokeNightsLabel: "Every Friday",
+        experienceTags: ["friendly", "high_energy"],
+      }, { merge: true });
+      await db.doc("review_totals/venue_venue_demo").set({
+        targetType: "venue",
+        targetId: "venue_demo",
+        reviewCount: 2,
+        ratingSum: 10,
+      }, { merge: true });
+      await db.doc("checkin_totals/venue_venue_demo").set({
+        targetType: "venue",
+        targetId: "venue_demo",
+        totalCount: 3,
+        publicCount: 2,
+      }, { merge: true });
+
+      const preview = await refreshPublicVibeIndexes.run(
+        requestFor(MOD_UID, { targetType: "venue", targetId: "venue_demo", dryRun: true, limit: 50 })
+      );
+      assert.equal(preview.ok, true);
+      assert.equal(preview.dryRun, true);
+      assert.equal(preview.published, 1);
+      assert.equal(preview.changed, 1);
+      assert.equal(preview.written, 0);
+      assert.equal((await db.doc("venues/venue_demo").get()).get("publicVibeIndex"), undefined);
+
+      await expectHttpsError(
+        () => refreshPublicVibeIndexes.run(
+          requestFor(MOD_UID, { targetType: "venue", targetId: "venue_demo", dryRun: false, limit: 50 }, { appCheck: true })
+        ),
+        "permission-denied"
+      );
+      await expectHttpsError(
+        () => refreshPublicVibeIndexes.run(
+          requestFor(ADMIN_UID, { targetType: "venue", targetId: "venue_demo", dryRun: false, limit: 50 })
+        ),
+        "failed-precondition"
+      );
+      const applied = await refreshPublicVibeIndexes.run(
+        requestFor(ADMIN_UID, { targetType: "venue", targetId: "venue_demo", dryRun: false, limit: 50 }, { appCheck: true })
+      );
+      assert.equal(applied.written, 1);
+      assert.equal(!!applied.jobId, true);
+      const venueSnap = await db.doc("venues/venue_demo").get();
+      assert.equal(venueSnap.get("publicVibeIndex.status"), "published");
+      assert.equal(venueSnap.get("publicVibeIndex.scoreVersion"), "vibe_v1");
+      assert.equal(Number(venueSnap.get("publicVibeIndex.score") || 0) > 0, true);
+      assert.equal(venueSnap.get("publicVibeIndex.reviewCount"), undefined);
+      const jobSnap = await db.doc(`public_vibe_index_jobs/${applied.jobId}`).get();
+      assert.equal(jobSnap.get("status"), "completed");
+      assert.equal(jobSnap.get("actorUid"), ADMIN_UID);
+      const changeSnap = await db.collection(`public_vibe_index_jobs/${applied.jobId}/changes`).limit(5).get();
+      assert.equal(changeSnap.size, 1);
+
+      const repeated = await refreshPublicVibeIndexes.run(
+        requestFor(ADMIN_UID, { targetType: "venue", targetId: "venue_demo", dryRun: false, limit: 50 }, { appCheck: true })
+      );
+      assert.equal(repeated.changed, 0);
+      assert.equal(repeated.written, 0);
+
+      const rolledBack = await rollbackPublicVibeIndexJob.run(
+        requestFor(ADMIN_UID, { jobId: applied.jobId }, { appCheck: true })
+      );
+      assert.equal(rolledBack.restored, 1);
+      assert.equal((await db.doc("venues/venue_demo").get()).get("publicVibeIndex"), undefined);
+      const rollbackJobSnap = await db.doc(`public_vibe_index_jobs/${applied.jobId}`).get();
+      assert.equal(rollbackJobSnap.get("status"), "rolled_back");
     }],
 
     ["runExternalDirectoryIngestion accepts dry-run candidate payload", async () => {
@@ -1173,6 +1460,36 @@ async function run() {
       const snap = await db.doc(`directory_claim_requests/${result.claimId}`).get();
       assert.equal(snap.exists, true);
       assert.equal(snap.get("status"), "pending");
+    }],
+
+    ["submitDirectoryClaimRequest rejects missing and non-public targets", async () => {
+      await expectHttpsError(
+        () => submitDirectoryClaimRequest.run(
+          requestFor(USER_UID, {
+            listingType: "venue",
+            listingId: "venue_claim_missing",
+            role: "owner",
+            evidence: "This target does not exist.",
+          })
+        ),
+        "not-found"
+      );
+      await db.doc("venues/venue_claim_private").set({
+        title: "Private Venue",
+        status: "approved",
+        visibility: "private",
+      });
+      await expectHttpsError(
+        () => submitDirectoryClaimRequest.run(
+          requestFor(USER_UID, {
+            listingType: "venue",
+            listingId: "venue_claim_private",
+            role: "owner",
+            evidence: "This target is private.",
+          })
+        ),
+        "not-found"
+      );
     }],
 
     ["resolveDirectoryClaimRequest approves ownership for moderators only", async () => {
@@ -1262,6 +1579,7 @@ async function run() {
         region: "wa_seattle",
         city: "Seattle",
         state: "WA",
+        ownerUid: USER_UID,
       });
       await db.doc("venues/geo_venue_private").set({
         title: "Private Geo Venue",
@@ -1308,6 +1626,11 @@ async function run() {
       assert.equal(Number(result.counts?.venues || 0), 1);
       assert.equal(Number(result.counts?.events || 0), 1);
       assert.equal(Number(result.counts?.sessions || 0), 1);
+      assert.equal(
+        [...result.venues, ...result.events, ...result.sessions]
+          .every((item) => !("ownerUid" in item) && !("identityLinks" in item)),
+        true
+      );
     }],
 
     ["previewDirectoryRoomSessionByCode resolves approved room session", async () => {
@@ -1381,6 +1704,7 @@ async function run() {
         title: "Neon Karaoke House",
         status: "approved",
         visibility: "public",
+        ownerUid: USER_UID,
         city: "Seattle",
         state: "WA",
         region: "wa_seattle",
@@ -1433,6 +1757,20 @@ async function run() {
         ),
         true
       );
+      assert.equal(
+        first.items.every((item) => item.publicVibeIndex?.scoreVersion === "vibe_v1"),
+        true
+      );
+      assert.equal(
+        first.items.every((item) => !("hostTotalSongs" in item) && !("hostTotalUsers" in item)),
+        true
+      );
+      assert.equal(
+        first.items.every((item) => !("ownerUid" in item) && !("identityLinks" in item)),
+        true
+      );
+      assert.equal(first.items.every((item) => item.canManage === false), true);
+
 
       const second = await listDirectoryDiscover.run(
         requestFor("", {
@@ -1445,6 +1783,55 @@ async function run() {
       assert.equal(second.ok, true);
       assert.equal(Array.isArray(second.items), true);
       assert.equal(second.items.length >= 1, true);
+
+      const ownerView = await listDirectoryDiscover.run(
+        requestFor(USER_UID, {
+          search: "Neon Karaoke House",
+          region: "wa_seattle",
+          limit: 10,
+        })
+      );
+      const ownedVenue = ownerView.items.find((item) => item.id === "discover_venue_1");
+      assert.equal(ownedVenue?.canManage, true);
+      assert.equal("ownerUid" in ownedVenue, false);
+    }],
+
+    ["listDirectoryDiscover hides ended and cancelled nights but supports explicit archive lookup", async () => {
+      const nowMs = Date.now();
+      await db.doc("karaoke_events/discover_ended_event").set({
+        title: "Archive Lifecycle Sentinel",
+        status: "approved",
+        visibility: "public",
+        startsAtMs: nowMs - 7_200_000,
+        endsAtMs: nowMs - 3_600_000,
+      });
+      await db.doc("karaoke_events/discover_cancelled_event").set({
+        title: "Cancelled Lifecycle Sentinel",
+        status: "approved",
+        visibility: "public",
+        occurrenceStatus: "cancelled",
+        startsAtMs: nowMs + 3_600_000,
+        endsAtMs: nowMs + 7_200_000,
+      });
+      const defaultResult = await listDirectoryDiscover.run(
+        requestFor("", {
+          search: "Lifecycle Sentinel",
+          listingType: "event",
+          limit: 20,
+        })
+      );
+      assert.equal(defaultResult.items.length, 0);
+
+      const archiveResult = await listDirectoryDiscover.run(
+        requestFor("", {
+          search: "Archive Lifecycle Sentinel",
+          listingType: "event",
+          includeEnded: true,
+          limit: 20,
+        })
+      );
+      assert.equal(archiveResult.items.some((item) => item.id === "discover_ended_event"), true);
+      assert.equal(archiveResult.items.some((item) => item.id === "discover_cancelled_event"), false);
     }],
 
     ["listDirectoryDiscover collapses duplicate AAHF event into the official listing", async () => {
@@ -1467,6 +1854,7 @@ async function run() {
           search: "aahf",
           region: "wa_kitsap",
           listingType: "event",
+          includeEnded: true,
           limit: 20,
         })
       );

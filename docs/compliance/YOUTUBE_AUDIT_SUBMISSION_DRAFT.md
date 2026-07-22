@@ -1,18 +1,17 @@
 # YouTube Audit Submission Draft
 
-Last updated: 2026-07-14
+Last updated: 2026-07-19
 
 ## Status
 
 This draft supports the YouTube Data API compliance audit and quota-extension request. The current product behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`); the production callable is active. The permanent-delete evidence was captured on the earlier production checkpoint and remains independently verified.
 
 Do not submit yet if the following are still missing:
-- current-form address-bar presentation captures from `docs/compliance/evidence/2026-07-15-youtube-form/`
 - final business/contact confirmation
 - final confirmation of the proposed `5,000 Search Queries/day` request with a `120/minute` peak
 
 
-Controlled cooldown and permanent-delete evidence are complete. Authenticated Quotas API evidence and the production usage-ledger baseline are captured. The remaining hard evidence items are the current form's address-bar presentation captures; business/contact and final request-amount confirmation remain open.
+Controlled cooldown, permanent-delete evidence, authenticated Quotas API evidence, the production usage-ledger baseline, and all current-form address-bar captures are complete. Business/contact and final request-amount confirmation remain open.
 
 ## Product Summary
 
@@ -34,7 +33,7 @@ The product does not:
 
 Use concise language like this:
 
-> BeauRocks Karaoke is a live karaoke web application used by hosts and participants during events. We use the YouTube Data API to help hosts and participants find karaoke backing tracks and to verify that known tracks are playable and embeddable. We do not download YouTube media. We reduce scarce live-search usage through client and server caching, temporary cooldowns when quota is exhausted, indexed-track reuse, canonical backing candidate reuse, and by refreshing known stale tracks by `videoId` instead of forcing repeated full-text searches.
+> BeauRocks Karaoke is a live karaoke web application used by hosts and participants during events. We use the YouTube Data API to help hosts and participants find karaoke backing tracks and to verify that known tracks are playable and embeddable. We do not download YouTube media. We reduce scarce live-search usage through client and server caching, temporary cooldowns when quota is exhausted, indexed-track reuse, canonical backing candidate reuse, and by refreshing known stale tracks by `videoId` instead of forcing repeated full-text searches. A bounded end-of-day worker may use otherwise-unused search allowance for first-party-demand songs that lack a fresh candidate, while preserving a live-event reserve.
 
 ## API Methods and Why They Exist
 
@@ -42,6 +41,7 @@ Use concise language like this:
 
 Purpose:
 - live karaoke track discovery
+- bounded end-of-day discovery for recently requested or performed canonical songs without a fresh verified backing
 
 Why it is needed:
 - hosts and singers need to find candidate backing tracks by title/artist query
@@ -55,6 +55,8 @@ Controls in place:
 - durable cross-session query cache
 - quota cooldown when exhausted
 - indexed and canonical backing reuse before live fallback
+- project-wide daily method ledger
+- active-room kill switch and configurable live-event reserve for nightly work
 
 ### `videos.list`
 
@@ -85,13 +87,13 @@ Cost:
 
 If asked what YouTube data is stored, use an answer like this:
 
-> We store temporary, room-scoped YouTube metadata needed to avoid repeated live YouTube searches and to preserve recent host-curated karaoke tracks for the active room. This may include video ID, title, channel name, thumbnail URL, playability metadata, source-discovery provenance, and timestamps. Room-level indexed entries are retained for up to 30 days from validation unless refreshed sooner, and expired or unusable entries are pruned. Verified embeddable tracks associated with a canonical song may also be stored as reusable backing candidates with host-feedback telemetry. Permanent room deletion removes the associated room host library as well.
+> We store temporary YouTube metadata needed to avoid repeated live searches and preserve recent verified backing candidates. This may include video ID, title, channel name, thumbnail URL, playability metadata, source-discovery provenance, canonical song association, and timestamps. New canonical YouTube candidates receive a 29-day verification lease and daily maintenance deletes expired documents before the 30-day boundary unless refreshed; expired or unusable room index entries are also pruned. We do not download or store YouTube audiovisual content. Permanent room deletion removes the associated room host library.
 
 ## Quota Management Answer
 
 If asked how quota is controlled, use an answer like this:
 
-> We treat `search.list` as the scarce live-search method and reduce it through client caching, server caching, durable repeated-query caching, indexed backing reuse, canonical backing reuse, and a quota exhaustion cooldown. When we already know a `videoId`, we prefer `videos.list` refreshes instead of forcing new full-text searches. Nightly maintenance also backfills verified indexed tracks into canonical backing candidates without live search. This lowers repeated live-search demand and keeps known room tracks fresh with low-cost known-ID refreshes.
+> We treat `search.list` as the scarce live-search method and reduce it through client caching, server caching, durable repeated-query caching, indexed backing reuse, canonical backing reuse, and a quota exhaustion cooldown. A project-wide daily method ledger records server calls. When we already know a `videoId`, we prefer `videos.list` refreshes instead of forcing a new full-text search. Nightly known-ID maintenance uses no live search. Separately, at 23:35 Pacific, a bounded demand-driven worker may search recently requested or performed canonical songs that lack a fresh candidate. It skips active rooms, stops below a configured live-event reserve, validates candidates with `videos.list`, and stores metadata only under a 29-day verification lease.
 
 ## Requested Search Queries Allocation
 
@@ -107,7 +109,7 @@ At full requested search usage, an approximately one-to-one paired `videos.list`
 
 If asked how deletion works, use an answer like this:
 
-> Room-scoped indexed YouTube metadata is temporary. Entries expire unless refreshed within the retention window. A nightly cleanup removes expired indexed entries from dormant rooms, and permanent room deletion removes the room host library document as well.
+> Room-scoped indexed YouTube metadata is temporary. Entries expire unless refreshed within the retention window. New canonical YouTube candidates receive a 29-day verification lease; daily maintenance deletes expired candidate documents before the 30-day boundary. The same maintenance pass prunes expired room index entries, and permanent room deletion removes the room host library document as well.
 
 ## Evidence Packet
 
@@ -129,7 +131,6 @@ Already captured:
 
 Still required before submission:
 
-- the Cloud-owner quota screenshot; Privacy, policy-link context, Terms, and player/embed address-bar captures are complete
 - final business/contact confirmation
 - final confirmation of the proposed `5,000 Search Queries/day` request with a `120/minute` peak
 - optional authenticated live-room host screenshot only if reviewers request proof beyond the captured packet
@@ -140,10 +141,10 @@ Use `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md` for the remain
 
 The deterministic public-page and QA product screenshots are already captured. The remaining live-only capture checklist now lives in `docs/compliance/YOUTUBE_LIVE_EVIDENCE_RUNBOOK_2026-07-06.md`.
 
-Minimum live evidence still needed:
+Minimum live evidence status:
 
-- the five current-form presentation captures listed in `docs/compliance/evidence/2026-07-15-youtube-form/README.md`
-- optional authenticated curator/dashboard screenshot if reviewers ask for proof beyond the required captures
+- all five current-form presentation captures listed in `docs/compliance/evidence/2026-07-15-youtube-form/README.md` are complete
+- an authenticated curator/dashboard screenshot is optional if reviewers ask for proof beyond the required captures
 
 Current note:
 - public legal routes are deployed and verified
@@ -164,7 +165,6 @@ Current note:
 
 ## Remaining Submission Blockers
 
-- Cloud-owner quota address-bar capture; all public/product captures are complete
 - final business/contact confirmation
 - final confirmation of the proposed `5,000 Search Queries/day` request with a `120/minute` peak
 - final audit narrative read-through completed against deployed release `1784078708909000` (version `5bc48c15cd873eac`)

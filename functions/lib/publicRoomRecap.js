@@ -202,6 +202,22 @@ const buildHighlightMarkup = (entry = {}) => `
   </li>
 `;
 
+const buildGameRoundMarkup = (entry = {}) => {
+  const choices = Object.entries(entry?.counts && typeof entry.counts === "object" ? entry.counts : {})
+    .sort((left, right) => safeNumber(right[1], 0) - safeNumber(left[1], 0))
+    .slice(0, 6)
+    .map(([label, count]) => `<span class="pill">${escapeHtml(label)}: ${escapeHtml(formatCount(count))}</span>`)
+    .join("");
+  return `
+    <article class="card leader-card">
+      <div class="eyebrow">${entry?.type === "wyr" ? "Would You Rather" : "Trivia"}</div>
+      <h3>${escapeHtml(labelFor(entry?.question, "Game break"))}</h3>
+      <p>${escapeHtml(formatCount(entry?.responseCount || 0))} audience answers</p>
+      ${choices ? `<div class="pill-row">${choices}</div>` : ""}
+    </article>
+  `;
+};
+
 const buildPublicRoomRecapHtml = ({
   roomCode = "",
   roomData = {},
@@ -262,6 +278,10 @@ const buildPublicRoomRecapHtml = ({
     .slice(0, 6)
     .map((entry, index) => buildPhotoMarkup(entry, index))
     .filter(Boolean)
+    .join("");
+  const gameRoundMarkup = (Array.isArray(recap?.gameRounds) ? recap.gameRounds : [])
+    .slice(-6)
+    .map((entry) => buildGameRoundMarkup(entry))
     .join("");
 
   return `<!doctype html>
@@ -536,6 +556,7 @@ const buildPublicRoomRecapHtml = ({
           ${buildStatMarkup("Queued songs", recap?.stats?.totalQueuedSongs || 0)}
           ${buildStatMarkup("Crowd reactions", recap?.stats?.reactionCount || recap?.totalEmojiBursts || 0)}
           ${buildStatMarkup("People", recap?.metrics?.estimatedPeople || recap?.stats?.totalUsers || recap?.totalUsers || 0)}
+          ${buildStatMarkup("Game answers", recap?.stats?.gameResponses || 0)}
         </div>
       </section>
 
@@ -581,6 +602,17 @@ const buildPublicRoomRecapHtml = ({
           </div>
         </div>
         <ul>${highlightMarkup}</ul>
+      </section>` : ""}
+
+      ${gameRoundMarkup ? `
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Game breaks</h2>
+            <p>Trivia and Would You Rather results from the room.</p>
+          </div>
+        </div>
+        <div class="grid">${gameRoundMarkup}</div>
       </section>` : ""}
 
       <p class="footer">Published by BeauRocks Karaoke.</p>

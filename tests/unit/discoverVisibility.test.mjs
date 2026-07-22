@@ -72,3 +72,21 @@ test('discover visibility respects host, official, and ancillary match filters',
     matchesSearch: false,
   }), false);
 });
+
+test('discover visibility rejects unapproved and cancelled occurrences defensively', () => {
+  assert.equal(shouldIncludeDiscoverListing({
+    item: {
+      listingType: 'event',
+      visibility: 'public',
+      status: 'pending',
+    },
+  }), false);
+  assert.equal(shouldIncludeDiscoverListing({
+    item: {
+      listingType: 'event',
+      visibility: 'public',
+      status: 'approved',
+      occurrenceStatus: 'cancelled',
+    },
+  }), false);
+});

@@ -10,6 +10,10 @@ const shouldIncludeDiscoverListing = ({
   inBounds = true,
 } = {}) => {
   if (String(item.visibility || 'public') !== 'public') return false;
+  const status = String(item.status || 'approved').trim().toLowerCase();
+  if (status !== 'approved') return false;
+  const occurrenceStatus = String(item.occurrenceStatus || '').trim().toLowerCase();
+  if (['cancelled', 'canceled', 'removed'].includes(occurrenceStatus)) return false;
   if (
     listingTypeFilter !== 'all'
     && item.listingType !== listingTypeFilter

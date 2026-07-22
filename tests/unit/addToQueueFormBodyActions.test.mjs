@@ -137,55 +137,66 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test('AddToQueueFormBody routes performance result actions to the intended plan slots', async () => {
+test('AddToQueueFormBody exposes one append-only performance result action', async () => {
   const { props, tree } = await renderAddToQueueFormBody();
   const addNext = findByFeatureId(tree, 'performance-result-add-next');
   const addLater = findByFeatureId(tree, 'performance-result-add-later');
   const queueOnly = findByFeatureId(tree, 'performance-result-queue-only');
 
-  assert.ok(addNext);
-  assert.ok(addLater);
+  assert.equal(addNext, null);
+  assert.equal(addLater, null);
   assert.ok(queueOnly);
 
-  addNext.props.onClick({ stopPropagation: noop });
-  addLater.props.onClick({ stopPropagation: noop });
   queueOnly.props.onClick({ stopPropagation: noop });
 
-  assert.equal(props.onQueuePerformanceResult.mock.calls.length, 3);
-  assert.deepEqual(props.onQueuePerformanceResult.mock.calls[0][1], {
-    slotId: 'slot-1',
-    slotLabel: '#2 Performance Slot',
-  });
-  assert.deepEqual(props.onQueuePerformanceResult.mock.calls[1][1], {
-    slotId: 'slot-2',
-    slotLabel: '#3 Performance Slot',
-  });
-  assert.equal(props.onQueuePerformanceResult.mock.calls[2].length, 1);
+  assert.equal(props.onQueuePerformanceResult.mock.calls.length, 1);
+  assert.equal(props.onQueuePerformanceResult.mock.calls[0].length, 1);
 });
 
-test('AddToQueueFormBody routes manual performance buttons to the intended plan slots', async () => {
+test('AddToQueueFormBody queues a performance when the host taps its result card', async () => {
   const { props, tree } = await renderAddToQueueFormBody();
+  const resultRow = findByFeatureId(tree, 'performance-result-row');
+
+  assert.ok(resultRow);
+  resultRow.props.onClick();
+
+  assert.equal(props.onQueuePerformanceResult.mock.calls.length, 1);
+  assert.equal(props.onQueuePerformanceResult.mock.calls[0][0].trackName, 'Valerie');
+});
+
+test('AddToQueueFormBody exposes one secondary YouTube expansion action', async () => {
+  const openYtSearch = vi.fn();
+  const { tree } = await renderAddToQueueFormBody({ openYtSearch });
+  const expandSearch = findByFeatureId(tree, 'host-performance-search-expand');
+  const momentTabs = findByFeatureId(tree, 'host-moment-type-tabs');
+
+  assert.ok(expandSearch);
+  assert.ok(momentTabs);
+  assert.equal(momentTabs.props.role, 'tablist');
+
+  expandSearch.props.onClick();
+
+  assert.equal(openYtSearch.mock.calls.length, 1);
+  assert.deepEqual(openYtSearch.mock.calls[0], ['manual', 'vale']);
+});
+
+test('AddToQueueFormBody exposes one manual Add to Queue action', async () => {
+  const { props, tree } = await renderAddToQueueFormBody({ dockResults: false });
   const addNext = findByFeatureId(tree, 'host-manual-add-next');
   const addLater = findByFeatureId(tree, 'host-manual-add-later');
+  const addToQueue = findByFeatureId(tree, 'host-manual-queue-submit');
 
-  assert.ok(addNext);
-  assert.ok(addLater);
+  assert.equal(addNext, null);
+  assert.equal(addLater, null);
+  assert.ok(addToQueue);
+  assert.equal(addToQueue.props.children, 'Add Manual Request');
 
-  await addNext.props.onClick();
-  await addLater.props.onClick();
+  await addToQueue.props.onClick();
 
-  assert.equal(props.onQueueManualPerformance.mock.calls.length, 2);
-  assert.deepEqual(props.onQueueManualPerformance.mock.calls[0][0], {
-    slotId: 'slot-1',
-    slotLabel: '#2 Performance Slot',
-  });
-  assert.deepEqual(props.onQueueManualPerformance.mock.calls[1][0], {
-    slotId: 'slot-2',
-    slotLabel: '#3 Performance Slot',
-  });
+  assert.equal(props.addSong.mock.calls.length, 1);
 });
 
-test('AddToQueueFormBody lets hosts search game modes and queue them next or later in the show', async () => {
+test('AddToQueueFormBody lets hosts search game modes and use one destination-aware action', async () => {
   const { props, tree } = await renderAddToQueueFormBody({
     searchQ: 'bingo',
   }, {
@@ -193,22 +204,21 @@ test('AddToQueueFormBody lets hosts search game modes and queue them next or lat
     selectedGameMomentBundleId: 'alongside_karaoke',
   });
   const searchInput = findByFeatureId(tree, 'host-moment-search-input');
-  const queueNext = findByFeatureId(tree, 'moment-pack-queue-next-bingo');
-  const queueLater = findByFeatureId(tree, 'moment-pack-queue-later-bingo');
-  const nonMatch = findByFeatureId(tree, 'moment-pack-queue-next-vocal_challenge');
+  const destinationAction = findByFeatureId(tree, 'moment-pack-destination-bingo');
+  const nonMatch = findByFeatureId(tree, 'moment-pack-destination-vocal_challenge');
 
   assert.ok(searchInput);
   assert.equal(searchInput.props.placeholder, 'Search game modes');
-  assert.ok(queueNext);
-  assert.ok(queueLater);
+  assert.ok(destinationAction);
   assert.equal(nonMatch, null);
 
-  queueNext.props.onClick();
-  queueLater.props.onClick();
+  destinationAction.props.onClick();
 
-  assert.equal(props.onAddQuickRunOfShowMoment.mock.calls.length, 2);
-  assert.deepEqual(props.onAddQuickRunOfShowMoment.mock.calls[0], ['bingo', { placement: 'next' }]);
-  assert.deepEqual(props.onAddQuickRunOfShowMoment.mock.calls[1], ['bingo', { placement: 'append' }]);
+  assert.equal(props.onAddQuickRunOfShowMoment.mock.calls.length, 1);
+  assert.deepEqual(props.onAddQuickRunOfShowMoment.mock.calls[0], ['bingo', {
+    destination: 'queue',
+    placement: 'append',
+  }]);
 });
 
 test('buildGameMomentQueueOptions creates spotlight singer queue payloads for voice games', async () => {
@@ -217,11 +227,12 @@ test('buildGameMomentQueueOptions creates spotlight singer queue payloads for vo
 
   assert.deepEqual(
     buildGameMomentQueueOptions('vocal_challenge', {
-      placement: 'append',
+      destination: 'planner',
       assignmentMode: GAME_QUEUE_ASSIGNMENT_MODES.spotlight,
       performer: { uid: 'u2', name: 'Taylor' },
     }),
     {
+      destination: 'planner',
       placement: 'append',
       launchConfigOverrides: {
         participantMode: 'selected',
@@ -238,12 +249,13 @@ test('buildGameMomentQueueOptions creates spotlight singer queue payloads for vo
 
   assert.deepEqual(
     buildGameMomentQueueOptions('bingo', {
-      placement: 'next',
+      destination: 'queue',
       assignmentMode: GAME_QUEUE_ASSIGNMENT_MODES.spotlight,
       performer: { uid: 'u2', name: 'Taylor' },
     }),
     {
-      placement: 'next',
+      destination: 'queue',
+      placement: 'append',
     },
   );
 });

@@ -6,6 +6,14 @@ import { test } from "vitest";
 const addWorkspaceSource = readFileSync("src/apps/Host/components/AddToQueueFormBody.jsx", "utf8");
 const hostAppSource = readFileSync("src/apps/Host/HostApp.jsx", "utf8");
 const gameRegistrySource = readFileSync("src/lib/gameRegistry.js", "utf8");
+const quickMomentMutationSource = hostAppSource.slice(
+  hostAppSource.indexOf("const addQuickRunOfShowMoment"),
+  hostAppSource.indexOf("const importRunOfShowCsv"),
+);
+const sceneQueueMutationSource = hostAppSource.slice(
+  hostAppSource.indexOf("const queueScenePresetAsMoment"),
+  hostAppSource.indexOf("const duplicateRunOfShowItem"),
+);
 
 test("host add workspace exposes the broader game and scene catalog instead of a trimmed subset", () => {
   assert.match(
@@ -61,10 +69,53 @@ test("host room setup keeps quick actions compact instead of repeating the Night
   );
 });
 
-test("host add workspace uses Queue versus Planner language for moment placement", () => {
+test("host add workspace uses one destination selector and append-only Queue language", () => {
   assert.match(addWorkspaceSource, /Add to Queue/);
   assert.match(addWorkspaceSource, /Save to Planner/);
-  assert.match(addWorkspaceSource, /Send a ready moment to the Queue, or save it to Planner for later\./);
-  assert.match(addWorkspaceSource, /Karaoke Only/);
+  assert.match(addWorkspaceSource, /Add to Run of Show/);
+  assert.match(addWorkspaceSource, /data-feature-id="moment-destination-control"/);
+  assert.match(addWorkspaceSource, /Queue always adds it at the end\./);
+  assert.match(addWorkspaceSource, /placement: 'append'/);
+  assert.doesNotMatch(addWorkspaceSource, /Tap to queue/);
+  assert.doesNotMatch(addWorkspaceSource, /Queue Only/);
+  assert.doesNotMatch(addWorkspaceSource, /moment-pack-queue-next/);
+  assert.match(hostAppSource, /added to the end of Live Queue/);
+  assert.match(quickMomentMutationSource, /placement: 'append'/);
+  assert.doesNotMatch(quickMomentMutationSource, /activateShow/);
+  assert.match(sceneQueueMutationSource, /items\.push\(nextItem\)/);
+  assert.doesNotMatch(sceneQueueMutationSource, /activateShow/);
+  assert.match(addWorkspaceSource, /\['karaoke', 'Karaoke tracks'\]/);
+  assert.match(addWorkspaceSource, /\['any', 'All videos'\]/);
+  assert.match(addWorkspaceSource, /data-search-control='provider'/);
+  assert.match(addWorkspaceSource, /data-search-control='scope'/);
+  assert.match(addWorkspaceSource, /aria-pressed=\{autocompleteProvider === 'youtube'\}/);
   assert.doesNotMatch(addWorkspaceSource, /Queue Later/);
+});
+
+test("host add workspace uses one YouTube expansion action and consistent segmented tabs", () => {
+  const performanceSearchSource = addWorkspaceSource.slice(
+    addWorkspaceSource.indexOf('className={`host-autocomplete-shell'),
+    addWorkspaceSource.indexOf('{queueSearchSourceNote ?'),
+  );
+
+  assert.match(addWorkspaceSource, /data-feature-id="host-moment-type-tabs"/);
+  assert.match(addWorkspaceSource, /role="tablist"\s*aria-label="Build a Moment types"/);
+  assert.match(addWorkspaceSource, /role="tab"\s*aria-selected=\{active\}/);
+  assert.match(performanceSearchSource, /Backing source/);
+  assert.match(performanceSearchSource, /YouTube filter/);
+  assert.match(performanceSearchSource, /Karaoke tracks/);
+  assert.match(performanceSearchSource, /All videos/);
+  assert.match(performanceSearchSource, /data-feature-id="host-performance-search-expand"/);
+  assert.match(performanceSearchSource, /Expand Search/);
+  assert.doesNotMatch(performanceSearchSource, /aria-label="Open YouTube search"|Search more on YouTube|More YouTube/);
+});
+
+test("host performance results queue directly while manual requests keep a local action", () => {
+  assert.match(addWorkspaceSource, /data-feature-id="performance-result-row"/);
+  assert.match(addWorkspaceSource, /if \(performanceActionsEnabled\) \{\s*onQueueOnly\?\.\(r\);\s*return;/);
+  assert.match(addWorkspaceSource, /data-feature-id="performance-result-queue-only"/);
+  assert.match(addWorkspaceSource, /\{isAdding \? 'Adding\.\.\.' : 'Add to Queue'\}/);
+  assert.match(addWorkspaceSource, /data-feature-id="host-manual-queue-submit"/);
+  assert.match(addWorkspaceSource, /'Add Manual Request' : 'Enter a Song Title'/);
+  assert.doesNotMatch(addWorkspaceSource, /\{performanceMode \? \(\s*<div className="mb-2 mt-2 flex justify-end">/);
 });

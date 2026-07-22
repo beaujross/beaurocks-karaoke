@@ -67,6 +67,7 @@ test("backing candidate helpers build canonical patches from curated YouTube ind
     actorUid: "host-uid",
     sourceDiscovery: "trusted_catalog",
     timestamp: 12345,
+    atMs: 1_000_000,
   });
 
   assert.equal(patch.songId, "flowers__miley cyrus");
@@ -77,6 +78,8 @@ test("backing candidate helpers build canonical patches from curated YouTube ind
   assert.equal(patch.data.sourceDiscovery, "trusted_catalog");
   assert.equal(patch.data.sourceRoomCode, "ROOM1");
   assert.equal(patch.data.rankingScore, 132);
+  assert.equal(patch.data.lastVerifiedAtMs, 1_000_000);
+  assert.equal(patch.data.expiresAtMs, 1_000_000 + (29 * 24 * 60 * 60 * 1000));
   assert.deepEqual(patch.data.telemetry, {
     hostUpvotes: 2,
     hostDownvotes: 0,
@@ -117,6 +120,7 @@ test("backing candidate summaries rank reusable canonical backings", () => {
         title: "Flowers Karaoke",
         artist: "Miley Cyrus",
         rankingScore: 70,
+        lastVerifiedAtMs: Date.now(),
         telemetry: { usageCount: 1, completionCount: 1 },
       }),
     },
@@ -130,6 +134,7 @@ test("backing candidate summaries rank reusable canonical backings", () => {
         artist: "Miley Cyrus",
         rankingScore: 140,
         qualityScore: 12,
+        lastVerifiedAtMs: Date.now(),
         telemetry: { usageCount: 5, completionCount: 4 },
       }),
     },
@@ -148,4 +153,25 @@ test("backing candidate summaries rank reusable canonical backings", () => {
   assert.equal(summaries[0].resolutionLayer || summaries[0].layer, "canonical_backing");
   assert.equal(summaries[0].usageCount, 5);
   assert.equal(summaries[0].successCount, 4);
+});
+
+test("backing candidate summaries omit stale YouTube metadata", () => {
+  const atMs = Date.parse("2026-07-19T12:00:00Z");
+  const summaries = buildCanonicalBackingCandidateSummaries({
+    candidateDocs: [{
+      id: "expired",
+      data: () => ({
+        provider: "youtube",
+        providerTrackId: "old111",
+        title: "Old Karaoke",
+        artist: "Old Artist",
+        expiresAtMs: atMs - 1,
+      }),
+    }],
+    songId: "old__old artist",
+    title: "Old",
+    artist: "Old Artist",
+    atMs,
+  });
+  assert.deepEqual(summaries, []);
 });

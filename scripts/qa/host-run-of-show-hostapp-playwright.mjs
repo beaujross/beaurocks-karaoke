@@ -39,9 +39,9 @@ const waitForHostState = async (page, { tab, section, timeoutMs }) => {
 };
 
 const clickHostTab = async (page, tabKey, timeoutMs) => {
-  const button = page.locator(`[data-host-tab="${tabKey}"]`).first();
+  const button = page.locator(`[data-host-tab="${tabKey}"]:visible`).first();
   await button.waitFor({ state: "visible", timeout: timeoutMs });
-  await button.click({ force: true, timeout: timeoutMs });
+  await button.click({ timeout: timeoutMs });
 };
 
 const ensureShowWorkspace = async (page, timeoutMs) => {
@@ -58,13 +58,52 @@ const ensureShowWorkspace = async (page, timeoutMs) => {
 };
 
 const ensureStageWorkspace = async (page, timeoutMs) => {
-  await clickHostTab(page, "stage", timeoutMs);
-  await waitForHostState(page, { tab: "stage", timeoutMs });
-  await waitForAnyVisible([
-    page.getByText("Live Snapshot").first(),
-    page.getByText("Queue Status").first(),
-    page.getByText("Open Media Library").first(),
-  ], timeoutMs);
+  const currentTab = await page.locator(".host-app").first().getAttribute("data-host-active-tab");
+  if (String(currentTab || "").trim() === "admin") {
+    const openQueueWorkspace = page.getByRole("button", { name: /Open Queue Workspace/i }).first();
+    await openQueueWorkspace.waitFor({ state: "visible", timeout: timeoutMs });
+    await openQueueWorkspace.click({ timeout: timeoutMs });
+  } else {
+    await clickHostTab(page, "stage", timeoutMs);
+  }
+  try {
+    await waitForHostState(page, { tab: "stage", timeoutMs });
+  } catch (error) {
+    const state = await page.evaluate(() => {
+      const root = document.querySelector(".host-app");
+      return {
+        tab: String(root?.getAttribute("data-host-active-tab") || ""),
+        section: String(root?.getAttribute("data-host-active-workspace-section") || ""),
+        visibleStageButtons: Array.from(document.querySelectorAll('[data-host-tab="stage"]'))
+          .filter((node) => {
+            const style = window.getComputedStyle(node);
+            return style.display !== "none" && style.visibility !== "hidden";
+          })
+          .map((node) => String(node.textContent || "").replace(/\s+/g, " ").trim()),
+      };
+    }).catch(() => ({}));
+    throw new Error(`Stage navigation did not settle: ${JSON.stringify(state)}; ${String(error?.message || error)}`);
+  }
+  try {
+    await waitForAnyVisible([
+      page.locator('[data-feature-id="queue-workspace-top-chrome"]').first(),
+      page.locator('[data-feature-id="queue-surface-tab-queue-desktop"]').first(),
+      page.getByText("Live Queue", { exact: true }).first(),
+    ], timeoutMs);
+  } catch (error) {
+    const state = await page.evaluate(() => {
+      const root = document.querySelector(".host-app");
+      const runtime = document.querySelector('[data-host-queue-runtime="mounted"]');
+      return {
+        tab: String(root?.getAttribute("data-host-active-tab") || ""),
+        section: String(root?.getAttribute("data-host-active-workspace-section") || ""),
+        runtimeClass: String(runtime?.getAttribute("class") || ""),
+        runtimeHidden: String(runtime?.getAttribute("aria-hidden") || ""),
+        visibleText: String(runtime?.innerText || "").replace(/\s+/g, " ").slice(0, 700),
+      };
+    }).catch(() => ({}));
+    throw new Error(`Stage workspace controls missing: ${JSON.stringify(state)}; ${String(error?.message || error)}`);
+  }
 };
 
 const ensureStageQueueWorkspace = async (page, timeoutMs) => {
@@ -73,7 +112,6 @@ const ensureStageQueueWorkspace = async (page, timeoutMs) => {
   if (await queueSurfaceTab.isVisible().catch(() => false)) {
     await queueSurfaceTab.click({ force: true, timeout: timeoutMs });
   }
-  await page.locator('[data-feature-id="panel-tv-moments"]').first().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
 const ensureLobbyWorkspace = async (page, timeoutMs) => {
@@ -116,8 +154,15 @@ const ensureDetailsSectionOpen = async (page, label) => {
 };
 
 const ensureAdminRoomSetup = async (page, timeoutMs) => {
-  await clickHostTab(page, "admin", timeoutMs);
-  await waitForHostState(page, { tab: "admin", section: "ops.room_setup", timeoutMs });
+  const alreadyInRoomSetup = await waitForHostState(page, {
+    tab: "admin",
+    section: "ops.room_setup",
+    timeoutMs: Math.min(3000, timeoutMs),
+  }).then(() => true).catch(() => false);
+  if (!alreadyInRoomSetup) {
+    await clickHostTab(page, "admin", timeoutMs);
+    await waitForHostState(page, { tab: "admin", section: "ops.room_setup", timeoutMs });
+  }
   await ensureDetailsSectionOpen(page, "Night Profiles");
   await ensureDetailsSectionOpen(page, "Guest Flow + Audience Settings");
   await waitForAnyVisible([
@@ -259,20 +304,19 @@ const main = async () => {
 
     await runCheck(checks, "host_app_stage_workspace_core_controls_visible", async () => {
       await ensureStageWorkspace(page, timeoutMs);
-      await page.getByText("Live Snapshot").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Live Queue").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Open Media Library").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "stage workspace exposes live snapshot, live queue, and media library controls";
+      await page.locator('[data-feature-id="queue-surface-tab-queue-desktop"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator('[data-feature-id="queue-surface-tab-add-desktop"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator('[data-feature-id="queue-surface-tab-catalog-desktop"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "stage workspace exposes the live queue, add, and catalog rails";
     });
 
     await runCheck(checks, "host_app_stage_timing_controls_visible", async () => {
       await gotoHostFixture(page, server, "run-of-show-stage-live", timeoutMs);
       await ensureStageWorkspace(page, timeoutMs);
       await page.getByText("Now Performing").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Transport").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Stage Options").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Current Performance").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("Applause").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "stage workspace exposes transport, stage options, and applause controls during a live performance";
+      return "stage workspace exposes the current performance and applause controls during a live performance";
     });
 
     await runCheck(checks, "host_app_lobby_can_promote_and_remove_cohost", async () => {
@@ -298,6 +342,29 @@ const main = async () => {
       await removeCoHostButton.click({ force: true, timeout: timeoutMs });
       await selectedStrip.getByRole("button", { name: /Make Co-Host/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
       return "lobby audience selection can promote and remove a co-host";
+    });
+
+    await runCheck(checks, "host_app_lobby_can_add_and_remove_commentator", async () => {
+      await gotoHostFixture(page, server, "run-of-show-console", timeoutMs);
+      await ensureLobbyWorkspace(page, timeoutMs);
+      const lineupButton = page.getByRole("button", { name: /Taylor/i }).first();
+      await lineupButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await lineupButton.click({ force: true, timeout: timeoutMs });
+
+      const selectedStrip = page.locator("div").filter({
+        has: page.getByText(/Selected:\s*Taylor/i).first(),
+      }).first();
+      await selectedStrip.waitFor({ state: "visible", timeout: timeoutMs });
+
+      const addToRowButton = selectedStrip.getByRole("button", { name: /ADD TO COMMENTATOR ROW/i }).first();
+      await addToRowButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await addToRowButton.click({ force: true, timeout: timeoutMs });
+
+      const removeFromRowButton = selectedStrip.getByRole("button", { name: /REMOVE FROM COMMENTATOR ROW/i }).first();
+      await removeFromRowButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await removeFromRowButton.click({ force: true, timeout: timeoutMs });
+      await selectedStrip.getByRole("button", { name: /ADD TO COMMENTATOR ROW/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "lobby audience selection can add and remove a commentator-row guest";
     });
 
     await gotoHostFixture(page, server, "run-of-show-console", timeoutMs);
@@ -335,6 +402,20 @@ const main = async () => {
       return "admin room setup exposes the save action";
     });
 
+    await runCheck(checks, "host_app_room_closeout_control_reachable", async () => {
+      await ensureAdminRoomSetup(page, timeoutMs);
+      const closeButton = page.locator("[data-host-close-room-recap]").first();
+      const containingDisclosure = page.locator("details").filter({ has: closeButton }).first();
+      await containingDisclosure.evaluate((node) => {
+        node.open = true;
+      });
+      await page.locator("[data-host-close-room-recap]:visible").first().waitFor({
+        state: "visible",
+        timeout: timeoutMs,
+      });
+      return "admin room setup exposes room closeout after opening its disclosure";
+    });
+
     await runCheck(checks, "host_app_room_upload_handoff_controls_visible", async () => {
       await ensureAdminMediaWorkspace(page, timeoutMs);
       const uploadRow = page.locator("div").filter({
@@ -350,9 +431,15 @@ const main = async () => {
 
     await runCheck(checks, "host_app_stage_tv_library_modal_opens", async () => {
       await ensureStageQueueWorkspace(page, timeoutMs);
-      await page.locator('[data-feature-id="panel-tv-moments"] [data-feature-id="open-tv-library"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      const scenesToggle = page.locator('[data-feature-id="deck-scenes-menu-toggle"]').first();
+      await scenesToggle.waitFor({ state: "visible", timeout: timeoutMs });
+      await scenesToggle.click({ force: true, timeout: timeoutMs });
+      const openLibrary = page.getByRole("button", { name: /Open Media Library/i }).first();
+      await openLibrary.waitFor({ state: "visible", timeout: timeoutMs });
+      await openLibrary.click({ force: true, timeout: timeoutMs });
+      await page.locator('[data-feature-id="tv-moments-library-modal"]').first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("Festival Break Card").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "stage workspace keeps the TV library launcher and saved scene labels visible";
+      return "stage workspace opens the TV media library and renders saved scene labels";
     });
 
     await runCheck(checks, "host_app_reload_restores_host_workspace", async () => {

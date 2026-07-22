@@ -9,14 +9,8 @@
   "theme_color": "#4b1436",
   "icons": [
     {
-      "src": "/images/logo-library/bross-ent-favicon-1.png",
-      "sizes": "4096x4096",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/images/logo-library/bross-ent-favicon-1.png",
-      "sizes": "4096x4096",
+      "src": "/images/logo-library/beaurocks-logo-neon%20trasnparent.png",
+      "sizes": "1536x1024",
       "type": "image/png",
       "purpose": "any"
     }

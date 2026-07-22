@@ -28,7 +28,7 @@ The repo now has the core YouTube compliance hardening in place:
 - desktop and mobile legal-page screenshots were captured under `docs/compliance/evidence/2026-07-06-youtube-audit/`
 - QA product-surface screenshots were captured under `docs/compliance/evidence/2026-07-06-youtube-product-audit/`
 
-The controlled quota-exhaustion/cooldown evidence and live room permanent-delete evidence are complete. Authenticated Quotas API evidence confirms the live project assignment. The remaining blockers are the current form's five address-bar presentation captures, final business/contact confirmation, and final submission assembly. No known code blocker remains for the quota-mitigation story.
+The controlled quota-exhaustion/cooldown evidence, live room permanent-delete evidence, authenticated Quotas API evidence, and all five current-form address-bar presentation captures are complete. The remaining blockers are final business/contact confirmation, request approval, and owner submission. No known code blocker remains for the quota-mitigation story.
 
 ## Resolved: Public Legal Pages Are Deployed And Verified
 
@@ -144,7 +144,7 @@ These are no longer the main blockers in the codebase:
 
 ## Recommended Submission Sequence
 
-1. Capture the Cloud-owner quota screenshot; the four public/product address-bar captures are complete. Retain the completed API, cooldown, and permanent-delete evidence.
-2. Confirm final business/contact details.
-3. Confirm the proposed `5,000 Search Queries/day` allocation with a `120/minute` peak and review `docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md` and the submission draft against the live product once.
-4. Only then submit the audit/quota-extension request.
+1. Confirm final business/contact details.
+2. Confirm the proposed `5,000 Search Queries/day` allocation with a `120/minute` peak.
+3. Follow `docs/compliance/YOUTUBE_QUOTA_OWNER_ACTION_GUIDE_2026-07-19.md`, run the strict preflight, and review the packet against the live product once.
+4. Submit the audit/quota-extension request and save the case/reference ID.

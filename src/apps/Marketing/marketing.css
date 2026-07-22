@@ -6027,6 +6027,38 @@
   font-size: 0.78rem;
 }
 
+.mk3-vibe-index {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 7px 9px;
+  border: 1px solid rgba(87, 221, 236, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(112deg, rgba(12, 42, 54, 0.88), rgba(38, 17, 45, 0.9));
+  color: #f8fbff;
+}
+
+.mk3-vibe-index strong {
+  color: #74f6ef;
+  font-size: 1rem;
+}
+
+.mk3-vibe-index span {
+  min-width: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mk3-vibe-index small {
+  color: var(--mk3-muted);
+  font-size: 0.62rem;
+}
+
 .mk3-card-time {
   color: #ffe5b4;
   font-size: 0.78rem;
@@ -6416,6 +6448,24 @@
 .mk3-form-grid .full,
 .mk3-status.full {
   grid-column: 1 / -1;
+}
+
+.mk3-submission-optional {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(6, 11, 16, 0.44);
+  padding: 10px 12px;
+}
+
+.mk3-submission-optional summary {
+  cursor: pointer;
+  color: #f3f8ff;
+  font-weight: 800;
+}
+
+.mk3-submission-optional > p {
+  margin: 8px 0;
+  color: #9eb3c8;
 }
 
 .mk3-cadence-field {

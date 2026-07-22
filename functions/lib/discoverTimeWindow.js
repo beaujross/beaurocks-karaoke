@@ -2,6 +2,7 @@
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 const DEFAULT_EVENT_DURATION_MS = 6 * MS_PER_HOUR;
+const DEFAULT_RECAP_RETENTION_MS = 30 * 24 * MS_PER_HOUR;
 
 const normalizeDiscoverTimezone = (value = '', fallback = 'UTC') => {
   const timezone = String(value || '').trim().slice(0, 80);
@@ -69,14 +70,42 @@ const isDiscoverListingActiveOrUpcoming = (item = {}, nowMs = Date.now(), lookah
   return startsAtMs <= (nowMs + Math.max(0, Number(lookaheadMs || 0))) && endMs >= nowMs;
 };
 
+const hasDiscoverablePublicRecap = (item = {}) => (
+  String(item?.listingType || '').trim().toLowerCase() === 'room_session'
+  && !!String(item?.roomCode || '').trim()
+  && (
+    Number(item?.latestRecapAtMs || 0) > 0
+    || !!String(item?.latestRecapUrl || item?.recapUrl || '').trim()
+  )
+);
+
+const shouldIncludeDiscoverListingInAllWindow = (
+  item = {},
+  nowMs = Date.now(),
+  { includeEnded = false, recapRetentionMs = DEFAULT_RECAP_RETENTION_MS } = {},
+) => {
+  if (String(item?.listingType || '').trim().toLowerCase() === 'venue') return true;
+  const startsAtMs = Number(item?.startsAtMs || 0);
+  if (!Number.isFinite(startsAtMs) || startsAtMs <= 0) return true;
+  const endMs = getDiscoverListingEndMs(item);
+  if (endMs >= nowMs || includeEnded) return true;
+  const safeRetentionMs = Math.max(0, Number(recapRetentionMs || 0));
+  return hasDiscoverablePublicRecap(item)
+    && safeRetentionMs > 0
+    && (nowMs - endMs) <= safeRetentionMs;
+};
+
 const matchesDirectoryDiscoverTimeWindow = (
   item = {},
   timeWindow = 'all',
   nowMs = Date.now(),
   timezone = 'UTC',
+  options = {},
 ) => {
   const startsAtMs = Number(item?.startsAtMs || 0);
-  if (timeWindow === 'all') return true;
+  if (timeWindow === 'all') {
+    return shouldIncludeDiscoverListingInAllWindow(item, nowMs, options);
+  }
   if (!Number.isFinite(startsAtMs) || startsAtMs <= 0) return false;
   const safeTimezone = normalizeDiscoverTimezone(timezone);
   if (timeWindow === 'now') {
@@ -97,8 +126,12 @@ const matchesDirectoryDiscoverTimeWindow = (
 };
 
 module.exports = {
+  DEFAULT_EVENT_DURATION_MS,
+  DEFAULT_RECAP_RETENTION_MS,
   getDiscoverListingEndMs,
+  hasDiscoverablePublicRecap,
   isDiscoverListingActiveOrUpcoming,
   matchesDirectoryDiscoverTimeWindow,
   normalizeDiscoverTimezone,
+  shouldIncludeDiscoverListingInAllWindow,
 };

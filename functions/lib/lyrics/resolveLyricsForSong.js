@@ -24,6 +24,7 @@ const resultFromProvider = (providerResult = {}) => ({
   lyricsSource: providerResult?.lyricsSource || "",
   resolution: providerResult?.resolution || "",
   needsUserToken: !!providerResult?.needsUserToken,
+  accessDenied: !!providerResult?.accessDenied,
   songId: providerResult?.songId || "",
   appleMusicId: providerResult?.appleMusicId || "",
   providerMeta: providerResult?.providerMeta || null,
@@ -47,6 +48,7 @@ const resolveLyricsForSong = async (
   const providerTrace = [];
   let hasProviderErrors = false;
   let needsUserToken = false;
+  let accessDenied = false;
   let fallbackAppleMusicId = "";
 
   const runProvider = async (providerName, runner) => {
@@ -58,6 +60,7 @@ const resolveLyricsForSong = async (
         return { hit: true, result };
       }
       if (result?.needsUserToken) needsUserToken = true;
+      if (result?.accessDenied) accessDenied = true;
       if (result?.appleMusicId) fallbackAppleMusicId = result.appleMusicId;
       pushTrace(providerTrace, providerName, "miss", started, result?.resolution || "miss");
       return { hit: false, result };
@@ -135,8 +138,11 @@ const resolveLyricsForSong = async (
     lyrics: "",
     lyricsTimed: null,
     lyricsSource: "",
-    resolution: needsUserToken ? "needs_user_token" : (hasProviderErrors ? "provider_error" : "no_match"),
+    resolution: needsUserToken
+      ? "needs_user_token"
+      : (accessDenied ? "apple_permission_denied" : (hasProviderErrors ? "provider_error" : "no_match")),
     needsUserToken,
+    accessDenied,
     songId: songId || "",
     appleMusicId: fallbackAppleMusicId,
     providerMeta: null,
@@ -148,4 +154,3 @@ const resolveLyricsForSong = async (
 module.exports = {
   resolveLyricsForSong,
 };
-

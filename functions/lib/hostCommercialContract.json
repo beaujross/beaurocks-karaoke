@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "contractId": "beaurocks-host-commercial-v1",
+  "currency": "USD",
+  "publicOfferPlanIds": [
+    "host_monthly",
+    "host_annual"
+  ],
+  "legacyCompatibilityPlanIds": [
+    "vip_monthly"
+  ],
+  "entitledStatuses": [
+    "active",
+    "trialing",
+    "past_due"
+  ],
+  "subscriptionStates": {
+    "trialing": {
+      "label": "Trialing",
+      "grantsCapabilities": true,
+      "newRoomPolicy": "blocked"
+    },
+    "active": {
+      "label": "Active",
+      "grantsCapabilities": true,
+      "newRoomPolicy": "allowed_when_plan_capability_allows"
+    },
+    "past_due": {
+      "label": "Past due",
+      "grantsCapabilities": true,
+      "newRoomPolicy": "blocked"
+    },
+    "canceled_at_period_end": {
+      "label": "Cancels at period end",
+      "grantsCapabilities": true,
+      "newRoomPolicy": "allowed_until_period_end"
+    },
+    "canceled": {
+      "label": "Canceled",
+      "grantsCapabilities": false,
+      "newRoomPolicy": "blocked"
+    },
+    "inactive": {
+      "label": "Inactive",
+      "grantsCapabilities": false,
+      "newRoomPolicy": "blocked"
+    },
+    "support_override": {
+      "label": "Support override",
+      "grantsCapabilities": true,
+      "newRoomPolicy": "allowed_when_audited_override_allows"
+    }
+  },
+  "baseCapabilities": {
+    "rooms.create": false,
+    "ai.generate_content": false,
+    "api.youtube_data": false,
+    "api.apple_music": false,
+    "billing.invoice_drafts": false,
+    "workspace.shared_templates": false,
+    "workspace.onboarding": true
+  },
+  "plans": {
+    "free": {
+      "id": "free",
+      "name": "Free",
+      "publicLabel": "Free",
+      "tier": "free",
+      "interval": null,
+      "amountCents": 0,
+      "publicOffer": false,
+      "legacyCompatibility": false,
+      "note": "Test the workspace before upgrading.",
+      "capabilities": {}
+    },
+    "vip_monthly": {
+      "id": "vip_monthly",
+      "name": "VIP Monthly",
+      "publicLabel": "VIP Monthly",
+      "tier": "vip",
+      "interval": "month",
+      "amountCents": 999,
+      "publicOffer": false,
+      "legacyCompatibility": true,
+      "note": "Legacy compatibility plan; not a current Host offer.",
+      "capabilities": {}
+    },
+    "host_monthly": {
+      "id": "host_monthly",
+      "name": "Host Monthly",
+      "publicLabel": "Host Monthly",
+      "tier": "host",
+      "interval": "month",
+      "amountCents": 1500,
+      "publicOffer": true,
+      "legacyCompatibility": false,
+      "note": "Recurring monthly Host subscription.",
+      "capabilities": {
+        "rooms.create": true,
+        "ai.generate_content": true,
+        "api.youtube_data": true,
+        "api.apple_music": true,
+        "billing.invoice_drafts": true,
+        "workspace.shared_templates": true,
+        "workspace.onboarding": true
+      }
+    },
+    "host_annual": {
+      "id": "host_annual",
+      "name": "Host Annual",
+      "publicLabel": "Host Annual",
+      "tier": "host",
+      "interval": "year",
+      "amountCents": 15000,
+      "publicOffer": true,
+      "legacyCompatibility": false,
+      "note": "Lower yearly effective rate for active Hosts.",
+      "capabilities": {
+        "rooms.create": true,
+        "ai.generate_content": true,
+        "api.youtube_data": true,
+        "api.apple_music": true,
+        "billing.invoice_drafts": true,
+        "workspace.shared_templates": true,
+        "workspace.onboarding": true
+      }
+    }
+  },
+  "usageMeters": {
+    "ai_generate_content": {
+      "id": "ai_generate_content",
+      "publicLabel": "AI generations",
+      "unit": "request",
+      "includedByPlan": {
+        "free": 0,
+        "vip_monthly": 0,
+        "host_monthly": 750,
+        "host_annual": 1200
+      },
+      "hardLimitByPlan": {
+        "free": 0,
+        "vip_monthly": 0,
+        "host_monthly": 2500,
+        "host_annual": 4000
+      },
+      "currentOverageRateCentsByPlan": {
+        "free": 0,
+        "vip_monthly": 0,
+        "host_monthly": 3,
+        "host_annual": 2
+      },
+      "pricingStatus": "existing_unvalidated_do_not_publish"
+    },
+    "youtube_data_request": {
+      "id": "youtube_data_request",
+      "publicLabel": "Workspace YouTube request allowance",
+      "unit": "request",
+      "includedByPlan": {
+        "free": 0,
+        "vip_monthly": 0,
+        "host_monthly": 6000,
+        "host_annual": 9000
+      },
+      "hardLimitByPlan": {
+        "free": 0,
+        "vip_monthly": 0,
+        "host_monthly": 25000,
+        "host_annual": 35000
+      },
+      "currentOverageRateCentsByPlan": {
+        "free": 0,
+        "vip_monthly": 0,
+        "host_monthly": 1,
+        "host_annual": 1
+      },
+      "pricingStatus": "existing_unvalidated_do_not_publish"
+    },
+    "apple_music_request": {
+      "id": "apple_music_request",
+      "publicLabel": "Apple Music API requests",
+      "unit": "request",
+      "includedByPlan": {
+        "free": 0,
+        "vip_monthly": 0,
+        "host_monthly": 2000,
+        "host_annual": 3000
+      },
+      "hardLimitByPlan": {
+        "free": 0,
+        "vip_monthly": 0,
+        "host_monthly": 10000,
+        "host_annual": 15000
+      },
+      "currentOverageRateCentsByPlan": {
+        "free": 0,
+        "vip_monthly": 0,
+        "host_monthly": 2,
+        "host_annual": 2
+      },
+      "pricingStatus": "existing_unvalidated_do_not_publish"
+    }
+  },
+  "moneyRails": {
+    "host_plan": {
+      "publicLabel": "Host plan",
+      "recipient": "BeauRocks",
+      "customerValue": "Host Dashboard access and plan capabilities",
+      "merchant": "BeauRocks",
+      "offlineExecution": "not_allowed"
+    },
+    "usage": {
+      "publicLabel": "Additional usage",
+      "recipient": "BeauRocks",
+      "customerValue": "Additional metered Room capacity or premium capability use",
+      "merchant": "BeauRocks",
+      "offlineExecution": "not_allowed"
+    },
+    "host_tip": {
+      "publicLabel": "Host Tip",
+      "recipient": "Host or Host payment provider",
+      "customerValue": "No required in-app value",
+      "merchant": "Host or Host payment provider",
+      "offlineExecution": "display_only_unverified"
+    },
+    "beaubucks_purchase": {
+      "publicLabel": "BeauBucks purchase",
+      "recipient": "BeauRocks",
+      "customerValue": "Defined BeauBucks amount",
+      "merchant": "BeauRocks",
+      "offlineExecution": "not_allowed"
+    },
+    "fundraiser_support": {
+      "publicLabel": "Support",
+      "recipient": "Named fundraiser or payment provider",
+      "customerValue": "Provider-defined contribution and any separately disclosed Room celebration",
+      "merchant": "Named fundraiser or payment provider",
+      "offlineExecution": "display_only_unverified"
+    }
+  },
+  "vocabulary": {
+    "HostApp": "Host Dashboard",
+    "SingerApp": "Audience App",
+    "PublicTV": "Public TV",
+    "RecapView": "Room Recap",
+    "organization": "Workspace",
+    "room": "Room",
+    "room_session": "Live Room",
+    "canonicalSongId": "Song",
+    "backing_candidate": "Backing version",
+    "public_chart": "Charts",
+    "publicVibeIndex": "BeauRocks Vibe Index",
+    "earned_non_cash_value": "Points",
+    "purchased_in_app_value": "BeauBucks",
+    "host_directed_money": "Host Tip",
+    "fundraiser_payment": "Support"
+  }
+}

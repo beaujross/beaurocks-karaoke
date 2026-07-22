@@ -118,8 +118,26 @@ const useHostWorkspaceNavigation = ({
     }, [leaveAdminWithTarget, setSettingsNavOpen, setShowSettings, tab]);
 
     const handleTopChromeTabChange = useCallback((nextTab) => {
-        setTab(normalizeHostWorkspaceTab(nextTab));
-    }, [normalizeHostWorkspaceTab, setTab]);
+        const normalizedTab = normalizeHostWorkspaceTab(nextTab);
+        if (normalizedTab !== 'admin') {
+            setSettingsNavOpen(false);
+            setShowSettings(false);
+            const targetSection = hostWorkspaceSections.find((section) => section.hostTab === normalizedTab) || null;
+            if (targetSection) {
+                setActiveWorkspaceView(targetSection.view);
+                setActiveWorkspaceSection(targetSection.id);
+            }
+        }
+        setTab(normalizedTab);
+    }, [
+        hostWorkspaceSections,
+        normalizeHostWorkspaceTab,
+        setActiveWorkspaceSection,
+        setActiveWorkspaceView,
+        setSettingsNavOpen,
+        setShowSettings,
+        setTab,
+    ]);
 
     const openChatSettings = useCallback(() => {
         setTab('admin');

@@ -41,13 +41,8 @@ const ResultList = ({
     getResultRowKey,
     quickAddLoadingKey = '',
     handleResultClick,
-    quickAddOnResultClick = true,
     performanceActionsEnabled = false,
-    nextOpenSlot = null,
-    laterOpenSlot = null,
     onQueueOnly,
-    onAddNext,
-    onAddLater,
     compactRows = false,
 }) => (
     <>
@@ -80,8 +75,16 @@ const ResultList = ({
                 return (
                     <div
                         key={rowKey}
-                        onClick={() => handleResultClick(r, idx)}
-                        className={`host-autocomplete-result-row group ${compactRows ? 'mb-1.5 rounded-xl p-2' : 'mb-2 rounded-[1.15rem] p-2.5'} cursor-pointer border border-white/10 bg-[linear-gradient(180deg,rgba(25,16,44,0.98),rgba(16,10,34,0.95))] shadow-[0_10px_24px_rgba(0,0,0,0.2)] transition hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(35,22,58,0.98),rgba(18,12,38,0.98))]`}
+                        data-feature-id="performance-result-row"
+                        onClick={() => {
+                            if (isAdding) return;
+                            if (performanceActionsEnabled) {
+                                onQueueOnly?.(r);
+                                return;
+                            }
+                            handleResultClick(r, idx);
+                        }}
+                        className={`host-autocomplete-result-row group ${compactRows ? 'mb-1.5 rounded-xl p-2' : 'mb-2 rounded-[1.15rem] p-2.5'} ${isAdding ? 'cursor-wait opacity-70' : 'cursor-pointer'} border border-white/10 bg-[linear-gradient(180deg,rgba(25,16,44,0.98),rgba(16,10,34,0.95))] shadow-[0_10px_24px_rgba(0,0,0,0.2)] transition hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(35,22,58,0.98),rgba(18,12,38,0.98))]`}
                     >
                         <div className={`grid gap-2 ${compactRows ? 'grid-cols-[56px_minmax(0,1fr)] md:grid-cols-[64px_minmax(0,1fr)]' : 'grid-cols-[64px_minmax(0,1fr)] md:grid-cols-[76px_minmax(0,1fr)]'}`}>
                             <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/40">
@@ -106,7 +109,7 @@ const ResultList = ({
                                         <div className="mt-0.5 truncate text-xs text-zinc-300">{r.catalogDisplayArtist || r.artistName}</div>
                                     </div>
                                     <div className="whitespace-nowrap rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.13em] text-cyan-100">
-                                        {isAdding ? 'Adding...' : (quickAddOnResultClick ? 'Quick Add' : 'Select')}
+                                        {isAdding ? 'Adding...' : performanceActionsEnabled ? 'Add' : 'Select'}
                                     </div>
                                 </div>
                                 <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -151,7 +154,13 @@ const ResultList = ({
                                                 <button
                                                     key={`${rowKey}_alternative_${getResultRowKey(alternative, alternativeIndex)}`}
                                                     type="button"
-                                                    onClick={() => handleResultClick(alternative, alternativeIndex)}
+                                                    onClick={() => {
+                                                        if (performanceActionsEnabled) {
+                                                            onQueueOnly?.(alternative);
+                                                            return;
+                                                        }
+                                                        handleResultClick(alternative, alternativeIndex);
+                                                    }}
                                                     className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-left hover:border-violet-300/30"
                                                 >
                                                     <span className="min-w-0">
@@ -168,43 +177,19 @@ const ResultList = ({
                                     </details>
                                 ) : null}
                                 {performanceActionsEnabled ? (
-                                    <div className={`${compactRows ? 'mt-2' : 'mt-2.5'} flex flex-wrap gap-2`}>
-                                        {nextOpenSlot?.id ? (
-                                            <button
-                                                data-feature-id="performance-result-add-next"
-                                                type="button"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    onAddNext?.(r);
-                                                }}
-                                                className="rounded-full border border-cyan-300/30 bg-cyan-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100"
-                                            >
-                                                Add to Queue
-                                            </button>
-                                        ) : null}
-                                        {laterOpenSlot?.id ? (
-                                            <button
-                                                data-feature-id="performance-result-add-later"
-                                                type="button"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    onAddLater?.(r);
-                                                }}
-                                                className="rounded-full border border-violet-300/30 bg-violet-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-violet-100"
-                                            >
-                                                Save to Planner
-                                            </button>
-                                        ) : null}
+                                    <div className={`${compactRows ? 'mt-2' : 'mt-2.5'} flex justify-end`}>
                                         <button
                                             data-feature-id="performance-result-queue-only"
                                             type="button"
+                                            disabled={isAdding}
                                             onClick={(event) => {
                                                 event.stopPropagation();
+                                                if (isAdding) return;
                                                 onQueueOnly?.(r);
                                             }}
-                                            className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200"
+                                            className={`rounded-full border border-cyan-300/30 bg-cyan-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100 ${isAdding ? 'cursor-wait opacity-60' : ''}`}
                                         >
-                                            Queue Only
+                                            {isAdding ? 'Adding...' : 'Add to Queue'}
                                         </button>
                                     </div>
                                 ) : null}
@@ -214,7 +199,7 @@ const ResultList = ({
                 );
             }) : (
                 <div className="host-search-helper py-3 text-center text-xs uppercase tracking-widest text-zinc-500">
-                    {searchQ.length >= 3 ? (queueSearchNoResultHint || 'No results yet') : 'Type at least 3 characters to search.'}
+                    {searchQ.length >= 3 ? (queueSearchNoResultHint || 'No results yet') : 'Type at least 3 characters. Each result has Add to Queue.'}
                 </div>
             )}
         </div>
@@ -228,6 +213,37 @@ const momentTypes = [
     { id: 'game', label: 'Game', icon: 'fa-dice' },
     { id: 'sponsor', label: 'Sponsor', icon: 'fa-hand-holding-heart' },
 ];
+
+export const HOST_MOMENT_DESTINATIONS = Object.freeze({
+    queue: 'queue',
+    planner: 'planner',
+    runOfShow: 'run_of_show',
+});
+
+const momentDestinationOptions = [
+    {
+        id: HOST_MOMENT_DESTINATIONS.queue,
+        label: 'Live Queue',
+        actionLabel: 'Add to Queue',
+        detail: 'Adds to the end. Reorder it from Live Queue.',
+    },
+    {
+        id: HOST_MOMENT_DESTINATIONS.planner,
+        label: 'Planner',
+        actionLabel: 'Save to Planner',
+        detail: 'Keeps it out of the live sequence until you add it.',
+    },
+    {
+        id: HOST_MOMENT_DESTINATIONS.runOfShow,
+        label: 'Full Night Builder',
+        actionLabel: 'Add to Run of Show',
+        detail: 'Adds it to the end of the structured show plan.',
+    },
+];
+
+const getMomentDestinationMeta = (destination = HOST_MOMENT_DESTINATIONS.queue) => (
+    momentDestinationOptions.find((entry) => entry.id === destination) || momentDestinationOptions[0]
+);
 
 const quickMomentPacks = [
     {
@@ -352,11 +368,13 @@ const buildScenePresetPreview = (preset = {}) => {
 
 // eslint-disable-next-line react-refresh/only-export-components -- test-facing helper kept with the queue form logic it validates.
 export const buildGameMomentQueueOptions = (packId = '', {
-    placement = 'next',
+    destination = HOST_MOMENT_DESTINATIONS.queue,
     assignmentMode = GAME_QUEUE_ASSIGNMENT_MODES.crowd,
     performer = null,
 } = {}) => {
-    const safePlacement = String(placement || '').trim().toLowerCase() === 'append' ? 'append' : 'next';
+    const safeDestination = Object.values(HOST_MOMENT_DESTINATIONS).includes(String(destination || '').trim().toLowerCase())
+        ? String(destination || '').trim().toLowerCase()
+        : HOST_MOMENT_DESTINATIONS.queue;
     const safeAssignmentMode = String(assignmentMode || '').trim().toLowerCase() === GAME_QUEUE_ASSIGNMENT_MODES.spotlight
         ? GAME_QUEUE_ASSIGNMENT_MODES.spotlight
         : GAME_QUEUE_ASSIGNMENT_MODES.crowd;
@@ -364,7 +382,8 @@ export const buildGameMomentQueueOptions = (packId = '', {
     const performerName = String(performer?.name || '').trim();
     if (supportsSpotlightSingerAssignment(packId) && safeAssignmentMode === GAME_QUEUE_ASSIGNMENT_MODES.spotlight && performerUid) {
         return {
-            placement: safePlacement,
+            destination: safeDestination,
+            placement: 'append',
             launchConfigOverrides: {
                 participantMode: 'selected',
                 participants: [performerUid],
@@ -382,7 +401,8 @@ export const buildGameMomentQueueOptions = (packId = '', {
         };
     }
     return {
-        placement: safePlacement,
+        destination: safeDestination,
+        placement: 'append',
     };
 };
 
@@ -394,8 +414,6 @@ const AddToQueueFormBody = ({
     youtubeSearchMode = 'karaoke',
     setYoutubeSearchMode = () => {},
     styles,
-    quickAddOnResultClick,
-    setQuickAddOnResultClick,
     results,
     queueSearchSourceNote,
     queueSearchNoResultHint,
@@ -416,21 +434,17 @@ const AddToQueueFormBody = ({
     addSong,
     appleMusicAuthorized,
     openYtSearch,
-    onOpenPlanner,
     onOpenTvLibrary,
     scenePresets = [],
     onQueueScenePreset,
-    onAddScenePresetToRunOfShow,
     onAddQuickRunOfShowMoment,
-    runOfShowOpenSlots = [],
     onQueuePerformanceResult,
-    onQueueManualPerformance,
     dockResults = false,
 }) => {
     const [manualEntryOpen, setManualEntryOpen] = React.useState(!dockResults);
     const [activeMomentType, setActiveMomentType] = React.useState('performance');
+    const [momentDestination, setMomentDestination] = React.useState(HOST_MOMENT_DESTINATIONS.queue);
     const [selectedGameMomentBundleId, setSelectedGameMomentBundleId] = React.useState(HOST_GAME_MOMENT_BUNDLE_IDS.betweenSongs);
-    const [selectedLaterSlotId, setSelectedLaterSlotId] = React.useState('');
     const [performerPickerOpen, setPerformerPickerOpen] = React.useState(false);
     const [gameAssignmentModes, setGameAssignmentModes] = React.useState({});
     const [gameSelectedPerformerByPack, setGameSelectedPerformerByPack] = React.useState({});
@@ -587,7 +601,10 @@ const AddToQueueFormBody = ({
     const renderResultsInline = dockResults;
     const showResults = results.length > 0 || searchQ.length >= 3;
     const performanceMode = activeMomentType === 'performance';
-    const plannerLaunchMode = activeMomentType === 'audience' || activeMomentType === 'announcement' || activeMomentType === 'game' || activeMomentType === 'sponsor';
+    const momentDestinationMeta = getMomentDestinationMeta(momentDestination);
+    const youtubeProviderAvailable = searchSources?.youtube !== false;
+    const appleProviderConfigured = searchSources?.itunes !== false;
+    const appleProviderAvailable = appleProviderConfigured && appleMusicAuthorized;
     const momentSearchPlaceholder = activeMomentType === 'game'
         ? 'Search game modes'
         : activeMomentType === 'tv'
@@ -606,46 +623,24 @@ const AddToQueueFormBody = ({
         preset?.mediaType,
         preset?.fileName,
     ]));
-    const openPerformanceSlotCount = Array.isArray(runOfShowOpenSlots) ? runOfShowOpenSlots.length : 0;
-    const nextOpenSlot = Array.isArray(runOfShowOpenSlots) ? runOfShowOpenSlots[0] || null : null;
-    const laterOpenSlots = React.useMemo(
-        () => (Array.isArray(runOfShowOpenSlots) ? runOfShowOpenSlots.slice(1, 4) : []),
-        [runOfShowOpenSlots]
-    );
-    const selectedLaterSlot = laterOpenSlots.find((slot) => slot.id === selectedLaterSlotId) || laterOpenSlots[0] || null;
     const performanceResultListProps = {
         results,
         searchQ,
         queueSearchNoResultHint,
         getResultRowKey,
         quickAddLoadingKey,
-        handleResultClick,
-        quickAddOnResultClick,
+        handleResultClick: (result, index) => handleResultClick?.(result, index, { queueOnClick: false }),
         performanceActionsEnabled: performanceMode,
-        nextOpenSlot,
-        laterOpenSlot: selectedLaterSlot,
         onQueueOnly: (result) => onQueuePerformanceResult?.(result),
-        onAddNext: (result) => onQueuePerformanceResult?.(result, {
-            slotId: nextOpenSlot?.id || '',
-            slotLabel: nextOpenSlot?.label || '',
-        }),
-        onAddLater: (result) => onQueuePerformanceResult?.(result, {
-            slotId: selectedLaterSlot?.id || '',
-            slotLabel: selectedLaterSlot?.label || '',
-        }),
     };
 
     React.useEffect(() => {
-        if (!laterOpenSlots.length) {
-            setSelectedLaterSlotId('');
-            return;
+        if (autocompleteProvider === 'apple' && !appleProviderAvailable) {
+            setAutocompleteProvider(youtubeProviderAvailable ? 'youtube' : 'apple');
+        } else if (autocompleteProvider === 'youtube' && !youtubeProviderAvailable && appleProviderAvailable) {
+            setAutocompleteProvider('apple');
         }
-        setSelectedLaterSlotId((current) => (
-            laterOpenSlots.some((slot) => slot.id === current)
-                ? current
-                : String(laterOpenSlots[0]?.id || '')
-        ));
-    }, [laterOpenSlots]);
+    }, [appleProviderAvailable, autocompleteProvider, setAutocompleteProvider, youtubeProviderAvailable]);
 
     const handleAddSinger = async () => {
         const queued = await addSong?.();
@@ -653,45 +648,43 @@ const AddToQueueFormBody = ({
             onManualQueueResult(queued);
         }
     };
-    const handleAddSingerToSlot = async (slot = null) => {
-        const slotId = String(slot?.id || '').trim();
-        if (!slotId) return;
-        await onQueueManualPerformance?.({
-            slotId,
-            slotLabel: slot?.label || '',
-        });
-    };
-
     const mediaSourceButtonClass = (active, tone = 'cyan') => {
         const activeClass = tone === 'red'
-            ? 'border-red-300/35 bg-red-500/14 text-red-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
-            : 'border-pink-300/35 bg-pink-500/14 text-pink-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]';
-        return `min-h-[34px] rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
-            active ? activeClass : 'border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
+            ? 'border-red-300/45 bg-red-400 text-zinc-950 shadow-[0_8px_18px_rgba(248,113,113,0.18)]'
+            : 'border-pink-300/45 bg-pink-300 text-zinc-950 shadow-[0_8px_18px_rgba(249,168,212,0.18)]';
+        return `inline-flex min-h-[34px] items-center rounded-xl border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
+            active ? activeClass : 'border-transparent text-zinc-400 hover:bg-white/7 hover:text-zinc-100'
         }`;
     };
     const youtubeModeButtonClass = (active) => (
-        `flex min-h-[34px] items-center justify-center rounded-md border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] transition ${
-            active ? 'border-red-300/35 bg-red-500/16 text-red-100 shadow-[inset_0_0_0_1px_rgba(248,113,113,0.08)]' : 'border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+        `flex min-h-[30px] items-center justify-center rounded-lg border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] transition ${
+            active ? 'border-cyan-300/35 bg-cyan-500/16 text-cyan-100' : 'border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
         }`
     );
     return (
         <div className={`mt-2 pr-1 ${dockResults ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden' : ''}`}>
-            <div className="mb-2 flex shrink-0 flex-wrap gap-2">
+            <div
+                role="tablist"
+                aria-label="Build a Moment types"
+                data-feature-id="host-moment-type-tabs"
+                className="mb-2 flex min-h-[46px] shrink-0 items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/22 p-1 custom-scrollbar"
+            >
                 {momentTypes.map((entry) => {
                     const active = entry.id === activeMomentType;
                     return (
                         <button
                             key={entry.id}
                             type="button"
+                            role="tab"
+                            aria-selected={active}
                             onClick={() => setActiveMomentType(entry.id)}
-                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${
+                            className={`inline-flex min-h-[38px] min-w-max items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] transition ${
                                 active
-                                    ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100'
-                                    : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/25 hover:text-white'
+                                    ? 'bg-cyan-400 text-zinc-950 shadow-[0_10px_24px_rgba(34,211,238,0.22)]'
+                                    : 'text-zinc-300 hover:bg-white/8 hover:text-white'
                             }`}
                         >
-                            <i className={`fa-solid ${entry.icon} mr-1.5`}></i>
+                            <i className={`fa-solid ${entry.icon}`}></i>
                             {entry.label}
                         </button>
                     );
@@ -716,10 +709,26 @@ const AddToQueueFormBody = ({
                     </div>
                     <div className="mt-1 text-sm text-zinc-400">
                         {activeMomentType === 'tv'
-                            ? 'Choose any saved scene below or jump into the media library.'
-                            : activeMomentType === 'game'
-                                ? 'Send a ready break to the Queue, or save it to Planner for later.'
-                                : 'Send a ready moment to the Queue, or save it to Planner for later.'}
+                            ? 'Choose a saved scene or open the media library.'
+                            : 'Choose where this moment belongs. Queue always adds it at the end.'}
+                    </div>
+                    <div className="mt-3 grid gap-2 rounded-xl border border-cyan-300/16 bg-cyan-500/[0.06] p-3 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] sm:items-end" data-feature-id="moment-destination-control">
+                        <label className="block min-w-0">
+                            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Destination</span>
+                            <select
+                                value={momentDestination}
+                                onChange={(event) => setMomentDestination(event.target.value)}
+                                className={`${styles.input} text-sm`}
+                            >
+                                {momentDestinationOptions.map((option) => (
+                                    <option key={option.id} value={option.id}>{option.label}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <div className="min-w-0 pb-1 text-xs text-zinc-300">
+                            <span className="font-semibold text-white">{momentDestinationMeta.actionLabel}.</span>{' '}
+                            {momentDestinationMeta.detail}
+                        </div>
                     </div>
                     {activeMomentType === 'game' ? (
                         <div className="mt-3" data-feature-id="queue-game-moment-bundles">
@@ -786,83 +795,94 @@ const AddToQueueFormBody = ({
                                 Open Media Library
                             </button>
                         ) : null}
-                        {plannerLaunchMode && typeof onOpenPlanner === 'function' ? (
-                            <button
-                                type="button"
-                                onClick={() => onOpenPlanner?.()}
-                                className={`${styles.btnStd} ${styles.btnHighlight} px-3 py-1.5 text-[11px]`}
-                            >
-                                Planner
-                            </button>
-                        ) : null}
                     </div>
                 </div>
             ) : (
                 <div className={`host-autocomplete-shell relative z-30 w-full min-w-0 ${dockResults ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
                     <div className={`host-autocomplete-field-wrap w-full min-w-0 rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 ${dockResults ? 'sticky top-0 z-20 shrink-0 py-1.5' : 'py-2'}`}>
-                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.62fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(12rem,0.58fr)_minmax(14rem,0.75fr)]">
+                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.62fr)]">
                             <div className="relative">
                                 <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
                                 <input
                                     value={searchQ}
                                     onChange={(e) => setSearchQ(e.target.value)}
-                                    className={`${styles.input} host-autocomplete-input py-2 pl-8 text-sm`}
+                                    className={`${styles.input} host-autocomplete-input py-2 pl-8 pr-3 text-sm`}
                                     placeholder="Search songs or backing tracks"
                                 />
                             </div>
                             <div className="min-w-0">
                                 {performerSelect}
                             </div>
-                            <div className="md:col-span-2 xl:col-span-1">
-                                <div className="grid gap-1.5 rounded-xl border border-white/10 bg-black/25 p-1.5 xl:min-w-0">
-                                    <div className="grid min-w-0 grid-cols-2 gap-1 rounded-lg bg-zinc-950/80 p-1">
+                            <div className="md:col-span-2">
+                                <div className="grid min-w-0 gap-2 rounded-xl border border-white/10 bg-black/25 p-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-end">
+                                    <div className="min-w-0">
+                                        <div className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Backing source</div>
+                                        <div className="inline-flex min-w-0 gap-1 rounded-xl bg-zinc-950/80 p-0.5">
+                                        {youtubeProviderAvailable ? (
                                         <button
                                             type="button"
                                             onClick={() => setAutocompleteProvider('youtube')}
+                                            data-search-control='provider'
+                                            aria-pressed={autocompleteProvider === 'youtube'}
                                             className={mediaSourceButtonClass(autocompleteProvider === 'youtube', 'red')}
                                             title="Use YouTube backing search"
                                         >
                                             <i className="fa-brands fa-youtube mr-1.5"></i>
                                             YouTube
                                         </button>
+                                        ) : null}
+                                        {appleProviderAvailable ? (
                                         <button
                                             type="button"
                                             onClick={() => setAutocompleteProvider('apple')}
+                                            data-search-control='provider'
+                                            aria-pressed={autocompleteProvider === 'apple'}
                                             className={mediaSourceButtonClass(autocompleteProvider === 'apple', 'pink')}
-                                            title={appleMusicAuthorized ? 'Use Apple Music autocomplete' : 'Connect Apple Music to use Apple autocomplete'}
+                                            title="Use Apple Music autocomplete"
                                         >
                                             <i className="fa-brands fa-apple mr-1.5"></i>
                                             Apple
                                         </button>
+                                        ) : null}
+                                        </div>
                                     </div>
-                                    {typeof openYtSearch === 'function' ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => openYtSearch('manual', searchQ || `${manual.song || ''} ${manual.artist || ''}`.trim())}
-                                            aria-label="Open YouTube search"
-                                            title="Open YouTube search"
-                                            className={`${styles.btnStd} ${styles.btnSecondary} min-h-[36px] justify-center whitespace-nowrap px-3 py-1 text-[11px]`}
-                                        >
-                                            <i className="fa-solid fa-magnifying-glass"></i>
-                                            <span className="sr-only">Search YouTube</span>
-                                        </button>
-                                    ) : null}
                                     {autocompleteProvider === 'youtube' ? (
-                                        <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-zinc-950/60 p-1">
+                                        <div className="min-w-0 sm:border-l sm:border-white/10 sm:pl-2">
+                                        <div className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">YouTube filter</div>
+                                        <div className="inline-flex gap-1 rounded-xl border border-white/10 bg-zinc-950/60 p-0.5">
                                             {[
-                                                ['karaoke', 'Karaoke Only'],
-                                                ['any', 'Any YouTube']
+                                                ['karaoke', 'Karaoke tracks'],
+                                                ['any', 'All videos']
                                             ].map(([mode, label]) => (
                                                 <button
                                                     key={mode}
                                                     type="button"
                                                     onClick={() => setYoutubeSearchMode(mode)}
+                                                    data-search-control='scope'
+                                                    aria-pressed={youtubeSearchMode === mode}
                                                     className={youtubeModeButtonClass(youtubeSearchMode === mode)}
                                                 >
                                                     {label}
                                                 </button>
                                             ))}
                                         </div>
+                                        </div>
+                                    ) : appleProviderConfigured && !appleMusicAuthorized ? (
+                                        <div className="self-center text-[10px] leading-4 text-zinc-500 sm:border-l sm:border-white/10 sm:pl-2" data-feature-id="apple-search-unavailable">
+                                            Connect Apple Music in Media to search it.
+                                        </div>
+                                    ) : <div />}
+                                    {autocompleteProvider === 'youtube' && typeof openYtSearch === 'function' ? (
+                                            <button
+                                                type="button"
+                                                data-feature-id="host-performance-search-expand"
+                                                onClick={() => openYtSearch('manual', searchQ || `${manual.song || ''} ${manual.artist || ''}`.trim())}
+                                                className="inline-flex min-h-[34px] items-center justify-center gap-1.5 rounded-xl border border-white/12 bg-white/6 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-zinc-200 transition hover:border-red-300/30 hover:bg-red-500/10 hover:text-red-100"
+                                                title="Open the full YouTube catalog search"
+                                            >
+                                                <i className="fa-brands fa-youtube"></i>
+                                                Expand Search
+                                            </button>
                                     ) : null}
                                 </div>
                             </div>
@@ -872,61 +892,14 @@ const AddToQueueFormBody = ({
                                 {queueSearchSourceNote}
                             </div>
                         ) : null}
-                        {openPerformanceSlotCount > 0 ? (
-                            <div className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    {nextOpenSlot ? (
-                                        <span className="rounded-full border border-cyan-300/30 bg-cyan-500/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
-                                            Next: {nextOpenSlot.label}
-                                        </span>
-                                    ) : null}
-                                    {laterOpenSlots.length > 0 ? (
-                                        <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Later target</span>
-                                    ) : null}
-                                    {laterOpenSlots.map((slot) => {
-                                        const active = slot.id === selectedLaterSlot?.id;
-                                        return (
-                                            <button
-                                                key={slot.id}
-                                                type="button"
-                                                onClick={() => setSelectedLaterSlotId(slot.id)}
-                                                className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
-                                                    active
-                                                        ? 'border-violet-300/35 bg-violet-500/12 text-violet-100'
-                                                        : 'border-white/10 bg-black/25 text-zinc-300'
-                                                }`}
-                                            >
-                                                {slot.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ) : null}
-                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400">
-                            <label className="inline-flex cursor-pointer select-none items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={quickAddOnResultClick}
-                                    onChange={(e) => setQuickAddOnResultClick(e.target.checked)}
-                                    className="accent-[#00C4D9]"
-                                />
-                                Tap to queue
-                            </label>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span>
-                                    {openPerformanceSlotCount > 0
-                                        ? `${openPerformanceSlotCount} open slot${openPerformanceSlotCount === 1 ? '' : 's'}`
-                                        : (quickAddOnResultClick ? '1 tap adds it' : '1 tap fills manual')}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => setManualEntryOpen((value) => !value)}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} px-2.5 py-1 text-[10px]`}
-                                >
-                                    {manualEntryOpen ? 'Hide' : 'Manual'}
-                                </button>
-                            </div>
+                        <div className="mt-2 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setManualEntryOpen((value) => !value)}
+                                className={`${styles.btnStd} ${styles.btnNeutral} px-2.5 py-1 text-[10px]`}
+                            >
+                                {manualEntryOpen ? 'Hide Manual Entry' : 'Manual Entry'}
+                            </button>
                         </div>
                         {manualEntryOpen ? (
                             <div className="mt-2 border-t border-white/10 pt-2">
@@ -934,6 +907,17 @@ const AddToQueueFormBody = ({
                                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                                     <input data-feature-id="host-manual-song-input" value={manual.song} onChange={(e) => setManual({ ...manual, song: e.target.value })} className={styles.input} placeholder="Song" />
                                     <input data-feature-id="host-manual-artist-input" value={manual.artist} onChange={(e) => setManual({ ...manual, artist: e.target.value })} className={styles.input} placeholder="Artist" />
+                                </div>
+                                <div className="mt-2 flex justify-end">
+                                    <button
+                                        data-feature-id="host-manual-queue-submit"
+                                        type="button"
+                                        disabled={!String(manual.song || '').trim()}
+                                        onClick={() => { void handleAddSinger(); }}
+                                        className={`${styles.btnStd} ${styles.btnHighlight} px-4 ${!String(manual.song || '').trim() ? 'cursor-not-allowed opacity-45' : ''}`}
+                                    >
+                                        {String(manual.song || '').trim() ? 'Add Manual Request' : 'Enter a Song Title'}
+                                    </button>
                                 </div>
                             </div>
                         ) : null}
@@ -988,24 +972,20 @@ const AddToQueueFormBody = ({
                                                 {Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20))}s
                                             </span>
                                         </div>
-                                        <div className="mt-3 flex flex-wrap gap-2">
+                                        <div className="mt-3 flex justify-end">
                                             <button
                                                 type="button"
-                                                onClick={() => onQueueScenePreset?.(preset)}
+                                                onClick={() => onQueueScenePreset?.(preset, {
+                                                    destination: momentDestination,
+                                                    placement: 'append',
+                                                })}
                                                 className={`${styles.btnStd} ${styles.btnHighlight} px-3 py-1.5 text-[11px]`}
                                             >
-                                                Add to Queue
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => onAddScenePresetToRunOfShow?.(preset)}
-                                                className={`${styles.btnStd} ${styles.btnSecondary} px-3 py-1.5 text-[11px]`}
-                                            >
-                                                Save to Planner
+                                                {momentDestinationMeta.actionLabel}
                                             </button>
                                         </div>
                                         <div className="mt-2 text-[11px] text-zinc-500">
-                                            Queues into the live show conveyor, not the singer line.
+                                            {momentDestinationMeta.detail}
                                         </div>
                                     </div>
                                 </div>
@@ -1037,13 +1017,8 @@ const AddToQueueFormBody = ({
                                 const needsSpotlightSinger = spotlightSupported
                                     && assignmentMode === GAME_QUEUE_ASSIGNMENT_MODES.spotlight
                                     && !selectedPerformer;
-                                const queueNextOptions = buildGameMomentQueueOptions(pack.id, {
-                                    placement: 'next',
-                                    assignmentMode,
-                                    performer: selectedPerformer,
-                                });
-                                const queueLaterOptions = buildGameMomentQueueOptions(pack.id, {
-                                    placement: 'append',
+                                const destinationOptions = buildGameMomentQueueOptions(pack.id, {
+                                    destination: momentDestination,
                                     assignmentMode,
                                     performer: selectedPerformer,
                                 });
@@ -1058,7 +1033,7 @@ const AddToQueueFormBody = ({
                                             ? `${selectedPerformer.name} will use singer phone mic while the room watches.`
                                             : 'Pick a singer to route phone mic control for this break.')
                                         : 'Default: crowd sing-along on the TV mic.'
-                                    : 'Send it to the active Queue, or save it to Planner for later.'}
+                                    : momentDestinationMeta.detail}
                             </div>
                             {spotlightSupported ? (
                                 <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -1127,24 +1102,15 @@ const AddToQueueFormBody = ({
                                     ) : null}
                                 </div>
                             ) : null}
-                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            <div className="mt-3 flex justify-end">
                                 <button
                                     type="button"
-                                    data-feature-id={`moment-pack-queue-next-${pack.id}`}
-                                    onClick={() => onAddQuickRunOfShowMoment?.(pack.id, queueNextOptions)}
+                                    data-feature-id={`moment-pack-destination-${pack.id}`}
+                                    onClick={() => onAddQuickRunOfShowMoment?.(pack.id, destinationOptions)}
                                     disabled={needsSpotlightSinger}
-                                    className={`${styles.btnStd} ${styles.btnHighlight} w-full px-3 py-1.5 text-[11px] ${needsSpotlightSinger ? 'cursor-not-allowed opacity-50' : ''}`}
+                                    className={`${styles.btnStd} ${styles.btnHighlight} px-3 py-1.5 text-[11px] ${needsSpotlightSinger ? 'cursor-not-allowed opacity-50' : ''}`}
                                 >
-                                    Add to Queue
-                                </button>
-                                <button
-                                    type="button"
-                                    data-feature-id={`moment-pack-queue-later-${pack.id}`}
-                                    onClick={() => onAddQuickRunOfShowMoment?.(pack.id, queueLaterOptions)}
-                                    disabled={needsSpotlightSinger}
-                                    className={`${styles.btnStd} ${styles.btnSecondary} w-full px-3 py-1.5 text-[11px] ${needsSpotlightSinger ? 'cursor-not-allowed opacity-50' : ''}`}
-                                >
-                                    Save to Planner
+                                    {momentDestinationMeta.actionLabel}
                                 </button>
                             </div>
                                     </>
@@ -1201,33 +1167,6 @@ const AddToQueueFormBody = ({
                 </div>
             ) : null}
 
-            {performanceMode ? (
-                <div className="mb-2 mt-2 flex flex-wrap justify-end gap-2">
-                    {nextOpenSlot ? (
-                        <button
-                            data-feature-id="host-manual-add-next"
-                            type="button"
-                            onClick={() => { void handleAddSingerToSlot(nextOpenSlot); }}
-                            className={`${styles.btnStd} ${styles.btnHighlight} px-4`}
-                        >
-                            Add to Queue
-                        </button>
-                    ) : null}
-                    {selectedLaterSlot ? (
-                        <button
-                            data-feature-id="host-manual-add-later"
-                            type="button"
-                            onClick={() => { void handleAddSingerToSlot(selectedLaterSlot); }}
-                            className={`${styles.btnStd} ${styles.btnSecondary} px-4`}
-                        >
-                            Save to Planner
-                        </button>
-                    ) : null}
-                    <button data-feature-id="host-manual-queue-submit" onClick={() => { void handleAddSinger(); }} className={`${styles.btnStd} ${styles.btnNeutral} px-4`}>
-                        Queue Only
-                    </button>
-                </div>
-            ) : null}
         </div>
     );
 };

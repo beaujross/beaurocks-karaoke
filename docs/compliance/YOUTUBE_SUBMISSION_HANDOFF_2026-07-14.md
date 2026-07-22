@@ -1,17 +1,16 @@
 # YouTube Audit And Quota Submission Handoff
 
-Date: 2026-07-14
+Date: 2026-07-19
 Current production release: `1784078708909000`
 Current Hosting version: `5bc48c15cd873eac`
 
 ## Executive Decision
 
-The technical packet is ready. Do not submit until the five required address-bar presentation captures and three confirmation items are complete:
+The technical packet and all required address-bar presentation captures are ready. Do not submit until the three owner confirmation items are complete:
 
-1. Capture the five required files in `docs/compliance/evidence/2026-07-15-youtube-form/` using the included README.
-2. Confirm `hello@beaurocks.app` as the audit/legal contact.
-3. Confirm the final legal operator name and `BeauRocks Karaoke` product naming used on Terms, Privacy, and deletion pages.
-4. Approve the proposed staged public-launch request of `5,000 Search Queries/day` with a `120/minute` peak.
+1. Confirm `hello@beaurocks.app` as the audit/legal contact.
+2. Confirm the final legal operator name and `BeauRocks Karaoke` product naming used on Terms, Privacy, and deletion pages.
+3. Approve the proposed staged public-launch request of `5,000 Search Queries/day` with a `120/minute` peak.
 
 Recommendation: approve `5,000 Search Queries/day` and `120/minute`. The documented high-engagement envelope is `750` live searches across a five-hour, 150-person event. The request supports five high-engagement event-equivalents (`3,750` calls) plus `1,250` calls of reserve, or approximately 13 medium-engagement events with contingency. It is large enough for a controlled public launch without making an unsupported mass-scale forecast; measured production adoption should drive the next increase. Indexed, canonical, cached, direct-URL, and content-agnostic paths continue to reduce live-search demand.
 
@@ -47,6 +46,7 @@ The strict command exits `2` while a human-owned item remains. It never stores c
 ## Submission Files
 
 - Field-by-field form guide: `docs/compliance/YOUTUBE_QUOTA_FORM_FIELD_GUIDE_2026-07-15.md`
+- Owner action guide: `docs/compliance/YOUTUBE_QUOTA_OWNER_ACTION_GUIDE_2026-07-19.md`
 - Email templates: `docs/compliance/YOUTUBE_QUOTA_EMAIL_TEMPLATES_2026-07-15.md`
 - Current-form screenshot folder: `docs/compliance/evidence/2026-07-15-youtube-form/`
 - Reviewer narrative: `docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md`

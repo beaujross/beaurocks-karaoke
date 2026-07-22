@@ -21,7 +21,11 @@ const routeForListing = (listingType = "", listingId = "") => {
 const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const uid = session?.uid || "";
-  const isOwner = !!listing && !!uid && (uid === listing.ownerUid || uid === listing.hostUid);
+  const isOwner = !!listing && !!uid && (
+    listing.canManage === true
+    || uid === listing.ownerUid
+    || uid === listing.hostUid
+  );
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [form, setForm] = useState({

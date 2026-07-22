@@ -1,6 +1,6 @@
 # YouTube Data Lifecycle
 
-Last updated: 2026-07-06
+Last updated: 2026-07-19
 
 ## Scope
 
@@ -13,11 +13,13 @@ This document describes how BeauRocks Karaoke uses and stores YouTube API data f
 - Inspect playlist items when a host indexes a YouTube playlist
 - Refresh previously indexed room-level YouTube entries by known `videoId`
 - Reuse verified canonical backing candidates before spending live search quota
+- Near the end of the Pacific quota day, use a bounded portion of otherwise-unused `search.list` calls to find verified candidates for recently requested or performed canonical songs that do not have a fresh YouTube backing
 
 ## API Methods In Use
 
 - `search.list`
   - used for live YouTube search
+  - used by the demand-driven nightly catalog worker, only below a reserved live-event ceiling
   - scarce live-search bucket
 - `videos.list`
   - used for status/playability checks
@@ -68,6 +70,7 @@ Stored fields may include:
 - thumbnail URL
 - embeddability/playability metadata
 - source-discovery provenance such as `host_feedback`, `host_search`, `host_paste`, `playlist_index`, or `idle_refresh`
+- verification and expiration timestamps; new YouTube candidates receive a 29-day lease and are deleted by daily maintenance before the 30-day boundary unless refreshed
 - aggregate feedback telemetry such as host up/down votes and completion/skip counts
 
 Storage location:
@@ -82,6 +85,21 @@ Purpose:
 - rank known good backing tracks for a canonical song
 - reduce repeated `search.list` calls
 - let normal host actions improve future suggestions without adding host controls
+- build a bounded first-party-demand backup index without downloading or storing YouTube audiovisual content
+
+### Nightly demand-driven enrichment
+
+At `23:35` Pacific, `nightlyYouTubeCatalogEnrichment` may search for canonical songs surfaced by first-party performance and recent catalog activity. It:
+
+- skips the run when a room has been active recently or shared quota status is blocked
+- reads the project-wide daily method ledger before searching
+- reserves at least 20 calls or 25% of the configured daily Search Queries allocation for live use
+- uses at most 25 calls under the current 100-call allocation and at most 100 calls under larger allocations unless configured lower
+- searches only songs without a fresh verified YouTube candidate
+- requires a strong title/artist match, explicit karaoke/backing intent, and a playable embeddable `videos.list` result
+- stores only IDs, metadata, canonical associations, provenance, and a 29-day verification lease
+- deletes expired canonical YouTube candidate documents during daily maintenance
+- never downloads, caches, or stores YouTube audio or video
 
 ### Room-level YouTube index (`ytIndex`)
 

@@ -218,6 +218,20 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
   const venueAverageRating = Math.max(0, Number(entry?.venueAverageRating || 0) || 0);
   const venueReviewCount = Math.max(0, Number(entry?.venueReviewCount || 0) || 0);
   const venueCheckinCount = Math.max(0, Number(entry?.venueCheckinCount || 0) || 0);
+  const vibeSource = entry?.publicVibeIndex && typeof entry.publicVibeIndex === "object"
+    ? entry.publicVibeIndex
+    : null;
+  const publicVibeIndex = vibeSource
+    ? {
+      scoreVersion: String(vibeSource.scoreVersion || "vibe_v1").trim(),
+      status: String(vibeSource.status || "not_enough_data").trim().toLowerCase(),
+      score: Number.isFinite(Number(vibeSource.score)) ? Math.max(0, Math.min(100, Math.round(Number(vibeSource.score)))) : null,
+      label: String(vibeSource.label || "building").trim().toLowerCase(),
+      confidence: String(vibeSource.confidence || "low").trim().toLowerCase(),
+      activityBand: String(vibeSource.activityBand || "not_enough_data").trim().toLowerCase(),
+      upcomingPublicEvents30d: Math.max(0, Number(vibeSource.upcomingPublicEvents30d || 0) || 0),
+    }
+    : null;
   const beauRocksHostTier = String(entry?.beauRocksHostTier || "").trim().toLowerCase();
   const beauRocksElevatedReasons = Array.isArray(entry?.beauRocksElevatedReasons)
     ? entry.beauRocksElevatedReasons.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
@@ -330,6 +344,7 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
     venueAverageRating,
     venueReviewCount,
     venueCheckinCount,
+    publicVibeIndex,
     locationSource: String(options?.locationSource || "").trim() || (location ? "entry" : "missing"),
     experience,
   };

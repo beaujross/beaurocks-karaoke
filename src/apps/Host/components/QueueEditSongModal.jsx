@@ -8,12 +8,10 @@ const QueueEditSongModal = ({
     setEditForm,
     openYtSearch,
     syncEditDuration,
-    generateLyrics,
     onRetryLyrics,
     onFetchTimedLyrics,
     onCancel,
-    onSave,
-    emoji
+    onSave
 }) => {
     if (!open) return null;
 
@@ -120,12 +118,6 @@ const QueueEditSongModal = ({
 
                             <div className="flex flex-wrap gap-2">
                                 <button
-                                    onClick={generateLyrics}
-                                    className={`${styles.btnStd} ${styles.btnInfo} px-3 text-sm`}
-                                >
-                                    {emoji.robot} Auto-generate
-                                </button>
-                                <button
                                     onClick={() => onRetryLyrics?.(song)}
                                     className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-sm`}
                                     title="Retry full lyrics resolution"
@@ -149,7 +141,7 @@ const QueueEditSongModal = ({
                                         : hasLyrics
                                             ? 'Static lyrics are saved. Auto scroll uses the duration below.'
                                             : lyricsStatus === 'pending'
-                                                ? 'BeauRocks is still checking cache, Apple, and AI fallback.'
+                                                ? 'BeauRocks is still checking approved cached and timed sources.'
                                                 : 'No lyrics are currently attached to this queue item.'}
                                 </div>
                                 {!!lyricsResolution && (

@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from 'react';
 import {
     db,
     addDoc,
@@ -228,6 +229,7 @@ const fetchYouTubeEmbeddableStatusMap = async (
 const useQueueSongActions = ({
     roomCode,
     room,
+    songs = [],
     hostName,
     manual,
     setManual,
@@ -239,12 +241,13 @@ const useQueueSongActions = ({
     setEditForm,
     isAudioUrl,
     resolveDurationForUrl,
-    generateAIContent,
     getAppleMusicUserToken,
     onPersistTrustedCatalogChoice,
     onUpsertYtIndexEntries,
     toast
 }) => {
+    const appleLyricsResolutionAttemptsRef = useRef(new Set());
+    const resolveQueuedSongLyricsRef = useRef(null);
     const resolvePreferredDuration = async (url, fallbackDuration, audioOnly = false) => {
         const resolvedDuration = await resolveDurationForUrl(url, audioOnly).catch(() => null);
         if (Number.isFinite(Number(resolvedDuration)) && Number(resolvedDuration) > 0) {
@@ -257,7 +260,7 @@ const useQueueSongActions = ({
         return 180;
     };
 
-    const buildLyricsToastFromResult = (result = {}, timedOnly = false) => {
+    const buildLyricsToastFromResult = useCallback((result = {}, timedOnly = false) => {
         const status = String(result?.status || '').trim().toLowerCase();
         const resolution = String(result?.resolution || '').trim().toLowerCase();
         const hasTimedLyrics = !!result?.hasTimedLyrics;
@@ -279,9 +282,9 @@ const useQueueSongActions = ({
         if (status === 'error') return 'Lyrics lookup hit a provider error.';
         if (timedOnly) return 'No timed lyrics found yet.';
         return 'No lyrics match found yet.';
-    };
+    }, []);
 
-    const resolveQueuedSongLyrics = async ({
+    const resolveQueuedSongLyrics = useCallback(async ({
         songDocId,
         timedOnly = false,
         force = true
@@ -327,7 +330,39 @@ const useQueueSongActions = ({
                 callableError: true
             };
         }
-    };
+    }, [buildLyricsToastFromResult, getAppleMusicUserToken, roomCode]);
+    useEffect(() => {
+        resolveQueuedSongLyricsRef.current = resolveQueuedSongLyrics;
+    }, [resolveQueuedSongLyrics]);
+
+    useEffect(() => {
+        if (!roomCode || room?.autoLyricsOnQueue !== true) return;
+        const musicUserToken = String(getAppleMusicUserToken?.() || '').trim();
+        if (!musicUserToken) return;
+        const candidate = (Array.isArray(songs) ? songs : []).find((song) => {
+            if (!song?.id || !String(song?.appleMusicId || '').trim()) return false;
+            if (String(song?.lyrics || '').trim()) return false;
+            if (Array.isArray(song?.lyricsTimed) && song.lyricsTimed.length > 0) return false;
+            const status = String(song?.lyricsGenerationStatus || 'pending').trim().toLowerCase();
+            if (!['pending', 'needs_user_token', 'no_match', 'error'].includes(status)) return false;
+            const attemptKey = `${song.id}:${status}:${musicUserToken.slice(-8)}`;
+            return !appleLyricsResolutionAttemptsRef.current.has(attemptKey);
+        });
+        if (!candidate) return;
+
+        const status = String(candidate?.lyricsGenerationStatus || 'pending').trim().toLowerCase();
+        const attemptKey = `${candidate.id}:${status}:${musicUserToken.slice(-8)}`;
+        appleLyricsResolutionAttemptsRef.current.add(attemptKey);
+        void resolveQueuedSongLyricsRef.current?.({
+            songDocId: candidate.id,
+            timedOnly: false,
+            force: true
+        }).then((result) => {
+            if (result?.status === 'error' && result?.callableError) {
+                appleLyricsResolutionAttemptsRef.current.delete(attemptKey);
+            }
+        });
+    }, [getAppleMusicUserToken, room?.autoLyricsOnQueue, roomCode, songs]);
 
     const addSong = async () => {
         const playlistId = parseYouTubePlaylistId(manual.url || '');
@@ -623,6 +658,17 @@ const useQueueSongActions = ({
                     console.warn('Failed to persist manual queue song metadata', error);
                 }
 
+                if (shouldAttemptLyricsEnrichment && resolvedAppleMusicId) {
+                    const lyricsResult = await resolveQueuedSongLyrics({
+                        songDocId: docRef.id,
+                        timedOnly: false,
+                        force: true
+                    });
+                    if (lyricsResult?.status === 'error') {
+                        console.warn('Apple queue lyrics enrichment failed', lyricsResult);
+                    }
+                }
+
             })();
 
             setManual({
@@ -802,6 +848,17 @@ const useQueueSongActions = ({
 
                 } catch (err) {
                     console.warn('Failed to apply queued song enrichment', err);
+                }
+
+                if (room?.autoLyricsOnQueue && nextSong.appleMusicId) {
+                    const lyricsResult = await resolveQueuedSongLyrics({
+                        songDocId: docRef.id,
+                        timedOnly: false,
+                        force: true
+                    });
+                    if (lyricsResult?.status === 'error') {
+                        console.warn('Apple queue lyrics enrichment failed', lyricsResult);
+                    }
                 }
             })();
 
@@ -1072,18 +1129,6 @@ const useQueueSongActions = ({
         toast(successToast || (wasReviewRequired ? 'Backing attached and request resolved.' : 'Song Updated'));
     };
 
-    const generateLyrics = async () => {
-        if (!editForm.title || !editForm.artist) return toast('Needs Title & Artist');
-        toast('Generating Lyrics...');
-        const res = await generateAIContent('lyrics', { title: editForm.title, artist: editForm.artist });
-        if (res && res.lyrics) {
-            setEditForm(prev => ({ ...prev, lyrics: res.lyrics }));
-            toast('Lyrics Generated!');
-        } else {
-            toast('Gen Failed');
-        }
-    };
-
     const syncEditDuration = async () => {
         if (!editForm.url) {
             toast('Add a media URL first');
@@ -1133,7 +1178,6 @@ const useQueueSongActions = ({
         addSongFromResult,
         startEdit,
         saveEdit,
-        generateLyrics,
         syncEditDuration,
         addBonusToCurrent,
         retryLyricsForSong,

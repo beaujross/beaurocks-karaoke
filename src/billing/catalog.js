@@ -1,3 +1,5 @@
+import commercialContract from "../../functions/lib/hostCommercialContract.json";
+
 export const POINTS_PACKS = [
   {
     id: "points_1200",
@@ -19,20 +21,19 @@ export const POINTS_PACKS = [
   },
 ];
 
-export const SUBSCRIPTIONS = [
-  {
-    id: "vip_monthly",
-    label: "VIP Monthly",
-    interval: "month",
-  },
-  {
-    id: "host_monthly",
-    label: "Host Monthly",
-    interval: "month",
-  },
-  {
-    id: "host_annual",
-    label: "Host Annual",
-    interval: "year",
-  },
-];
+const buildSubscriptionCatalog = (planIds = []) => planIds.map((planId) => {
+  const plan = commercialContract.plans?.[planId] || {};
+  return {
+    id: plan.id || planId,
+    label: plan.publicLabel || plan.name || planId,
+    interval: plan.interval || null,
+  };
+});
+
+export const SUBSCRIPTIONS = buildSubscriptionCatalog(
+  commercialContract.publicOfferPlanIds,
+);
+
+export const LEGACY_SUBSCRIPTIONS = buildSubscriptionCatalog(
+  commercialContract.legacyCompatibilityPlanIds,
+);

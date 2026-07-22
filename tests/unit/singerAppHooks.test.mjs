@@ -30,6 +30,29 @@ test("SingerApp keeps React hooks above the render boundary", () => {
   );
 });
 
+test("SingerApp preserves joined membership across same-user listener refreshes", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+  const listenerStart = source.indexOf("// Listeners");
+  const listenerEnd = source.indexOf("useEffect(() => {\n        if (uid && uid !== authReadyUid)", listenerStart);
+  const listenerSource = source.slice(listenerStart, listenerEnd);
+  const connectingGateIndex = source.indexOf('data-singer-view="membership-connecting"');
+  const joinGateIndex = source.indexOf("if (!user && !isMarketingDemoFixture) return joinScreen;");
+
+  assert.match(source, /const roomUserSubscriptionKeyRef = useRef\(''\);/);
+  assert.match(
+    listenerSource,
+    /const roomUserIdentityChanged = roomUserSubscriptionKeyRef\.current !== nextRoomUserSubscriptionKey;[\s\S]*if \(roomUserIdentityChanged\) \{\s*setUser\(null\);\s*setRoomUserMembershipResolved\(false\);\s*\}/,
+    "SingerApp should only clear room membership when the room/user identity actually changes",
+  );
+  assert.doesNotMatch(
+    listenerSource,
+    /if \(isAudienceFixtureMode\) return \(\) => \{\};\s*setUser\(null\);/,
+    "Routine listener refreshes must not send a joined audience member back to the emoji picker",
+  );
+  assert.ok(connectingGateIndex > 0 && connectingGateIndex < joinGateIndex);
+  assert.match(source, /Restoring your room/);
+});
+
 test("SingerApp declares ready-check auto-party copy before the ready-check render branch", () => {
   const source = readFileSync(singerAppPath, "utf8");
   const readyCheckBranch = "if (room?.readyCheck?.active) {";
@@ -427,9 +450,11 @@ test("SingerApp gives streamlined join and first-song flows clearer onboarding c
   );
   assert.match(
     source,
-    /const openAudienceInlineSongSearch = \(\) => \{\s*pulseNativeUiFeedback\(\);\s*if \(audienceSongLimitState\.hardBlocked\) return;\s*setTab\('request'\);\s*setSongsTab\('browse'\);\s*setCatalogSearchMode\(preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(false\);\s*\};/,
+    /const openAudienceInlineSongSearch = \(\) => \{\s*pulseNativeUiFeedback\(\);\s*if \(audienceSongLimitState\.hardBlocked\) return;\s*setTab\('request'\);\s*setSongsTab\('browse'\);\s*setCatalogSearchMode\(\(current\) => \['catalog', 'youtube'\]\.includes\(current\) \? current : preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(false\);\s*\};/,
     "SingerApp streamlined browse should use the persistent top search instead of a duplicate first-song callout",
   );
+  assert.match(source, /data-feature-id="audience-request-source-switcher"/);
+  assert.match(source, /openAudienceManualRequestFromSearch[\s\S]*Ask host/);
   assert.doesNotMatch(
     source,
     /1 Search|2 Queue It|3 Back to Party|Watch Queue/,

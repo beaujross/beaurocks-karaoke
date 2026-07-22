@@ -2,6 +2,8 @@ const assert = require("node:assert/strict");
 const {
   BASE_CAPABILITIES,
   buildCapabilitiesForPlan,
+  canCreateRoomForSubscription,
+  isPublicHostPlan,
   resolveUsageMeterQuota,
   buildUsageMeterSummary,
 } = require("../../functions/lib/entitlementsUsage");
@@ -12,10 +14,26 @@ test("entitlementsUsage.test", () => {
 
   const activeHost = buildCapabilitiesForPlan("host_monthly", "active");
   assert.equal(activeHost["ai.generate_content"], true);
+  assert.equal(activeHost["rooms.create"], true);
   assert.equal(activeHost["api.youtube_data"], true);
   assert.equal(activeHost["api.apple_music"], true);
   assert.equal(activeHost["billing.invoice_drafts"], true);
   assert.equal(activeHost["workspace.onboarding"], true);
+
+  assert.equal(buildCapabilitiesForPlan("host_monthly", "trialing")["rooms.create"], false);
+  assert.equal(buildCapabilitiesForPlan("host_monthly", "past_due")["rooms.create"], false);
+  assert.equal(buildCapabilitiesForPlan("host_monthly", "canceled")["rooms.create"], false);
+  assert.equal(buildCapabilitiesForPlan("host_monthly", "inactive")["rooms.create"], false);
+  assert.equal(
+    buildCapabilitiesForPlan("host_monthly", "active", { cancelAtPeriodEnd: true })["rooms.create"],
+    true,
+  );
+  assert.equal(canCreateRoomForSubscription({ planId: "host_annual", status: "active" }), true);
+  assert.equal(canCreateRoomForSubscription({ planId: "host_annual", status: "trialing" }), false);
+  assert.equal(canCreateRoomForSubscription({ planId: "host_annual", status: "past_due" }), false);
+  assert.equal(isPublicHostPlan("host_monthly"), true);
+  assert.equal(isPublicHostPlan("host_annual"), true);
+  assert.equal(isPublicHostPlan("vip_monthly"), false);
 
   const aiQuota = resolveUsageMeterQuota({
     meterId: "ai_generate_content",
