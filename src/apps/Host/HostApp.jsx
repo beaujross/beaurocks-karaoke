@@ -104,6 +104,8 @@ import {
     getAiGenerationTelemetrySnapshot,
     subscribeToAiGenerationTelemetry
 } from '../../lib/aiGenerationClient';
+import { createUsageContext } from '../../lib/usageOperationId';
+import { getUsageDegradationMessageForError } from '../../lib/usageDegradation';
 import { useToast } from '../../context/ToastContext';
 import { SOUNDS } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
@@ -1487,7 +1489,10 @@ const generateAIContent = async (type, context) => {
     } catch (e) {
         hostLogger.error('AI Error', e);
         const code = String(e?.code || e?.message || '').toLowerCase();
-        if (code.includes('permission-denied')) {
+        const degradationMessage = getUsageDegradationMessageForError(e, { capabilityId: 'ai_generation', surface: 'host' });
+        if (degradationMessage) {
+            alert(degradationMessage);
+        } else if (code.includes('permission-denied')) {
             alert("AI tools require an active Host subscription.");
         } else {
             alert("AI generation is unavailable right now. Check function secrets and deployment.");
@@ -2327,7 +2332,7 @@ const fetchYouTubeEmbeddableStatusMap = async (
                 const statusData = await callFunction('youtubeStatus', {
                     ids: chunkIds,
                     roomCode,
-                    usageContext: { source: 'host_playlist_status_refresh' }
+                    usageContext: createUsageContext({ prefix: 'youtube-status', source: 'host_playlist_status_refresh', surface: 'host' })
                 });
                 (statusData?.items || []).forEach((entry) => {
                     statusMap.set(entry.id, normalizeYouTubePlaybackState(entry));
@@ -4990,7 +4995,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 const data = await callFunction('youtubeDetails', {
                     ids: [youtubeId],
                     roomCode,
-                    usageContext: { source: 'host_stage_duration_lookup' }
+                    usageContext: createUsageContext({ prefix: 'youtube-details', source: 'host_stage_duration_lookup', surface: 'host' })
                 });
                 return data?.items?.[0]?.durationSec || null;
             } catch {
@@ -14327,7 +14332,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const data = await callFunction('youtubeRefreshIndexEntries', {
             ids: refreshIds,
             roomCode,
-            usageContext: { source: 'host_room_youtube_index_refresh' }
+            usageContext: createUsageContext({ prefix: 'youtube-refresh', source: 'host_room_youtube_index_refresh', surface: 'host' })
         });
         const refreshedItems = Array.isArray(data?.items) ? data.items : [];
         const refreshedAtMs = nowMs();
@@ -14819,7 +14824,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             playlistId,
             maxTotal: YOUTUBE_PLAYLIST_MAX_TOTAL,
             roomCode,
-            usageContext: { source: 'host_youtube_playlist_index' }
+            usageContext: createUsageContext({ prefix: 'youtube-playlist', source: 'host_youtube_playlist_index', surface: 'host' })
         });
         const items = normalizeYouTubePlaylistItems(data?.items || []);
         const playableMap = await fetchYouTubeEmbeddableStatusMap(items.map((item) => item.id), {

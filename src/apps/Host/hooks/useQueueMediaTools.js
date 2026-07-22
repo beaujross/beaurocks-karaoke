@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
 import { callFunction } from '../../../lib/firebase';
+import { createUsageContext } from '../../../lib/usageOperationId';
+import { getUsageDegradationMessageForError } from '../../../lib/usageDegradation';
 import {
     isYouTubeQuotaBlockedError,
     searchYouTubeCatalog
@@ -66,7 +68,7 @@ const useQueueMediaTools = ({
             const data = await callFunction('youtubeDetails', {
                 ids: [id],
                 roomCode,
-                usageContext: { source: 'host_queue_media_duration_lookup' }
+                usageContext: createUsageContext({ prefix: 'youtube-details', source: 'host_queue_media_duration_lookup', surface: 'host' })
             });
             return data?.items?.[0]?.durationSec || null;
         } catch {
@@ -88,7 +90,7 @@ const useQueueMediaTools = ({
             const data = await callFunction('youtubeStatus', {
                 ids,
                 roomCode,
-                usageContext: { source: 'host_queue_media_embed_status' }
+                usageContext: createUsageContext({ prefix: 'youtube-status', source: 'host_queue_media_embed_status', surface: 'host' })
             });
             const statusMap = new Map();
             (data?.items || []).forEach(item => {
@@ -165,7 +167,7 @@ const useQueueMediaTools = ({
                 ? await callFunction('youtubeDetails', {
                     ids: [directVideoId],
                     roomCode,
-                    usageContext: { source: 'host_queue_media_url_lookup', surface: 'host' }
+                    usageContext: createUsageContext({ prefix: 'youtube-details', source: 'host_queue_media_url_lookup', surface: 'host' })
                 })
                 : await searchYouTubeCatalog({
                     query: searchQuery,
@@ -246,6 +248,7 @@ const useQueueMediaTools = ({
             const fallbackResults = searchYouTubeIndex(query);
             const code = String(e?.code || '').toLowerCase();
             const message = String(e?.message || '').trim();
+            const degradationMessage = getUsageDegradationMessageForError(e, { capabilityId: 'youtube_metadata_lookup', surface: 'host' });
             if (fallbackResults.length) {
                 setYtResults(fallbackResults);
                 setEmbedCache(prev => {
@@ -256,10 +259,12 @@ const useQueueMediaTools = ({
                     return next;
                 });
                 setYtSearchError(
-                    isYouTubeQuotaBlockedError(e)
+                    degradationMessage || (isYouTubeQuotaBlockedError(e)
                         ? 'Live YouTube search is paused because the YouTube quota is exhausted. Showing indexed embeddable results.'
-                        : 'Live YouTube search failed. Showing indexed embeddable results.'
+                        : 'Live YouTube search failed. Showing indexed embeddable results.')
                 );
+            } else if (degradationMessage) {
+                setYtSearchError(degradationMessage);
             } else if (isYouTubeQuotaBlockedError(e)) {
                 setYtSearchError('Live YouTube search is temporarily paused because the YouTube quota is exhausted. Use indexed tracks or paste a direct URL.');
             } else if (code.includes('permission-denied')) {

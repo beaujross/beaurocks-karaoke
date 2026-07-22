@@ -1,4 +1,5 @@
 import { callFunction } from './firebase';
+import { createUsageContext } from './usageOperationId';
 
 const AI_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
 const aiTelemetrySubscribers = new Set();
@@ -83,9 +84,14 @@ export const generateAiContentRequest = async ({
 } = {}) => {
     const safeType = String(type || '').trim();
     if (!safeType) return null;
+    const usageContext = createUsageContext({
+        prefix: `ai-${safeType}`,
+        source: usageSource || `host_${safeType}`,
+        surface: 'host',
+    });
     const payload = roomCode
-        ? { type: safeType, context, roomCode, usageContext: { source: usageSource || `host_${safeType}` } }
-        : { type: safeType, context, usageContext: { source: usageSource || `host_${safeType}` } };
+        ? { type: safeType, context, roomCode, usageContext }
+        : { type: safeType, context, usageContext };
     try {
         const data = await callFunction('geminiGenerate', payload);
         recordAiTelemetryEvent('success');

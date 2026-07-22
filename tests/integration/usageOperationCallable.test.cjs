@@ -1,9 +1,10 @@
 const assert = require("node:assert/strict");
 
 process.env.YOUTUBE_API_KEY = "integration-test-key";
+process.env.GEMINI_API_KEY = "integration-test-gemini-key";
 
 const admin = require("../../functions/node_modules/firebase-admin");
-const { manageMyUsageControls, youtubeSearch } = require("../../functions/index.js");
+const { geminiGenerate, manageMyUsageControls, youtubeSearch } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const APP_ID = "bross-app";
@@ -60,7 +61,7 @@ const setup = async () => {
     orgId: ORG_ID,
     planId: "host_monthly",
     status: "active",
-    capabilities: { "api.youtube_data": true },
+    capabilities: { "api.youtube_data": true, "ai.generate_content": true },
   });
   await db.doc(`${ROOT}/rooms/${ROOM_CODE}`).set({
     roomCode: ROOM_CODE,
@@ -73,9 +74,18 @@ const setup = async () => {
 const run = async () => {
   await setup();
   const originalFetch = global.fetch;
-  let providerCalls = 0;
+  let youtubeProviderCalls = 0;
+  let aiProviderCalls = 0;
   global.fetch = async (url) => {
-    providerCalls += 1;
+    if (String(url || "").includes("generativelanguage.googleapis.com")) {
+      aiProviderCalls += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: '["Sing like nobody is recording"]' }] } }] }),
+      };
+    }
+    youtubeProviderCalls += 1;
     if (String(url || "").includes("/youtube/v3/search")) {
       return {
         ok: true,
@@ -114,7 +124,7 @@ const run = async () => {
       usageContext,
     }));
     assert.equal(first.items.length, 1);
-    assert.equal(providerCalls, 2);
+    assert.equal(youtubeProviderCalls, 2);
 
     const period = new Date().toISOString().slice(0, 7).replace("-", "");
     const usageSnap = await db.doc(`organizations/${ORG_ID}/usage/${period}`).get();
@@ -139,7 +149,7 @@ const run = async () => {
       roomCode: ROOM_CODE,
       usageContext,
     })), "aborted");
-    assert.equal(providerCalls, 2, "an idempotent replay must not call the provider again");
+    assert.equal(youtubeProviderCalls, 2, "an idempotent replay must not call the provider again");
     const afterReplay = await db.doc(`organizations/${ORG_ID}/usage/${period}`).get();
     assert.equal(afterReplay.get("meters.youtube_data_request.settled"), 2);
 
@@ -162,7 +172,7 @@ const run = async () => {
     assert.equal(roomLimitError?.details?.scope, "room");
     assert.equal(roomLimitError?.details?.roomHardLimit, 2);
     assert.equal(roomLimitError?.details?.protectedRoomCapabilitiesAvailable, true);
-    assert.equal(providerCalls, 2, "a Room limit must stop work before the provider call");
+    assert.equal(youtubeProviderCalls, 2, "a Room limit must stop work before the provider call");
 
     await manageMyUsageControls.run(requestFor({
       action: "clear_room_meter",
@@ -185,7 +195,7 @@ const run = async () => {
     })), "resource-exhausted");
     assert.equal(workspaceLimitError?.details?.reasonCode, "usage_workspace_hard_limit_reached");
     assert.equal(workspaceLimitError?.details?.scope, "workspace");
-    assert.equal(providerCalls, 2, "a Workspace limit must stop work before the provider call");
+    assert.equal(youtubeProviderCalls, 2, "a Workspace limit must stop work before the provider call");
 
     await manageMyUsageControls.run(requestFor({
       action: "set_workspace_meter",
@@ -207,9 +217,56 @@ const run = async () => {
     })), "unavailable");
     assert.equal(circuitError?.details?.reasonCode, "usage_platform_circuit_open");
     assert.equal(circuitError?.details?.scope, "platform");
-    assert.equal(providerCalls, 2, "an open platform circuit must stop work before the provider call");
+    assert.equal(youtubeProviderCalls, 2, "an open platform circuit must stop work before the provider call");
 
-    console.log("PASS usage operations enforce replay protection, Room budgets, and platform circuits");
+    await db.doc("platform_controls/usage").set({ state: "enabled" }, { merge: true });
+    const aiOperationId = "ai-generation:integration:one";
+    const aiResult = await geminiGenerate.run(requestFor({
+      type: "selfie_prompt",
+      context: {},
+      roomCode: ROOM_CODE,
+      usageContext: { source: "host_ai_test", surface: "host", operationId: aiOperationId },
+    }));
+    assert.deepEqual(aiResult.result, ["Sing like nobody is recording"]);
+    assert.equal(aiProviderCalls, 1);
+    const aiOperationSnap = await db.doc(
+      `organizations/${ORG_ID}/usage_operations/${period}:${aiOperationId}:generate_content`
+    ).get();
+    assert.equal(aiOperationSnap.get("state"), "settled");
+    assert.equal(aiOperationSnap.get("capabilityId"), "ai_generation");
+
+    await expectHttpsError(() => geminiGenerate.run(requestFor({
+      type: "selfie_prompt",
+      context: {},
+      roomCode: ROOM_CODE,
+      usageContext: { source: "host_ai_test", surface: "host", operationId: aiOperationId },
+    })), "aborted");
+    assert.equal(aiProviderCalls, 1, "an AI operation replay must not call Gemini again");
+
+    await db.doc(`organizations/${ORG_ID}/entitlements/current`).set({
+      orgId: ORG_ID,
+      planId: "host_monthly",
+      status: "active",
+      capabilities: { "api.youtube_data": true },
+    });
+    await db.doc(`${ROOT}/rooms/${ROOM_CODE}`).set({
+      missionControl: { aiDemoBypass: true, aiDemoBypassUntil: Date.now() + 60000 },
+    }, { merge: true });
+    await manageMyUsageControls.run(requestFor({
+      action: "set_workspace_meter",
+      meterId: "ai_generate_content",
+      hardLimit: 1,
+    }));
+    const demoLimitError = await expectHttpsError(() => geminiGenerate.run(requestFor({
+      type: "selfie_prompt",
+      context: {},
+      roomCode: ROOM_CODE,
+      usageContext: { source: "host_ai_demo_test", surface: "host", operationId: "ai-generation:integration:demo-limit" },
+    })), "resource-exhausted");
+    assert.equal(demoLimitError?.details?.reasonCode, "usage_workspace_hard_limit_reached");
+    assert.equal(aiProviderCalls, 1, "AI demo access must not bypass the Workspace hard limit");
+
+    console.log("PASS usage operations enforce replay protection, Room budgets, platform circuits, AI settlement, and bounded demo access");
   } finally {
     global.fetch = originalFetch;
   }

@@ -46,6 +46,8 @@ import {
     searchYouTubeCatalog
 } from '../../lib/youtubeSearchClient';
 import { searchAppleCatalog } from '../../lib/appleSearchClient';
+import { createUsageContext } from '../../lib/usageOperationId';
+import { getUsageDegradationMessageForError } from '../../lib/usageDegradation';
 import { emoji, EMOJI, getReactionEmoji } from '../../lib/emoji';
 import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
 import { buildSingerHowToPlay } from '../../lib/howToPlay';
@@ -5965,7 +5967,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             ? error?.quotaKind === 'daily'
                                 ? 'The shared YouTube daily search allowance has been reached. Try the song matches below or ask the host to paste a direct URL.'
                                 : 'Live YouTube search is temporarily unavailable. Try the song matches below or ask the host to paste a direct URL.'
-                            : 'Could not load YouTube results right now.'
+                            : getUsageDegradationMessageForError(error, { capabilityId: 'youtube_live_search', surface: 'audience' })
+                                || 'Could not load YouTube results right now.'
                 );
             } finally {
                 if (!cancelled) {
@@ -7864,7 +7867,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     const details = await callFunction('youtubeDetails', {
                         ids: [pastedYoutubeId],
                         roomCode,
-                        usageContext: { source: 'audience_request_youtube_url_details', surface: 'audience' }
+                        usageContext: createUsageContext({ prefix: 'youtube-details', source: 'audience_request_youtube_url_details', surface: 'audience' })
                     });
                     const detailItem = details?.items?.[0] || null;
                     const playbackState = normalizeYouTubePlaybackState(detailItem || { id: pastedYoutubeId });
@@ -7880,7 +7883,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     playbackReady = true;
                 } catch (youtubeUrlError) {
                     console.warn('Singer YouTube URL validation failed', youtubeUrlError);
-                    toast('Could not check that YouTube link. Try search or another link.');
+                    toast(getUsageDegradationMessageForError(youtubeUrlError, { capabilityId: 'youtube_metadata_lookup', surface: 'audience' })
+                        || 'Could not check that YouTube link. Try search or another link.');
                     return;
                 }
             }

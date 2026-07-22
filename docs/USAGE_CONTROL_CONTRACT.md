@@ -1,7 +1,7 @@
 # Usage Control Contract
 
 Last updated: 2026-07-22
-Status: Slice 05.3 controlled production boundary; internal guardrail, not public pricing
+Status: Slice 05.4 controlled production boundary; internal guardrail, not public pricing
 
 ## Decision
 
@@ -50,6 +50,21 @@ Live YouTube search now reads its controls inside the same Firestore transaction
 
 Stable denial reason codes are `usage_platform_circuit_open`, `usage_capability_circuit_open`, `usage_workspace_unavailable`, `usage_workspace_hard_limit_reached`, and `usage_room_hard_limit_reached`. Every denial confirms that protected Room capabilities remain available.
 
+### Slice 05.4 provider coverage and graceful degradation
+
+All identified YouTube Data API, Apple Music API, and Gemini attempts now use the same operation lifecycle. Each callable receives a client operation ID when the current client controls the request; background lyrics and trivia work derives its identity from the trigger or lease. Multi-call flows use stable per-attempt suffixes. A reservation is created before provider work, released when a prerequisite fails before provider work, and settled after an attempted request even when the provider returns an error.
+
+Capability circuits are `youtube_live_search`, `youtube_metadata_lookup`, `apple_music_lookup`, and `ai_generation`. Workspace and Room meter ceilings continue to apply independently of those capability circuits.
+
+| Surface | When fresh provider work is paused | Protected recovery path |
+| --- | --- | --- |
+| Host Dashboard | Shows the stable budget/circuit explanation instead of a generic provider failure. | Continue with the song catalog, indexed tracks, cached lyrics/content, local media, and manual Host controls. |
+| Audience App | Keeps curated and indexed choices visible and explains that fresh lookup is paused. | Request from the available catalog/index; the queue and Room interactions continue. |
+| Public TV | Receives no new variable-cost provider dependency and therefore does not enter an error state when a provider circuit opens. | Continue current resolved playback, queue presentation, scoring, and Room visuals. Existing media playback fallback remains authoritative. |
+| Background enrichment | Treats a control denial as a provider miss, not a trigger failure. | Trivia uses its fallback question set; lyrics continue through cached/canonical/manual resolution and record a bounded status. |
+
+Recovery is automatic for new operation IDs after capacity is restored or a circuit is closed. Replaying an already-used operation ID stays rejected so recovery cannot double-consume provider capacity.
+
 ## Host warnings
 
 Money > Billing & Usage receives application-calculated capacity state at 50%, 80%, and 100% of the configured hard limit. Outstanding reservations are included in exposure so concurrent work cannot hide above the cap. Prices and included amounts remain marked `existing_unvalidated_do_not_publish` until Gate C1 evidence and owner approval are complete.
@@ -60,10 +75,9 @@ Variable-cost degradation must not disable queue management, Host override, exis
 
 ## Remaining Slice 05 work
 
-1. Migrate the remaining YouTube, Apple Music, and AI provider attempts to operation documents.
-2. Extend operation-level budgets and stable circuit reasons to the remaining migrated provider capabilities.
-3. Implement the tested degradation matrix and recovery guidance across Host Dashboard, Audience App, and Public TV.
-4. Keep `billable` and `invoiced` disabled until prepaid or vetted-credit policy is approved.
+1. Complete the owner production pass across fresh YouTube lookup, Apple/lyrics fallback, AI assist, Audience fallback, and uninterrupted Public TV playback.
+2. Keep `billable` and `invoiced` disabled until prepaid or vetted-credit policy is approved.
+3. Accept Gate C2 only after production evidence confirms denial-before-provider behavior and protected Room continuity.
 
 ## Controlled production state
 
@@ -74,5 +88,9 @@ Variable-cost degradation must not disable queue management, Host override, exis
 - `getMyUsageSummary` revision `getmyusagesummary-00136-jix` reports the effective Workspace ceiling.
 - `manageMyUsageControls` revision `managemyusagecontrols-00001-vok` is the owner/admin mutation boundary.
 - Hosting release `1784707991819000`, version `4f4d0d07cb82d1ce`, serves the Cost Guardrails UI in Money > Billing & Usage.
-- Other provider callables remain on their prior revisions and continue writing the legacy `used` count, which the summary reads as settled use until each boundary migrates.
+- Slice 05.4 YouTube revisions are `youtubeplaylist-00146-ner`, `youtubestatus-00147-nus`, `youtuberefreshindexentries-00044-cil`, and `youtubedetails-00146-lot`.
+- AI and Apple/lyrics revisions are `geminigenerate-00145-pal`, `applemusiclyrics-00150-les`, `resolvequeuesonglyrics-00108-tiv`, and `autoapplelyrics-00146-hav`.
+- Background trivia revisions are `autopoptrivia-00092-qes`, `backfillpoptriviaonroomenable-00092-vez`, and `recoverpendingpoptrivia-00092-zug`.
+- Usage-control revisions are `getmyusagesummary-00137-wuy` and `managemyusagecontrols-00002-xol`.
+- Hosting release `1784709581207000`, version `ede23a7706418e50`, serves the operation IDs and shared Host/Audience recovery guidance. Production asset smoke returned HTTP 200 and contained the stable Room-limit reason and recovery copy.
 - No public plan, price, payment behavior, postpaid eligibility, or billing claim changed in this sub-slice.

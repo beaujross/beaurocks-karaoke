@@ -14,3 +14,9 @@ export const createUsageOperationId = (prefix = 'usage') => {
     const safePrefix = sanitizeOperationToken(prefix) || 'usage';
     return `${safePrefix}:${Date.now().toString(36)}:${randomToken().slice(0, 32)}`;
 };
+
+export const createUsageContext = ({ prefix = 'usage', source = '', surface = '' } = {}) => ({
+    source: String(source || '').trim(),
+    operationId: createUsageOperationId(prefix),
+    ...(String(surface || '').trim() ? { surface: String(surface).trim() } : {}),
+});

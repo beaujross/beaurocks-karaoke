@@ -34,6 +34,8 @@ test('generateAiContentRequest tracks successful AI generations', async () => {
   assert.equal(telemetry.recentGenerations, 1);
   assert.equal(telemetry.successes, 1);
   assert.equal(telemetry.failures, 0);
+  assert.match(callFunction.mock.calls[0][1]?.usageContext?.operationId || '', /^ai-lyrics:/);
+  assert.equal(callFunction.mock.calls[0][1]?.usageContext?.surface, 'host');
 });
 
 test('generateAiContentRequest tracks AI failures', async () => {

@@ -14,6 +14,8 @@ import {
     resolveQueueSongLyrics as resolveQueueSongLyricsCallable
 } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
+import { createUsageContext } from '../../../lib/usageOperationId';
+import { getUsageDegradationMessageForError } from '../../../lib/usageDegradation';
 import { EMOJI } from '../../../lib/emoji';
 import {
     buildSongKey,
@@ -209,7 +211,7 @@ const fetchYouTubeEmbeddableStatusMap = async (
                 const statusData = await callFunction('youtubeStatus', {
                     ids: chunkIds,
                     roomCode,
-                    usageContext: { source: 'host_queue_playlist_status_refresh' }
+                    usageContext: createUsageContext({ prefix: 'youtube-status', source: 'host_queue_playlist_status_refresh', surface: 'host' })
                 });
                 (statusData?.items || []).forEach((entry) => {
                     statusMap.set(entry.id, {
@@ -298,7 +300,8 @@ const useQueueSongActions = ({
                 songId: songDocId,
                 timedOnly: !!timedOnly,
                 force: force !== false,
-                musicUserToken: getAppleMusicUserToken?.() || ''
+                musicUserToken: getAppleMusicUserToken?.() || '',
+                usageContext: createUsageContext({ prefix: 'lyrics-resolver', source: 'host_queue_lyrics_resolver', surface: 'host' })
             });
             return {
                 ...callableResult,
@@ -326,7 +329,8 @@ const useQueueSongActions = ({
             });
             return {
                 ...fallback,
-                toastMessage: buildLyricsToastFromResult(fallback, timedOnly),
+                toastMessage: getUsageDegradationMessageForError(error, { capabilityId: 'apple_music_lookup', surface: 'host' })
+                    || buildLyricsToastFromResult(fallback, timedOnly),
                 callableError: true
             };
         }
@@ -378,7 +382,7 @@ const useQueueSongActions = ({
                     playlistId,
                     maxTotal: YOUTUBE_PLAYLIST_QUEUE_MAX,
                     roomCode,
-                    usageContext: { source: 'host_queue_playlist_import' }
+                    usageContext: createUsageContext({ prefix: 'youtube-playlist', source: 'host_queue_playlist_import', surface: 'host' })
                 });
                 const playlistItems = normalizeYouTubePlaylistItems(data?.items || []);
                 const statusMap = await fetchYouTubeEmbeddableStatusMap(

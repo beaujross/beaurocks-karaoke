@@ -7470,152 +7470,6 @@ const lookupYelpVenue = async ({ name = "", locationText = "" }) => {
   };
 };
 
-const settleOrganizationUsageAttempt = async ({
-  orgId = "",
-  entitlements = null,
-  meterId = "",
-  units = 1,
-  source = "",
-  actorUid = "",
-  roomCode = "",
-  surface = "",
-}) => {
-  if (!orgId) {
-    throw new HttpsError("failed-precondition", "Organization is not initialized.");
-  }
-  const meter = USAGE_METER_DEFINITIONS[meterId];
-  if (!meter) {
-    throw new HttpsError("invalid-argument", `Unknown usage meter "${meterId}".`);
-  }
-  const safeUnits = Math.max(1, toWholeNumber(units, 1));
-  const periodKey = getUsagePeriodKey();
-  const quota = resolveUsageMeterQuota({
-    meterId,
-    planId: entitlements?.usagePlanId || entitlements?.planId || "free",
-    status: entitlements?.usageStatus || entitlements?.status || "inactive",
-  });
-  if (quota.hardLimit <= 0) {
-    throw new HttpsError("failed-precondition", `${meter.label} is not available for this workspace.`);
-  }
-  const usageRef = orgsCollection().doc(orgId).collection("usage").doc(periodKey);
-  const now = admin.firestore.FieldValue.serverTimestamp();
-  const db = admin.firestore();
-  const safeSource = sanitizeSecurityToken(source, 96);
-  const safeActorUid = normalizeUidToken(actorUid);
-  const safeRoomCode = normalizeRoomCode(roomCode || "");
-  const safeSurface = sanitizeSecurityToken(surface, 32);
-
-  const nextUsed = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(usageRef);
-    const data = normalizeUsageDocumentData(snap.data() || {});
-    const meterData = data?.meters?.[meterId] || {};
-    const currentUsed = toWholeNumber(meterData?.used, 0);
-    const currentSettled = toWholeNumber(meterData?.settled, currentUsed);
-    const currentReserved = toWholeNumber(meterData?.reserved, 0);
-    const plannedSettled = currentSettled + safeUnits;
-    const plannedExposure = plannedSettled + currentReserved;
-    if (quota.hardLimit > 0 && plannedExposure > quota.hardLimit) {
-      throw new HttpsError(
-        "resource-exhausted",
-        `${meter.label} monthly hard limit reached for this workspace.`
-      );
-    }
-    const meterPatch = {
-      used: plannedSettled,
-      reserved: currentReserved,
-      settled: plannedSettled,
-      released: toWholeNumber(meterData?.released, 0),
-      billable: toWholeNumber(meterData?.billable, 0),
-      invoiced: toWholeNumber(meterData?.invoiced, 0),
-      included: quota.included,
-      hardLimit: quota.hardLimit,
-      overageRateCents: quota.overageRateCents,
-      passThroughUnitCostCents: quota.passThroughUnitCostCents,
-      markupMultiplier: quota.markupMultiplier,
-      billableUnitRateCents: quota.billableUnitRateCents,
-      updatedAt: now,
-    };
-    const patch = {
-      orgId,
-      period: periodKey,
-      planIdSnapshot: entitlements?.planId || "free",
-      statusSnapshot: entitlements?.status || "inactive",
-      updatedAt: now,
-      meters: {
-        [meterId]: meterPatch,
-      },
-    };
-    if (safeSource) {
-      const currentSourceUsed = toWholeNumber(data?.meters?.[meterId]?.sources?.[safeSource]?.used, 0);
-      meterPatch.sources = {
-        ...(meterPatch.sources || {}),
-        [safeSource]: {
-          used: currentSourceUsed + safeUnits,
-          source: safeSource,
-          label: formatUsageDimensionLabel(safeSource, safeSource),
-          updatedAt: now,
-        },
-      };
-    }
-    if (safeActorUid) {
-      const currentActorUsed = toWholeNumber(data?.meters?.[meterId]?.actors?.[safeActorUid]?.used, 0);
-      meterPatch.actors = {
-        ...(meterPatch.actors || {}),
-        [safeActorUid]: {
-          used: currentActorUsed + safeUnits,
-          uid: safeActorUid,
-          label: safeActorUid,
-          updatedAt: now,
-        },
-      };
-    }
-    if (safeRoomCode) {
-      const currentRoomData = data?.meters?.[meterId]?.rooms?.[safeRoomCode] || {};
-      const currentRoomLifecycle = normalizeUsageLifecycleCounts(currentRoomData, currentRoomData?.used);
-      const plannedRoomSettled = currentRoomLifecycle.settled + safeUnits;
-      meterPatch.rooms = {
-        ...(meterPatch.rooms || {}),
-        [safeRoomCode]: {
-          used: plannedRoomSettled,
-          ...currentRoomLifecycle,
-          settled: plannedRoomSettled,
-          roomCode: safeRoomCode,
-          label: safeRoomCode,
-          updatedAt: now,
-        },
-      };
-    }
-    if (safeSurface) {
-      const currentSurfaceUsed = toWholeNumber(data?.meters?.[meterId]?.surfaces?.[safeSurface]?.used, 0);
-      meterPatch.surfaces = {
-        ...(meterPatch.surfaces || {}),
-        [safeSurface]: {
-          used: currentSurfaceUsed + safeUnits,
-          surface: safeSurface,
-          label: formatUsageDimensionLabel(safeSurface, safeSurface),
-          updatedAt: now,
-        },
-      };
-    }
-    if (!snap.exists) {
-      patch.createdAt = now;
-    }
-    tx.set(usageRef, patch, { merge: true });
-    return plannedSettled;
-  });
-
-  return buildUsageMeterSummary({
-    meterId,
-    used: nextUsed,
-    quota,
-    periodKey,
-  });
-};
-
-// Compatibility alias while individual provider boundaries migrate to explicit
-// reserve/settle/release operations. Existing synchronous calls settle an attempt atomically.
-const reserveOrganizationUsageUnits = settleOrganizationUsageAttempt;
-
 const resolveUsageSource = (value = "", fallback = "unknown") =>
   sanitizeSecurityToken(value || fallback, 96) || sanitizeSecurityToken(fallback, 96) || "unknown";
 
@@ -7668,7 +7522,13 @@ const buildUsageAttributionContext = ({
 const resolveRequestUsageOperationId = (request, suffix = "attempt") => {
   const requested = normalizeUsageOperationId(request?.data?.usageContext?.operationId || "");
   const fallback = `legacy:${crypto.randomUUID().replace(/-/g, "")}`;
-  return normalizeUsageOperationId(`${requested || fallback}:${suffix}`);
+  return appendUsageOperationIdSuffix(requested || fallback, suffix);
+};
+
+const appendUsageOperationIdSuffix = (operationId = "", suffix = "attempt") => {
+  const safeSuffix = normalizeUsageOperationId(suffix).slice(0, 48) || "attempt";
+  const safeBase = normalizeUsageOperationId(operationId) || `legacy:${crypto.randomUUID().replace(/-/g, "")}`;
+  return `${safeBase.slice(0, Math.max(1, 159 - safeSuffix.length))}:${safeSuffix}`;
 };
 
 const USAGE_PLATFORM_CONTROL_DOC = "usage";
@@ -11466,7 +11326,7 @@ const resolvePopTriviaAiAccess = async (roomData = {}) => {
     demoBypassEnabled,
     aiCapabilityEnabled,
     canCallAiProvider: demoBypassEnabled || aiCapabilityEnabled,
-    shouldMeterUsage: !!orgId && aiCapabilityEnabled && !demoBypassEnabled,
+    shouldMeterUsage: !!orgId && (aiCapabilityEnabled || demoBypassEnabled),
   };
 };
 
@@ -11548,25 +11408,50 @@ const processPopTriviaForSong = async ({
     });
   }
 
+  let aiUsageReservation = null;
+  const aiUsageOperationId = appendUsageOperationIdSuffix(
+    `pop-trivia:${songRef.id}:${leaseId || reason || crypto.randomUUID()}`,
+    "ai"
+  );
   if (aiAccess.shouldMeterUsage) {
-    await reserveOrganizationUsageUnits({
-      orgId: aiAccess.orgId,
-      entitlements: aiAccess.aiMeterEntitlements || aiAccess.entitlements,
-      meterId: "ai_generate_content",
-      units: 1,
-      source: "auto_pop_trivia_song",
-      roomCode: safeRoomCode,
-      surface: "backend",
-    });
+    try {
+      aiUsageReservation = await reserveOrganizationUsageOperation({
+        orgId: aiAccess.orgId,
+        entitlements: aiAccess.aiMeterEntitlements || aiAccess.entitlements,
+        operationId: aiUsageOperationId,
+        meterId: "ai_generate_content",
+        capabilityId: "ai_generation",
+        units: 1,
+        source: "auto_pop_trivia_song",
+        roomCode: safeRoomCode,
+        surface: "backend",
+      });
+      if (!aiUsageReservation.created) throw new HttpsError("aborted", `AI usage operation is already ${aiUsageReservation.state || "reserved"}.`);
+    } catch (error) {
+      return writeFallbackPopTrivia({
+        songRef,
+        roomCode: safeRoomCode,
+        cacheKey,
+        songData: latestSong,
+        reason: error?.details?.reasonCode || "ai_provider_paused",
+      });
+    }
   }
 
   try {
     const prompt = buildGeminiPrompt("pop_trivia_song", buildPopTriviaSongContext(latestSong));
-    const geminiPayload = await requestGeminiJson({
-      apiKey,
-      prompt,
-      responseMimeType: "application/json",
-    });
+    let geminiPayload;
+    try {
+      geminiPayload = await requestGeminiJson({ apiKey, prompt, responseMimeType: "application/json" });
+    } finally {
+      if (aiUsageReservation) {
+        await settleOrganizationUsageOperation({
+          orgId: aiAccess.orgId,
+          operationId: aiUsageOperationId,
+          periodKey: aiUsageReservation.periodKey,
+        });
+      }
+    }
     const rawText = geminiPayload?.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const cleanText = rawText.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleanText);
@@ -13979,12 +13864,16 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
   const maxTotal = clampNumber(request.data?.maxTotal || 1000, 1, 1000, 1000);
   const items = [];
   let pageToken = "";
+  let pageIndex = 0;
   while (items.length < maxTotal) {
     const batchSize = Math.min(50, maxTotal - items.length);
-    await reserveOrganizationUsageUnits({
+    const usageOperationId = resolveRequestUsageOperationId(request, `playlist_items_${pageIndex}`);
+    const usageReservation = await reserveOrganizationUsageOperation({
       orgId: entitlements.orgId,
       entitlements,
+      operationId: usageOperationId,
       meterId: "youtube_data_request",
+      capabilityId: "youtube_metadata_lookup",
       units: 1,
       source: `${usageSource}_playlist_items`,
       ...buildUsageAttributionContext({
@@ -13993,12 +13882,20 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
         source: usageSource,
       }),
     });
-    await reserveYouTubeApiDailyCall({
-      method: "playlistItems.list",
-      source: usageSource,
-    });
+    if (!usageReservation.created) throw new HttpsError("aborted", `YouTube playlist usage operation is already ${usageReservation.state || "reserved"}.`);
+    try {
+      await reserveYouTubeApiDailyCall({ method: "playlistItems.list", source: usageSource });
+    } catch (error) {
+      await releaseOrganizationUsageOperation({ orgId: entitlements.orgId, operationId: usageOperationId, periodKey: usageReservation.periodKey });
+      throw error;
+    }
     const url = `https://www.googleapis.com/youtube/v3/playlistItems?key=${apiKey}&part=snippet&maxResults=${batchSize}&playlistId=${playlistId}${pageToken ? `&pageToken=${pageToken}` : ""}`;
-    const res = await fetch(url);
+    let res;
+    try {
+      res = await fetch(url);
+    } finally {
+      await settleOrganizationUsageOperation({ orgId: entitlements.orgId, operationId: usageOperationId, periodKey: usageReservation.periodKey });
+    }
     await assertYouTubeApiResponseOk(res, "Playlist fetch");
     const data = await res.json();
     (data.items || []).forEach((item) => {
@@ -14010,6 +13907,7 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
       });
     });
     pageToken = data.nextPageToken;
+    pageIndex += 1;
     if (!pageToken) break;
   }
   return { items };
@@ -14031,10 +13929,13 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
   }
-  await reserveOrganizationUsageUnits({
+  const usageOperationId = resolveRequestUsageOperationId(request, "videos_status");
+  const usageReservation = await reserveOrganizationUsageOperation({
     orgId: entitlements.orgId,
     entitlements,
+    operationId: usageOperationId,
     meterId: "youtube_data_request",
+    capabilityId: "youtube_metadata_lookup",
     units: 1,
     source: `${usageSource}_videos_status`,
     ...buildUsageAttributionContext({
@@ -14043,13 +13944,21 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
       source: usageSource,
     }),
   });
-  await reserveYouTubeApiDailyCall({
-    method: "videos.list",
-    source: usageSource,
-  });
+  if (!usageReservation.created) throw new HttpsError("aborted", `YouTube status usage operation is already ${usageReservation.state || "reserved"}.`);
+  try {
+    await reserveYouTubeApiDailyCall({ method: "videos.list", source: usageSource });
+  } catch (error) {
+    await releaseOrganizationUsageOperation({ orgId: entitlements.orgId, operationId: usageOperationId, periodKey: usageReservation.periodKey });
+    throw error;
+  }
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status&id=${sliced.join(",")}`;
-  const res = await fetch(url);
+  let res;
+  try {
+    res = await fetch(url);
+  } finally {
+    await settleOrganizationUsageOperation({ orgId: entitlements.orgId, operationId: usageOperationId, periodKey: usageReservation.periodKey });
+  }
   await assertYouTubeApiResponseOk(res, "YouTube status");
   const data = await res.json();
   const items = (data.items || []).map((item) => {
@@ -14177,10 +14086,13 @@ exports.youtubeRefreshIndexEntries = onCall({ cors: true, secrets: [YOUTUBE_API_
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
   }
-  await reserveOrganizationUsageUnits({
+  const usageOperationId = resolveRequestUsageOperationId(request, "videos_refresh");
+  const usageReservation = await reserveOrganizationUsageOperation({
     orgId: entitlements.orgId,
     entitlements,
+    operationId: usageOperationId,
     meterId: "youtube_data_request",
+    capabilityId: "youtube_metadata_lookup",
     units: 1,
     source: `${usageSource}_videos_refresh`,
     ...buildUsageAttributionContext({
@@ -14189,12 +14101,20 @@ exports.youtubeRefreshIndexEntries = onCall({ cors: true, secrets: [YOUTUBE_API_
       source: usageSource,
     }),
   });
-  await reserveYouTubeApiDailyCall({
-    method: "videos.list",
-    source: usageSource,
-  });
+  if (!usageReservation.created) throw new HttpsError("aborted", `YouTube refresh usage operation is already ${usageReservation.state || "reserved"}.`);
+  try {
+    await reserveYouTubeApiDailyCall({ method: "videos.list", source: usageSource });
+  } catch (error) {
+    await releaseOrganizationUsageOperation({ orgId: entitlements.orgId, operationId: usageOperationId, periodKey: usageReservation.periodKey });
+    throw error;
+  }
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,snippet&id=${ids.join(",")}`;
-  const res = await fetch(url);
+  let res;
+  try {
+    res = await fetch(url);
+  } finally {
+    await settleOrganizationUsageOperation({ orgId: entitlements.orgId, operationId: usageOperationId, periodKey: usageReservation.periodKey });
+  }
   await assertYouTubeApiResponseOk(res, "YouTube index refresh");
   const data = await res.json();
   const items = (data.items || []).map((item) => {
@@ -14307,10 +14227,13 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
   }
-  await reserveOrganizationUsageUnits({
+  const usageOperationId = resolveRequestUsageOperationId(request, "videos_details");
+  const usageReservation = await reserveOrganizationUsageOperation({
     orgId: entitlements.orgId,
     entitlements,
+    operationId: usageOperationId,
     meterId: "youtube_data_request",
+    capabilityId: "youtube_metadata_lookup",
     units: 1,
     source: `${usageSource}_videos_details`,
     ...buildUsageAttributionContext({
@@ -14319,13 +14242,21 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
       source: usageSource,
     }),
   });
-  await reserveYouTubeApiDailyCall({
-    method: "videos.list",
-    source: usageSource,
-  });
+  if (!usageReservation.created) throw new HttpsError("aborted", `YouTube details usage operation is already ${usageReservation.state || "reserved"}.`);
+  try {
+    await reserveYouTubeApiDailyCall({ method: "videos.list", source: usageSource });
+  } catch (error) {
+    await releaseOrganizationUsageOperation({ orgId: entitlements.orgId, operationId: usageOperationId, periodKey: usageReservation.periodKey });
+    throw error;
+  }
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=contentDetails&id=${sliced.join(",")}`;
-  const res = await fetch(url);
+  let res;
+  try {
+    res = await fetch(url);
+  } finally {
+    await settleOrganizationUsageOperation({ orgId: entitlements.orgId, operationId: usageOperationId, periodKey: usageReservation.periodKey });
+  }
   await assertYouTubeApiResponseOk(res, "YouTube details");
   const data = await res.json();
   const items = (data.items || []).map((item) => ({
@@ -14361,25 +14292,29 @@ exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async
     );
   }
   enforceAppCheckIfEnabled(request, "gemini");
-  if (!aiDemoBypass) {
-    await reserveOrganizationUsageUnits({
-      orgId: entitlements.orgId,
-      entitlements,
-      meterId: "ai_generate_content",
-      units: 1,
-      source: usageSource,
-      ...buildUsageAttributionContext({
-        request,
-        roomCode: request.data?.roomCode || "",
-        source: usageSource,
-      }),
-    });
-  }
   const prompt = buildGeminiPrompt(type, request.data?.context);
   const apiKey = GEMINI_API_KEY.value();
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "Gemini API key not configured.");
   }
+  let usageOperationId = "";
+  let usageReservation = null;
+  usageOperationId = resolveRequestUsageOperationId(request, "generate_content");
+  usageReservation = await reserveOrganizationUsageOperation({
+    orgId: entitlements.orgId,
+    entitlements,
+    operationId: usageOperationId,
+    meterId: "ai_generate_content",
+    capabilityId: "ai_generation",
+    units: 1,
+    source: usageSource,
+    ...buildUsageAttributionContext({
+      request,
+      roomCode: request.data?.roomCode || "",
+      source: usageSource,
+    }),
+  });
+  if (!usageReservation.created) throw new HttpsError("aborted", `AI usage operation is already ${usageReservation.state || "reserved"}.`);
   let geminiPayload = null;
   try {
     geminiPayload = await requestGeminiJson({
@@ -14389,6 +14324,14 @@ exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async
     });
   } catch (error) {
     throw new HttpsError("unavailable", String(error?.message || error));
+  } finally {
+    if (usageReservation) {
+      await settleOrganizationUsageOperation({
+        orgId: entitlements.orgId,
+        operationId: usageOperationId,
+        periodKey: usageReservation.periodKey,
+      });
+    }
   }
   const rawText = geminiPayload?.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
   const cleanText = rawText.replace(/```json|```/g, "").trim();
@@ -14482,6 +14425,7 @@ const runLyricsResolverForQueueSong = async ({
   roomData = {},
   timedOnly = false,
   musicUserToken = "",
+  usageOperationId = "",
 } = {}) => {
   const safeTitle = normalizeLyricsText(songData?.songTitle || songData?.title || "");
   const safeArtist = normalizeLyricsText(songData?.artist || "Unknown") || "Unknown";
@@ -14527,7 +14471,7 @@ const runLyricsResolverForQueueSong = async ({
   const aiFallbackConfigured = LYRICS_AI_FALLBACK_ENABLED_DEFAULT
     && !!String(GEMINI_API_KEY.value() || "").trim();
   const aiCapabilityEnabled = !!aiMeterEntitlements?.capabilities?.["ai.generate_content"];
-  const aiMetered = !!aiMeterEntitlements?.capabilities?.["ai.generate_content"];
+  const aiMetered = !!orgId;
   const demoBypassEnabled = isRoomAiDemoBypassEnabled(roomData);
   const aiAccessState = buildLyricsAiAccessState({
     timedOnly,
@@ -14538,9 +14482,40 @@ const runLyricsResolverForQueueSong = async ({
   const allowAiFallback = aiAccessState.allowAiFallback;
   const timedAdapterEnabled = isTimedAdapterEnabledForRoom(safeRoomCode);
   let aiCapabilityBlocked = aiAccessState.aiCapabilityBlocked;
-  let aiMeterReserved = false;
+  let aiMeterReservation = null;
+  const baseUsageOperationId = normalizeUsageOperationId(
+    usageOperationId || `lyrics:${safeRoomCode || "room"}:${crypto.randomUUID().replace(/-/g, "")}`
+  );
+  let appleAttemptIndex = 0;
 
   const deps = buildLyricsResolverDeps({ timedAdapterEnabled });
+  deps.fetchImpl = async (url, init) => {
+    const target = String(url || "");
+    if (!target.startsWith("https://api.music.apple.com/")) return fetch(url, init);
+    if (!orgId || !entitlements?.capabilities?.["api.apple_music"]) {
+      throw new HttpsError("permission-denied", "Apple Music lookup is not available for this Host account.");
+    }
+    const attemptIndex = appleAttemptIndex;
+    appleAttemptIndex += 1;
+    const operationId = appendUsageOperationIdSuffix(baseUsageOperationId, `apple_${attemptIndex}`);
+    const reservation = await reserveOrganizationUsageOperation({
+      orgId,
+      entitlements,
+      operationId,
+      meterId: "apple_music_request",
+      capabilityId: "apple_music_lookup",
+      units: 1,
+      source: "lyrics_resolver_apple",
+      roomCode: safeRoomCode,
+      surface: "backend",
+    });
+    if (!reservation.created) throw new HttpsError("aborted", `Apple Music usage operation is already ${reservation.state || "reserved"}.`);
+    try {
+      return await fetch(url, init);
+    } finally {
+      await settleOrganizationUsageOperation({ orgId, operationId, periodKey: reservation.periodKey });
+    }
+  };
   deps.fetchAiLyricsFallbackText = async (title, artist) => {
     if (timedOnly) return null;
     if (!allowAiFallback) {
@@ -14548,30 +14523,43 @@ const runLyricsResolverForQueueSong = async ({
       return null;
     }
     if (!aiAccessState.canCallAiProvider) return null;
-    if (aiMetered && orgId && !aiMeterReserved) {
+    if (aiMetered && orgId && !aiMeterReservation) {
       try {
-        await reserveOrganizationUsageUnits({
+        const operationId = appendUsageOperationIdSuffix(baseUsageOperationId, "ai_fallback");
+        aiMeterReservation = await reserveOrganizationUsageOperation({
           orgId,
           entitlements: aiMeterEntitlements || entitlements,
+          operationId,
           meterId: "ai_generate_content",
+          capabilityId: "ai_generation",
           units: 1,
           source: "lyrics_resolver_ai_fallback",
           roomCode: safeRoomCode,
           surface: "backend",
         });
-        aiMeterReserved = true;
+        if (!aiMeterReservation.created) throw new HttpsError("aborted", `AI usage operation is already ${aiMeterReservation.state || "reserved"}.`);
       } catch (error) {
         const code = String(error?.code || "").toLowerCase();
-        if (code.includes("resource-exhausted") || code.includes("permission-denied")) {
+        if (error?.details?.reasonCode || code.includes("resource-exhausted") || code.includes("permission-denied") || code.includes("unavailable")) {
           aiCapabilityBlocked = true;
-          if (!demoBypassEnabled) return null;
-        } else if (!demoBypassEnabled) {
+          return null;
+        } else {
           console.warn("lyrics resolver AI meter reserve failed", error?.message || error);
           return null;
         }
       }
     }
-    return fetchAiLyricsFallbackText(title, artist);
+    try {
+      return await fetchAiLyricsFallbackText(title, artist);
+    } finally {
+      if (aiMeterReservation?.created) {
+        await settleOrganizationUsageOperation({
+          orgId,
+          operationId: appendUsageOperationIdSuffix(baseUsageOperationId, "ai_fallback"),
+          periodKey: aiMeterReservation.periodKey,
+        });
+      }
+    }
   };
 
   let resolved;
@@ -14890,7 +14878,10 @@ exports.appleMusicLyrics = onCall(
   async (request) => {
     checkRateLimit(request.rawRequest, "apple_music");
     await checkDurableRateLimit(request.rawRequest, "apple_music", DEFAULT_LIMITS);
-    const { entitlements } = await requireCapability(request, "api.apple_music");
+    const { entitlements } = await requireCapability(request, "api.apple_music", {
+      allowRoomScope: true,
+      roomCode: request.data?.roomCode || "",
+    });
     enforceAppCheckIfEnabled(request, "apple_music_lyrics");
     const title = (request.data?.title || "").trim();
     const artist = (request.data?.artist || "").trim();
@@ -14928,24 +14919,36 @@ exports.appleMusicLyrics = onCall(
     if (musicUserToken) {
       headers["Music-User-Token"] = musicUserToken;
     }
-    await reserveOrganizationUsageUnits({
+    const searchUsageOperationId = resolveRequestUsageOperationId(request, "apple_search");
+    const searchUsageReservation = await reserveOrganizationUsageOperation({
       orgId: entitlements.orgId,
       entitlements,
+      operationId: searchUsageOperationId,
       meterId: "apple_music_request",
+      capabilityId: "apple_music_lookup",
       units: 1,
       source: "apple_music_search",
       ...buildUsageAttributionContext({
         request,
+        roomCode: request.data?.roomCode || "",
         source: "apple_music_search",
         surface: "host",
       }),
     });
+    if (!searchUsageReservation.created) throw new HttpsError("aborted", `Apple Music search usage operation is already ${searchUsageReservation.state || "reserved"}.`);
     const searchUrl = `https://api.music.apple.com/v1/catalog/${storefront}/search?term=${encodeURIComponent(
       term
     )}&types=songs&limit=1`;
-    const searchRes = await fetch(searchUrl, {
-      headers,
-    });
+    let searchRes;
+    try {
+      searchRes = await fetch(searchUrl, { headers });
+    } finally {
+      await settleOrganizationUsageOperation({
+        orgId: entitlements.orgId,
+        operationId: searchUsageOperationId,
+        periodKey: searchUsageReservation.periodKey,
+      });
+    }
     if (!searchRes.ok) {
       const text = await searchRes.text();
       throw new HttpsError("unavailable", `Apple Music search failed: ${text}`);
@@ -14988,22 +14991,34 @@ exports.appleMusicLyrics = onCall(
       );
     }
 
-    await reserveOrganizationUsageUnits({
+    const lyricsUsageOperationId = resolveRequestUsageOperationId(request, "apple_lyrics");
+    const lyricsUsageReservation = await reserveOrganizationUsageOperation({
       orgId: entitlements.orgId,
       entitlements,
+      operationId: lyricsUsageOperationId,
       meterId: "apple_music_request",
+      capabilityId: "apple_music_lookup",
       units: 1,
       source: "apple_music_lyrics",
       ...buildUsageAttributionContext({
         request,
+        roomCode: request.data?.roomCode || "",
         source: "apple_music_lyrics",
         surface: "host",
       }),
     });
+    if (!lyricsUsageReservation.created) throw new HttpsError("aborted", `Apple Music lyrics usage operation is already ${lyricsUsageReservation.state || "reserved"}.`);
     const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${appleSongId}/lyrics`;
-    const lyricsRes = await fetch(lyricsUrl, {
-      headers,
-    });
+    let lyricsRes;
+    try {
+      lyricsRes = await fetch(lyricsUrl, { headers });
+    } finally {
+      await settleOrganizationUsageOperation({
+        orgId: entitlements.orgId,
+        operationId: lyricsUsageOperationId,
+        periodKey: lyricsUsageReservation.periodKey,
+      });
+    }
     if (!lyricsRes.ok) {
       const text = await lyricsRes.text();
       // Apple returns code 40012 when this request lacks lyrics privileges. A missing
@@ -15157,6 +15172,7 @@ exports.resolveQueueSongLyrics = onCall(
       roomData,
       timedOnly,
       musicUserToken,
+      usageOperationId: resolveRequestUsageOperationId(request, "lyrics_pipeline"),
     });
 
     const actorTag = timedOnly ? "callable_timed_only" : "callable_retry";
@@ -15263,6 +15279,7 @@ exports.autoAppleLyrics = onDocumentCreated(
         roomCode: initialRoomCode,
         roomData: initialRoomData,
         timedOnly: false,
+        usageOperationId: normalizeUsageOperationId(`auto-lyrics:${event.id || event.params?.songId || crypto.randomUUID()}`),
       });
       await applyLyricsResolutionToQueueSong({
         songRef: event.data.ref,
@@ -15373,11 +15390,39 @@ exports.autoAppleLyrics = onDocumentCreated(
     try {
       const storefront = data.storefront || "us";
       const token = getAppleMusicToken();
+      if (!aiMeterContext?.orgId || !aiMeterContext.entitlements?.capabilities?.["api.apple_music"]) {
+        throw new HttpsError("permission-denied", "Apple Music lookup is not available for this Host account.");
+      }
+      let appleAttemptIndex = 0;
+      const runAppleAttempt = async (source, requestProvider) => {
+        const operationId = appendUsageOperationIdSuffix(
+          `auto-lyrics:${event.id || event.params?.songId || crypto.randomUUID()}`,
+          `apple_${appleAttemptIndex}`
+        );
+        appleAttemptIndex += 1;
+        const reservation = await reserveOrganizationUsageOperation({
+          orgId: aiMeterContext.orgId,
+          entitlements: aiMeterContext.entitlements,
+          operationId,
+          meterId: "apple_music_request",
+          capabilityId: "apple_music_lookup",
+          units: 1,
+          source,
+          roomCode,
+          surface: "backend",
+        });
+        if (!reservation.created) throw new HttpsError("aborted", `Apple Music usage operation is already ${reservation.state || "reserved"}.`);
+        try {
+          return await requestProvider();
+        } finally {
+          await settleOrganizationUsageOperation({ orgId: aiMeterContext.orgId, operationId, periodKey: reservation.periodKey });
+        }
+      };
       const searchApple = async (q) => {
         const url = `https://api.music.apple.com/v1/catalog/${storefront}/search?term=${encodeURIComponent(
           q
         )}&types=songs&limit=1`;
-        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await runAppleAttempt("auto_lyrics_apple_search", () => fetch(url, { headers: { Authorization: `Bearer ${token}` } }));
         if (!res.ok) {
           const text = await res.text();
           console.warn(`Apple search failed (${res.status})`, text?.slice(0, 300));
@@ -15393,9 +15438,9 @@ exports.autoAppleLyrics = onDocumentCreated(
       if (song?.id) {
         matchedAppleMusicId = String(song.id);
         const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${matchedAppleMusicId}/lyrics`;
-        const lyricsRes = await fetch(lyricsUrl, {
+        const lyricsRes = await runAppleAttempt("auto_lyrics_apple_lyrics", () => fetch(lyricsUrl, {
           headers: { Authorization: `Bearer ${token}` },
-        });
+        }));
         if (!lyricsRes.ok) {
           const text = await lyricsRes.text();
           if (!(lyricsRes.status === 400 && text.includes("\"code\":\"40012\""))) {
@@ -15435,16 +15480,24 @@ exports.autoAppleLyrics = onDocumentCreated(
       console.warn(`autoAppleLyrics AI fallback skipped: capability disabled for org ${aiMeterContext.orgId}`);
       return;
     }
+    let aiUsageReservation = null;
+    const aiUsageOperationId = appendUsageOperationIdSuffix(
+      `auto-lyrics:${event.id || event.params?.songId || crypto.randomUUID()}`,
+      "ai_fallback"
+    );
     try {
-      await reserveOrganizationUsageUnits({
+      aiUsageReservation = await reserveOrganizationUsageOperation({
         orgId: aiMeterContext.orgId,
         entitlements: aiMeterContext.entitlements,
+        operationId: aiUsageOperationId,
         meterId: "ai_generate_content",
+        capabilityId: "ai_generation",
         units: 1,
         source: "auto_lyrics_ai_fallback",
         roomCode,
         surface: "backend",
       });
+      if (!aiUsageReservation.created) throw new HttpsError("aborted", `AI usage operation is already ${aiUsageReservation.state || "reserved"}.`);
     } catch (err) {
       const code = String(err?.code || "").toLowerCase();
       if (code.includes("resource-exhausted")) {
@@ -15455,7 +15508,16 @@ exports.autoAppleLyrics = onDocumentCreated(
       return;
     }
 
-    const aiLyricsResult = await fetchAiLyricsFallbackText(cleanedTitle, resolvedArtist);
+    let aiLyricsResult;
+    try {
+      aiLyricsResult = await fetchAiLyricsFallbackText(cleanedTitle, resolvedArtist);
+    } finally {
+      await settleOrganizationUsageOperation({
+        orgId: aiMeterContext.orgId,
+        operationId: aiUsageOperationId,
+        periodKey: aiUsageReservation.periodKey,
+      });
+    }
     if (!aiLyricsResult?.lyrics) return;
     try {
       await applyLyricsUpdate({
@@ -23414,6 +23476,9 @@ exports.getMyUsageSummary = onCall({ cors: true }, async (request) => {
 
 const USAGE_CAPABILITY_METERS = Object.freeze({
   youtube_live_search: "youtube_data_request",
+  youtube_metadata_lookup: "youtube_data_request",
+  apple_music_lookup: "apple_music_request",
+  ai_generation: "ai_generate_content",
 });
 
 const readMyUsageControls = async ({ orgId = "", entitlements = null, roomCode = "" } = {}) => {
