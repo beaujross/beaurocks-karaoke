@@ -129,7 +129,27 @@ const {
   selectNextScheduledOccurrence,
   shouldArchiveOccurrence,
 } = require("./lib/directoryOccurrences");
-const { LEDGER_COLLECTION, resolveLedgerCurrency, setShadowLedgerEntry } = require("./lib/beauBucksLedger");
+const {
+  LEDGER_COLLECTION,
+  buildLedgerEntryId,
+  createAuthoritativeLedgerEntry,
+  resolveLedgerCurrency,
+  setShadowLedgerEntry,
+} = require("./lib/beauBucksLedger");
+const {
+  BEAUBUCKS_ACCOUNT_COLLECTION,
+  BEAUBUCKS_ADJUSTMENT_COLLECTION,
+  BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+  BEAUBUCKS_PAYMENT_REF_COLLECTION,
+  buildBeauBucksAccountId,
+  buildBeauBucksAdjustmentId,
+  buildBeauBucksAdjustmentPlan,
+  buildBeauBucksPaymentRefId,
+  getBeauBucksPack,
+  getBeauBucksPolicy,
+  isBeauBucksCheckoutEnabled,
+  validateBeauBucksCheckoutFulfillment,
+} = require("./lib/beauBucksAuthority");
 const {
   buildAudienceCreditActivity,
   buildAudienceLedgerAccountIds,
@@ -2758,6 +2778,12 @@ const BEAUBUCKS_SPEND_HOST_UIDS = new Set(
     .map(normalizeUidToken)
     .filter(Boolean)
 );
+const BEAUBUCKS_AUTHORITY_ROOM_CODES = parseRoomCodeEnvSet(process.env.BEAUBUCKS_AUTHORITY_ROOM_CODES || "");
+const BEAUBUCKS_AUTHORITY_HOST_UIDS = new Set(
+  parseCsvEnvTokens(process.env.BEAUBUCKS_AUTHORITY_HOST_UIDS || "")
+    .map(normalizeUidToken)
+    .filter(Boolean)
+);
 const isBeauBucksSpendCanaryRoom = ({ roomCode = "", roomData = {} } = {}) => {
   const safeRoomCode = normalizeRoomCode(roomCode);
   if (BEAUBUCKS_SPEND_ROOM_CODES.has(safeRoomCode)) return true;
@@ -2766,6 +2792,17 @@ const isBeauBucksSpendCanaryRoom = ({ roomCode = "", roomData = {} } = {}) => {
     .filter(Boolean);
   return hostUids.some((uid) => BEAUBUCKS_SPEND_HOST_UIDS.has(uid));
 };
+const isBeauBucksAuthorityCanaryRoom = ({ roomCode = "", roomData = {} } = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  if (BEAUBUCKS_AUTHORITY_ROOM_CODES.has(safeRoomCode)) return true;
+  const hostUids = [roomData?.hostUid, ...(Array.isArray(roomData?.hostUids) ? roomData.hostUids : [])]
+    .map(normalizeUidToken)
+    .filter(Boolean);
+  return hostUids.some((uid) => BEAUBUCKS_AUTHORITY_HOST_UIDS.has(uid));
+};
+const isRoomBeauBucksAuthorityEnabled = ({ roomCode = "", roomData = {} } = {}) =>
+  isBeauBucksAuthorityCanaryRoom({ roomCode, roomData })
+  && roomData?.eventCredits?.beauBucksAuthorityEnabled === true;
 const ROOM_REQUEST_MODES = Object.freeze({
   canonicalOpen: "canonical_open",
   playableOnly: "playable_only",
@@ -20954,6 +20991,185 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
 
   return result;
 });
+
+exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "get_my_room_beaubucks_wallet", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "get_my_room_beaubucks_wallet");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) throw new HttpsError("invalid-argument", "roomCode is required.");
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const accountId = buildBeauBucksAccountId({ roomCode, uid: callerUid });
+  const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
+  const [roomSnap, roomUserSnap, accountSnap] = await Promise.all([
+    roomRef.get(),
+    roomUserRef.get(),
+    accountRef.get(),
+  ]);
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
+  if (!roomUserSnap.exists) throw new HttpsError("failed-precondition", "Join the Room before viewing BeauBucks.");
+  const roomData = roomSnap.data() || {};
+  const authorityEnabled = isRoomBeauBucksAuthorityEnabled({ roomCode, roomData });
+  const checkoutEnabled = authorityEnabled && isBeauBucksCheckoutEnabled();
+  const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
+  const starterPackCandidate = checkoutEnabled ? getBeauBucksPack("beaubucks_starter_1200") : null;
+  const starterPack = starterPackCandidate?.publicOffer === true ? starterPackCandidate : null;
+  return {
+    roomCode,
+    currency: "beaubucks",
+    scope: "room",
+    balance: Math.max(0, Math.floor(Number(accountData.balance || 0) || 0)),
+    authority: "ledger",
+    authorityEnabled,
+    canPurchase: !!starterPack,
+    accountStatus: String(accountData.status || "active"),
+    allowedSpendKinds: authorityEnabled ? [SPEND_KINDS.reaction] : [],
+    pack: starterPack,
+  };
+});
+
+exports.spendAudienceBeauBucks = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "spend_audience_beaubucks", { perMinute: 240, perHour: 4000 });
+  enforceAppCheckIfEnabled(request, "spend_audience_beaubucks");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const kind = normalizeSpendKind(request.data?.kind || "");
+  const clientOperationId = normalizeClientOperationId(request.data?.clientOperationId || "");
+  if (!roomCode) throw new HttpsError("invalid-argument", "roomCode is required.");
+  if (kind !== SPEND_KINDS.reaction) {
+    throw new HttpsError("invalid-argument", "Only reaction spending is enabled in the BeauBucks canary.");
+  }
+  if (!clientOperationId) throw new HttpsError("invalid-argument", "clientOperationId is invalid.");
+  const payload = request.data?.payload && typeof request.data.payload === "object" ? request.data.payload : {};
+  const reaction = resolveReactionSpendCost({ reactionType: payload.reactionType, reactionCosts: REACTION_POINT_COSTS });
+  if (!reaction.ok) throw new HttpsError("invalid-argument", "reactionType is not a paid reaction.");
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const accountId = buildBeauBucksAccountId({ roomCode, uid: callerUid });
+  const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
+  const operationDocumentId = buildSpendOperationDocumentId({
+    roomCode,
+    uid: callerUid,
+    clientOperationId: `beaubucks:${clientOperationId}`,
+  });
+  const operationRef = db.collection(SPEND_OPERATIONS_COLLECTION).doc(operationDocumentId);
+  return db.runTransaction(async (tx) => {
+    const [operationSnap, roomSnap, roomUserSnap, accountSnap] = await Promise.all([
+      tx.get(operationRef),
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(accountRef),
+    ]);
+    if (operationSnap.exists) {
+      const prior = operationSnap.data() || {};
+      tx.set(operationRef, {
+        replayCount: admin.firestore.FieldValue.increment(1),
+        lastReplayedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return {
+        ok: prior.outcome === "accepted",
+        outcome: String(prior.outcome || "duplicate"),
+        duplicate: true,
+        authority: "ledger_canary",
+        currency: "beaubucks",
+        roomCode,
+        kind,
+        chargedAmount: Math.max(0, Number(prior.chargedAmount || 0) || 0),
+        balanceAfter: Math.max(0, Number(prior.balanceAfter || 0) || 0),
+      };
+    }
+    if (!roomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
+    if (!roomUserSnap.exists) throw new HttpsError("failed-precondition", "Join the Room before spending BeauBucks.");
+    const roomData = roomSnap.data() || {};
+    if (!isRoomBeauBucksAuthorityEnabled({ roomCode, roomData })) {
+      throw new HttpsError("failed-precondition", "BeauBucks authority is not enabled for this Room.");
+    }
+    const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
+    const balanceBefore = Math.max(0, Math.floor(Number(accountData.balance || 0) || 0));
+    const accountStatus = String(accountData.status || "active");
+    const outcome = accountStatus === "restricted"
+      ? "account_restricted"
+      : reaction.cost > balanceBefore
+        ? "insufficient_balance"
+        : "accepted";
+    const balanceAfter = outcome === "accepted" ? balanceBefore - reaction.cost : balanceBefore;
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+    tx.create(operationRef, {
+      schemaVersion: SPEND_OPERATION_SCHEMA_VERSION,
+      operationDocumentId,
+      clientOperationId,
+      roomCode,
+      uid: callerUid,
+      currency: "beaubucks",
+      kind,
+      outcome,
+      authority: "ledger_canary",
+      chargedAmount: outcome === "accepted" ? reaction.cost : 0,
+      balanceBefore,
+      balanceAfter,
+      sourceId: reaction.reactionType,
+      replayCount: 0,
+      createdAt: serverNow,
+      updatedAt: serverNow,
+    });
+    if (outcome === "accepted") {
+      tx.set(accountRef, {
+        schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+        accountId,
+        roomCode,
+        uid: callerUid,
+        currency: "beaubucks",
+        scope: "room",
+        balance: balanceAfter,
+        status: accountStatus,
+        lifetimeSpent: admin.firestore.FieldValue.increment(reaction.cost),
+        lastEntryAt: serverNow,
+        updatedAt: serverNow,
+      }, { merge: true });
+      createAuthoritativeLedgerEntry({
+        writer: tx,
+        db,
+        idempotencyKey: `beaubucks_spend:${operationDocumentId}`,
+        roomCode,
+        uid: callerUid,
+        eventCredits: { enabled: true, presetId: "beaubucks" },
+        type: "reaction_spend",
+        amount: reaction.cost,
+        direction: "debit",
+        source: {
+          provider: "beaurocks",
+          sourceId: operationDocumentId,
+          sourceCollection: SPEND_OPERATIONS_COLLECTION,
+        },
+        attribution: {
+          canonicalSongId: String(payload.canonicalSongId || "").trim().slice(0, 180),
+          performanceId: String(payload.performanceId || "").trim().slice(0, 180),
+          backingTrackId: String(payload.backingTrackId || "").trim().slice(0, 180),
+          performerUid: String(payload.performerUid || "").trim().slice(0, 180),
+        },
+        serverTimestamp: serverNow,
+      });
+    }
+    return {
+      ok: outcome === "accepted",
+      outcome,
+      duplicate: false,
+      authority: "ledger_canary",
+      currency: "beaubucks",
+      roomCode,
+      kind,
+      chargedAmount: outcome === "accepted" ? reaction.cost : 0,
+      balanceAfter,
+    };
+  });
+});
 exports.uploadAudienceRoomPhoto = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "upload_audience_room_photo", { perMinute: 24, perHour: 180 });
   enforceAppCheckIfEnabled(request, "upload_audience_room_photo");
@@ -21837,8 +22053,10 @@ exports.listMyRoomCreditActivity = onCall({ cors: true }, async (request) => {
   }
 
   const accountIds = buildAudienceLedgerAccountIds({ roomCode, uid: callerUid });
+  const beauBucksAccountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION)
+    .doc(buildBeauBucksAccountId({ roomCode, uid: callerUid }));
   const evidenceLimit = Math.min(40, maxItems * 2);
-  const [ledgerSnap, checkoutSnap] = await Promise.all([
+  const [ledgerSnap, checkoutSnap, beauBucksAccountSnap] = await Promise.all([
     db.collection(LEDGER_COLLECTION)
       .where("accountId", "in", accountIds)
       .orderBy("createdAt", "desc")
@@ -21850,6 +22068,7 @@ exports.listMyRoomCreditActivity = onCall({ cors: true }, async (request) => {
       .orderBy("fulfilledAt", "desc")
       .limit(evidenceLimit)
       .get(),
+    beauBucksAccountRef.get(),
   ]);
   const ledgerEntries = ledgerSnap.docs
     .map((docSnap) => ({ documentId: docSnap.id, ...(docSnap.data() || {}) }))
@@ -21858,11 +22077,15 @@ exports.listMyRoomCreditActivity = onCall({ cors: true }, async (request) => {
     .map((docSnap) => ({ documentId: docSnap.id, ...(docSnap.data() || {}) }))
     .filter((entry) => normalizeRoomCode(entry.roomCode || "") === roomCode);
   const activity = buildAudienceCreditActivity({ ledgerEntries, paidCheckouts, limit: maxItems });
+  const beauBucksAccount = beauBucksAccountSnap.exists ? (beauBucksAccountSnap.data() || {}) : {};
 
   return {
     roomCode,
     balance: Math.max(0, Math.floor(Number(roomUserData.points || 0) || 0)),
     balanceAuthority: "room_balance",
+    beauBucksBalance: Math.max(0, Math.floor(Number(beauBucksAccount.balance || 0) || 0)),
+    beauBucksBalanceAuthority: "ledger",
+    beauBucksWalletAvailable: beauBucksAccountSnap.exists,
     coverage: "server_recorded_activity",
     activities: activity.activities,
     hasMore: activity.hasMore,
@@ -29248,6 +29471,81 @@ exports.createPointsCheckout = onCall(
   }
 );
 
+exports.createBeauBucksCheckout = onCall(
+  { cors: true, secrets: [STRIPE_SECRET_KEY] },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "stripe_checkout");
+    const callerUid = requireAuth(request);
+    enforceAppCheckIfEnabled(request, "create_beaubucks_checkout");
+    if (!isBeauBucksCheckoutEnabled()) {
+      throw new HttpsError("failed-precondition", "BeauBucks purchases are not available yet.");
+    }
+    const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+    const packId = String(request.data?.packId || "").trim();
+    ensureString(roomCode, "roomCode");
+    ensureString(packId, "packId");
+    const pack = getBeauBucksPack(packId);
+    if (!pack || pack.publicOffer !== true) {
+      throw new HttpsError("invalid-argument", "That BeauBucks pack is not available.");
+    }
+
+    const rootRef = getRootRef();
+    const roomRef = rootRef.collection("rooms").doc(roomCode);
+    const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+    const [roomSnap, roomUserSnap] = await Promise.all([roomRef.get(), roomUserRef.get()]);
+    if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("failed-precondition", "Join the Room before buying BeauBucks.");
+    }
+    if (!isRoomBeauBucksAuthorityEnabled({ roomCode, roomData: roomSnap.data() || {} })) {
+      throw new HttpsError("failed-precondition", "BeauBucks purchases are not enabled for this Room.");
+    }
+
+    const origin = resolveOrigin(request.rawRequest, request.data?.origin);
+    const stripe = getStripeClient();
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [{
+        price_data: {
+          currency: pack.currency,
+          product_data: { name: `BeauRocks: ${pack.publicLabel}` },
+          unit_amount: pack.amountCents,
+        },
+        quantity: 1,
+      }],
+      metadata: {
+        checkoutType: "beaubucks_purchase",
+        roomCode,
+        buyerUid: callerUid,
+        packId: pack.id,
+        beauBucks: `${pack.beauBucks}`,
+        rewardScope: "room",
+      },
+      success_url: `${origin}/?room=${encodeURIComponent(roomCode)}&beaubucks=success`,
+      cancel_url: `${origin}/?room=${encodeURIComponent(roomCode)}&beaubucks=cancel`,
+    });
+
+    await rootRef.collection("stripe_checkouts").doc(session.id).set({
+      schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+      checkoutType: "beaubucks_purchase",
+      sessionId: session.id,
+      roomCode,
+      buyerUid: callerUid,
+      packId: pack.id,
+      label: pack.publicLabel,
+      amountCents: pack.amountCents,
+      currency: pack.currency,
+      beauBucks: pack.beauBucks,
+      rewardScope: "room",
+      paymentStatus: String(session.payment_status || "").trim() || null,
+      checkoutStatus: "created",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { url: session.url, id: session.id };
+  }
+);
+
 exports.createAppleMusicToken = onCall(
   { cors: true, secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY] },
   async (request) => {
@@ -29378,6 +29676,122 @@ const fulfillVerifiedAdditionalUsageCheckout = async ({ event = {}, session = {}
   });
 };
 
+const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {}) => {
+  const eventId = sanitizeSecurityToken(event.id || "", 180);
+  const sessionId = sanitizeSecurityToken(session.id || "", 180);
+  const paymentIntentId = sanitizeSecurityToken(
+    typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id,
+    180,
+  );
+  if (!eventId || !sessionId || !paymentIntentId) {
+    return { ok: false, reasonCode: "beaubucks_payment_reference_invalid" };
+  }
+  const db = admin.firestore();
+  const checkoutRef = getRootRef().collection("stripe_checkouts").doc(sessionId);
+  const purchaseEntryId = buildLedgerEntryId(`beaubucks_purchase:${sessionId}`);
+  const purchaseRef = db.collection(LEDGER_COLLECTION).doc(purchaseEntryId);
+  const paymentRef = db.collection(BEAUBUCKS_PAYMENT_REF_COLLECTION)
+    .doc(buildBeauBucksPaymentRefId(paymentIntentId));
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  return db.runTransaction(async (tx) => {
+    const checkoutSnap = await tx.get(checkoutRef);
+    const checkout = checkoutSnap.exists ? (checkoutSnap.data() || {}) : {};
+    const verification = validateBeauBucksCheckoutFulfillment({ checkout, session });
+    if (!verification.ok) return verification;
+    const { pack, roomCode, buyerUid } = verification;
+    const accountId = buildBeauBucksAccountId({ roomCode, uid: buyerUid });
+    const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
+    const [purchaseSnap, paymentRefSnap, accountSnap] = await Promise.all([
+      tx.get(purchaseRef),
+      tx.get(paymentRef),
+      tx.get(accountRef),
+    ]);
+    if (purchaseSnap.exists) {
+      return { ok: true, duplicate: true, grant: purchaseSnap.data() || {} };
+    }
+    if (paymentRefSnap.exists) {
+      return { ok: false, reasonCode: "beaubucks_payment_reference_conflict" };
+    }
+    const account = accountSnap.exists ? (accountSnap.data() || {}) : {};
+    const balanceBefore = Math.max(0, Math.floor(Number(account.balance || 0) || 0));
+    const balanceAfter = balanceBefore + pack.beauBucks;
+    const policy = getBeauBucksPolicy();
+
+    createAuthoritativeLedgerEntry({
+      writer: tx,
+      db,
+      idempotencyKey: `beaubucks_purchase:${sessionId}`,
+      roomCode,
+      uid: buyerUid,
+      eventCredits: { enabled: true, presetId: "beaubucks" },
+      type: "purchase_grant",
+      amount: pack.beauBucks,
+      direction: "credit",
+      source: {
+        provider: "stripe",
+        sourceId: sessionId,
+        sourceCollection: "stripe_checkouts",
+      },
+      attribution: { fundCode: pack.id },
+      financial: {
+        amountCents: pack.amountCents,
+        currency: pack.currency,
+        externalTransactionId: paymentIntentId,
+      },
+      serverTimestamp: now,
+    });
+    tx.set(accountRef, {
+      schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+      accountId,
+      roomCode,
+      uid: buyerUid,
+      currency: "beaubucks",
+      scope: "room",
+      balance: balanceAfter,
+      status: String(account.status || "active"),
+      lifetimePurchased: admin.firestore.FieldValue.increment(pack.beauBucks),
+      lastEntryAt: now,
+      createdAt: account.createdAt || now,
+      updatedAt: now,
+    }, { merge: true });
+    tx.create(paymentRef, {
+      schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+      checkoutType: "beaubucks_purchase",
+      stripeSessionId: sessionId,
+      stripePaymentIntentId: paymentIntentId,
+      roomCode,
+      uid: buyerUid,
+      accountId,
+      packId: pack.id,
+      purchaseLedgerEntryId: purchaseEntryId,
+      purchaseBeauBucks: pack.beauBucks,
+      purchaseAmountCents: pack.amountCents,
+      adjustedAmountCents: 0,
+      revokedBeauBucks: 0,
+      unrecoveredBeauBucks: 0,
+      currency: pack.currency,
+      status: "paid",
+      createdAt: now,
+      updatedAt: now,
+    });
+    tx.set(checkoutRef, {
+      checkoutStatus: "completed",
+      paymentStatus: "paid",
+      webhookEventId: eventId,
+      purchaseLedgerEntryId: purchaseEntryId,
+      fulfilledAt: now,
+      updatedAt: now,
+      policyStatusAtFulfillment: String(policy.status || "unknown"),
+    }, { merge: true });
+    return {
+      ok: true,
+      duplicate: false,
+      grant: { roomCode, uid: buyerUid, amount: pack.beauBucks, balanceAfter },
+    };
+  });
+};
+
 const readStripeObjectId = (value = null) => sanitizeSecurityToken(
   typeof value === "string" ? value : value?.id,
   180,
@@ -29398,6 +29812,168 @@ const resolveAdjustmentPaymentIntentId = async ({ stripe = null, source = {} } =
     });
     return "";
   }
+};
+
+const applyBeauBucksPaymentAdjustment = async ({
+  event = {},
+  paymentIntentId = "",
+  adjustmentType = "refund",
+  source = {},
+} = {}) => {
+  const safePaymentIntentId = sanitizeSecurityToken(paymentIntentId, 180);
+  const eventId = sanitizeSecurityToken(event.id || "", 180);
+  if (!safePaymentIntentId || !eventId) {
+    return { ok: false, ignored: true, reasonCode: "beaubucks_payment_reference_invalid" };
+  }
+  const db = admin.firestore();
+  const paymentRef = db.collection(BEAUBUCKS_PAYMENT_REF_COLLECTION)
+    .doc(buildBeauBucksPaymentRefId(safePaymentIntentId));
+  const adjustmentRef = db.collection(BEAUBUCKS_ADJUSTMENT_COLLECTION)
+    .doc(buildBeauBucksAdjustmentId(eventId));
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  return db.runTransaction(async (tx) => {
+    const paymentRefSnap = await tx.get(paymentRef);
+    if (!paymentRefSnap.exists) {
+      return { ok: true, ignored: true, reasonCode: "not_beaubucks_purchase" };
+    }
+    const payment = paymentRefSnap.data() || {};
+    const roomCode = normalizeRoomCode(payment.roomCode || "");
+    const uid = String(payment.uid || "").trim();
+    const accountId = String(payment.accountId || "").trim();
+    const purchaseLedgerEntryId = String(payment.purchaseLedgerEntryId || "").trim();
+    if (!roomCode || !uid || !accountId || !purchaseLedgerEntryId) {
+      return { ok: false, ignored: true, reasonCode: "beaubucks_payment_reference_invalid" };
+    }
+    const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
+    const purchaseRef = db.collection(LEDGER_COLLECTION).doc(purchaseLedgerEntryId);
+    const [adjustmentSnap, accountSnap, purchaseSnap] = await Promise.all([
+      tx.get(adjustmentRef),
+      tx.get(accountRef),
+      tx.get(purchaseRef),
+    ]);
+    if (adjustmentSnap.exists) {
+      return { ok: true, ignored: false, duplicate: true, ...(adjustmentSnap.data() || {}) };
+    }
+    if (!purchaseSnap.exists) {
+      return { ok: false, ignored: true, reasonCode: "beaubucks_purchase_missing" };
+    }
+    const account = accountSnap.exists ? (accountSnap.data() || {}) : {};
+    const purchaseAmountCents = Math.max(0, Math.floor(Number(payment.purchaseAmountCents || 0) || 0));
+    const priorAdjustedAmountCents = Math.max(0, Math.floor(Number(payment.adjustedAmountCents || 0) || 0));
+    const requestedAdjustedAmountCents = adjustmentType === "chargeback"
+      ? purchaseAmountCents
+      : Math.max(0, Math.floor(Number(source?.amount_refunded || 0) || 0));
+    const plan = buildBeauBucksAdjustmentPlan({
+      purchaseBeauBucks: payment.purchaseBeauBucks,
+      purchaseAmountCents,
+      priorAdjustedAmountCents,
+      requestedAdjustedAmountCents,
+      availableBalance: account.balance,
+      adjustmentType,
+    });
+    const adjustmentAmountCents = Math.max(0, plan.targetAdjustedAmountCents - priorAdjustedAmountCents);
+    const nextRevoked = Math.max(0, Math.floor(Number(payment.revokedBeauBucks || 0) || 0))
+      + plan.appliedRevocation;
+    const nextUnrecovered = Math.max(0, Math.floor(Number(payment.unrecoveredBeauBucks || 0) || 0))
+      + plan.unrecoveredAmount;
+    const chargeId = readStripeObjectId(source?.charge || source?.id);
+    const paymentStatus = adjustmentType === "chargeback"
+      ? "chargeback"
+      : plan.targetAdjustedAmountCents >= purchaseAmountCents ? "refunded" : "partially_refunded";
+
+    tx.create(adjustmentRef, {
+      schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+      adjustmentId: adjustmentRef.id,
+      adjustmentType,
+      stripeEventId: eventId,
+      stripeSessionId: payment.stripeSessionId,
+      stripePaymentIntentId: safePaymentIntentId,
+      stripeChargeId: chargeId || null,
+      roomCode,
+      uid,
+      accountId,
+      purchaseLedgerEntryId,
+      purchaseAmountCents,
+      adjustmentAmountCents,
+      targetAdjustedAmountCents: plan.targetAdjustedAmountCents,
+      requestedRevocation: plan.requestedRevocation,
+      appliedRevocation: plan.appliedRevocation,
+      unrecoveredAmount: plan.unrecoveredAmount,
+      balanceAfter: plan.balanceAfter,
+      currency: String(source?.currency || payment.currency || "usd").trim().toLowerCase(),
+      status: paymentStatus,
+      createdAt: now,
+    });
+    if (plan.appliedRevocation > 0) {
+      createAuthoritativeLedgerEntry({
+        writer: tx,
+        db,
+        idempotencyKey: `beaubucks_adjustment:${eventId}`,
+        roomCode,
+        uid,
+        eventCredits: { enabled: true, presetId: "beaubucks" },
+        type: adjustmentType === "chargeback" ? "chargeback_reversal" : "refund_reversal",
+        amount: plan.appliedRevocation,
+        direction: "debit",
+        source: {
+          provider: "stripe",
+          sourceId: eventId,
+          sourceCollection: BEAUBUCKS_ADJUSTMENT_COLLECTION,
+        },
+        attribution: { fundCode: String(payment.packId || "") },
+        financial: {
+          amountCents: adjustmentAmountCents,
+          currency: String(payment.currency || "usd"),
+          externalTransactionId: safePaymentIntentId,
+        },
+        serverTimestamp: now,
+      });
+    }
+    tx.set(accountRef, {
+      schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+      accountId,
+      roomCode,
+      uid,
+      currency: "beaubucks",
+      scope: "room",
+      balance: plan.balanceAfter,
+      status: plan.restrictAccount ? "restricted" : String(account.status || "active"),
+      lifetimeRevoked: admin.firestore.FieldValue.increment(plan.appliedRevocation),
+      unrecoveredBeauBucks: admin.firestore.FieldValue.increment(plan.unrecoveredAmount),
+      ...(plan.appliedRevocation > 0 ? { lastEntryAt: now } : {}),
+      updatedAt: now,
+    }, { merge: true });
+    tx.set(paymentRef, {
+      adjustedAmountCents: plan.targetAdjustedAmountCents,
+      revokedBeauBucks: nextRevoked,
+      unrecoveredBeauBucks: nextUnrecovered,
+      status: paymentStatus,
+      lastAdjustmentType: adjustmentType,
+      lastAdjustmentEventId: eventId,
+      updatedAt: now,
+    }, { merge: true });
+    if (payment.stripeSessionId) {
+      tx.set(getRootRef().collection("stripe_checkouts").doc(payment.stripeSessionId), {
+        checkoutStatus: paymentStatus,
+        paymentStatus,
+        adjustedAmountCents: plan.targetAdjustedAmountCents,
+        revokedBeauBucks: nextRevoked,
+        unrecoveredBeauBucks: nextUnrecovered,
+        updatedAt: now,
+      }, { merge: true });
+    }
+    return {
+      ok: true,
+      ignored: false,
+      duplicate: false,
+      applied: plan.appliedRevocation > 0,
+      adjustmentType,
+      appliedRevocation: plan.appliedRevocation,
+      unrecoveredAmount: plan.unrecoveredAmount,
+      balanceAfter: plan.balanceAfter,
+    };
+  });
 };
 
 const applyAdditionalUsageCapacityAdjustment = async ({
@@ -29543,6 +30119,24 @@ exports.stripeWebhook = onRequest(
     if (event.type === "checkout.session.completed") {
       const session = event.data.object || {};
       const metadata = session.metadata || {};
+      const isBeauBucksCheckout = metadata.checkoutType === "beaubucks_purchase";
+      if (isBeauBucksCheckout) {
+        const result = await fulfillVerifiedBeauBucksCheckout({ event, session });
+        if (!result.ok) {
+          console.warn("BeauBucks checkout was not granted.", {
+            eventId: String(event.id || ""),
+            reasonCode: String(result.reasonCode || "beaubucks_purchase_rejected"),
+          });
+        }
+        res.json({
+          received: true,
+          beauBucksCheckout: true,
+          granted: result.ok === true,
+          duplicate: result.duplicate === true,
+          reasonCode: result.ok ? null : String(result.reasonCode || "beaubucks_purchase_rejected"),
+        });
+        return;
+      }
       const isAdditionalUsageCheckout = metadata.checkoutType === "additional_usage";
       if (isAdditionalUsageCheckout) {
         const result = await fulfillVerifiedAdditionalUsageCheckout({ event, session, metadata });
@@ -29747,20 +30341,34 @@ exports.stripeWebhook = onRequest(
       const source = event.data.object || {};
       const adjustmentType = event.type === "charge.refunded" ? "refund" : "chargeback";
       const paymentIntentId = await resolveAdjustmentPaymentIntentId({ stripe, source });
-      const result = await applyAdditionalUsageCapacityAdjustment({
+      const additionalUsageResult = await applyAdditionalUsageCapacityAdjustment({
         event,
         paymentIntentId,
         adjustmentType,
         source,
       });
+      const beauBucksResult = await applyBeauBucksPaymentAdjustment({
+        event,
+        paymentIntentId,
+        adjustmentType,
+        source,
+      });
+      const additionalUsageAdjustment = additionalUsageResult.ignored !== true;
+      const beauBucksAdjustment = beauBucksResult.ignored !== true;
+      const reasonCode = additionalUsageAdjustment
+        ? additionalUsageResult.reasonCode
+        : beauBucksAdjustment
+          ? beauBucksResult.reasonCode
+          : additionalUsageResult.reasonCode || beauBucksResult.reasonCode;
       res.json({
         received: true,
-        additionalUsageAdjustment: result.ignored !== true,
+        additionalUsageAdjustment,
+        beauBucksAdjustment,
         adjustmentType,
-        applied: result.applied === true,
-        duplicate: result.duplicate === true,
-        ignored: result.ignored === true,
-        reasonCode: result.reasonCode || null,
+        applied: additionalUsageResult.applied === true || beauBucksResult.applied === true,
+        duplicate: additionalUsageResult.duplicate === true || beauBucksResult.duplicate === true,
+        ignored: additionalUsageResult.ignored === true && beauBucksResult.ignored === true,
+        reasonCode: reasonCode || null,
       });
       return;
     }

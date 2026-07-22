@@ -125,7 +125,7 @@ A slice is not `accepted` because its code is written. It is accepted only after
 
 ## Slice 0 — Product, access, and money contract
 
-Status: planned
+Status: in progress; isolated backend authority vertical complete, production checkout disabled
 
 ### Outcome
 
@@ -412,6 +412,12 @@ Guests can buy BeauBucks from BeauRocks and spend them on clearly defined in-app
 - Approve scope and portability of BeauBucks.
 - Approve the first allowed spend actions.
 - Approve expiration and refund policy before production checkout.
+
+### 2026-07-22 checkpoint
+
+The first backend-only vertical now exists without changing the live Points economy. It defines a room-scoped internal `Starter 1,200 BeauBucks` test pack, exact verified-webhook fulfillment, an authoritative ledger/account projection, reaction-only spending, proportional refund reversal, chargeback restriction and shortfall evidence, and private Audience purchase proof. Emulator coverage proves purchase and spend replay safety and proves legacy Room/global Points remain unchanged.
+
+This is not a public offer. The commercial contract keeps both checkout and the pack's public-offer flag off, no production Room/host is allowlisted by this change, and no Audience storefront or primary Host control is connected. Remaining owner gates are pack economics, scope/portability, customer-facing refund and expiration terms, support/tax treatment, and the out-of-order webhook recovery procedure.
 
 ## Slice 8 — Room Boosts and room-controlled consumption
 

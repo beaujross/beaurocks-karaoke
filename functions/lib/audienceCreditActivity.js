@@ -12,6 +12,9 @@ const LEDGER_LABELS = Object.freeze({
   ticket_value: 'Event access reward',
   timed_refill: 'Lobby reward',
   promo_grant: 'Promo reward',
+  purchase_grant: 'BeauBucks purchase',
+  refund_reversal: 'Refund adjustment',
+  chargeback_reversal: 'Payment reversal',
   reaction_spend: 'Reaction',
   profile_change_spend: 'Profile update',
   avatar_unlock_spend: 'Avatar unlock',
@@ -53,15 +56,25 @@ const sanitizeLedgerActivity = (entry = {}) => {
   const direction = normalizedToken(entry.direction) === 'debit' ? 'debit' : 'credit';
   const type = normalizedToken(entry.type);
   const occurredAtMs = toMillis(entry.createdAt || entry.updatedAt);
+  const isAuthoritativePurchase = type === 'purchase_grant'
+    && entry.authoritative === true
+    && normalizedToken(entry.currency) === 'beaubucks';
+  const financialAmountCents = wholeAmount(entry.financial?.amountCents);
+  const financialSourceId = token(entry.financial?.externalTransactionId || entry.source?.sourceId);
   return {
     activityId: buildConfirmationCode(`activity:${entry.ledgerEntryId || entry.idempotencyKey || `${type}:${occurredAtMs}:${amount}`}`),
-    kind: direction === 'debit' ? ACTIVITY_KIND.debit : ACTIVITY_KIND.credit,
+    kind: isAuthoritativePurchase ? ACTIVITY_KIND.payment : direction === 'debit' ? ACTIVITY_KIND.debit : ACTIVITY_KIND.credit,
     title: LEDGER_LABELS[type] || (direction === 'debit' ? 'Room credit used' : 'Room credit reward'),
     amount,
     direction,
     currency: normalizedToken(entry.currency) === 'beaubucks' ? 'beaubucks' : 'points',
     occurredAtMs,
-    payment: null,
+    payment: isAuthoritativePurchase ? {
+      amountCents: financialAmountCents,
+      currency: normalizedToken(entry.financial?.currency || 'usd') || 'usd',
+      status: 'paid',
+      confirmationCode: buildConfirmationCode(financialSourceId || entry.ledgerEntryId),
+    } : null,
   };
 };
 

@@ -5,6 +5,8 @@ import { test } from 'vitest';
 const require = createRequire(import.meta.url);
 const {
   buildLedgerEntryId,
+  buildLedgerAccountId,
+  buildAuthoritativeLedgerEntry,
   buildShadowLedgerEntry,
   resolveLedgerCurrency,
   setShadowLedgerEntry,
@@ -13,6 +15,17 @@ const {
 test('server ledger uses deterministic hashed document identities', () => {
   assert.equal(buildLedgerEntryId('join:PARTY:user_1'), buildLedgerEntryId('join:PARTY:user_1'));
   assert.notEqual(buildLedgerEntryId('join:PARTY:user_1'), buildLedgerEntryId('join:PARTY:user_2'));
+});
+
+test('authoritative entries use the same deterministic account identity without shadow authority', () => {
+  assert.equal(buildLedgerAccountId({ roomCode: 'ROOM1', uid: 'user_1', currency: 'beaubucks' }), 'room1__user_1__beaubucks');
+  const entry = buildAuthoritativeLedgerEntry({
+    idempotencyKey: 'purchase:cs_1', roomCode: 'ROOM1', uid: 'user_1',
+    eventCredits: { enabled: true, presetId: 'beaubucks' }, type: 'purchase_grant', amount: 1200,
+  });
+  assert.equal(entry.shadow, false);
+  assert.equal(entry.authoritative, true);
+  assert.equal(entry.accountId, 'room1__user_1__beaubucks');
 });
 
 test('server ledger preserves Points and BeauBucks currency boundaries', () => {

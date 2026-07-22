@@ -6,6 +6,15 @@ const LEDGER_SCHEMA_VERSION = 1;
 const token = (value = '') => String(value || '').trim();
 const normalizedToken = (value = '') => token(value).toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 160);
 
+const buildLedgerAccountId = ({ roomCode = '', uid = '', currency = 'points' } = {}) => {
+  const safeRoomCode = token(roomCode).toUpperCase();
+  const safeUid = token(uid);
+  const safeCurrency = normalizedToken(currency) === 'beaubucks' ? 'beaubucks' : 'points';
+  if (!safeRoomCode) throw new Error('roomCode is required');
+  if (!safeUid) throw new Error('uid is required');
+  return [normalizedToken(safeRoomCode), normalizedToken(safeUid), safeCurrency].join('__');
+};
+
 const resolveLedgerCurrency = (eventCredits = {}) => {
   if (eventCredits?.enabled !== true) return 'points';
   const presetId = normalizedToken(eventCredits.presetId);
@@ -47,7 +56,7 @@ const buildShadowLedgerEntry = ({
     schemaVersion: LEDGER_SCHEMA_VERSION,
     ledgerEntryId,
     idempotencyKey: token(idempotencyKey),
-    accountId: [normalizedToken(safeRoomCode), normalizedToken(safeUid), currency].join('__'),
+    accountId: buildLedgerAccountId({ roomCode: safeRoomCode, uid: safeUid, currency }),
     roomCode: safeRoomCode,
     uid: safeUid,
     currency,
@@ -79,6 +88,21 @@ const buildShadowLedgerEntry = ({
   };
 };
 
+const buildAuthoritativeLedgerEntry = (input = {}) => ({
+  ...buildShadowLedgerEntry(input),
+  shadow: false,
+  authoritative: true,
+});
+
+const createAuthoritativeLedgerEntry = ({ writer, db, ...input } = {}) => {
+  if (!writer || typeof writer.create !== 'function') throw new Error('writer.create is required');
+  if (!db || typeof db.collection !== 'function') throw new Error('db is required');
+  const entry = buildAuthoritativeLedgerEntry(input);
+  const ref = db.collection(LEDGER_COLLECTION).doc(entry.ledgerEntryId);
+  writer.create(ref, entry);
+  return { ref, entry };
+};
+
 const setShadowLedgerEntry = ({ writer, db, ...input } = {}) => {
   if (!writer || typeof writer.set !== 'function') throw new Error('writer.set is required');
   if (!db || typeof db.collection !== 'function') throw new Error('db is required');
@@ -91,8 +115,11 @@ const setShadowLedgerEntry = ({ writer, db, ...input } = {}) => {
 module.exports = {
   LEDGER_COLLECTION,
   LEDGER_SCHEMA_VERSION,
+  buildAuthoritativeLedgerEntry,
+  buildLedgerAccountId,
   buildLedgerEntryId,
   buildShadowLedgerEntry,
+  createAuthoritativeLedgerEntry,
   resolveLedgerCurrency,
   setShadowLedgerEntry,
 };

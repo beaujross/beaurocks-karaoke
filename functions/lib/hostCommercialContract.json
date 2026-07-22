@@ -245,6 +245,31 @@
     ],
     "packs": {}
   },
+  "beauBucksPolicy": {
+    "status": "internal_canary_checkout_disabled",
+    "checkoutEnabled": false,
+    "balanceScope": "room",
+    "grantTrigger": "verified_stripe_webhook_only",
+    "ledgerAuthority": "append_only_account_projection",
+    "allowedSpendKinds": [
+      "reaction"
+    ],
+    "competitiveIntegrity": "no_scoring_win_or_queue_priority",
+    "expirationPolicy": "no_expiration_during_canary_owner_review_required_for_general_release",
+    "refundPolicy": "revoke_unspent_value_with_shortfall_evidence",
+    "chargebackPolicy": "revoke_unspent_value_and_restrict_account",
+    "packs": {
+      "beaubucks_starter_1200": {
+        "id": "beaubucks_starter_1200",
+        "publicLabel": "Starter 1,200 BeauBucks",
+        "amountCents": 500,
+        "currency": "usd",
+        "beauBucks": 1200,
+        "scope": "room",
+        "publicOffer": false
+      }
+    }
+  },
   "moneyRails": {
     "host_plan": {
       "publicLabel": "Host plan",

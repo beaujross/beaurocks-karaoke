@@ -1,6 +1,6 @@
 # BeauBucks Canonical Ledger Contract
 
-Status: server-authoritative canary debits plus shadow-ledger writes and read-only reconciliation; all balance reads remain legacy-authoritative.
+Status: legacy Points remain legacy-authoritative; an isolated room-scoped BeauBucks purchase/reaction authority rail is implemented behind closed production gates, with public checkout disabled.
 
 ## Objective
 
@@ -66,6 +66,21 @@ Known evidence boundary: the current shadow ledger covers selected join/event gr
 Audience proof-readiness now has a separate, user-scoped read boundary. `listMyRoomCreditActivity` requires authentication, App Check when enforcement is enabled, and an existing Room membership document. It returns only that guest's current Room balance, sanitized posted activity, and completed paid Stripe checkout records for the same Room. Raw provider/session IDs, source collection IDs, account UIDs, and attribution internals are never returned. Paid records receive a deterministic non-sensitive BeauRocks confirmation code. The Audience App loads this data only when the guest opens the collapsed Recent activity disclosure and shows at most five rows before an explicit refresh.
 
 This view is proof of server-recorded activity, not a declaration that the shadow ledger is authoritative or complete. The Room balance remains the live total, legacy client-side mutations may not yet have a ledger entry, and the Host's full read-only reconciliation stays in Advanced Diagnostics rather than the primary operating flow.
+
+## Isolated BeauBucks Authority Rail (Implemented 2026-07-22; checkout disabled)
+
+- This rail starts a separate `beaubucks` account at zero. It does not migrate, relabel, reconcile, or debit `room_users.points` or `users.pointsBalance`.
+- The canary scope is one Room plus one guest account. Rollout requires both a server environment allowlist and `eventCredits.beauBucksAuthorityEnabled === true` on the Room.
+- The internal test pack is `Starter 1,200 BeauBucks` for USD 5.00. It remains `publicOffer: false`; the commercial contract also keeps checkout disabled and non-active, so `createBeauBucksCheckout` fails closed before contacting Stripe.
+- A future enabled checkout must use the server-owned pack definition, an authenticated Room member, and the same dual Room gate. The browser never supplies price or grant value.
+- `checkout.session.completed` grants only after Stripe signature verification, paid status, and exact agreement among the registered checkout, signed Session metadata, amount, currency, pack, Room, and buyer.
+- Purchase fulfillment uses one transaction to create an immutable authoritative `purchase_grant`, increment the cached account projection, store a hashed payment reference, and mark the registered checkout fulfilled. A replay cannot grant twice.
+- `spendAudienceBeauBucks` currently allows only server-priced reactions. It creates one stable spend operation, one authoritative `reaction_spend` debit, and one exact account projection update in a transaction. It cannot change queue priority, scoring, winners, identity, avatars, or legacy Points.
+- Refunds create immutable `refund_reversal` debits for proportionate unspent value. Chargebacks create `chargeback_reversal` debits, restrict the account, and preserve unrecovered shortfall evidence rather than allowing a negative balance.
+- The private Audience activity projection can render an authoritative purchase with USD amount and a hashed BeauRocks confirmation code. It also returns the separate ledger balance, but no Audience storefront or new Host control is routed to this rail yet.
+- BeauBucks do not expire during this canary. General-release expiration, portability, support, tax/accounting, and refund language require owner review.
+
+Activation remains a no-go until the out-of-order adjustment/recovery procedure is proven, the pack/refund terms are approved, Host enablement is designed, and the Audience purchase/spend surface is explicitly routed away from legacy Points.
 
 ## Server-Authoritative Canary Spend Contract (Implemented 2026-07-13)
 

@@ -31,6 +31,21 @@ test('posted ledger entries become sanitized, friendly Room activity', () => {
   assert.equal(activity.activityId, buildConfirmationCode('activity:ledger-secret'));
 });
 
+test('authoritative BeauBucks purchases include sanitized payment proof', () => {
+  const activity = sanitizeLedgerActivity({
+    ledgerEntryId: 'purchase-ledger-secret', status: 'posted', direction: 'credit',
+    type: 'purchase_grant', amount: 1200, currency: 'beaubucks', authoritative: true,
+    createdAt: { seconds: 321 }, source: { sourceId: 'cs_secret' },
+    financial: { amountCents: 500, currency: 'usd', externalTransactionId: 'pi_secret' },
+  });
+  assert.equal(activity.kind, 'payment');
+  assert.equal(activity.title, 'BeauBucks purchase');
+  assert.equal(activity.amount, 1200);
+  assert.equal(activity.payment.amountCents, 500);
+  assert.equal(activity.payment.status, 'paid');
+  assert.ok(!JSON.stringify(activity).includes('pi_secret'));
+});
+
 test('only completed paid checkouts become financial proof records', () => {
   assert.equal(sanitizePaidCheckoutActivity({ paymentStatus: 'unpaid', checkoutStatus: 'completed' }), null);
   const activity = sanitizePaidCheckoutActivity({
