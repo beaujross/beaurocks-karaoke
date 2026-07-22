@@ -1,6 +1,38 @@
 {
   "indexes": [
     {
+      "collectionGroup": "karaoke_songs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "roomCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "karaoke_songs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "roomCode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "backing_candidates",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

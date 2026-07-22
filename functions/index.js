@@ -23,6 +23,14 @@ const {
   buildUsageMeterSummary,
 } = require("./lib/entitlementsUsage");
 const {
+  ROOM_COST_OBSERVATION_RETENTION_DAYS,
+  ROOM_COST_OBSERVATION_SCHEMA_VERSION,
+  getUtcDateKey,
+  normalizeRoomCostCounts,
+  normalizeRoomCostSurface,
+  shouldSampleRoomCostObservation,
+} = require("./lib/roomCostObservation");
+const {
   normalizeCheckoutToken,
   buildSubscriptionCheckoutIdempotencyKey,
 } = require("./lib/subscriptionCheckout");
@@ -23425,6 +23433,67 @@ exports.assertRoomHostAccess = onCall({ cors: true }, async (request) => {
     hostUid,
     hostUids,
   };
+});
+
+exports.recordRoomCostObservation = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "record_room_cost_observation", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "record_room_cost_observation");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const surface = normalizeRoomCostSurface(request.data?.surface || "");
+  if (!roomCode) throw new HttpsError("invalid-argument", "roomCode is required.");
+  if (!surface) throw new HttpsError("invalid-argument", "A supported surface is required.");
+
+  const dateKey = getUtcDateKey();
+  if (!shouldSampleRoomCostObservation({ surface, roomCode, uid: callerUid, dateKey })) {
+    return { ok: true, sampled: false, duplicate: false };
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const [roomSnap, roomUserSnap] = await Promise.all([roomRef.get(), roomUserRef.get()]);
+  if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
+  const roomData = roomSnap.data() || {};
+  const role = getRoomRunOfShowRole({ roomData, callerUid });
+  const isHostOperator = [RUN_OF_SHOW_OPERATOR_ROLES.host, RUN_OF_SHOW_OPERATOR_ROLES.coHost].includes(role);
+  if ((surface === "host" || surface === "public_tv") && !isHostOperator) {
+    throw new HttpsError("permission-denied", "Only Room operators can record this surface.");
+  }
+  if (surface === "audience" && !roomUserSnap.exists) {
+    throw new HttpsError("permission-denied", "Join the Room before recording an Audience observation.");
+  }
+
+  const primaryHostUid = String(roomData?.hostUid || roomData?.hostUids?.[0] || "").trim();
+  const orgId = sanitizeOrgToken(roomData?.orgId || "") || buildOrgIdForUid(primaryHostUid);
+  if (!orgId) throw new HttpsError("failed-precondition", "Room workspace is not initialized.");
+  const actorHash = crypto.createHash("sha256").update(callerUid).digest("hex").slice(0, 16);
+  const observationId = `${dateKey}_${roomCode}_${surface}_${actorHash}`;
+  const observationRef = admin.firestore().collection("room_cost_observations").doc(observationId);
+  const counts = normalizeRoomCostCounts(request.data?.counts || {});
+  const now = admin.firestore.Timestamp.now();
+  const expiresAt = admin.firestore.Timestamp.fromMillis(
+    now.toMillis() + (ROOM_COST_OBSERVATION_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+  );
+  const created = await admin.firestore().runTransaction(async (tx) => {
+    const existing = await tx.get(observationRef);
+    if (existing.exists) return false;
+    tx.create(observationRef, {
+      schemaVersion: ROOM_COST_OBSERVATION_SCHEMA_VERSION,
+      observationId,
+      orgId,
+      roomCode,
+      surface,
+      actorKind: surface === "audience" ? "sampled_audience" : "room_operator",
+      dateKey,
+      counts,
+      createdAt: now,
+      expiresAt,
+    });
+    return true;
+  });
+
+  return { ok: true, sampled: true, duplicate: !created, observationId };
 });
 
 exports.publishPublicRoomRecap = onCall({ cors: true }, async (request) => {

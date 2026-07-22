@@ -893,6 +893,12 @@ const permanentlyDeleteHostRoom = async (payload = {}) => {
   const data = await callFunction("permanentlyDeleteHostRoom", payload || {});
   return data || null;
 };
+
+const recordRoomCostObservation = async (payload = {}) => {
+  await requireAppCheckToken("recordRoomCostObservation");
+  const data = await callFunction("recordRoomCostObservation", payload || {});
+  return data || null;
+};
 const removeHostRoomDiscoveryListing = async (roomCode = "") => {
   await requireAppCheckToken("removeHostRoomDiscoveryListing");
   const data = await callFunction("removeHostRoomDiscoveryListing", { roomCode });
@@ -1323,6 +1329,7 @@ export {
   listMyUsageInvoices,
   listHostSettingsAuditEntries,
   assertRoomHostAccess,
+  recordRoomCostObservation,
   publishPublicRoomRecap,
   permanentlyDeleteHostRoom,
   removeHostRoomDiscoveryListing,

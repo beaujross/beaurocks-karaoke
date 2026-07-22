@@ -53,6 +53,7 @@ import {
     getMyEntitlements,
     getMyUsageSummary,
     getMyUsageInvoiceDraft,
+    recordRoomCostObservation,
     saveMyUsageInvoiceDraft,
     listMyUsageInvoices,
     manageHostSettingsDefaults,
@@ -67,6 +68,11 @@ import {
     manageRunOfShowTemplate
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
+import { subscribeToBoundedRoomSongs } from '../../lib/roomSongSubscriptions';
+import {
+    buildRoomCostObservationCounts,
+    getRoomCostUtcDateKey
+} from '../../lib/roomCostObservation';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
 import { EMOJI } from '../../lib/emoji';
 import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
@@ -11657,25 +11663,72 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
     }, []);
 
-    // Data Sync
+    const hostMediaSubscriptionsActive = (
+        ['stage', 'browse', 'run_of_show', 'admin'].includes(tab)
+        || sceneLibraryModalOpen
+    );
+    const hostRoomCostObservationLatestRef = useRef({});
+    const hostRoomCostObservationSentRef = useRef('');
+    useEffect(() => {
+        hostRoomCostObservationLatestRef.current = {
+            participants: users,
+            songs,
+            activities,
+            mediaAssets: localLibrary.filter((item) => item?._cloud || item?._legacy),
+            scenePresets
+        };
+    }, [users, songs, activities, localLibrary, scenePresets]);
+    useEffect(() => {
+        if (!roomCode || isMarketingDemoFixture || qaHostFixtureId) return;
+        const dateKey = getRoomCostUtcDateKey();
+        const observationKey = `host:${roomCode}:${dateKey}`;
+        if (hostRoomCostObservationSentRef.current === observationKey) return;
+        const timer = setTimeout(() => {
+            if (hostRoomCostObservationSentRef.current === observationKey) return;
+            hostRoomCostObservationSentRef.current = observationKey;
+            recordRoomCostObservation({
+                roomCode,
+                surface: 'host',
+                counts: buildRoomCostObservationCounts(hostRoomCostObservationLatestRef.current)
+            }).catch((error) => {
+                hostLogger.debug('Could not record Room cost observation', error);
+            });
+        }, 8000);
+        return () => clearTimeout(timer);
+    }, [roomCode, isMarketingDemoFixture, qaHostFixtureId]);
+
+    // Core Room data stays mounted for the active Room.
     useEffect(() => {
         if(!roomCode || isMarketingDemoFixture || qaHostFixtureId) return;
         setScenePresetsHydrated(false);
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => {
             if(s.exists()) setRoom(s.data());
         });
-        const unsubSongs = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()}))));
-        const unsubUsers = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode)), s => setUsers(s.docs.map(d => ({id:d.id, ...d.data()}))));
+        const unsubSongs = subscribeToBoundedRoomSongs({
+            db,
+            appId: APP_ID,
+            roomCode,
+            onSongs: setSongs,
+            onError: (error) => hostLogger.debug('Could not subscribe to bounded Room songs', error)
+        });
+        const unsubUsers = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode), limit(250)), s => setUsers(s.docs.map(d => ({id:d.id, ...d.data()}))));
         const unsubActivity = onSnapshot(query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'),
             where('roomCode', '==', roomCode),
-            limit(200)
+            limit(80)
         ), s => {
             const items = s.docs
                 .map(d => d.data())
                 .sort((a, b) => toMs(b?.timestamp) - toMs(a?.timestamp));
              setActivities(items);
         });
+        return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); };
+    }, [roomCode, isMarketingDemoFixture, qaHostFixtureId, uid]);
+
+    // Media and scene libraries stay dormant outside the workspaces that use them.
+    useEffect(() => {
+        if (!roomCode || isMarketingDemoFixture || qaHostFixtureId || !hostMediaSubscriptionsActive) return;
+        setScenePresetsHydrated(false);
         const activeHostUid = String(auth.currentUser?.uid || uid || '').trim();
         let latestLegacyUploads = [];
         let latestAccountUploads = [];
@@ -11690,21 +11743,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         };
         const unsubLegacyUploads = onSnapshot(
-            query(collection(db, 'artifacts', APP_ID, 'public', 'data', LEGACY_ROOM_UPLOADS_COLLECTION), where('roomCode', '==', roomCode)),
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', LEGACY_ROOM_UPLOADS_COLLECTION), where('roomCode', '==', roomCode), limit(100)),
             snap => {
                 latestLegacyUploads = snap.docs.map(d => ({ id: d.id, _cloud: true, _legacy: true, _collection: LEGACY_ROOM_UPLOADS_COLLECTION, collectionName: LEGACY_ROOM_UPLOADS_COLLECTION, ...d.data() }));
                 applyMediaUploads();
             }
         );
         const unsubAccountUploads = activeHostUid ? onSnapshot(
-            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), where('ownerUid', '==', activeHostUid)),
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), where('ownerUid', '==', activeHostUid), limit(100)),
             snap => {
                 latestAccountUploads = snap.docs.map(d => ({ id: d.id, _cloud: true, _collection: HOST_MEDIA_ASSETS_COLLECTION, collectionName: HOST_MEDIA_ASSETS_COLLECTION, ...d.data() }));
                 applyMediaUploads();
             }
         ) : (() => {});
         const unsubRoomAccountUploads = onSnapshot(
-            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), where('roomCode', '==', roomCode)),
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), where('roomCode', '==', roomCode), limit(100)),
             snap => {
                 latestRoomAccountUploads = snap.docs.map(d => ({ id: d.id, _cloud: true, _collection: HOST_MEDIA_ASSETS_COLLECTION, collectionName: HOST_MEDIA_ASSETS_COLLECTION, ...d.data() }));
                 applyMediaUploads();
@@ -11720,34 +11773,43 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setScenePresetsHydrated(true);
         };
         const unsubLegacyScenePresets = onSnapshot(
-            query(collection(db, 'artifacts', APP_ID, 'public', 'data', LEGACY_ROOM_SCENE_PRESETS_COLLECTION), where('roomCode', '==', roomCode)),
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', LEGACY_ROOM_SCENE_PRESETS_COLLECTION), where('roomCode', '==', roomCode), limit(50)),
             snap => {
                 latestLegacyScenePresets = snap.docs.map(d => ({ id: d.id, _legacy: true, _collection: LEGACY_ROOM_SCENE_PRESETS_COLLECTION, collectionName: LEGACY_ROOM_SCENE_PRESETS_COLLECTION, ...d.data() }));
                 applyScenePresets();
             }
         );
         const unsubAccountScenePresets = activeHostUid ? onSnapshot(
-            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), where('ownerUid', '==', activeHostUid)),
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), where('ownerUid', '==', activeHostUid), limit(50)),
             snap => {
                 latestAccountScenePresets = snap.docs.map(d => ({ id: d.id, _collection: HOST_MEDIA_SCENE_PRESETS_COLLECTION, collectionName: HOST_MEDIA_SCENE_PRESETS_COLLECTION, ...d.data() }));
                 applyScenePresets();
             }
         ) : (() => {});
         const unsubRoomAccountScenePresets = onSnapshot(
-            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), where('roomCode', '==', roomCode)),
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), where('roomCode', '==', roomCode), limit(50)),
             snap => {
                 latestRoomAccountScenePresets = snap.docs.map(d => ({ id: d.id, _collection: HOST_MEDIA_SCENE_PRESETS_COLLECTION, collectionName: HOST_MEDIA_SCENE_PRESETS_COLLECTION, ...d.data() }));
                 applyScenePresets();
             }
         );
 
-        // VIP Contacts if tab is active
-        if (tab === 'lobby' && lobbyTab === 'vip') {
-            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'contacts'), where('roomCode', '==', roomCode))).then(snap => setContacts(snap.docs.map(d => d.data())));
-        }
-
-        return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); unsubLegacyUploads(); unsubAccountUploads(); unsubRoomAccountUploads(); unsubLegacyScenePresets(); unsubAccountScenePresets(); unsubRoomAccountScenePresets(); };
-    }, [roomCode, tab, lobbyTab, isMarketingDemoFixture, qaHostFixtureId, uid]);
+        return () => { unsubLegacyUploads(); unsubAccountUploads(); unsubRoomAccountUploads(); unsubLegacyScenePresets(); unsubAccountScenePresets(); unsubRoomAccountScenePresets(); };
+    }, [roomCode, hostMediaSubscriptionsActive, isMarketingDemoFixture, qaHostFixtureId, uid]);
+    useEffect(() => {
+        if (!roomCode || isMarketingDemoFixture || qaHostFixtureId || tab !== 'lobby' || lobbyTab !== 'vip') return;
+        let cancelled = false;
+        getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'contacts'), where('roomCode', '==', roomCode)))
+            .then((snap) => {
+                if (!cancelled) setContacts(snap.docs.map(d => d.data()));
+            })
+            .catch((error) => {
+                hostLogger.debug('Could not load Room VIP contacts', error);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [roomCode, tab, lobbyTab, isMarketingDemoFixture, qaHostFixtureId]);
     useEffect(() => {
         if (isMarketingDemoFixture || qaHostFixtureId) {
             setScenePresetsHydrated(true);

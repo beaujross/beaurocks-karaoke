@@ -137,7 +137,7 @@ test('admin navigation keeps core config sections wired into the workspace regis
   );
   assert.match(
     hostAppSource,
-    /where\('roomCode', '==', roomCode\),\s*limit\(200\)/,
+    /where\('roomCode', '==', roomCode\),\s*limit\(80\)/,
     'Host activity feed should stay bounded on the server instead of subscribing to the full room activity collection',
   );
   assert.match(

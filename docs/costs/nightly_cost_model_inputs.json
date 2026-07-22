@@ -17,6 +17,8 @@
     "casual": {
       "hours": 3,
       "avg_active_users": 25,
+      "firestore_reads_est": 12200,
+      "firestore_writes_est": 700,
       "audience_page_loads": 45,
       "songs_submitted": 30,
       "chat_messages": 120,
@@ -37,6 +39,8 @@
     "busy": {
       "hours": 4,
       "avg_active_users": 75,
+      "firestore_reads_est": 45100,
+      "firestore_writes_est": 2640,
       "audience_page_loads": 140,
       "songs_submitted": 80,
       "chat_messages": 450,
@@ -57,6 +61,8 @@
     "tournament": {
       "hours": 6,
       "avg_active_users": 180,
+      "firestore_reads_est": 149700,
+      "firestore_writes_est": 8250,
       "audience_page_loads": 320,
       "songs_submitted": 180,
       "chat_messages": 1400,

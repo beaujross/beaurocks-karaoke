@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, trackEvent, callFunction } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
+import { subscribeToBoundedRoomSongs } from '../../lib/roomSongSubscriptions';
 import { ASSETS, STORM_SFX } from '../../lib/assets';
 import QRCode from 'qrcode';
 import { averageBand } from '../../lib/utils';
@@ -3890,7 +3891,12 @@ const PublicTV = ({ roomCode }) => {
         reactionScoreTotalsByPerformanceRef.current = new Map();
         setReactionScoreTotalsByPerformance(new Map());
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
-        const unsubSongs = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()}))));
+        const unsubSongs = subscribeToBoundedRoomSongs({
+            db,
+            appId: APP_ID,
+            roomCode,
+            onSongs: setSongs
+        });
         
         const unsubActivity = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), where('roomCode', '==', roomCode), limit(8)), s => {
              const sorted = s.docs.map(d => d.data()).sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
@@ -3906,7 +3912,8 @@ const PublicTV = ({ roomCode }) => {
         );
         const reactionsFallbackQuery = query(
             reactionsCol,
-            where('roomCode', '==', roomCode)
+            where('roomCode', '==', roomCode),
+            limit(250)
         );
         const handleReactionSnapshot = (s) => {
             let scoreChanged = false;
@@ -4407,7 +4414,7 @@ const PublicTV = ({ roomCode }) => {
         );
 
         // Live listener to room_users so we can show vibe racers during guitar mode
-        const unsubVibe = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode)), s => {
+        const unsubVibe = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode), limit(250)), s => {
             const raw = s.docs.map((docSnap) => {
                 const data = docSnap.data() || {};
                 return {

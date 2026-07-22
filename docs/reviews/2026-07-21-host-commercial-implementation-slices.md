@@ -194,6 +194,8 @@ Prove support, reconciliation, refunds, incidents, observability, privacy, acces
 
 ## Current checkpoint
 
-Slices 01 and 02 are accepted. Slice 03 is authorized for a Hosting-only production canary and awaits the owner production pass.
+Slices 01, 02, and 03 are accepted. The owner completed the Slice 03 core-karaoke production pass, and the resulting Room-selection, transition-control, VIP reward, and microphone-vote fixes are released.
 
-The private-by-default first-Room flow, explicit Room control and guest access, content-agnostic backing-media plan, Room Readiness handoff, single Launch Room action, and partial-success recovery are complete. Gate B2 closes only after the production pass recorded in docs/reviews/2026-07-21-slice-03-first-room-and-tonight-setup-review.md.
+Slice 04 is deployed to the controlled production cohort. The provisional Room cost envelope is documented, the inventoried live listeners are bounded, Room songs use bounded active and recent-performance windows, and sampled Room cost observations are live with enforced 90-day retention and a read-only evidence report. Gate C1 remains open until representative Room-day coverage replaces the provisional stress multipliers, product-attributed usage reconciles to cloud/provider billing, and the owner approves the margin floor and maximum subsidized exposure.
+
+Broader self-service Host access remains blocked by Gate C1 and Slice 05 usage-budget and graceful-degradation controls.

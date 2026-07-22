@@ -30,9 +30,16 @@ import {
     castSelfieChallengeVote,
     submitBingoTileConfirmation,
     submitBingoMysterySpin,
-    lockBingoMysteryPick
+    lockBingoMysteryPick,
+    recordRoomCostObservation
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
+import { subscribeToBoundedRoomSongs } from '../../lib/roomSongSubscriptions';
+import {
+    buildRoomCostObservationCounts,
+    getRoomCostUtcDateKey,
+    shouldRecordRoomCostObservation
+} from '../../lib/roomCostObservation';
 import { searchBrowseCuratedYouTubeIndex, searchCuratedYouTubeEntries } from '../../lib/curatedKaraokeIndex';
 import {
     isYouTubeQuotaBlockedError,
@@ -4668,6 +4675,40 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         toast(`Spark sent to ${name}!`);
     };
 
+    const audienceRoomCostObservationLatestRef = useRef({});
+    const audienceRoomCostObservationSentRef = useRef('');
+    useEffect(() => {
+        audienceRoomCostObservationLatestRef.current = {
+            participants: allUsers,
+            songs,
+            activities: [],
+            mediaAssets: roomLibraryUploads,
+            scenePresets: []
+        };
+    }, [allUsers, songs, roomLibraryUploads]);
+    useEffect(() => {
+        if (!roomCode || !activeUid || isAudienceFixtureMode) return;
+        const dateKey = getRoomCostUtcDateKey();
+        if (!shouldRecordRoomCostObservation({
+            surface: 'audience',
+            roomCode,
+            uid: activeUid,
+            dateKey
+        })) return;
+        const observationKey = `audience:${roomCode}:${activeUid}:${dateKey}`;
+        if (audienceRoomCostObservationSentRef.current === observationKey) return;
+        const timer = setTimeout(() => {
+            if (audienceRoomCostObservationSentRef.current === observationKey) return;
+            audienceRoomCostObservationSentRef.current = observationKey;
+            recordRoomCostObservation({
+                roomCode,
+                surface: 'audience',
+                counts: buildRoomCostObservationCounts(audienceRoomCostObservationLatestRef.current)
+            }).catch(() => {});
+        }, 8000);
+        return () => clearTimeout(timer);
+    }, [roomCode, activeUid, isAudienceFixtureMode]);
+
     // Listeners
     useEffect(() => {
         if (isAudienceFixtureMode) return () => {};
@@ -4680,8 +4721,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         }
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
 
-        // Subscribe to ALL users for Leaderboard
-        const unsubAllUsers = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode)), s => {
+        // Room participants power the leaderboard and games; cap fan-out above the supported event band.
+        const unsubAllUsers = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode), limit(250)), s => {
             const usersList = s.docs.map((docSnap) => {
                 const data = docSnap.data() || {};
                 return {
@@ -4693,7 +4734,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setAllUsers(usersList);
         });
         
-        const unsubSongs = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()}))));
+        const unsubSongs = subscribeToBoundedRoomSongs({
+            db,
+            appId: APP_ID,
+            roomCode,
+            onSongs: setSongs
+        });
         if (!activeUid) {
             return () => { unsubRoom(); unsubAllUsers(); unsubSongs(); };
         }
@@ -4776,13 +4822,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     }, [authReadyUid, isAudienceFixtureMode, uid]);
 
     useEffect(() => {
-        if (!roomCode || isAudienceFixtureMode) return;
+        if (!roomCode || isAudienceFixtureMode || tab !== 'request') return;
         const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), s => {
             const data = s.data() || {};
             if (Array.isArray(data.ytIndex)) setYtIndex(data.ytIndex);
         });
         return () => unsub();
-    }, [roomCode, isAudienceFixtureMode]);
+    }, [roomCode, isAudienceFixtureMode, tab]);
     useEffect(() => {
         if (isAudienceFixtureMode) return;
         const unsub = onSnapshot(
@@ -4795,7 +4841,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     useEffect(() => {
         if (!roomCode || isAudienceFixtureMode) return;
         const unsub = onSnapshot(
-            query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode)),
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode), limit(100)),
             (snap) => {
                 setRoomLibraryUploads(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
             }

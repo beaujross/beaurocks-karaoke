@@ -2,7 +2,7 @@
 
 Date: 2026-07-21
 
-Status: Hosting-only production canary authorized; owner pass pending
+Status: Accepted after owner production pass; follow-up fixes released
 
 Slice queue: `docs/reviews/2026-07-21-host-commercial-implementation-slices.md`
 
@@ -20,6 +20,12 @@ The first-Room path now makes the private-party decisions explicit, sends the Ho
 - If either browser handoff fails, Host Dashboard records the actual result and gives a specific recovery instruction.
 
 A Hosting-only production canary was deployed. Backend and access expansion remain unchanged.
+
+## Owner production pass
+
+The owner completed a live core-karaoke playtest. Room creation, the Host surface, Audience App, Public TV, queue, and performance progression were usable through the night. The pass surfaced five concrete follow-ups: longer existing-Room names and newest-first ordering; clearer controls for transition moments and Auto DJ; the advertised 5,000-credit VIP email reward; shorter, larger microphone-vote copy with tie behavior matching the displayed result; and simpler explanations of which Room controls each preset changes.
+
+Those follow-ups were implemented and released in commit `602b325` (`Stabilize host controls VIP rewards and mic voting`). They preserve the successful private-party core while making Room behavior more legible. The fixes have automated coverage and production deployment evidence; they have not yet received a second owner playtest covering every non-core capability.
 
 ## Production canary deployment
 
