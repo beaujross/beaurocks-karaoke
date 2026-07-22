@@ -536,6 +536,15 @@ const getMeterUsageRatio = (meter = null) => {
     const used = Number(meter?.used || 0);
     return included > 0 ? (used / included) : 0;
 };
+const formatUsageCapacityState = (meter = null) => {
+    if (meter?.hardLimitReached) return '100% · Capped';
+    if (Number(meter?.hardLimit || 0) <= 0) return 'Not available';
+    const ratioBps = Math.max(0, Number(meter?.hardLimitRatioBps || 0));
+    const ratioLabel = `${Math.min(100, Math.floor(ratioBps / 100))}% of cap`;
+    if (Number(meter?.warningLevelBps || 0) >= 8000) return `${ratioLabel} · Watch`;
+    if (Number(meter?.warningLevelBps || 0) >= 5000) return `${ratioLabel} · On track`;
+    return ratioLabel;
+};
 const formatOpsCountdown = (targetMs = 0, now = nowMs()) => {
     const remainingMs = Math.max(0, Number(targetMs || 0) - Number(now || nowMs()));
     if (!remainingMs) return '0m';
@@ -25982,12 +25991,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <th className="px-3 py-2">Billable Rate</th>
                                                     <th className="px-3 py-2">Est. Overage</th>
                                                     <th className="px-3 py-2">Hard Limit</th>
+                                                    <th className="px-3 py-2">Capacity Status</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {usageMeters.length === 0 && (
                                                     <tr className="bg-zinc-900/40 text-zinc-500">
-                                                        <td className="px-3 py-3" colSpan={9}>No usage data yet for this period.</td>
+                                                        <td className="px-3 py-3" colSpan={10}>No usage data yet for this period.</td>
                                                     </tr>
                                                 )}
                                                 {usageMeters.map((meter) => (
@@ -26002,6 +26012,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         <td className="px-3 py-2 text-zinc-300">{formatUsdFromCents(meter.estimatedOverageCents || 0)}</td>
                                                         <td className={`px-3 py-2 ${meter.hardLimitReached ? 'text-amber-200' : 'text-zinc-300'}`}>
                                                             {Number(meter.hardLimit || 0).toLocaleString()}
+                                                        </td>
+                                                        <td className={`px-3 py-2 ${meter.hardLimitReached ? 'text-rose-200' : Number(meter.warningLevelBps || 0) >= 8000 ? 'text-amber-200' : 'text-zinc-300'}`}>
+                                                            {formatUsageCapacityState(meter)}
                                                         </td>
                                                     </tr>
                                                 ))}

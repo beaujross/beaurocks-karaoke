@@ -200,6 +200,20 @@
       "pricingStatus": "existing_unvalidated_do_not_publish"
     }
   },
+  "usageControlPolicy": {
+    "status": "internal_guardrail_not_public_pricing",
+    "liabilityModel": "prepaid_or_hard_capped_no_uncapped_postpaid",
+    "lifecycleStates": ["reserved", "settled", "released", "billable", "invoiced"],
+    "warningThresholdBps": [5000, 8000, 10000],
+    "protectedLiveRoomCapabilities": [
+      "queue_management",
+      "host_override",
+      "existing_local_media",
+      "room_shutdown",
+      "room_export"
+    ],
+    "cloudBudgetAlertsAreEnforcement": false
+  },
   "moneyRails": {
     "host_plan": {
       "publicLabel": "Host plan",

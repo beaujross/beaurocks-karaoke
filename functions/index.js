@@ -4379,6 +4379,11 @@ const readOrganizationUsageSummary = async ({
     const summary = buildUsageMeterSummary({
       meterId,
       used,
+      reserved: meterBucket?.reserved,
+      settled: meterBucket?.settled,
+      released: meterBucket?.released,
+      billable: meterBucket?.billable,
+      invoiced: meterBucket?.invoiced,
       quota,
       periodKey,
       sources: meterBucket?.sources || {},
@@ -7419,7 +7424,7 @@ const lookupYelpVenue = async ({ name = "", locationText = "" }) => {
   };
 };
 
-const reserveOrganizationUsageUnits = async ({
+const settleOrganizationUsageAttempt = async ({
   orgId = "",
   entitlements = null,
   meterId = "",
@@ -7454,16 +7459,25 @@ const reserveOrganizationUsageUnits = async ({
   const nextUsed = await db.runTransaction(async (tx) => {
     const snap = await tx.get(usageRef);
     const data = normalizeUsageDocumentData(snap.data() || {});
-    const currentUsed = toWholeNumber(data?.meters?.[meterId]?.used, 0);
-    const plannedUsed = currentUsed + safeUnits;
-    if (quota.hardLimit > 0 && plannedUsed > quota.hardLimit) {
+    const meterData = data?.meters?.[meterId] || {};
+    const currentUsed = toWholeNumber(meterData?.used, 0);
+    const currentSettled = toWholeNumber(meterData?.settled, currentUsed);
+    const currentReserved = toWholeNumber(meterData?.reserved, 0);
+    const plannedSettled = currentSettled + safeUnits;
+    const plannedExposure = plannedSettled + currentReserved;
+    if (quota.hardLimit > 0 && plannedExposure > quota.hardLimit) {
       throw new HttpsError(
         "resource-exhausted",
         `${meter.label} monthly hard limit reached for this workspace.`
       );
     }
     const meterPatch = {
-      used: plannedUsed,
+      used: plannedSettled,
+      reserved: currentReserved,
+      settled: plannedSettled,
+      released: toWholeNumber(meterData?.released, 0),
+      billable: toWholeNumber(meterData?.billable, 0),
+      invoiced: toWholeNumber(meterData?.invoiced, 0),
       included: quota.included,
       hardLimit: quota.hardLimit,
       overageRateCents: quota.overageRateCents,
@@ -7534,7 +7548,7 @@ const reserveOrganizationUsageUnits = async ({
       patch.createdAt = now;
     }
     tx.set(usageRef, patch, { merge: true });
-    return plannedUsed;
+    return plannedSettled;
   });
 
   return buildUsageMeterSummary({
@@ -7544,6 +7558,10 @@ const reserveOrganizationUsageUnits = async ({
     periodKey,
   });
 };
+
+// Compatibility alias while individual provider boundaries migrate to explicit
+// reserve/settle/release operations. Existing synchronous calls settle an attempt atomically.
+const reserveOrganizationUsageUnits = settleOrganizationUsageAttempt;
 
 const resolveUsageSource = (value = "", fallback = "unknown") =>
   sanitizeSecurityToken(value || fallback, 96) || sanitizeSecurityToken(fallback, 96) || "unknown";

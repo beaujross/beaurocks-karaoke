@@ -23,6 +23,12 @@ const PLAN_DEFINITIONS = Object.freeze(
 const ENTITLED_STATUSES = new Set(HOST_COMMERCIAL_CONTRACT.entitledStatuses || []);
 const PUBLIC_HOST_PLAN_IDS = new Set(HOST_COMMERCIAL_CONTRACT.publicOfferPlanIds || []);
 const ROOM_CREATE_CAPABILITY = "rooms.create";
+const USAGE_CONTROL_POLICY = Object.freeze({
+  ...(HOST_COMMERCIAL_CONTRACT.usageControlPolicy || {}),
+  lifecycleStates: Object.freeze([...(HOST_COMMERCIAL_CONTRACT.usageControlPolicy?.lifecycleStates || [])]),
+  warningThresholdBps: Object.freeze([...(HOST_COMMERCIAL_CONTRACT.usageControlPolicy?.warningThresholdBps || [])]),
+  protectedLiveRoomCapabilities: Object.freeze([...(HOST_COMMERCIAL_CONTRACT.usageControlPolicy?.protectedLiveRoomCapabilities || [])]),
+});
 
 const INTERNAL_USAGE_METER_PRICING = Object.freeze({
   ai_generate_content: {
@@ -238,6 +244,11 @@ const resolveUsageMeterQuota = ({ meterId = "", planId = "free", status = "inact
 const buildUsageMeterSummary = ({
   meterId,
   used = 0,
+  reserved = 0,
+  settled = null,
+  released = 0,
+  billable = 0,
+  invoiced = 0,
   quota,
   periodKey = "",
   sources = {},
@@ -250,7 +261,15 @@ const buildUsageMeterSummary = ({
     label: meterId,
     unit: "unit",
   };
-  const safeUsed = toWholeNumber(used, 0);
+  const legacyUsed = toWholeNumber(used, 0);
+  const safeSettled = settled === null || settled === undefined
+    ? legacyUsed
+    : toWholeNumber(settled, legacyUsed);
+  const safeReserved = toWholeNumber(reserved, 0);
+  const safeReleased = toWholeNumber(released, 0);
+  const safeBillable = toWholeNumber(billable, 0);
+  const safeInvoiced = toWholeNumber(invoiced, 0);
+  const exposureUnits = safeSettled + safeReserved;
   const included = toWholeNumber(quota?.included, 0);
   const hardLimit = toWholeNumber(quota?.hardLimit, 0);
   const overageRateCents = toWholeNumber(quota?.overageRateCents, 0);
@@ -259,11 +278,20 @@ const buildUsageMeterSummary = ({
     ? Math.max(0, Number(quota?.markupMultiplier))
     : 1;
   const billableUnitRateCents = toWholeNumber(quota?.billableUnitRateCents, overageRateCents);
-  const overageUnits = Math.max(0, safeUsed - included);
+  const overageUnits = Math.max(0, safeSettled - included);
   const estimatedOverageCents = overageUnits * billableUnitRateCents;
-  const remainingIncluded = Math.max(0, included - safeUsed);
-  const remainingToHardLimit = hardLimit > 0 ? Math.max(0, hardLimit - safeUsed) : null;
-  const hardLimitReached = hardLimit > 0 && safeUsed >= hardLimit;
+  const remainingIncluded = Math.max(0, included - safeSettled);
+  const remainingToHardLimit = hardLimit > 0 ? Math.max(0, hardLimit - exposureUnits) : null;
+  const hardLimitReached = hardLimit > 0 && exposureUnits >= hardLimit;
+  const hardLimitRatioBps = hardLimit > 0 ? Math.floor((exposureUnits / hardLimit) * 10000) : 0;
+  const warningThresholdBps = [...(USAGE_CONTROL_POLICY.warningThresholdBps || [5000, 8000, 10000])]
+    .map((value) => toWholeNumber(value, 0))
+    .filter((value) => value > 0)
+    .sort((a, b) => a - b);
+  const warningLevelBps = warningThresholdBps.reduce(
+    (level, threshold) => (hardLimitRatioBps >= threshold ? threshold : level),
+    0,
+  );
   const topSources = toRollupEntries(sources, {
     keyField: "source",
     labelField: "label",
@@ -289,7 +317,15 @@ const buildUsageMeterSummary = ({
     label: meter.label,
     unit: meter.unit,
     period: periodKey,
-    used: safeUsed,
+    used: safeSettled,
+    exposureUnits,
+    lifecycle: {
+      reserved: safeReserved,
+      settled: safeSettled,
+      released: safeReleased,
+      billable: safeBillable,
+      invoiced: safeInvoiced,
+    },
     included,
     overageUnits,
     overageRateCents,
@@ -299,6 +335,8 @@ const buildUsageMeterSummary = ({
     estimatedOverageCents,
     hardLimit,
     hardLimitReached,
+    hardLimitRatioBps,
+    warningLevelBps,
     remainingIncluded,
     remainingToHardLimit,
     breakdowns: {
@@ -315,6 +353,7 @@ module.exports = {
   PLAN_DEFINITIONS,
   USAGE_METER_DEFINITIONS,
   ROOM_CREATE_CAPABILITY,
+  USAGE_CONTROL_POLICY,
   getPlanDefinition,
   isEntitledStatus,
   isPublicHostPlan,

@@ -6,6 +6,7 @@ const {
   isPublicHostPlan,
   resolveUsageMeterQuota,
   buildUsageMeterSummary,
+  USAGE_CONTROL_POLICY,
 } = require("../../functions/lib/entitlementsUsage");
 
 test("entitlementsUsage.test", () => {
@@ -58,6 +59,10 @@ test("entitlementsUsage.test", () => {
   const meterSummary = buildUsageMeterSummary({
     meterId: "ai_generate_content",
     used: 800,
+    reserved: 600,
+    released: 10,
+    billable: 50,
+    invoiced: 20,
     quota: aiQuota,
     periodKey: "202602",
     sources: {
@@ -76,6 +81,16 @@ test("entitlementsUsage.test", () => {
     },
   });
   assert.equal(meterSummary.used, 800);
+  assert.equal(meterSummary.exposureUnits, 1400);
+  assert.deepEqual(meterSummary.lifecycle, {
+    reserved: 600,
+    settled: 800,
+    released: 10,
+    billable: 50,
+    invoiced: 20,
+  });
+  assert.equal(meterSummary.warningLevelBps, 5000);
+  assert.equal(meterSummary.remainingToHardLimit, 1100);
   assert.equal(meterSummary.overageUnits, 50);
   assert.equal(meterSummary.estimatedOverageCents, 150);
   assert.equal(meterSummary.hardLimitReached, false);
@@ -92,4 +107,13 @@ test("entitlementsUsage.test", () => {
   });
   assert.equal(hardLimitSummary.hardLimitReached, true);
   assert.equal(hardLimitSummary.remainingToHardLimit, 0);
+  assert.deepEqual(USAGE_CONTROL_POLICY.lifecycleStates, [
+    "reserved",
+    "settled",
+    "released",
+    "billable",
+    "invoiced",
+  ]);
+  assert.deepEqual(USAGE_CONTROL_POLICY.warningThresholdBps, [5000, 8000, 10000]);
+  assert.equal(USAGE_CONTROL_POLICY.cloudBudgetAlertsAreEnforcement, false);
 });

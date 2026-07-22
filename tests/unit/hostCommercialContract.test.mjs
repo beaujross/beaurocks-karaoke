@@ -109,6 +109,18 @@ describe("Host commercial contract", () => {
     }
   });
 
+  it("keeps variable usage hard-capped and preserves the protected live-room floor", () => {
+    expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.liabilityModel)
+      .toBe("prepaid_or_hard_capped_no_uncapped_postpaid");
+    expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.lifecycleStates)
+      .toEqual(["reserved", "settled", "released", "billable", "invoiced"]);
+    expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.warningThresholdBps)
+      .toEqual([5000, 8000, 10000]);
+    expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.protectedLiveRoomCapabilities)
+      .toEqual(expect.arrayContaining(["queue_management", "host_override", "existing_local_media"]));
+    expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.cloudBudgetAlertsAreEnforcement).toBe(false);
+  });
+
   it("records subscription behavior without silently settling owner decisions", () => {
     expect(HOST_SUBSCRIPTION_STATE_CONTRACTS.active.newRoomPolicy).toBe(
       "allowed_when_plan_capability_allows",
