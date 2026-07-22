@@ -19,7 +19,25 @@ The first-Room path now makes the private-party decisions explicit, sends the Ho
 - Launch Room applies Tonight Setup, opens Public TV, and copies the Audience App link.
 - If either browser handoff fails, Host Dashboard records the actual result and gives a specific recovery instruction.
 
-No production deployment was performed.
+A Hosting-only production canary was deployed. Backend and access expansion remain unchanged.
+
+## Production canary deployment
+
+Hosting-only deployment completed on 2026-07-21 Pacific time.
+
+- Firebase project: `beaurocks-karaoke-v2`
+- Hosting release: `1784684251898000`
+- Hosting version: `8bcc1892ad3cdd00`
+- Local source commit: `9f7d69a` (`Prepare controlled Host production canary`)
+- Live entry asset: `/assets/index-BlqFJg7Q.js`
+- Live Host asset: `/assets/HostApp-DIOl-5KN.js`
+- Live Room-launch asset: `/assets/HostRoomLaunchPad-BW8iRB9D.js`
+- Firebase URL: `https://beaurocks-karaoke-v2.web.app`
+- Custom domains verified: `https://beaurocks.app` and `https://host.beaurocks.app`
+
+Deployment scope was Firebase Hosting only. Functions, Firestore rules, indexes, Storage rules, secrets, Stripe configuration, and Host cohort access were not deployed or widened.
+
+The release commit is local and clean for deployed source. A direct push of the broad mixed-worktree commit to remote `main` was safety-blocked pending separate explicit owner approval, so remote source alignment remains a follow-up.
 
 ## Customer path
 
@@ -87,9 +105,12 @@ Pass. Product copy now supports the private-party and content-agnostic story: Ho
 - Full unit suite: 303 files, 1,102 tests passed.
 - Focused ESLint: passed with no errors.
 - Production Vite and SEO build: passed; 135 prerendered routes and 132 social cards generated.
+- Production marketing release gate: passed against `https://beaurocks.app`; 9 golden-path checks, all desktop/Android/iOS cross-surface checks, and the AAHF Discover-to-Join check succeeded.
 - Diff integrity: passed; only the existing HostApp line-ending warning was reported.
 
-The authenticated golden Host Room run was not executed because it provisions and mutates a real backend Room and requires approved QA credentials. Its selectors were updated so it is ready for the staged release gate.
+The authenticated golden Host Room run was not executed because it provisions and mutates a real backend Room. This production pass is assigned to the owner. Its selectors were updated so it remains available for a later approved automated canary.
+
+The repository-wide client lint command did not report a lint error but exceeded both its two-minute combined timeout and a five-minute isolated timeout while processing the largest JSX files. Focused client lint, Functions lint, scripts lint, the full unit suite, rules suite, full callable suite, Host browser gate, marketing browser gate, and production build all passed.
 
 ## Known gaps and follow-up
 
@@ -98,7 +119,7 @@ The authenticated golden Host Room run was not executed because it provisions an
 3. Browser popup and clipboard policies can still block surface handoff; this slice makes those failures recoverable.
 4. Cost envelopes, usage ceilings, prepaid capacity, and circuit breakers begin in Slice 04.
 5. Offline and LAN operation remain later roadmap slices and are not claimed here.
-6. No Functions, rules, or hosting deployment was performed.
+6. Functions, rules, indexes, secrets, and billing configuration were not deployed.
 
 ## Rollback
 
