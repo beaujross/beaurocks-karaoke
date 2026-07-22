@@ -906,6 +906,12 @@ const listMyAdditionalUsageTransactions = async (opts = {}) => {
   return data || null;
 };
 
+const listMyRoomCreditActivity = async (opts = {}) => {
+  await requireAppCheckToken("listMyRoomCreditActivity");
+  const data = await callFunction("listMyRoomCreditActivity", opts || {});
+  return data || null;
+};
+
 const manageMyUsageControls = async (payload = {}) => {
   await requireAppCheckToken("manageMyUsageControls");
   const data = await callFunction("manageMyUsageControls", payload || {});
@@ -1348,6 +1354,7 @@ export {
   saveMyUsageInvoiceDraft,
   listMyUsageInvoices,
   listMyAdditionalUsageTransactions,
+  listMyRoomCreditActivity,
   listHostSettingsAuditEntries,
   assertRoomHostAccess,
   recordRoomCostObservation,

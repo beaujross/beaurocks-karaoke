@@ -63,6 +63,10 @@ Make BeauBucks issuance, purchase, grant, spend, refund, expiration, and donatio
 
 Known evidence boundary: the current shadow ledger covers selected join/event grants, ticket value, timed refills, promo grants, and canary reaction/profile/avatar debits. Other legacy mutations remain expected reconciliation gaps until they receive their own server/idempotency boundary.
 
+Audience proof-readiness now has a separate, user-scoped read boundary. `listMyRoomCreditActivity` requires authentication, App Check when enforcement is enabled, and an existing Room membership document. It returns only that guest's current Room balance, sanitized posted activity, and completed paid Stripe checkout records for the same Room. Raw provider/session IDs, source collection IDs, account UIDs, and attribution internals are never returned. Paid records receive a deterministic non-sensitive BeauRocks confirmation code. The Audience App loads this data only when the guest opens the collapsed Recent activity disclosure and shows at most five rows before an explicit refresh.
+
+This view is proof of server-recorded activity, not a declaration that the shadow ledger is authoritative or complete. The Room balance remains the live total, legacy client-side mutations may not yet have a ledger entry, and the Host's full read-only reconciliation stays in Advanced Diagnostics rather than the primary operating flow.
+
 ## Server-Authoritative Canary Spend Contract (Implemented 2026-07-13)
 
 - `spendAudienceRoomCredits` accepts `roomCode`, `kind`, `clientOperationId`, and a kind-specific payload from an authenticated room member.

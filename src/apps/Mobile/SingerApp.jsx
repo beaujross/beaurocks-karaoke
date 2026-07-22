@@ -17,6 +17,7 @@ import {
     joinRoomAudience,
     updateAudienceIdentity,
     spendAudienceRoomCredits,
+    listMyRoomCreditActivity,
     uploadAudienceRoomPhoto,
     submitAudienceQueueSong,
     castRunOfShowReleaseWindowVote,
@@ -1782,6 +1783,14 @@ const SingerApp = ({ roomCode, uid }) => {
     const [showProfile, setShowProfile] = useState(false);
     const [showAccount, setShowAccount] = useState(false);
     const [showPoints, setShowPoints] = useState(false);
+    const [creditActivityOpen, setCreditActivityOpen] = useState(false);
+    const [creditActivityState, setCreditActivityState] = useState({
+        status: 'idle',
+        roomCode: '',
+        activities: [],
+        hasMore: false,
+        error: '',
+    });
     const [supportEmbedOpen, setSupportEmbedOpen] = useState(false);
     const [pointsCheckoutPendingKey, setPointsCheckoutPendingKey] = useState('');
     const [eventGrantCode, setEventGrantCode] = useState('');
@@ -3603,6 +3612,61 @@ const SingerApp = ({ roomCode, uid }) => {
         () => questLogItems.slice(0, POINTS_STOREFRONT_EARN_LIMIT),
         [questLogItems]
     );
+    const loadCreditActivity = useCallback(async ({ force = false } = {}) => {
+        if (!roomCode || !activeUid) return;
+        if (!force && creditActivityState.roomCode === roomCode && creditActivityState.status === 'loading') return;
+        setCreditActivityState((current) => ({
+            ...current,
+            status: 'loading',
+            roomCode,
+            error: '',
+        }));
+        try {
+            const payload = await listMyRoomCreditActivity({ roomCode, limit: 10 });
+            setCreditActivityState({
+                status: 'ready',
+                roomCode,
+                activities: Array.isArray(payload?.activities) ? payload.activities : [],
+                hasMore: !!payload?.hasMore,
+                error: '',
+            });
+        } catch (activityError) {
+            console.error(activityError);
+            setCreditActivityState((current) => ({
+                ...current,
+                status: 'error',
+                roomCode,
+                error: 'Recent activity is unavailable right now.',
+            }));
+        }
+    }, [activeUid, creditActivityState.roomCode, creditActivityState.status, roomCode]);
+    const toggleCreditActivity = useCallback(() => {
+        const nextOpen = !creditActivityOpen;
+        setCreditActivityOpen(nextOpen);
+        if (nextOpen && (creditActivityState.roomCode !== roomCode || creditActivityState.status === 'idle')) {
+            void loadCreditActivity();
+        }
+    }, [creditActivityOpen, creditActivityState.roomCode, creditActivityState.status, loadCreditActivity, roomCode]);
+    const formatCreditActivityTime = (occurredAtMs = 0) => {
+        const timestamp = Number(occurredAtMs || 0);
+        if (!timestamp) return 'Recently';
+        return new Intl.DateTimeFormat(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(new Date(timestamp));
+    };
+    const formatPaymentAmount = (payment = null) => {
+        if (!payment || !Number.isFinite(Number(payment.amountCents))) return '';
+        return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency: String(payment.currency || 'USD').toUpperCase(),
+        }).format(Number(payment.amountCents || 0) / 100);
+    };
+    const visibleCreditActivityState = creditActivityState.roomCode === roomCode
+        ? creditActivityState
+        : { status: 'idle', activities: [], hasMore: false, error: '' };
     const pointsDrawerContent = (
         <>
             <div className="space-y-5" data-feature-id="audience-points-storefront">
@@ -3623,6 +3687,70 @@ const SingerApp = ({ roomCode, uid }) => {
                             </span>
                         ) : null}
                     </div>
+                </section>
+
+                <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035]" data-feature-id="audience-credit-activity">
+                    <button
+                        type="button"
+                        onClick={toggleCreditActivity}
+                        className="flex min-h-[64px] w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                        aria-expanded={creditActivityOpen}
+                    >
+                        <span className="flex min-w-0 items-center gap-3">
+                            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-cyan-300/12 text-cyan-100">
+                                <i className="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                            </span>
+                            <span className="min-w-0">
+                                <span className="block text-sm font-black text-white">Recent activity</span>
+                                <span className="block text-xs text-zinc-400">Purchases, rewards, and spending</span>
+                            </span>
+                        </span>
+                        <i className={`fa-solid fa-chevron-${creditActivityOpen ? 'up' : 'down'} text-zinc-400`} aria-hidden="true"></i>
+                    </button>
+                    {creditActivityOpen ? (
+                        <div className="border-t border-white/10 px-4 py-3">
+                            {visibleCreditActivityState.status === 'loading' ? (
+                                <div className="py-3 text-sm text-zinc-400" role="status">Loading recent activity...</div>
+                            ) : visibleCreditActivityState.status === 'error' ? (
+                                <div className="flex items-center justify-between gap-3 py-2">
+                                    <span className="text-sm text-amber-100">{visibleCreditActivityState.error}</span>
+                                    <button type="button" onClick={() => loadCreditActivity({ force: true })} className="min-h-[40px] rounded-xl bg-white/10 px-3 text-xs font-black text-white">Retry</button>
+                                </div>
+                            ) : visibleCreditActivityState.activities.length === 0 ? (
+                                <div className="py-3 text-sm text-zinc-400">No recent recorded activity.</div>
+                            ) : (
+                                <div className="divide-y divide-white/8">
+                                    {visibleCreditActivityState.activities.slice(0, 5).map((entry) => {
+                                        const isDebit = entry.direction === 'debit';
+                                        const isRoomCredit = entry.direction === 'room_credit';
+                                        const signedAmount = `${isDebit ? '-' : '+'}${Math.max(0, Number(entry.amount || 0) || 0)} ${roomCurrencyPresentation.shortLabel}`;
+                                        return (
+                                            <div key={entry.activityId} className="flex items-start justify-between gap-3 py-3">
+                                                <div className="min-w-0">
+                                                    <div className="truncate text-sm font-black text-white">{entry.title}</div>
+                                                    <div className="mt-0.5 text-xs text-zinc-500">{formatCreditActivityTime(entry.occurredAtMs)}</div>
+                                                    {entry.payment ? (
+                                                        <div className="mt-1 text-[11px] text-emerald-200">
+                                                            {formatPaymentAmount(entry.payment)} paid · {entry.payment.confirmationCode}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                                <div className={`shrink-0 text-sm font-black ${isDebit ? 'text-zinc-300' : 'text-cyan-100'}`}>
+                                                    {signedAmount}{isRoomCredit ? <span className="block text-right text-[10px] font-bold uppercase tracking-wider text-zinc-500">to Room</span> : null}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {visibleCreditActivityState.activities.length > 0 ? (
+                                <div className="mt-2 flex items-center justify-between gap-3 border-t border-white/8 pt-3">
+                                    <span className="text-[11px] leading-4 text-zinc-500">Server-recorded activity for this Room. The balance above remains your current total.</span>
+                                    <button type="button" onClick={() => loadCreditActivity({ force: true })} className="min-h-[40px] shrink-0 rounded-xl bg-white/8 px-3 text-xs font-black text-zinc-200">Refresh</button>
+                                </div>
+                            ) : null}
+                        </div>
+                    ) : null}
                 </section>
 
                 <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4" data-feature-id="audience-spend-intent-guide">

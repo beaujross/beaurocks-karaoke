@@ -129,7 +129,11 @@ const {
   selectNextScheduledOccurrence,
   shouldArchiveOccurrence,
 } = require("./lib/directoryOccurrences");
-const { resolveLedgerCurrency, setShadowLedgerEntry } = require("./lib/beauBucksLedger");
+const { LEDGER_COLLECTION, resolveLedgerCurrency, setShadowLedgerEntry } = require("./lib/beauBucksLedger");
+const {
+  buildAudienceCreditActivity,
+  buildAudienceLedgerAccountIds,
+} = require("./lib/audienceCreditActivity");
 const { buildShadowLedgerReconciliation } = require("./lib/beauBucksReconciliation");
 const {
   SPEND_KINDS,
@@ -21807,6 +21811,62 @@ exports.reconcileBeauBucksShadowLedger = onCall({ cors: true }, async (request) 
     limits: {
       maxDocumentsPerCollection: maxDocuments,
     },
+  };
+});
+
+exports.listMyRoomCreditActivity = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "list_my_room_credit_activity", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "list_my_room_credit_activity");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  const maxItems = Math.floor(clampNumber(request.data?.limit ?? 10, 1, 20, 10));
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const roomUserSnap = await roomUserRef.get();
+  if (!roomUserSnap.exists) {
+    throw new HttpsError("failed-precondition", "Join the Room before viewing its activity.");
+  }
+  const roomUserData = roomUserSnap.data() || {};
+  const storedUid = normalizeUidToken(roomUserData.uid || callerUid);
+  if (storedUid && storedUid !== normalizeUidToken(callerUid)) {
+    throw new HttpsError("permission-denied", "You can only view your own Room activity.");
+  }
+
+  const accountIds = buildAudienceLedgerAccountIds({ roomCode, uid: callerUid });
+  const evidenceLimit = Math.min(40, maxItems * 2);
+  const [ledgerSnap, checkoutSnap] = await Promise.all([
+    db.collection(LEDGER_COLLECTION)
+      .where("accountId", "in", accountIds)
+      .orderBy("createdAt", "desc")
+      .limit(evidenceLimit)
+      .get(),
+    rootRef.collection("stripe_checkouts")
+      .where("buyerUid", "==", callerUid)
+      .where("roomCode", "==", roomCode)
+      .orderBy("fulfilledAt", "desc")
+      .limit(evidenceLimit)
+      .get(),
+  ]);
+  const ledgerEntries = ledgerSnap.docs
+    .map((docSnap) => ({ documentId: docSnap.id, ...(docSnap.data() || {}) }))
+    .filter((entry) => normalizeRoomCode(entry.roomCode || "") === roomCode);
+  const paidCheckouts = checkoutSnap.docs
+    .map((docSnap) => ({ documentId: docSnap.id, ...(docSnap.data() || {}) }))
+    .filter((entry) => normalizeRoomCode(entry.roomCode || "") === roomCode);
+  const activity = buildAudienceCreditActivity({ ledgerEntries, paidCheckouts, limit: maxItems });
+
+  return {
+    roomCode,
+    balance: Math.max(0, Math.floor(Number(roomUserData.points || 0) || 0)),
+    balanceAuthority: "room_balance",
+    coverage: "server_recorded_activity",
+    activities: activity.activities,
+    hasMore: activity.hasMore,
+    paymentRecordCount: activity.paymentRecordCount,
   };
 });
 exports.mergeAnonymousAccountData = onCall({ cors: true }, async (request) => {

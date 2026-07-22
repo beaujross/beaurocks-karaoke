@@ -133,6 +133,8 @@ Make every payment action identify what is purchased, who receives the money, wh
 
 ## Slice 10 - BeauBucks purchase and balance authority
 
+Proof-readiness checkpoint (2026-07-22): the Audience App now has a collapsed, on-demand Recent activity view backed by a user-only callable. It joins completed paid checkout evidence with sanitized server-recorded Room rewards and spends, exposes non-sensitive BeauRocks confirmation codes, and keeps the current Room balance visibly authoritative. Detailed Room-wide reconciliation remains in Host Advanced Diagnostics. This checkpoint does not approve the BeauBucks catalog, migrate balance authority, or claim complete coverage of legacy client-side mutations.
+
 Complete the server-authoritative BeauBucks ledger and canary gate, separate purchased value from Points, and define scope, refunds, chargebacks, and expiration.
 
 ## Slice 11 - Room Boosts and Host-controlled consumption

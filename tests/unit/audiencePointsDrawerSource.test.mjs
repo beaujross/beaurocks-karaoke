@@ -114,3 +114,12 @@ test('audience points sheet caps visible SKUs and uses package visuals', () => {
     'Personal pack cards should render from the capped visible offer list',
   );
 });
+
+test('audience activity proof stays collapsed, on demand, and simple', () => {
+  assert.match(source, /data-feature-id="audience-credit-activity"/);
+  assert.match(source, /Recent activity/);
+  assert.match(source, /Purchases, rewards, and spending/);
+  assert.match(source, /listMyRoomCreditActivity\(\{ roomCode, limit: 10 \}\)/);
+  assert.match(source, /visibleCreditActivityState\.activities\.slice\(0, 5\)/);
+  assert.match(source, /Server-recorded activity for this Room\. The balance above remains your current total\./);
+});
