@@ -14,20 +14,21 @@ const {
   validateBeauBucksCheckoutFulfillment,
 } = require('../../functions/lib/beauBucksAuthority.js');
 
-test('the first BeauBucks pack is room-scoped and production checkout fails closed', () => {
+test('the first BeauBucks pack and wallet persist at the BeauRocks account level while checkout fails closed', () => {
   const pack = getBeauBucksPack('beaubucks_starter_1200');
   assert.deepEqual(pack, {
     id: 'beaubucks_starter_1200', publicLabel: 'Starter 1,200 BeauBucks',
-    amountCents: 500, currency: 'usd', beauBucks: 1200, scope: 'room', publicOffer: false,
+    amountCents: 500, currency: 'usd', beauBucks: 1200, scope: 'account', publicOffer: false,
   });
   assert.equal(isBeauBucksCheckoutEnabled(), false);
-  assert.equal(buildBeauBucksAccountId({ roomCode: 'ROOM1', uid: 'user-1' }), 'room1__user-1__beaubucks');
+  assert.equal(buildBeauBucksAccountId({ roomCode: 'ROOM1', uid: 'User-1' }), 'account__User-1__beaubucks');
+  assert.equal(buildBeauBucksAccountId({ roomCode: 'ROOM2', uid: 'User-1' }), 'account__User-1__beaubucks');
 });
 
-test('purchase reservations enforce one completed pack and one active checkout per buyer and Room', () => {
+test('purchase reservations enforce one completed pack and one active checkout per BeauRocks account', () => {
   const pack = getBeauBucksPack('beaubucks_starter_1200');
   assert.deepEqual(getBeauBucksPurchaseLimit(), {
-    maxCompletedPurchasesPerBuyerPerRoom: 1,
+    maxCompletedPurchasesPerAccount: 1,
     reservationMinutes: 35,
   });
   const available = evaluateBeauBucksPurchaseReservation({
@@ -57,11 +58,11 @@ test('purchase reservations enforce one completed pack and one active checkout p
 test('fulfillment accepts only a registered paid checkout with exact server pricing', () => {
   const checkout = {
     checkoutType: 'beaubucks_purchase', roomCode: 'ROOM1', buyerUid: 'user-1',
-    packId: 'beaubucks_starter_1200', currency: 'usd', amountCents: 500, beauBucks: 1200,
+    packId: 'beaubucks_starter_1200', currency: 'usd', amountCents: 500, beauBucks: 1200, rewardScope: 'account',
   };
   const session = {
     payment_status: 'paid', amount_total: 500, currency: 'usd',
-    metadata: { checkoutType: 'beaubucks_purchase', roomCode: 'ROOM1', buyerUid: 'user-1', packId: 'beaubucks_starter_1200', beauBucks: '1200' },
+    metadata: { checkoutType: 'beaubucks_purchase', roomCode: 'ROOM1', buyerUid: 'user-1', packId: 'beaubucks_starter_1200', beauBucks: '1200', rewardScope: 'account' },
   };
   assert.equal(validateBeauBucksCheckoutFulfillment({ checkout, session }).ok, true);
   assert.equal(validateBeauBucksCheckoutFulfillment({ checkout, session: { ...session, amount_total: 499 } }).reasonCode, 'beaubucks_checkout_amount_mismatch');
@@ -72,18 +73,34 @@ test('fulfillment rejects altered registered value even when the signed total ma
   const result = validateBeauBucksCheckoutFulfillment({
     checkout: {
       checkoutType: 'beaubucks_purchase', roomCode: 'ROOM1', buyerUid: 'user-1',
-      packId: 'beaubucks_starter_1200', amountCents: 500, currency: 'usd', beauBucks: 999,
+      packId: 'beaubucks_starter_1200', amountCents: 500, currency: 'usd', beauBucks: 999, rewardScope: 'account',
     },
     session: {
       amount_total: 500, currency: 'usd', payment_status: 'paid',
       metadata: {
         checkoutType: 'beaubucks_purchase', roomCode: 'ROOM1', buyerUid: 'user-1',
-        packId: 'beaubucks_starter_1200', beauBucks: '1200',
+        packId: 'beaubucks_starter_1200', beauBucks: '1200', rewardScope: 'account',
       },
     },
   });
   assert.equal(result.ok, false);
   assert.equal(result.reasonCode, 'beaubucks_checkout_amount_mismatch');
+});
+
+test('fulfillment rejects a checkout that attempts to restore Room-scoped purchased value', () => {
+  const checkout = {
+    checkoutType: 'beaubucks_purchase', roomCode: 'ROOM1', buyerUid: 'user-1',
+    packId: 'beaubucks_starter_1200', currency: 'usd', amountCents: 500, beauBucks: 1200,
+    rewardScope: 'room',
+  };
+  const session = {
+    payment_status: 'paid', amount_total: 500, currency: 'usd',
+    metadata: {
+      checkoutType: 'beaubucks_purchase', roomCode: 'ROOM1', buyerUid: 'user-1',
+      packId: 'beaubucks_starter_1200', beauBucks: '1200', rewardScope: 'room',
+    },
+  };
+  assert.equal(validateBeauBucksCheckoutFulfillment({ checkout, session }).reasonCode, 'beaubucks_checkout_scope_mismatch');
 });
 
 test('partial refunds revoke proportionate unspent value and preserve shortfall evidence', () => {

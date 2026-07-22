@@ -133,13 +133,15 @@ Make every payment action identify what is purchased, who receives the money, wh
 
 ## Slice 10 - BeauBucks purchase and balance authority
 
-Proof-readiness checkpoint (2026-07-22): the Audience App now has a collapsed, on-demand Recent activity view backed by a user-only callable. It joins completed paid checkout evidence with sanitized server-recorded Room rewards and spends, exposes non-sensitive BeauRocks confirmation codes, and keeps the current Room balance visibly authoritative. Detailed Room-wide reconciliation remains in Host Advanced Diagnostics. This checkpoint does not approve the BeauBucks catalog, migrate balance authority, or claim complete coverage of legacy client-side mutations.
+Proof-readiness checkpoint (2026-07-22): the Audience App now has a collapsed, on-demand Recent activity view backed by a user-only callable. It joins completed paid checkout evidence with sanitized server-recorded rewards and spends, exposes non-sensitive BeauRocks confirmation codes, and keeps the current Room Points balance visibly separate. Detailed Room-wide Points reconciliation remains in Host Advanced Diagnostics. This checkpoint does not approve the BeauBucks catalog or claim complete coverage of legacy client-side Points mutations.
 
 Complete the server-authoritative BeauBucks ledger and canary gate, separate purchased value from Points, and define scope, refunds, chargebacks, and expiration.
 
-Slice 10.1 completed the fail-closed Host/Audience authority contract: separate Points and BeauBucks balances, one `BeauBucks tonight` Host choice in internally authorized Rooms, Room-scoped paid reactions, collapsed Audience activity proof, and no public checkout.
+Slice 10.1 completed the fail-closed Host/Audience authority contract: separate Points and BeauBucks balances, one `BeauBucks tonight` Host choice in internally authorized Rooms, paid-reaction authorization, collapsed Audience activity proof, and no public checkout.
 
-Slice 10.2 adds a read-only paid-canary decision packet and a server-enforced one-pack-per-buyer-per-Room checkout reservation. It derives a conservative spend/write envelope from the registered pack and reaction costs. Owner product, terms, operations, cohort, and activation decisions still block checkout, and public Terms/point-of-purchase copy remain a separately reviewed activation task.
+Slice 10.2 adds a read-only paid-canary decision packet and a server-enforced checkout reservation. It derives a conservative spend/write envelope from the registered pack and reaction costs. Owner terms, operations, cohort, and activation decisions still block checkout, and public Terms/point-of-purchase copy remain a separately reviewed activation task.
+
+Slice 10.3 changes only BeauBucks portability: BeauBucks now resolve to one signed-in BeauRocks account wallet across Rooms, while Points keep their existing name and Room participation behavior. A read-only production inventory found zero legacy BeauBucks wallet documents and zero BB to transfer, so the compatibility cutover has no customer-balance migration. Anonymous guests cannot buy or spend BeauBucks. Checkout remains disabled while the durable reaction-bank product, provider-neutral mobile grant path, terms, and paid cohort are completed.
 
 ## Slice 11 - Room Boosts and Host-controlled consumption
 

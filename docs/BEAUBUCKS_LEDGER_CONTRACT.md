@@ -1,6 +1,6 @@
 # BeauBucks Canonical Ledger Contract
 
-Status: legacy Points remain legacy-authoritative; an isolated room-scoped BeauBucks purchase/reaction authority rail is implemented behind closed production gates, with public checkout disabled.
+Status: legacy Points remain legacy-authoritative; an isolated account-persistent BeauBucks authority rail is implemented behind closed production gates, with public checkout disabled.
 
 ## Objective
 
@@ -24,7 +24,7 @@ Make BeauBucks issuance, purchase, grant, spend, refund, expiration, and donatio
 
 - Amount is a positive integer; direction determines credit or debit.
 - Every entry has one stable `idempotencyKey` derived from the authoritative source event.
-- An account is scoped by room, user, and currency.
+- Points accounts remain scoped by Room, user, and currency. BeauBucks accounts are scoped by signed-in BeauRocks user and currency, with the originating Room retained as attribution on each operation.
 - Points and BeauBucks never reconcile into the same balance.
 - Financial metadata requires the external provider transaction ID.
 - Canonical song attribution is primary; backing rendition is optional supporting metadata.
@@ -34,7 +34,7 @@ Make BeauBucks issuance, purchase, grant, spend, refund, expiration, and donatio
 ## Firestore Target Shape
 
 - `beaurocks_ledger_entries/{ledgerEntryId}`: immutable entry envelope.
-- `beaurocks_ledger_accounts/{roomCode__uid__currency}`: cached posted balance, last entry, reconciliation status.
+- `beaurocks_ledger_accounts/{accountId}`: cached posted balance, last entry, and reconciliation status. Points use `roomCode__uid__points`; BeauBucks use `account__uid__beaubucks`.
 - `beaurocks_ledger_idempotency/{hash}`: optional reservation when the entry ID cannot itself be the provider key.
 - Provider source documents remain evidence and reference the resulting ledger entry.
 
@@ -63,26 +63,27 @@ Make BeauBucks issuance, purchase, grant, spend, refund, expiration, and donatio
 
 Known evidence boundary: the current shadow ledger covers selected join/event grants, ticket value, timed refills, promo grants, and canary reaction/profile/avatar debits. Other legacy mutations remain expected reconciliation gaps until they receive their own server/idempotency boundary.
 
-Audience proof-readiness now has a separate, user-scoped read boundary. `listMyRoomCreditActivity` requires authentication, App Check when enforcement is enabled, and an existing Room membership document. It returns only that guest's current Room balance, sanitized posted activity, and completed paid Stripe checkout records for the same Room. Raw provider/session IDs, source collection IDs, account UIDs, and attribution internals are never returned. Paid records receive a deterministic non-sensitive BeauRocks confirmation code. The Audience App loads this data only when the guest opens the collapsed Recent activity disclosure and shows at most five rows before an explicit refresh.
+Audience proof-readiness now has a separate, user-scoped read boundary. `listMyRoomCreditActivity` requires authentication, App Check when enforcement is enabled, and an existing Room membership document. It returns only that guest's current Room Points balance, account-wide BeauBucks activity, current-Room Points activity, and completed paid checkout evidence relevant to the Room request. Raw provider/session IDs, source collection IDs, account UIDs, and attribution internals are never returned. Paid records receive a deterministic non-sensitive BeauRocks confirmation code. The Audience App loads this data only when the guest opens the collapsed Recent activity disclosure and shows at most five rows before an explicit refresh.
 
 This view is proof of server-recorded activity, not a declaration that the shadow ledger is authoritative or complete. The Room balance remains the live total, legacy client-side mutations may not yet have a ledger entry, and the Host's full read-only reconciliation stays in Advanced Diagnostics rather than the primary operating flow.
 
-## Isolated BeauBucks Authority Rail (Implemented 2026-07-22; checkout disabled)
+## Isolated BeauBucks Authority Rail (account-wallet revision 2026-07-22; checkout disabled)
 
-- This rail starts a separate `beaubucks` account at zero. It does not migrate, relabel, reconcile, or debit `room_users.points` or `users.pointsBalance`.
-- The canary scope is one Room plus one guest account. Rollout requires both a server environment allowlist and `eventCredits.beauBucksAuthorityEnabled === true` on the Room.
+- This rail starts a separate `beaubucks` account at zero. It does not rename, reconcile into, or debit Points. Public names remain Points and BeauBucks.
+- Each signed-in BeauRocks user has one BeauBucks account projection across Rooms. The production cutover inventory found zero legacy BeauBucks accounts and zero BB to transfer. A compatibility reader still recognizes the current Room's legacy identifier during the closed migration period.
+- Anonymous guests may earn and use Points under existing Room rules, but cannot buy or spend BeauBucks. A Room still requires the server allowlist, admin permission, and the Host's `BeauBucks tonight` choice before an eligible BeauBucks action is available there.
 - The internal test pack is `Starter 1,200 BeauBucks` for USD 5.00. It remains `publicOffer: false`; the commercial contract also keeps checkout disabled and non-active, so `createBeauBucksCheckout` fails closed before contacting Stripe.
-- A future enabled checkout must use the server-owned pack definition, an authenticated Room member, and the same dual Room gate. The browser never supplies price or grant value.
-- `checkout.session.completed` grants only after Stripe signature verification, paid status, and exact agreement among the registered checkout, signed Session metadata, amount, currency, pack, Room, and buyer.
+- A future enabled checkout must use the server-owned pack definition, an authenticated non-anonymous Room member, and the same dual Room gate. The browser never supplies price or grant value.
+- `checkout.session.completed` grants only after Stripe signature verification, paid status, and exact agreement among the registered checkout, signed Session metadata, amount, currency, pack, account scope, Room attribution, and buyer.
 - Purchase fulfillment uses one transaction to create an immutable authoritative `purchase_grant`, increment the cached account projection, store a hashed payment reference, and mark the registered checkout fulfilled. A replay cannot grant twice.
-- `spendAudienceBeauBucks` currently allows only server-priced reactions. It creates one stable spend operation, one authoritative `reaction_spend` debit, and one exact account projection update in a transaction. It cannot change queue priority, scoring, winners, identity, avatars, or legacy Points.
+- `spendAudienceBeauBucks` currently allows only server-priced reactions as a closed technical scaffold. It creates one stable spend operation, one authoritative `reaction_spend` debit, and one exact account projection update in a transaction. It cannot change queue priority, scoring, winners, identity, avatars, or Points.
 - Refunds create immutable `refund_reversal` debits for proportionate unspent value. Chargebacks create `chargeback_reversal` debits, restrict the account, and preserve unrecovered shortfall evidence rather than allowing a negative balance.
 - The private Audience activity projection can render an authoritative purchase with USD amount and a hashed BeauRocks confirmation code. It also returns the separate ledger balance, but no Audience storefront or new Host control is routed to this rail yet.
-- BeauBucks do not expire during this canary. General-release expiration, portability, support, tax/accounting, and refund language require owner review.
+- BeauBucks do not expire during this canary. Account portability is now fixed; durable reaction unlocks, support, tax/accounting, and refund language still require owner review.
 
 Signed refunds and chargebacks that arrive before purchase completion now enter a hashed, server-only pending inbox. Each unique event is immutable and each payment aggregate is cumulative; fulfillment reads that aggregate in the same transaction as the grant and immediately posts the compensating debit, leaving no spendable window. A transaction-level payment-reference recheck closes the concurrent-arrival race. Pending records carry a 90-day `expiresAt` field and use dedicated collection groups so production TTL policies can bound storage without affecting other event data.
 
-Activation remains a no-go until the pack/refund terms are approved, Host enablement is designed, and the Audience purchase/spend surface is explicitly routed away from legacy Points.
+Activation remains a no-go until the pack/refund terms are approved, the durable reaction-bank purchase model is implemented, and the Audience purchase/spend surface is explicitly routed away from Points.
 
 ## Server-Authoritative Canary Spend Contract (Implemented 2026-07-13)
 

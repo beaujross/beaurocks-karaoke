@@ -21007,13 +21007,14 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "get_my_room_beaubucks_wallet", { perMinute: 30, perHour: 240 });
   enforceAppCheckIfEnabled(request, "get_my_room_beaubucks_wallet");
   const callerUid = requireAuth(request);
+  const accountEligible = requestHasNonAnonymousAccount(request);
   const roomCode = normalizeRoomCode(request.data?.roomCode || "");
   if (!roomCode) throw new HttpsError("invalid-argument", "roomCode is required.");
   const rootRef = getRootRef();
   const db = admin.firestore();
   const roomRef = rootRef.collection("rooms").doc(roomCode);
   const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
-  const accountId = buildBeauBucksAccountId({ roomCode, uid: callerUid });
+  const accountId = buildBeauBucksAccountId({ uid: callerUid });
   const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
   const [roomSnap, roomUserSnap, accountSnap] = await Promise.all([
     roomRef.get(),
@@ -21026,7 +21027,7 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
   const authorityEnabled = isRoomBeauBucksAuthorityEnabled({ roomCode, roomData });
   const hostEnabledTonight = roomData?.eventCredits?.beauBucksEnabledTonight === true;
   const experienceEnabled = isRoomBeauBucksExperienceEnabled({ roomCode, roomData });
-  const checkoutEnabled = experienceEnabled && isBeauBucksCheckoutEnabled();
+  const checkoutEnabled = accountEligible && experienceEnabled && isBeauBucksCheckoutEnabled();
   const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
   const starterPackCandidate = checkoutEnabled ? getBeauBucksPack("beaubucks_starter_1200") : null;
   const starterPack = starterPackCandidate?.publicOffer === true ? starterPackCandidate : null;
@@ -21041,12 +21042,13 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
   return {
     roomCode,
     currency: "beaubucks",
-    scope: "room",
+    scope: "account",
     balance: Math.max(0, Math.floor(Number(accountData.balance || 0) || 0)),
     authority: "ledger",
     authorityEnabled,
     hostEnabledTonight,
     experienceEnabled,
+    accountEligible,
     unavailableReason: !authorityEnabled
       ? "rollout_not_available"
       : !roomData?.eventCredits?.enabled
@@ -21054,10 +21056,10 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
         : !hostEnabledTonight
           ? "host_disabled"
           : "",
-    canPurchase: !!starterPack && purchaseReadiness?.allowed === true,
+    canPurchase: accountEligible && !!starterPack && purchaseReadiness?.allowed === true,
     purchaseUnavailableReason: starterPack && purchaseReadiness?.allowed !== true
       ? purchaseReadiness?.reasonCode || "purchase_unavailable"
-      : "",
+      : !accountEligible ? "beaurocks_account_required" : "",
     accountStatus: String(accountData.status || "active"),
     allowedSpendKinds: experienceEnabled ? [SPEND_KINDS.reaction] : [],
     pack: starterPack,
@@ -21068,6 +21070,9 @@ exports.spendAudienceBeauBucks = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "spend_audience_beaubucks", { perMinute: 240, perHour: 4000 });
   enforceAppCheckIfEnabled(request, "spend_audience_beaubucks");
   const callerUid = requireAuth(request);
+  if (!requestHasNonAnonymousAccount(request)) {
+    throw new HttpsError("failed-precondition", "Sign in to your BeauRocks account before using BeauBucks.");
+  }
   const roomCode = normalizeRoomCode(request.data?.roomCode || "");
   const kind = normalizeSpendKind(request.data?.kind || "");
   const clientOperationId = normalizeClientOperationId(request.data?.clientOperationId || "");
@@ -21084,7 +21089,7 @@ exports.spendAudienceBeauBucks = onCall({ cors: true }, async (request) => {
   const rootRef = getRootRef();
   const roomRef = rootRef.collection("rooms").doc(roomCode);
   const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
-  const accountId = buildBeauBucksAccountId({ roomCode, uid: callerUid });
+  const accountId = buildBeauBucksAccountId({ uid: callerUid });
   const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
   const operationDocumentId = buildSpendOperationDocumentId({
     roomCode,
@@ -21156,13 +21161,13 @@ exports.spendAudienceBeauBucks = onCall({ cors: true }, async (request) => {
       tx.set(accountRef, {
         schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
         accountId,
-        roomCode,
         uid: callerUid,
         currency: "beaubucks",
-        scope: "room",
+        scope: "account",
         balance: balanceAfter,
         status: accountStatus,
         lifetimeSpent: admin.firestore.FieldValue.increment(reaction.cost),
+        lastActivityRoomCode: roomCode,
         lastEntryAt: serverNow,
         updatedAt: serverNow,
       }, { merge: true });
@@ -21173,6 +21178,7 @@ exports.spendAudienceBeauBucks = onCall({ cors: true }, async (request) => {
         roomCode,
         uid: callerUid,
         eventCredits: { enabled: true, presetId: "beaubucks" },
+        walletScope: "account",
         type: "reaction_spend",
         amount: reaction.cost,
         direction: "debit",
@@ -22087,7 +22093,7 @@ exports.listMyRoomCreditActivity = onCall({ cors: true }, async (request) => {
 
   const accountIds = buildAudienceLedgerAccountIds({ roomCode, uid: callerUid });
   const beauBucksAccountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION)
-    .doc(buildBeauBucksAccountId({ roomCode, uid: callerUid }));
+    .doc(buildBeauBucksAccountId({ uid: callerUid }));
   const evidenceLimit = Math.min(40, maxItems * 2);
   const [ledgerSnap, checkoutSnap, beauBucksAccountSnap] = await Promise.all([
     db.collection(LEDGER_COLLECTION)
@@ -22105,7 +22111,9 @@ exports.listMyRoomCreditActivity = onCall({ cors: true }, async (request) => {
   ]);
   const ledgerEntries = ledgerSnap.docs
     .map((docSnap) => ({ documentId: docSnap.id, ...(docSnap.data() || {}) }))
-    .filter((entry) => normalizeRoomCode(entry.roomCode || "") === roomCode);
+    .filter((entry) => String(entry.uid || "").trim() === callerUid)
+    .filter((entry) => String(entry.currency || "").trim().toLowerCase() === "beaubucks"
+      || normalizeRoomCode(entry.roomCode || "") === roomCode);
   const paidCheckouts = checkoutSnap.docs
     .map((docSnap) => ({ documentId: docSnap.id, ...(docSnap.data() || {}) }))
     .filter((entry) => normalizeRoomCode(entry.roomCode || "") === roomCode);
@@ -22118,6 +22126,7 @@ exports.listMyRoomCreditActivity = onCall({ cors: true }, async (request) => {
     balanceAuthority: "room_balance",
     beauBucksBalance: Math.max(0, Math.floor(Number(beauBucksAccount.balance || 0) || 0)),
     beauBucksBalanceAuthority: "ledger",
+    beauBucksWalletScope: "account",
     beauBucksWalletAvailable: beauBucksAccountSnap.exists,
     coverage: "server_recorded_activity",
     activities: activity.activities,
@@ -29518,6 +29527,9 @@ exports.createBeauBucksCheckout = onCall(
     checkRateLimit(request.rawRequest, "stripe_checkout");
     const callerUid = requireAuth(request);
     enforceAppCheckIfEnabled(request, "create_beaubucks_checkout");
+    if (!requestHasNonAnonymousAccount(request)) {
+      throw new HttpsError("failed-precondition", "Sign in to your BeauRocks account before buying BeauBucks.");
+    }
     if (!isBeauBucksCheckoutEnabled()) {
       throw new HttpsError("failed-precondition", "BeauBucks purchases are not available yet.");
     }
@@ -29543,7 +29555,7 @@ exports.createBeauBucksCheckout = onCall(
     }
 
     const db = admin.firestore();
-    const accountId = buildBeauBucksAccountId({ roomCode, uid: callerUid });
+    const accountId = buildBeauBucksAccountId({ uid: callerUid });
     const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
     const purchaseLimitRef = db.collection(BEAUBUCKS_PURCHASE_LIMIT_COLLECTION).doc(accountId);
     const reservationId = crypto.randomUUID();
@@ -29557,7 +29569,7 @@ exports.createBeauBucksCheckout = onCall(
       });
       if (!result.allowed) {
         const message = result.reasonCode === "beaubucks_purchase_limit_reached"
-          ? "This Room's one-pack BeauBucks canary limit has already been used."
+          ? "This account's one-pack BeauBucks canary limit has already been used."
           : result.reasonCode === "beaubucks_purchase_in_progress"
             ? "A BeauBucks checkout is already in progress for this Room."
             : "BeauBucks purchase limits are unavailable.";
@@ -29566,8 +29578,9 @@ exports.createBeauBucksCheckout = onCall(
       tx.set(purchaseLimitRef, {
         schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
         accountId,
-        roomCode,
         uid: callerUid,
+        scope: "account",
+        purchaseRoomCode: roomCode,
         completedPurchases: result.completedPurchases,
         reservationId,
         reservationExpiresAtMs: result.reservationExpiresAtMs,
@@ -29598,7 +29611,7 @@ exports.createBeauBucksCheckout = onCall(
           buyerUid: callerUid,
           packId: pack.id,
           beauBucks: `${pack.beauBucks}`,
-          rewardScope: "room",
+          rewardScope: "account",
           reservationId,
         },
         payment_intent_data: {
@@ -29608,7 +29621,7 @@ exports.createBeauBucksCheckout = onCall(
             buyerUid: callerUid,
             packId: pack.id,
             beauBucks: `${pack.beauBucks}`,
-            rewardScope: "room",
+            rewardScope: "account",
             reservationId,
           },
         },
@@ -29628,7 +29641,7 @@ exports.createBeauBucksCheckout = onCall(
           amountCents: pack.amountCents,
           currency: pack.currency,
           beauBucks: pack.beauBucks,
-          rewardScope: "room",
+          rewardScope: "account",
           reservationId,
           reservationExpiresAtMs: reservation.reservationExpiresAtMs,
           paymentStatus: String(session.payment_status || "").trim() || null,
@@ -29816,7 +29829,7 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
     const verification = validateBeauBucksCheckoutFulfillment({ checkout, session });
     if (!verification.ok) return verification;
     const { pack, roomCode, buyerUid } = verification;
-    const accountId = buildBeauBucksAccountId({ roomCode, uid: buyerUid });
+    const accountId = buildBeauBucksAccountId({ uid: buyerUid });
     const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
     const purchaseLimitRef = db.collection(BEAUBUCKS_PURCHASE_LIMIT_COLLECTION).doc(accountId);
     const [purchaseSnap, paymentRefSnap, accountSnap, pendingAdjustmentSnap, purchaseLimitSnap] = await Promise.all([
@@ -29872,6 +29885,7 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
       roomCode,
       uid: buyerUid,
       eventCredits: { enabled: true, presetId: "beaubucks" },
+      walletScope: "account",
       type: "purchase_grant",
       amount: pack.beauBucks,
       direction: "credit",
@@ -29891,15 +29905,16 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
     tx.set(accountRef, {
       schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
       accountId,
-      roomCode,
       uid: buyerUid,
       currency: "beaubucks",
-      scope: "room",
+      scope: "account",
       balance: balanceAfter,
       status: accountStatus,
       lifetimePurchased: admin.firestore.FieldValue.increment(pack.beauBucks),
       lifetimeRevoked: admin.firestore.FieldValue.increment(pendingPlan?.appliedRevocation || 0),
       unrecoveredBeauBucks: admin.firestore.FieldValue.increment(pendingPlan?.unrecoveredAmount || 0),
+      lastPurchaseRoomCode: roomCode,
+      lastActivityRoomCode: roomCode,
       lastEntryAt: now,
       createdAt: account.createdAt || now,
       updatedAt: now,
@@ -29911,8 +29926,9 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
     tx.set(purchaseLimitRef, {
       schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
       accountId,
-      roomCode,
       uid: buyerUid,
+      scope: "account",
+      purchaseRoomCode: roomCode,
       completedPurchases,
       lifetimePurchaseCents: admin.firestore.FieldValue.increment(pack.amountCents),
       lastCompletedSessionId: sessionId,
@@ -29929,6 +29945,7 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
       roomCode,
       uid: buyerUid,
       accountId,
+      walletScope: "account",
       packId: pack.id,
       purchaseLedgerEntryId: purchaseEntryId,
       purchaseBeauBucks: pack.beauBucks,
@@ -29987,6 +30004,7 @@ const fulfillVerifiedBeauBucksCheckout = async ({ event = {}, session = {} } = {
           roomCode,
           uid: buyerUid,
           eventCredits: { enabled: true, presetId: "beaubucks" },
+          walletScope: "account",
           type: pendingAdjustmentType === "chargeback" ? "chargeback_reversal" : "refund_reversal",
           amount: pendingPlan.appliedRevocation,
           direction: "debit",
@@ -30143,9 +30161,10 @@ const applyBeauBucksPaymentAdjustment = async ({
     const payment = paymentRefSnap.data() || {};
     const roomCode = normalizeRoomCode(payment.roomCode || "");
     const uid = String(payment.uid || "").trim();
-    const accountId = String(payment.accountId || "").trim();
+    const storedAccountId = String(payment.accountId || "").trim();
+    const accountId = buildBeauBucksAccountId({ uid });
     const purchaseLedgerEntryId = String(payment.purchaseLedgerEntryId || "").trim();
-    if (!roomCode || !uid || !accountId || !purchaseLedgerEntryId) {
+    if (!roomCode || !uid || !storedAccountId || !accountId || !purchaseLedgerEntryId) {
       return { ok: false, ignored: true, reasonCode: "beaubucks_payment_reference_invalid" };
     }
     const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
@@ -30196,6 +30215,8 @@ const applyBeauBucksPaymentAdjustment = async ({
       roomCode,
       uid,
       accountId,
+      originalAccountId: storedAccountId,
+      walletScope: "account",
       purchaseLedgerEntryId,
       purchaseAmountCents,
       adjustmentAmountCents,
@@ -30216,6 +30237,7 @@ const applyBeauBucksPaymentAdjustment = async ({
         roomCode,
         uid,
         eventCredits: { enabled: true, presetId: "beaubucks" },
+        walletScope: "account",
         type: adjustmentType === "chargeback" ? "chargeback_reversal" : "refund_reversal",
         amount: plan.appliedRevocation,
         direction: "debit",
@@ -30236,14 +30258,14 @@ const applyBeauBucksPaymentAdjustment = async ({
     tx.set(accountRef, {
       schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
       accountId,
-      roomCode,
       uid,
       currency: "beaubucks",
-      scope: "room",
+      scope: "account",
       balance: plan.balanceAfter,
       status: plan.restrictAccount ? "restricted" : String(account.status || "active"),
       lifetimeRevoked: admin.firestore.FieldValue.increment(plan.appliedRevocation),
       unrecoveredBeauBucks: admin.firestore.FieldValue.increment(plan.unrecoveredAmount),
+      lastActivityRoomCode: roomCode,
       ...(plan.appliedRevocation > 0 ? { lastEntryAt: now } : {}),
       updatedAt: now,
     }, { merge: true });

@@ -260,7 +260,7 @@ const EventCreditsConfigPanel = ({
                                     {beauBucksEnabledTonight ? 'Available for paid reactions' : 'Off — guests use earned Points'}
                                 </div>
                                 <div className="mt-1 text-sm leading-6 text-zinc-300">
-                                    BeauBucks are purchased separately from Points and only work in this Room. Turning this on lets guests who have BeauBucks spend them on reactions; checkout only appears when BeauRocks has enabled purchases.
+                                    BeauBucks stay with each guest&apos;s signed-in BeauRocks account. Turning this on lets guests use their balance for the premium actions allowed in this Room; checkout only appears when BeauRocks has enabled purchases.
                                 </div>
                             </div>
                             <label className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-3 py-2 text-sm font-black ${eventCreditsConfig?.enabled ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-50' : 'cursor-not-allowed border-white/10 bg-black/20 text-zinc-500'}`}>

@@ -2912,7 +2912,7 @@ const SingerApp = ({ roomCode, uid }) => {
 
         if (beauBucksStatus === 'success') {
             setShowPoints(true);
-            toast('BeauBucks purchase complete. Your Room balance should update in a moment.');
+            toast('BeauBucks purchase complete. Your account balance should update in a moment.');
         } else if (beauBucksStatus === 'cancel') {
             setShowPoints(true);
             toast('BeauBucks checkout canceled.');
@@ -3778,7 +3778,7 @@ const SingerApp = ({ roomCode, uid }) => {
                             <div>
                                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100/70">BeauBucks</div>
                                 <div className="mt-1 text-sm font-black text-white">
-                                    {beauBucksIntentEnabled ? 'Purchased value for this Room' : 'Off tonight'}
+                                    {beauBucksIntentEnabled ? 'Your BeauBucks, across Rooms' : 'Off tonight'}
                                 </div>
                             </div>
                             {visibleBeauBucksWalletState.status === 'ready' ? (
@@ -3788,7 +3788,7 @@ const SingerApp = ({ roomCode, uid }) => {
                             ) : null}
                         </div>
                         <div className="mt-2 text-xs leading-5 text-zinc-300">
-                            Points are earned through the party. BeauBucks are purchased separately, stay in this Room, and can only be used for paid reactions tonight.
+                            Points are earned through the party. BeauBucks stay with your signed-in BeauRocks account across Rooms; this Host controls which premium actions are available tonight.
                         </div>
                         {visibleBeauBucksWalletState.status === 'loading' || visibleBeauBucksWalletState.status === 'idle' ? (
                             <div className="mt-3 text-xs text-zinc-400" role="status">Loading BeauBucks balance...</div>
@@ -3809,7 +3809,11 @@ const SingerApp = ({ roomCode, uid }) => {
                             </button>
                         ) : (
                             <div className="mt-3 rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-xs text-zinc-400">
-                                {beauBucksIntentEnabled ? 'Purchases are not open right now. Existing BeauBucks can still be used for reactions.' : 'The Host has not made BeauBucks available for this party.'}
+                                {visibleBeauBucksWalletState.wallet?.accountEligible === false
+                                    ? 'Sign in to a BeauRocks account to carry BeauBucks between parties.'
+                                    : beauBucksIntentEnabled
+                                        ? 'Purchases are not open right now. Existing BeauBucks can still be used for reactions.'
+                                        : 'The Host has not made BeauBucks available for this party.'}
                             </div>
                         )}
                     </section>
@@ -3871,7 +3875,7 @@ const SingerApp = ({ roomCode, uid }) => {
                             )}
                             {visibleCreditActivityState.activities.length > 0 ? (
                                 <div className="mt-2 flex items-center justify-between gap-3 border-t border-white/8 pt-3">
-                                    <span className="text-[11px] leading-4 text-zinc-500">Server-recorded activity for this Room. The balances above remain your current totals.</span>
+                                    <span className="text-[11px] leading-4 text-zinc-500">Account-wide BeauBucks activity and this Room&apos;s Points activity. The balances above remain your current totals.</span>
                                     <button type="button" onClick={() => loadCreditActivity({ force: true })} className="min-h-[40px] shrink-0 rounded-xl bg-white/8 px-3 text-xs font-black text-zinc-200">Refresh</button>
                                 </div>
                             ) : null}

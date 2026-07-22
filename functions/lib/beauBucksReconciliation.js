@@ -1,4 +1,4 @@
-const { buildLedgerEntryId } = require('./beauBucksLedger');
+const { buildLegacyRoomLedgerAccountId, buildLedgerAccountId, buildLedgerEntryId } = require('./beauBucksLedger');
 
 const RECONCILIATION_SCHEMA_VERSION = 1;
 const RECONCILIATION_CLASSIFICATIONS = Object.freeze({
@@ -159,7 +159,9 @@ const buildShadowLedgerReconciliation = ({
     }
 
     return {
-      accountId: `${safeRoomCode.toLowerCase()}__${uid}__${accountCurrency}`,
+      accountId: accountCurrency === 'beaubucks'
+        ? buildLegacyRoomLedgerAccountId({ roomCode: safeRoomCode, uid, currency: accountCurrency })
+        : buildLedgerAccountId({ roomCode: safeRoomCode, uid, currency: accountCurrency }),
       roomCode: safeRoomCode,
       uid,
       currency: accountCurrency,

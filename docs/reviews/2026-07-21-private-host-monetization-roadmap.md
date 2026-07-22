@@ -390,7 +390,7 @@ Guests can buy BeauBucks from BeauRocks and spend them on clearly defined in-app
 
 - Stop marketing purchased packs as Points.
 - Define the BeauBucks pack catalog, pricing, expiration policy, and refund behavior.
-- Decide whether BeauBucks are room-scoped, account-scoped, event-scoped, or a deliberately limited combination.
+- Keep BeauBucks with the signed-in BeauRocks account across Rooms; keep the Room as purchase/spend attribution and tonight's availability boundary.
 - Complete the published BeauBucks canary evidence gate before changing balance authority.
 - Make purchases, grants, spends, refunds, expirations, and chargebacks ledger entries.
 - Grant BeauBucks only from verified payment webhooks.
@@ -409,15 +409,15 @@ Guests can buy BeauBucks from BeauRocks and spend them on clearly defined in-app
 
 ### Owner review
 
-- Approve scope and portability of BeauBucks.
+- Account scope and cross-Room portability are approved; verify the fail-closed cutover evidence.
 - Approve the first allowed spend actions.
 - Approve expiration and refund policy before production checkout.
 
 ### 2026-07-22 checkpoint
 
-The first backend-only vertical now exists without changing the live Points economy. It defines a room-scoped internal `Starter 1,200 BeauBucks` test pack, exact verified-webhook fulfillment, an authoritative ledger/account projection, reaction-only spending, proportional refund reversal, chargeback restriction and shortfall evidence, and private Audience purchase proof. Emulator coverage proves purchase and spend replay safety and proves legacy Room/global Points remain unchanged.
+The first backend-only vertical now exists without changing the live Points economy. It defines an account-scoped internal `Starter 1,200 BeauBucks` test pack, exact verified-webhook fulfillment, an authoritative ledger/account projection, reaction-only technical spending, proportional refund reversal, chargeback restriction and shortfall evidence, and private Audience purchase proof. Emulator coverage proves purchase and spend replay safety and proves Room/global Points remain unchanged.
 
-This is not a public offer. The commercial contract keeps both checkout and the pack's public-offer flag off, no production Room/host is allowlisted by this change, and no Audience storefront or primary Host control is connected. The out-of-order webhook blocker is now closed with bounded pending evidence and fulfillment-time recovery. Remaining owner gates are pack economics, scope/portability, customer-facing refund and expiration terms, support/tax treatment, and simplified Host/Audience controls.
+This is not a public offer. The commercial contract keeps both checkout and the pack's public-offer flag off. A read-only production inventory found no BeauBucks wallet documents or balances requiring transfer. Remaining gates are the provider-neutral grant adapter, durable reaction catalog and loadout, pack economics, customer-facing refund and expiration terms, support/tax treatment, and the controlled production cohort. Points and BeauBucks retain their existing product names.
 
 ## Slice 8 — Room Boosts and room-controlled consumption
 
@@ -630,7 +630,7 @@ Approve meters, rates, budgets, overage behavior, and invoice reconciliation.
 
 After Slices 5–8.
 
-Approve Host Tip, checkout disclosures, BeauBucks scope, and allowed Room Boosts.
+Approve Host Tip, checkout disclosures, and allowed Room Boosts; verify the approved account-scoped BeauBucks cutover evidence.
 
 ### Gate E — Self-hosted product promise
 

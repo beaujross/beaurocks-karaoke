@@ -17,15 +17,17 @@ test('server ledger uses deterministic hashed document identities', () => {
   assert.notEqual(buildLedgerEntryId('join:PARTY:user_1'), buildLedgerEntryId('join:PARTY:user_2'));
 });
 
-test('authoritative entries use the same deterministic account identity without shadow authority', () => {
-  assert.equal(buildLedgerAccountId({ roomCode: 'ROOM1', uid: 'user_1', currency: 'beaubucks' }), 'room1__user_1__beaubucks');
+test('authoritative BeauBucks entries use one persistent account identity while preserving Room attribution', () => {
+  assert.equal(buildLedgerAccountId({ roomCode: 'ROOM1', uid: 'User_1', currency: 'beaubucks' }), 'account__User_1__beaubucks');
+  assert.equal(buildLedgerAccountId({ roomCode: 'ROOM2', uid: 'User_1', currency: 'beaubucks' }), 'account__User_1__beaubucks');
   const entry = buildAuthoritativeLedgerEntry({
     idempotencyKey: 'purchase:cs_1', roomCode: 'ROOM1', uid: 'user_1',
-    eventCredits: { enabled: true, presetId: 'beaubucks' }, type: 'purchase_grant', amount: 1200,
+    eventCredits: { enabled: true, presetId: 'beaubucks' }, walletScope: 'account', type: 'purchase_grant', amount: 1200,
   });
   assert.equal(entry.shadow, false);
   assert.equal(entry.authoritative, true);
-  assert.equal(entry.accountId, 'room1__user_1__beaubucks');
+  assert.equal(entry.accountId, 'account__user_1__beaubucks');
+  assert.equal(entry.roomCode, 'ROOM1');
 });
 
 test('server ledger preserves Points and BeauBucks currency boundaries', () => {
@@ -43,6 +45,7 @@ test('shadow entries are explicitly non-authoritative', () => {
   assert.equal(entry.shadow, true);
   assert.equal(entry.authoritative, false);
   assert.equal(entry.currency, 'beaubucks');
+  assert.equal(entry.accountId, 'party__user_1__beaubucks');
   assert.equal(entry.createdAt, 'SERVER_TIME');
 });
 

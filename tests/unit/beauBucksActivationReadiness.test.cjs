@@ -6,17 +6,21 @@ const approvedInputs = {
   status: 'owner_approved_checkout_disabled',
   publicPricing: false,
   productPolicy: {
-    approvalStatus: 'approved', balanceScope: 'room', noCashValue: true, transferable: false,
+    approvalStatus: 'approved', balanceScope: 'account', noCashValue: true, transferable: false,
     decisionRef: 'decision-product-1',
+  },
+  accountWalletMigration: {
+    approvalStatus: 'approved', strategy: 'aggregate_legacy_room_balances_once', completed: true,
+    reportRef: 'migration-report-1', decisionRef: 'decision-migration-1',
   },
   starterPack: {
     approvalStatus: 'approved', packId: 'beaubucks_starter_1200', publicLabel: 'Starter 1,200 BeauBucks',
-    amountCents: 500, currency: 'usd', beauBucks: 1200, scope: 'room', maxPurchasesPerBuyerPerRoom: 1,
+    amountCents: 500, currency: 'usd', beauBucks: 1200, scope: 'account', maxPurchasesPerAccount: 1,
     decisionRef: 'decision-pack-1',
     costEnvelope: { approvalStatus: 'approved', maximumSpendOperationsPerPack: 600, minimumAuthorityWritesPerPack: 1800, decisionRef: 'decision-cost-1' },
   },
   customerPromises: {
-    approvalStatus: 'approved', roomScopedDisclosure: true, noCashValueDisclosure: true,
+    approvalStatus: 'approved', accountPersistentDisclosure: true, noCashValueDisclosure: true,
     nonTransferableDisclosure: true, reactionsOnlyDisclosure: true,
     expirationPolicy: 'no_expiration_during_canary',
     refundPolicy: 'contact_support_proportionate_unspent_reversal',

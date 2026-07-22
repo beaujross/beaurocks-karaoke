@@ -4,6 +4,8 @@ Date: 2026-07-22
 
 Status: implementation verified; safe to deploy financially inert; no public purchase activation approved.
 
+Account-wallet revision (2026-07-22): BeauBucks now follow the signed-in BeauRocks account across Rooms. Points retain their existing name and Room participation behavior. The Room still decides which BeauBucks actions are available tonight. Any older Room-scope statements below describe the superseded Slice 10.1 canary contract.
+
 ## Outcome
 
 The BeauBucks authority vertical now has one plain-language Host decision and a matching Audience explanation without combining purchased value with earned Points.

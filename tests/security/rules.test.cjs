@@ -1589,7 +1589,7 @@ async function run() {
         "organizations/org_host-uid/additional_usage_ledger/receipt-one",
         "organizations/org_host-uid/additional_usage_grant_state/grant-one",
         "additional_usage_payment_refs/pi_server_only",
-        "beaurocks_ledger_accounts/room1__guest-uid__beaubucks",
+        "beaurocks_ledger_accounts/account__guest-uid__beaubucks",
         "beaurocks_ledger_entries/entry-one",
         "beaurocks_payment_refs/payment-one",
         "beaurocks_payment_adjustments/adjustment-one",

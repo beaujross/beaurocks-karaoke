@@ -4,7 +4,7 @@ Date: 2026-07-22
 
 ## Current answer
 
-The BeauBucks product authority is implemented and deployed fail-closed. The Audience App can show a separate Room-scoped BeauBucks balance, the Host has one `BeauBucks tonight` control in authorized Rooms, paid reactions use the server ledger, and checkout cannot open under the current commercial contract.
+The BeauBucks product authority is implemented fail-closed. The Audience App can show a separate account-persistent BeauBucks balance, the Host has one `BeauBucks tonight` control in authorized Rooms, eligible actions use the server ledger, and checkout cannot open under the current commercial contract. Points and BeauBucks keep their existing names; this revision changes BeauBucks scope, not vocabulary.
 
 The paid canary is **not ready to activate** until the owner decisions below are recorded. Run:
 
@@ -18,12 +18,14 @@ Use `-- --strict` in a release job. A blocked packet exits with code 2. The comm
 
 The checked-in proposals live in `docs/costs/beaubucks_activation_decision_inputs.json`. Values marked `not_approved`, blank owners, blank decision references, and an empty Room list are intentional blockers.
 
-1. Product policy
-   - Recommended: BeauBucks stay in the current Room, have no cash value, cannot transfer, and pay only for reactions.
+1. Product policy (scope decided; catalog still gated)
+   - Approved direction: BeauBucks stay with the signed-in BeauRocks account across Rooms, have no cash value, and cannot transfer to another person.
+   - Points remain the earned Room participation balance. They are not being renamed or converted into BeauBucks.
+   - The closed per-tap paid-reaction path is a technical scaffold, not the approved public catalog. The next product slice makes BeauBucks buy durable account reaction unlocks and loadout capacity.
    - BeauBucks cannot buy a score, a win, or queue priority.
 2. Starter pack and cost envelope
    - Recommended first pack: `1,200 BeauBucks` for `$5.00 USD`.
-   - One completed pack per buyer per Room is enforced on the server.
+   - One completed starter pack per BeauRocks account is enforced on the server during the canary.
    - The cheapest reaction costs 2 BB, so one pack permits at most 600 spend operations. Each authoritative spend performs at least the operation, account, and ledger writes: a minimum authority envelope of 1,800 writes per fully spent pack, before existing Room reaction delivery.
 3. Customer promises
    - Recommended canary promise: no expiration during the canary.
@@ -33,7 +35,7 @@ The checked-in proposals live in `docs/costs/beaubucks_activation_decision_input
    - Confirm BeauRocks as merchant of record.
    - Name the support/refund owner and Stripe-to-ledger reconciliation owner.
    - Confirm the monitored support address and a response target no longer than 72 hours.
-   - Record owner or professional review of sales-tax treatment and accounting treatment for unused Room balances and refunds.
+   - Record owner or professional review of sales-tax treatment and accounting treatment for unused account balances and refunds.
 5. Controlled cohort
    - Choose exactly one production Room.
    - Recommended bounds: no more than 10 named testers, no more than $50 gross sales, no more than 14 days, and a named rollback owner.
@@ -44,12 +46,14 @@ The checked-in proposals live in `docs/costs/beaubucks_activation_decision_input
 ## Engineering gates already closed
 
 - Checkout requires authenticated membership in an authorized and Host-enabled Room.
+- Anonymous guests cannot buy or spend BeauBucks.
+- The production migration inventory found zero legacy BeauBucks accounts and zero BB to transfer before account-wallet cutover.
 - The registered pack, amount, currency, and BeauBucks grant must match at checkout and fulfillment.
 - Verified Stripe webhook fulfillment is the only purchase grant authority.
 - Duplicate webhook delivery is idempotent.
 - Refunds and chargebacks create compensating entries; they do not rewrite history.
 - Refund-before-purchase and chargeback-before-purchase ordering is recovered transactionally.
-- One completed purchase per buyer per Room is enforced from the server account projection.
+- One completed purchase per BeauRocks account is enforced from the server account projection.
 - A transactional 35-minute reservation rejects concurrent checkout creation and expires with the Stripe Checkout Session.
 - The wallet withholds the purchase button after a purchase or while another checkout is active.
 - The first pack's maximum spend/write envelope is calculated by the readiness report from the live reaction-cost contract.
@@ -69,16 +73,17 @@ Only after the strict preflight passes:
 
 ## Stop and rollback
 
-Stop new purchases if the Stripe amount, ledger grant, Room scope, activity proof, support path, or per-buyer limit disagrees. Disable checkout and the public pack in the commercial contract, remove the Room from the server allowlist, and redeploy the same bounded functions. Do not delete or rewrite balances or ledger entries. Existing paid value must remain spendable in the supported Room or be handled through the approved refund process.
+Stop new purchases if the Stripe amount, ledger grant, account scope, Room attribution, activity proof, support path, or per-account limit disagrees. Disable checkout and the public pack in the commercial contract, remove the Room from the server allowlist, and redeploy the same bounded functions. Do not delete or rewrite balances or ledger entries. Existing paid value must remain attached to the account or be handled through the approved refund process.
 
 ## What comes next
 
 After the paid canary is reconciled, the planned product sequence remains:
 
-1. Room Boosts and Host-controlled consumption, with no pay-to-win mechanics.
-2. Assisted Host and Crowd-Driven reliability.
-3. Content-agnostic private-party media and degraded-provider behavior.
-4. Offline safety, then a resilient shell, single-device offline operation, and later LAN operation.
-5. Private-party marketing, Charts, Room Recaps, Discover, and commercial operations expansion.
+1. Provider-neutral purchase grants for Stripe, then future StoreKit and Google Play receipt verification.
+2. Account reaction catalog, durable unlocks, four equipped reaction slots, and Host eligibility controls, with no pay-to-win mechanics.
+3. Room Boosts and other clearly described account-persistent BeauBucks uses.
+4. Assisted Host and Crowd-Driven reliability; then content-agnostic private-party media and degraded-provider behavior.
+5. Offline safety, resilient shell, single-device offline operation, and later LAN operation.
+6. Private-party marketing, Charts, Room Recaps, Discover, and commercial operations expansion.
 
-General release is a new gate. It should replace the manual roster with automated cohort/sales ceilings and revisit Room portability, expiration, taxes, support load, and refund behavior using canary evidence.
+General release is a new gate. It should replace the manual roster with automated cohort/sales ceilings and revisit expiration, taxes, support load, refunds, and mobile-store obligations using canary evidence.

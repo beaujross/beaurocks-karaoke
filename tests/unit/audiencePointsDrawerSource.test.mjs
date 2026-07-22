@@ -121,12 +121,13 @@ test('audience activity proof stays collapsed, on demand, and simple', () => {
   assert.match(source, /Purchases, rewards, and spending/);
   assert.match(source, /listMyRoomCreditActivity\(\{ roomCode, limit: 10 \}\)/);
   assert.match(source, /visibleCreditActivityState\.activities\.slice\(0, 5\)/);
-  assert.match(source, /Server-recorded activity for this Room\. The balances above remain your current totals\./);
+  assert.match(source, /Account-wide BeauBucks activity and this Room&apos;s Points activity\. The balances above remain your current totals\./);
 });
 
 test('authorized rooms separate earned Points from purchased BeauBucks', () => {
   assert.match(source, /data-feature-id="audience-beaubucks-wallet"/);
-  assert.match(source, /Points are earned through the party\. BeauBucks are purchased separately/);
+  assert.match(source, /Points are earned through the party\. BeauBucks stay with your signed-in BeauRocks account across Rooms/);
+  assert.match(source, /BeauBucks stay with your signed-in BeauRocks account across Rooms/);
   assert.match(source, /entry\.currency === 'beaubucks' \? 'BB'/);
   assert.match(source, /room\?\.eventCredits\?\.beauBucksAuthorityEnabled === true[\s\S]*\? \[\][\s\S]*POINTS_PACKS/);
   assert.match(source, /requestBeauBucksReactionSpend/);

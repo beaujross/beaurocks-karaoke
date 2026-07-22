@@ -104,6 +104,7 @@
     "ops:report:room-cost": "node scripts/ops/room-cost-observation-report.mjs",
     "ops:report:additional-usage-readiness": "node scripts/ops/additional-usage-pack-readiness.mjs",
     "ops:report:beaubucks-activation-readiness": "node scripts/ops/beaubucks-activation-readiness.mjs",
+    "ops:report:beaubucks-account-wallet-migration": "node scripts/ops/beaubucks-account-wallet-migration-report.mjs",
     "ops:appcheck:event-mode": "node scripts/ops/set-app-check-event-mode.mjs",
     "ops:appcheck:event-mode:check": "node scripts/ops/set-app-check-event-mode.mjs --check",
     "ops:audit:async-pipelines": "node scripts/ops/async-pipeline-audit.mjs",

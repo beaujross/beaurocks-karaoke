@@ -25,7 +25,8 @@ const entry = (overrides = {}) => createLedgerEntry({
 });
 
 test('builds stable account and provider idempotency identities', () => {
-  assert.equal(buildLedgerAccountId({ roomCode: 'Party', uid: 'User-1', currency: 'beaubucks' }), 'party__user-1__beaubucks');
+  assert.equal(buildLedgerAccountId({ roomCode: 'Party', uid: 'User-1', currency: 'beaubucks' }), 'account__User-1__beaubucks');
+  assert.equal(buildLedgerAccountId({ roomCode: 'Another', uid: 'User-1', currency: 'beaubucks' }), 'account__User-1__beaubucks');
   assert.equal(buildLedgerIdempotencyKey({ provider: 'givebutter', type: 'donation_reward', roomCode: 'PARTY', uid: 'user_1', sourceId: 'txn-9' }), 'givebutter__donation_reward__party__user_1__txn-9');
 });
 

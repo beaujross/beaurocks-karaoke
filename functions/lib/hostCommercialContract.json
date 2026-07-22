@@ -246,9 +246,9 @@
     "packs": {}
   },
   "beauBucksPolicy": {
-    "status": "internal_canary_checkout_disabled",
+    "status": "account_wallet_migration_checkout_disabled",
     "checkoutEnabled": false,
-    "balanceScope": "room",
+    "balanceScope": "account",
     "grantTrigger": "verified_stripe_webhook_only",
     "ledgerAuthority": "append_only_account_projection",
     "allowedSpendKinds": [
@@ -258,8 +258,18 @@
     "expirationPolicy": "no_expiration_during_canary_owner_review_required_for_general_release",
     "refundPolicy": "revoke_unspent_value_with_shortfall_evidence",
     "chargebackPolicy": "revoke_unspent_value_and_restrict_account",
+    "purchaseChannels": {
+      "web": "stripe_verified_webhook",
+      "ios": "storekit_server_verification_planned",
+      "android": "play_billing_server_verification_planned"
+    },
+    "plannedPremiumUnlockKinds": [
+      "reaction_unlock",
+      "reaction_loadout_slot",
+      "room_boost"
+    ],
     "purchaseLimit": {
-      "maxCompletedPurchasesPerBuyerPerRoom": 1,
+      "maxCompletedPurchasesPerAccount": 1,
       "reservationMinutes": 35
     },
     "packs": {
@@ -269,7 +279,7 @@
         "amountCents": 500,
         "currency": "usd",
         "beauBucks": 1200,
-        "scope": "room",
+        "scope": "account",
         "publicOffer": false
       }
     }
@@ -324,7 +334,9 @@
     "public_chart": "Charts",
     "publicVibeIndex": "BeauRocks Vibe Index",
     "earned_non_cash_value": "Points",
+    "earned_soft_currency": "Points",
     "purchased_in_app_value": "BeauBucks",
+    "premium_currency": "BeauBucks",
     "host_directed_money": "Host Tip",
     "fundraiser_payment": "Support"
   }

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { deleteCollection, installIoGuards } = require('./harness.cjs');
 
-process.env.BEAUBUCKS_AUTHORITY_ROOM_CODES = 'ROOMBB';
+process.env.BEAUBUCKS_AUTHORITY_ROOM_CODES = 'ROOMBB,ROOMB2';
 process.env.BEAUBUCKS_AUTHORITY_HOST_UIDS = '';
 process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_beaubucks123';
 process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_beaubucks123';
@@ -31,20 +31,23 @@ installIoGuards();
 const APP_ID = 'bross-app';
 const ROOT = `artifacts/${APP_ID}/public/data`;
 const ROOM_CODE = 'ROOMBB';
+const SECOND_ROOM_CODE = 'ROOMB2';
 const USER_UID = 'beaubucks-buyer';
 const SESSION_ID = 'cs_beaubucks_starter_1';
 const PAYMENT_INTENT_ID = 'pi_beaubucks_starter_1';
 const db = admin.firestore();
 const roomRef = db.doc(`${ROOT}/rooms/${ROOM_CODE}`);
 const roomUserRef = db.doc(`${ROOT}/room_users/${ROOM_CODE}_${USER_UID}`);
+const secondRoomRef = db.doc(`${ROOT}/rooms/${SECOND_ROOM_CODE}`);
+const secondRoomUserRef = db.doc(`${ROOT}/room_users/${SECOND_ROOM_CODE}_${USER_UID}`);
 const userRef = db.doc(`users/${USER_UID}`);
 const checkoutRef = db.doc(`${ROOT}/stripe_checkouts/${SESSION_ID}`);
-const accountId = buildBeauBucksAccountId({ roomCode: ROOM_CODE, uid: USER_UID });
+const accountId = buildBeauBucksAccountId({ uid: USER_UID });
 const accountRef = db.doc(`beaurocks_ledger_accounts/${accountId}`);
 const purchaseLimitRef = db.doc(`beaurocks_beaubucks_purchase_limits/${accountId}`);
 
 const requestFor = (uid, data = {}) => ({
-  auth: uid ? { uid } : null,
+  auth: uid ? { uid, token: { firebase: { sign_in_provider: 'password' } } } : null,
   app: null,
   data,
   rawRequest: { ip: '127.0.0.1', get: () => '' },
@@ -109,7 +112,18 @@ async function resetState() {
         beauBucksEnabledTonight: true,
       },
     }),
+    secondRoomRef.set({
+      hostUid: 'host-uid',
+      hostUids: ['host-uid'],
+      eventCredits: {
+        enabled: true,
+        presetId: 'beaubucks',
+        beauBucksAuthorityEnabled: true,
+        beauBucksEnabledTonight: true,
+      },
+    }),
     roomUserRef.set({ roomCode: ROOM_CODE, uid: USER_UID, name: 'Buyer', points: 777 }),
+    secondRoomUserRef.set({ roomCode: SECOND_ROOM_CODE, uid: USER_UID, name: 'Buyer', points: 222 }),
     userRef.set({ uid: USER_UID, pointsBalance: 999 }),
     checkoutRef.set({
       schemaVersion: 1,
@@ -122,6 +136,7 @@ async function resetState() {
       amountCents: 500,
       currency: 'usd',
       beauBucks: 1200,
+      rewardScope: 'account',
       checkoutStatus: 'created',
     }),
   ]);
@@ -146,7 +161,7 @@ const purchaseEvent = {
         buyerUid: USER_UID,
         packId: 'beaubucks_starter_1200',
         beauBucks: '1200',
-        rewardScope: 'room',
+        rewardScope: 'account',
       },
     },
   },
@@ -224,6 +239,16 @@ async function run() {
   assert.equal(spendReplay.duplicate, true);
   assert.equal((await accountRef.get()).get('balance'), 1195);
   assert.equal((await roomUserRef.get()).get('points'), 777);
+
+  const secondRoomWallet = await getMyRoomBeauBucksWallet.run(requestFor(USER_UID, { roomCode: SECOND_ROOM_CODE }));
+  assert.equal(secondRoomWallet.scope, 'account');
+  assert.equal(secondRoomWallet.balance, 1195);
+  assert.equal(secondRoomWallet.experienceEnabled, true);
+  const secondRoomActivity = await listMyRoomCreditActivity.run(requestFor(USER_UID, { roomCode: SECOND_ROOM_CODE, limit: 10 }));
+  assert.equal(secondRoomActivity.balance, 222);
+  assert.equal(secondRoomActivity.beauBucksBalance, 1195);
+  assert.equal(secondRoomActivity.beauBucksWalletScope, 'account');
+  assert.ok(secondRoomActivity.activities.some((entry) => entry.currency === 'beaubucks'));
 
   const activity = await listMyRoomCreditActivity.run(requestFor(USER_UID, { roomCode: ROOM_CODE, limit: 10 }));
   assert.equal(activity.balance, 777);

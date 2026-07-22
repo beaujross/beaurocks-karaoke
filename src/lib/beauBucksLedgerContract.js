@@ -31,11 +31,16 @@ export const LEDGER_ENTRY_TYPES = Object.freeze({
 
 const token = (value = '') => String(value || '').trim();
 const normalizedToken = (value = '') => token(value).toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 160);
+const encodedAccountToken = (value = '') => encodeURIComponent(token(value)).slice(0, 512);
 const allowed = (values = {}) => new Set(Object.values(values));
 
-export const buildLedgerAccountId = ({ roomCode = '', uid = '', currency = LEDGER_CURRENCIES.points } = {}) => (
-    [normalizedToken(roomCode), normalizedToken(uid), normalizedToken(currency)].filter(Boolean).join('__')
-);
+export const buildLedgerAccountId = ({ roomCode = '', uid = '', currency = LEDGER_CURRENCIES.points } = {}) => {
+    const safeCurrency = normalizedToken(currency);
+    if (safeCurrency === LEDGER_CURRENCIES.beaubucks) {
+        return ['account', encodedAccountToken(uid), safeCurrency].filter(Boolean).join('__');
+    }
+    return [normalizedToken(roomCode), normalizedToken(uid), safeCurrency].filter(Boolean).join('__');
+};
 
 export const buildLedgerIdempotencyKey = ({ provider = 'beaurocks', type = '', roomCode = '', uid = '', sourceId = '' } = {}) => (
     [provider, type, roomCode, uid, sourceId].map(normalizedToken).filter(Boolean).join('__')

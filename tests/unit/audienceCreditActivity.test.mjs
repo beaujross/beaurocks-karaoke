@@ -11,9 +11,10 @@ const {
   sanitizePaidCheckoutActivity,
 } = require('../../functions/lib/audienceCreditActivity.js');
 
-test('activity account lookup is scoped to one Room guest across both current currencies', () => {
+test('activity lookup combines current-Room Points, account BeauBucks, and legacy Room wallet evidence', () => {
   assert.deepEqual(buildAudienceLedgerAccountIds({ roomCode: ' Room1 ', uid: 'User_1' }), [
     'room1__user_1__points',
+    'account__User_1__beaubucks',
     'room1__user_1__beaubucks',
   ]);
 });

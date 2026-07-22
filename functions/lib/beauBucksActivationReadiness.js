@@ -54,8 +54,8 @@ const buildProductPolicyGate = (policyDecision = {}, contract = commercialContra
   const policy = contract.beauBucksPolicy || {};
   const blockers = [];
   const allowedSpendKinds = Array.isArray(policy.allowedSpendKinds) ? policy.allowedSpendKinds : [];
-  if (nonEmpty(policyDecision.approvalStatus) !== "approved") blockers.push("Owner approval of the Room-scoped BeauBucks product policy is required.");
-  if (nonEmpty(policy.balanceScope) !== "room" || nonEmpty(policyDecision.balanceScope) !== "room") blockers.push("The canary must keep BeauBucks scoped to the current Room.");
+  if (nonEmpty(policyDecision.approvalStatus) !== "approved") blockers.push("Owner approval of the account-level BeauBucks product policy is required.");
+  if (nonEmpty(policy.balanceScope) !== "account" || nonEmpty(policyDecision.balanceScope) !== "account") blockers.push("BeauBucks must persist with the signed-in BeauRocks account across Rooms.");
   if (allowedSpendKinds.length !== 1 || allowedSpendKinds[0] !== "reaction") blockers.push("The canary contract must allow BeauBucks for paid reactions only.");
   if (policyDecision.noCashValue !== true) blockers.push("Approve the no-cash-value promise.");
   if (policyDecision.transferable !== false) blockers.push("Approve non-transferable balances for the canary.");
@@ -65,6 +65,20 @@ const buildProductPolicyGate = (policyDecision = {}, contract = commercialContra
     balanceScope: nonEmpty(policy.balanceScope),
     allowedSpendKinds,
     competitiveIntegrity: nonEmpty(policy.competitiveIntegrity),
+  });
+};
+
+const buildAccountMigrationGate = (migration = {}) => {
+  const blockers = [];
+  if (nonEmpty(migration.approvalStatus) !== "approved") blockers.push("Approve the one-time Room-wallet to account-wallet migration plan.");
+  if (nonEmpty(migration.strategy) !== "aggregate_legacy_room_balances_once") blockers.push("Use the idempotent aggregate-once legacy balance strategy.");
+  if (migration.completed !== true) blockers.push("Complete and reconcile legacy internal Room-wallet balances before activation.");
+  if (!nonEmpty(migration.reportRef)) blockers.push("Attach the migration dry-run or completion report.");
+  if (!nonEmpty(migration.decisionRef)) blockers.push("Record the account-wallet migration decision reference.");
+  return makeGate("account_wallet_migration", "Account wallet migration", blockers, {
+    strategy: nonEmpty(migration.strategy),
+    completed: migration.completed === true,
+    reportRef: nonEmpty(migration.reportRef),
   });
 };
 
@@ -85,10 +99,10 @@ const buildPackGate = (packDecision = {}, contract = commercialContract) => {
   for (const [field, proposed, registered] of comparisons) {
     if (pack && proposed !== registered) blockers.push(`The approved ${field} must match the registered pack.`);
   }
-  const maxPurchasesPerBuyerPerRoom = wholeNumber(packDecision.maxPurchasesPerBuyerPerRoom);
-  if (maxPurchasesPerBuyerPerRoom !== 1) blockers.push("Limit the internal canary to one purchase per buyer per Room.");
+  const maxPurchasesPerAccount = wholeNumber(packDecision.maxPurchasesPerAccount);
+  if (maxPurchasesPerAccount !== 1) blockers.push("Limit the internal canary to one purchase per BeauRocks account.");
   const registeredPurchaseLimit = policy.purchaseLimit || {};
-  if (wholeNumber(registeredPurchaseLimit.maxCompletedPurchasesPerBuyerPerRoom) !== maxPurchasesPerBuyerPerRoom) blockers.push("The approved per-buyer purchase limit must match the server-enforced limit.");
+  if (wholeNumber(registeredPurchaseLimit.maxCompletedPurchasesPerAccount) !== maxPurchasesPerAccount) blockers.push("The approved account purchase limit must match the server-enforced limit.");
   if (wholeNumber(registeredPurchaseLimit.reservationMinutes) !== 35) blockers.push("Keep the initial checkout reservation at the server-enforced 35-minute window.");
   if (!nonEmpty(packDecision.decisionRef)) blockers.push("Record the pack-economics decision reference.");
 
@@ -118,9 +132,9 @@ const buildPackGate = (packDecision = {}, contract = commercialContract) => {
 const buildCustomerPromiseGate = (terms = {}) => {
   const blockers = [];
   if (nonEmpty(terms.approvalStatus) !== "approved") blockers.push("Approve the customer-facing BeauBucks promises.");
-  if (terms.roomScopedDisclosure !== true) blockers.push("Disclose that BeauBucks stay in the current Room.");
+  if (terms.accountPersistentDisclosure !== true) blockers.push("Disclose that BeauBucks stay with the signed-in BeauRocks account across Rooms.");
   if (terms.noCashValueDisclosure !== true) blockers.push("Disclose that BeauBucks have no cash value and cannot be cashed out.");
-  if (terms.nonTransferableDisclosure !== true) blockers.push("Disclose that BeauBucks cannot be transferred between people or Rooms.");
+  if (terms.nonTransferableDisclosure !== true) blockers.push("Disclose that BeauBucks cannot be transferred to another person or cashed out.");
   if (terms.reactionsOnlyDisclosure !== true) blockers.push("Disclose that the current eligible use is paid reactions.");
   if (nonEmpty(terms.expirationPolicy) !== "no_expiration_during_canary") blockers.push("Approve no expiration during the controlled canary.");
   if (nonEmpty(terms.refundPolicy) !== "contact_support_proportionate_unspent_reversal") blockers.push("Approve the refund promise for proportionate unspent BeauBucks reversal.");
@@ -193,6 +207,7 @@ const buildBeauBucksActivationReadiness = ({ decisionInputs = {}, commercial = c
     buildPrelaunchSafetyGate(commercial),
     buildDecisionRecordGate(decisionInputs),
     buildProductPolicyGate(decisionInputs.productPolicy, commercial),
+    buildAccountMigrationGate(decisionInputs.accountWalletMigration),
     buildPackGate(decisionInputs.starterPack, commercial),
     buildCustomerPromiseGate(decisionInputs.customerPromises),
     buildCommercialOperationsGate(decisionInputs.commercialOperations),

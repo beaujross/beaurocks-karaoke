@@ -5,8 +5,19 @@ const LEDGER_SCHEMA_VERSION = 1;
 
 const token = (value = '') => String(value || '').trim();
 const normalizedToken = (value = '') => token(value).toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 160);
+const encodedAccountToken = (value = '') => encodeURIComponent(token(value)).slice(0, 512);
 
 const buildLedgerAccountId = ({ roomCode = '', uid = '', currency = 'points' } = {}) => {
+  const safeRoomCode = token(roomCode).toUpperCase();
+  const safeUid = token(uid);
+  const safeCurrency = normalizedToken(currency) === 'beaubucks' ? 'beaubucks' : 'points';
+  if (!safeUid) throw new Error('uid is required');
+  if (safeCurrency === 'beaubucks') return ['account', encodedAccountToken(safeUid), safeCurrency].join('__');
+  if (!safeRoomCode) throw new Error('roomCode is required');
+  return [normalizedToken(safeRoomCode), normalizedToken(safeUid), safeCurrency].join('__');
+};
+
+const buildLegacyRoomLedgerAccountId = ({ roomCode = '', uid = '', currency = 'beaubucks' } = {}) => {
   const safeRoomCode = token(roomCode).toUpperCase();
   const safeUid = token(uid);
   const safeCurrency = normalizedToken(currency) === 'beaubucks' ? 'beaubucks' : 'points';
@@ -44,6 +55,7 @@ const buildShadowLedgerEntry = ({
   source = {},
   attribution = {},
   financial = {},
+  walletScope = 'room',
   serverTimestamp = null,
 } = {}) => {
   const safeAmount = Math.max(0, Math.floor(Number(amount) || 0));
@@ -56,7 +68,9 @@ const buildShadowLedgerEntry = ({
     schemaVersion: LEDGER_SCHEMA_VERSION,
     ledgerEntryId,
     idempotencyKey: token(idempotencyKey),
-    accountId: buildLedgerAccountId({ roomCode: safeRoomCode, uid: safeUid, currency }),
+    accountId: currency === 'beaubucks' && normalizedToken(walletScope) !== 'account'
+      ? buildLegacyRoomLedgerAccountId({ roomCode: safeRoomCode, uid: safeUid, currency })
+      : buildLedgerAccountId({ roomCode: safeRoomCode, uid: safeUid, currency }),
     roomCode: safeRoomCode,
     uid: safeUid,
     currency,
@@ -116,6 +130,7 @@ module.exports = {
   LEDGER_COLLECTION,
   LEDGER_SCHEMA_VERSION,
   buildAuthoritativeLedgerEntry,
+  buildLegacyRoomLedgerAccountId,
   buildLedgerAccountId,
   buildLedgerEntryId,
   buildShadowLedgerEntry,

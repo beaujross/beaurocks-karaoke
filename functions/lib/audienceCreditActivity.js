@@ -1,4 +1,8 @@
 const crypto = require('node:crypto');
+const {
+  buildLegacyRoomLedgerAccountId,
+  buildLedgerAccountId,
+} = require('./beauBucksLedger');
 
 const ACTIVITY_KIND = Object.freeze({
   payment: 'payment',
@@ -38,9 +42,13 @@ const toMillis = (value) => {
 
 const buildAudienceLedgerAccountIds = ({ roomCode = '', uid = '' } = {}) => {
   const room = normalizedToken(token(roomCode).toUpperCase());
-  const user = normalizedToken(uid);
+  const user = token(uid);
   if (!room || !user) return [];
-  return ['points', 'beaubucks'].map((currency) => `${room}__${user}__${currency}`);
+  return [
+    buildLedgerAccountId({ roomCode, uid: user, currency: 'points' }),
+    buildLedgerAccountId({ uid: user, currency: 'beaubucks' }),
+    buildLegacyRoomLedgerAccountId({ roomCode, uid: user, currency: 'beaubucks' }),
+  ];
 };
 
 const buildConfirmationCode = (sourceId = '') => {

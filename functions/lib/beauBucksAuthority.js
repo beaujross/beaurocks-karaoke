@@ -8,7 +8,7 @@ const BEAUBUCKS_ADJUSTMENT_COLLECTION = 'beaurocks_payment_adjustments';
 const BEAUBUCKS_PENDING_ADJUSTMENT_COLLECTION = 'beaurocks_pending_payment_adjustments';
 const BEAUBUCKS_PENDING_ADJUSTMENT_EVENT_COLLECTION = 'beaurocks_pending_payment_adjustment_events';
 const BEAUBUCKS_PURCHASE_LIMIT_COLLECTION = 'beaurocks_beaubucks_purchase_limits';
-const BEAUBUCKS_AUTHORITY_SCHEMA_VERSION = 1;
+const BEAUBUCKS_AUTHORITY_SCHEMA_VERSION = 2;
 
 const token = (value = '') => String(value || '').trim();
 const normalizedToken = (value = '') => token(value).toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 160);
@@ -21,14 +21,14 @@ const getBeauBucksPack = (packId = '', contract = commercialContract) => {
   if (!pack || pack.id !== safePackId) return null;
   const amountCents = whole(pack.amountCents);
   const beauBucks = whole(pack.beauBucks);
-  if (!amountCents || !beauBucks || normalizedToken(pack.scope) !== 'room') return null;
+  if (!amountCents || !beauBucks || normalizedToken(pack.scope) !== 'account') return null;
   return {
     id: safePackId,
     publicLabel: token(pack.publicLabel).slice(0, 80) || 'BeauBucks pack',
     amountCents,
     currency: normalizedToken(pack.currency || 'usd') || 'usd',
     beauBucks,
-    scope: 'room',
+    scope: 'account',
     publicOffer: pack.publicOffer === true,
   };
 };
@@ -40,10 +40,10 @@ const isBeauBucksCheckoutEnabled = (contract = commercialContract) => {
 
 const getBeauBucksPurchaseLimit = (contract = commercialContract) => {
   const source = getBeauBucksPolicy(contract)?.purchaseLimit || {};
-  const maxCompletedPurchasesPerBuyerPerRoom = whole(source.maxCompletedPurchasesPerBuyerPerRoom);
+  const maxCompletedPurchasesPerAccount = whole(source.maxCompletedPurchasesPerAccount);
   const reservationMinutes = whole(source.reservationMinutes);
-  if (!maxCompletedPurchasesPerBuyerPerRoom || reservationMinutes < 30 || reservationMinutes > 1440) return null;
-  return { maxCompletedPurchasesPerBuyerPerRoom, reservationMinutes };
+  if (!maxCompletedPurchasesPerAccount || reservationMinutes < 30 || reservationMinutes > 1440) return null;
+  return { maxCompletedPurchasesPerAccount, reservationMinutes };
 };
 
 const evaluateBeauBucksPurchaseReservation = ({
@@ -60,7 +60,7 @@ const evaluateBeauBucksPurchaseReservation = ({
   if (!packValue) return { allowed: false, reasonCode: 'beaubucks_pack_invalid' };
   const completedFromProjection = Math.floor(whole(account.lifetimePurchased) / packValue);
   const completedPurchases = Math.max(whole(limitState.completedPurchases), completedFromProjection);
-  if (completedPurchases >= purchaseLimit.maxCompletedPurchasesPerBuyerPerRoom) {
+  if (completedPurchases >= purchaseLimit.maxCompletedPurchasesPerAccount) {
     return { allowed: false, reasonCode: 'beaubucks_purchase_limit_reached', completedPurchases, purchaseLimit };
   }
   const activeReservationId = token(limitState.reservationId);
@@ -77,8 +77,8 @@ const evaluateBeauBucksPurchaseReservation = ({
   };
 };
 
-const buildBeauBucksAccountId = ({ roomCode = '', uid = '' } = {}) =>
-  buildLedgerAccountId({ roomCode, uid, currency: 'beaubucks' });
+const buildBeauBucksAccountId = ({ uid = '' } = {}) =>
+  buildLedgerAccountId({ uid, currency: 'beaubucks' });
 
 const hashId = (namespace = '', value = '') => {
   const safeValue = token(value);
@@ -142,6 +142,9 @@ const validateBeauBucksCheckoutFulfillment = ({ checkout = {}, session = {}, con
   const currency = normalizedToken(session.currency || '');
   if (currency !== pack.currency || normalizedToken(checkout.currency || '') !== pack.currency) {
     return { ok: false, reasonCode: 'beaubucks_checkout_currency_mismatch' };
+  }
+  if (normalizedToken(checkout.rewardScope) !== 'account' || normalizedToken(metadata.rewardScope) !== 'account') {
+    return { ok: false, reasonCode: 'beaubucks_checkout_scope_mismatch' };
   }
   return { ok: true, pack, roomCode, buyerUid };
 };
