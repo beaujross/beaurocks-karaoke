@@ -52,6 +52,7 @@ import {
     bootstrapOnboardingWorkspace,
     getMyEntitlements,
     getMyUsageSummary,
+    manageMyUsageControls,
     getMyUsageInvoiceDraft,
     recordRoomCostObservation,
     saveMyUsageInvoiceDraft,
@@ -6595,7 +6596,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         totals: { estimatedOverageCents: 0 },
         loading: false,
         error: ''
-    });    const [selectedUsagePeriod, setSelectedUsagePeriod] = useState(getCurrentUsagePeriodKey());
+    });
+    const [usageControls, setUsageControls] = useState({
+        meters: {},
+        capabilities: {},
+        loading: false,
+        error: ''
+    });
+    const [workspaceYouTubeLimitDraft, setWorkspaceYouTubeLimitDraft] = useState('');
+    const [roomYouTubeLimitDraft, setRoomYouTubeLimitDraft] = useState('');
+    const [usageControlSaving, setUsageControlSaving] = useState('');
+    const [selectedUsagePeriod, setSelectedUsagePeriod] = useState(getCurrentUsagePeriodKey());
     const [invoiceDraft, setInvoiceDraft] = useState(null);
     const [invoiceDraftLoading, setInvoiceDraftLoading] = useState(false);
     const [invoiceSaveLoading, setInvoiceSaveLoading] = useState(false);
@@ -6792,6 +6803,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const capabilities = useMemo(() => orgContext?.capabilities || {}, [orgContext?.capabilities]);
     const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
     const canUseInvoiceDrafts = !!capabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
+    const canManageUsageControls = ['owner', 'admin'].includes(String(orgContext?.role || '').trim().toLowerCase());
     const canGenerateAiContent = !!capabilities[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
     const aiDemoBypassEnabled = !!room?.missionControl?.aiDemoBypass;
     const canUseAiTools = canGenerateAiContent || aiDemoBypassEnabled;
@@ -7215,6 +7227,45 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         })();
         return () => { cancelled = true; };
     }, [uid, selectedUsagePeriod]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!uid || !orgContext?.orgId || !canManageUsageControls) {
+            setUsageControls({ meters: {}, capabilities: {}, loading: false, error: '' });
+            setWorkspaceYouTubeLimitDraft('');
+            setRoomYouTubeLimitDraft('');
+            return () => { cancelled = true; };
+        }
+        (async () => {
+            setUsageControls(prev => ({ ...prev, loading: true, error: '' }));
+            try {
+                const controls = await manageMyUsageControls({
+                    action: 'get',
+                    roomCode: String(roomCode || '').trim().toUpperCase()
+                });
+                if (cancelled) return;
+                const youtubeMeter = controls?.meters?.youtube_data_request || {};
+                setUsageControls({
+                    meters: controls?.meters || {},
+                    capabilities: controls?.capabilities || {},
+                    protectedRoomCapabilitiesAvailable: controls?.protectedRoomCapabilitiesAvailable !== false,
+                    loading: false,
+                    error: ''
+                });
+                setWorkspaceYouTubeLimitDraft(String(Number(youtubeMeter?.workspaceHardLimit || 0)));
+                setRoomYouTubeLimitDraft(
+                    youtubeMeter?.roomHardLimit === null || youtubeMeter?.roomHardLimit === undefined
+                        ? ''
+                        : String(Number(youtubeMeter.roomHardLimit || 0))
+                );
+            } catch (error) {
+                if (cancelled) return;
+                hostLogger.error('Usage controls sync failed', error);
+                setUsageControls(prev => ({ ...prev, loading: false, error: 'Could not load cost guardrails.' }));
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [canManageUsageControls, orgContext?.orgId, roomCode, uid]);
 
     useEffect(() => {
         if ((invoiceCustomerName || '').trim()) return;
@@ -16902,6 +16953,93 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return null;
         }
     };
+    const applyUsageControlsResponse = (controls = null) => {
+        const youtubeMeter = controls?.meters?.youtube_data_request || {};
+        setUsageControls({
+            meters: controls?.meters || {},
+            capabilities: controls?.capabilities || {},
+            protectedRoomCapabilitiesAvailable: controls?.protectedRoomCapabilitiesAvailable !== false,
+            loading: false,
+            error: ''
+        });
+        setWorkspaceYouTubeLimitDraft(String(Number(youtubeMeter?.workspaceHardLimit || 0)));
+        setRoomYouTubeLimitDraft(
+            youtubeMeter?.roomHardLimit === null || youtubeMeter?.roomHardLimit === undefined
+                ? ''
+                : String(Number(youtubeMeter.roomHardLimit || 0))
+        );
+    };
+    const saveUsageHardLimit = async (scope = 'workspace') => {
+        const isRoom = scope === 'room';
+        const draft = String(isRoom ? roomYouTubeLimitDraft : workspaceYouTubeLimitDraft).trim();
+        const activeRoomCode = String(roomCode || '').trim().toUpperCase();
+        if (isRoom && !activeRoomCode) {
+            toast('Open a Room before setting its Room budget.');
+            return;
+        }
+        if (!/^\d+$/.test(draft)) {
+            toast('Enter a non-negative whole-number request limit.');
+            return;
+        }
+        setUsageControlSaving(scope);
+        try {
+            const controls = await manageMyUsageControls({
+                action: isRoom ? 'set_room_meter' : 'set_workspace_meter',
+                roomCode: isRoom ? activeRoomCode : '',
+                meterId: 'youtube_data_request',
+                hardLimit: Number(draft)
+            });
+            applyUsageControlsResponse(controls);
+            await refreshUsageSummary(false);
+            toast(isRoom ? `Room ${activeRoomCode} budget saved` : 'Workspace budget saved');
+        } catch (error) {
+            hostLogger.error('Usage hard limit save failed', error);
+            toast(String(error?.message || 'Could not save the usage limit.'));
+        } finally {
+            setUsageControlSaving('');
+        }
+    };
+    const clearRoomUsageHardLimit = async () => {
+        const activeRoomCode = String(roomCode || '').trim().toUpperCase();
+        if (!activeRoomCode) return;
+        setUsageControlSaving('room');
+        try {
+            const controls = await manageMyUsageControls({
+                action: 'clear_room_meter',
+                roomCode: activeRoomCode,
+                meterId: 'youtube_data_request'
+            });
+            applyUsageControlsResponse(controls);
+            toast(`Room ${activeRoomCode} now uses the Workspace budget`);
+        } catch (error) {
+            hostLogger.error('Room usage limit clear failed', error);
+            toast(String(error?.message || 'Could not clear the Room limit.'));
+        } finally {
+            setUsageControlSaving('');
+        }
+    };
+    const toggleWorkspaceLiveSearch = async () => {
+        const currentState = String(usageControls?.capabilities?.youtube_live_search?.workspaceState || 'enabled');
+        const nextState = currentState === 'blocked' ? 'enabled' : 'blocked';
+        setUsageControlSaving('capability');
+        try {
+            const controls = await manageMyUsageControls({
+                action: 'set_capability_state',
+                capabilityId: 'youtube_live_search',
+                state: nextState,
+                roomCode: String(roomCode || '').trim().toUpperCase()
+            });
+            applyUsageControlsResponse(controls);
+            toast(nextState === 'blocked'
+                ? 'Live search paused; cached, indexed, and local media still work'
+                : 'Workspace live search enabled');
+        } catch (error) {
+            hostLogger.error('Live search control save failed', error);
+            toast(String(error?.message || 'Could not update live search.'));
+        } finally {
+            setUsageControlSaving('');
+        }
+    };
     const generateUsageInvoiceDraft = async (showToast = false) => {
         if (!canUseInvoiceDrafts) {
             if (showToast) toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS)} is not available on this plan.`);
@@ -25896,6 +26034,121 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                         </div>
                                     </div>
+                                    {canManageUsageControls && (
+                                        <div data-feature-id="usage-cost-guardrails" className="rounded-xl border border-amber-300/20 bg-amber-500/5 p-3 space-y-3">
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs uppercase tracking-widest text-amber-100/80">Cost Guardrails</div>
+                                                    <div className="mt-1 text-sm text-zinc-200">
+                                                        Set a Workspace ceiling, optionally give the open Room a smaller budget, or pause live search.
+                                                    </div>
+                                                    <div className="mt-1 text-[11px] text-zinc-500">
+                                                        These limits stop new provider work. Queue controls, Host override, cached and indexed tracks, local media, Room shutdown, and Room export remain available.
+                                                    </div>
+                                                </div>
+                                                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${usageControls?.capabilities?.youtube_live_search?.state === 'blocked' ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'}`}>
+                                                    {usageControls?.loading
+                                                        ? 'Loading'
+                                                        : usageControls?.capabilities?.youtube_live_search?.state === 'blocked'
+                                                            ? 'Live Search Paused'
+                                                            : 'Live Search Available'}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                                                <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-2">
+                                                    <div className="text-[10px] uppercase tracking-widest text-zinc-500">Workspace Request Ceiling</div>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={Number(usageControls?.meters?.youtube_data_request?.planHardLimit || 0)}
+                                                        step="1"
+                                                        value={workspaceYouTubeLimitDraft}
+                                                        onChange={(event) => setWorkspaceYouTubeLimitDraft(event.target.value)}
+                                                        className={STYLES.input}
+                                                        disabled={usageControls.loading || !!usageControlSaving}
+                                                    />
+                                                    <div className="text-[11px] text-zinc-500">
+                                                        Plan maximum: {Number(usageControls?.meters?.youtube_data_request?.planHardLimit || 0).toLocaleString()} requests per month.
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => saveUsageHardLimit('workspace')}
+                                                        disabled={usageControls.loading || !!usageControlSaving}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} w-full ${usageControls.loading || usageControlSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {usageControlSaving === 'workspace' ? 'Saving...' : 'Save Workspace Ceiling'}
+                                                    </button>
+                                                </div>
+                                                <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-2">
+                                                    <div className="text-[10px] uppercase tracking-widest text-zinc-500">
+                                                        {roomCode ? `Room ${String(roomCode).toUpperCase()} Budget` : 'Open Room Budget'}
+                                                    </div>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={Number(usageControls?.meters?.youtube_data_request?.workspaceHardLimit || 0)}
+                                                        step="1"
+                                                        value={roomYouTubeLimitDraft}
+                                                        onChange={(event) => setRoomYouTubeLimitDraft(event.target.value)}
+                                                        className={STYLES.input}
+                                                        placeholder={roomCode ? 'Uses Workspace ceiling' : 'Open a Room first'}
+                                                        disabled={!roomCode || usageControls.loading || !!usageControlSaving}
+                                                    />
+                                                    <div className="text-[11px] text-zinc-500">
+                                                        Leave unset to share the Workspace ceiling. A Room budget can only lower it.
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => saveUsageHardLimit('room')}
+                                                            disabled={!roomCode || usageControls.loading || !!usageControlSaving || !String(roomYouTubeLimitDraft).trim()}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${!roomCode || usageControls.loading || usageControlSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {usageControlSaving === 'room' ? 'Saving...' : 'Save Room Budget'}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={clearRoomUsageHardLimit}
+                                                            disabled={!roomCode || usageControls.loading || !!usageControlSaving || usageControls?.meters?.youtube_data_request?.roomHardLimit === null}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                                        >
+                                                            Use Workspace
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-2">
+                                                    <div className="text-[10px] uppercase tracking-widest text-zinc-500">Live Search Circuit</div>
+                                                    <div className="text-sm font-semibold text-white">
+                                                        {usageControls?.capabilities?.youtube_live_search?.platformBlocked
+                                                            ? 'Paused by BeauRocks operations'
+                                                            : usageControls?.capabilities?.youtube_live_search?.workspaceState === 'blocked'
+                                                                ? 'Paused for this Workspace'
+                                                                : 'Enabled for this Workspace'}
+                                                    </div>
+                                                    <div className="text-[11px] text-zinc-500">
+                                                        This affects fresh live search only; it does not stop the karaoke night.
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={toggleWorkspaceLiveSearch}
+                                                        disabled={usageControls.loading || !!usageControlSaving || usageControls?.capabilities?.youtube_live_search?.platformBlocked}
+                                                        className={`${STYLES.btnStd} ${usageControls?.capabilities?.youtube_live_search?.workspaceState === 'blocked' ? STYLES.btnPrimary : STYLES.btnNeutral} w-full ${usageControls.loading || usageControlSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {usageControlSaving === 'capability'
+                                                            ? 'Saving...'
+                                                            : usageControls?.capabilities?.youtube_live_search?.workspaceState === 'blocked'
+                                                                ? 'Enable Live Search'
+                                                                : 'Pause Live Search'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            {usageControls?.error && (
+                                                <div className="text-sm text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2">
+                                                    {usageControls.error}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                     <div data-feature-id="admin-live-ops-health" className="rounded-xl border border-cyan-300/20 bg-gradient-to-r from-cyan-500/8 via-zinc-950/82 to-emerald-500/8 p-3 space-y-3">
                                         <div className="flex flex-wrap items-start justify-between gap-3">
                                             <div>

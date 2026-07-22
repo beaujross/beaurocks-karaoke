@@ -116,6 +116,16 @@ describe("Host commercial contract", () => {
       .toEqual(["reserved", "settled", "released", "billable", "invoiced"]);
     expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.warningThresholdBps)
       .toEqual([5000, 8000, 10000]);
+    expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.budgetScopes)
+      .toEqual(["workspace", "room"]);
+    expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.circuitBreakerCapabilities)
+      .toContain("youtube_live_search");
+    expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.denialReasonCodes)
+      .toEqual(expect.arrayContaining([
+        "usage_platform_circuit_open",
+        "usage_workspace_hard_limit_reached",
+        "usage_room_hard_limit_reached",
+      ]));
     expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.protectedLiveRoomCapabilities)
       .toEqual(expect.arrayContaining(["queue_management", "host_override", "existing_local_media"]));
     expect(HOST_COMMERCIAL_CONTRACT.usageControlPolicy.cloudBudgetAlertsAreEnforcement).toBe(false);

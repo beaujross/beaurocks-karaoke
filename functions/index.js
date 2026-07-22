@@ -37,6 +37,13 @@ const {
   normalizeUsageOperationId,
 } = require("./lib/usageOperationLifecycle");
 const {
+  USAGE_CONTROL_REASON_CODES,
+  USAGE_CONTROL_STATES,
+  normalizeControlState,
+  resolveConfiguredHardLimit,
+  resolveUsageControlDecision,
+} = require("./lib/usageCapabilityControl");
+const {
   normalizeCheckoutToken,
   buildSubscriptionCheckoutIdempotencyKey,
 } = require("./lib/subscriptionCheckout");
@@ -4367,19 +4374,37 @@ const readOrganizationUsageSummary = async ({
       periodRange: getPeriodRangeForKey(periodKey),
     };
   }
-  const usageRef = orgsCollection().doc(orgId).collection("usage").doc(periodKey);
-  const usageSnap = await usageRef.get();
+  const orgRef = orgsCollection().doc(orgId);
+  const usageRef = orgRef.collection("usage").doc(periodKey);
+  const workspaceControlRef = orgRef.collection("usage_controls").doc(USAGE_WORKSPACE_CONTROL_DOC);
+  const [usageSnap, workspaceControlSnap] = await Promise.all([
+    usageRef.get(),
+    workspaceControlRef.get(),
+  ]);
   const usageData = normalizeUsageDocumentData(usageSnap.data() || {});
+  const workspaceControlData = workspaceControlSnap.data() || {};
   const meterData = usageData.meters || {};
   const meters = {};
+  const workspaceMeterControls = {};
   let estimatedOverageCents = 0;
 
   Object.keys(USAGE_METER_DEFINITIONS).forEach((meterId) => {
-    const capacityQuota = resolveUsageMeterQuota({
+    const planQuota = resolveUsageMeterQuota({
       meterId,
       planId: entitlements?.usagePlanId || entitlements?.planId || "free",
       status: entitlements?.usageStatus || entitlements?.status || "inactive",
     });
+    const effectiveHardLimit = resolveConfiguredHardLimit({
+      control: workspaceControlData?.meters?.[meterId],
+      maximumHardLimit: planQuota.hardLimit,
+      fallbackHardLimit: planQuota.hardLimit,
+    });
+    const capacityQuota = { ...planQuota, hardLimit: effectiveHardLimit };
+    workspaceMeterControls[meterId] = {
+      hardLimit: effectiveHardLimit,
+      planHardLimit: planQuota.hardLimit,
+      customized: effectiveHardLimit !== planQuota.hardLimit,
+    };
     const billingPlan = getPlanDefinition(entitlements?.planId || "free");
     const billingEligible = billingPlan?.tier === "host" && isEntitledStatus(entitlements?.status || "inactive");
     const quota = billingEligible ? capacityQuota : {
@@ -4419,6 +4444,11 @@ const readOrganizationUsageSummary = async ({
     meters,
     totals: {
       estimatedOverageCents,
+    },
+    controls: {
+      workspace: {
+        meters: workspaceMeterControls,
+      },
     },
     generatedAtMs: nowMs(),
     periodRange: getPeriodRangeForKey(periodKey),
@@ -7540,11 +7570,15 @@ const settleOrganizationUsageAttempt = async ({
       };
     }
     if (safeRoomCode) {
-      const currentRoomUsed = toWholeNumber(data?.meters?.[meterId]?.rooms?.[safeRoomCode]?.used, 0);
+      const currentRoomData = data?.meters?.[meterId]?.rooms?.[safeRoomCode] || {};
+      const currentRoomLifecycle = normalizeUsageLifecycleCounts(currentRoomData, currentRoomData?.used);
+      const plannedRoomSettled = currentRoomLifecycle.settled + safeUnits;
       meterPatch.rooms = {
         ...(meterPatch.rooms || {}),
         [safeRoomCode]: {
-          used: currentRoomUsed + safeUnits,
+          used: plannedRoomSettled,
+          ...currentRoomLifecycle,
+          settled: plannedRoomSettled,
           roomCode: safeRoomCode,
           label: safeRoomCode,
           updatedAt: now,
@@ -7637,11 +7671,51 @@ const resolveRequestUsageOperationId = (request, suffix = "attempt") => {
   return normalizeUsageOperationId(`${requested || fallback}:${suffix}`);
 };
 
+const USAGE_PLATFORM_CONTROL_DOC = "usage";
+const USAGE_WORKSPACE_CONTROL_DOC = "current";
+
+const throwUsageControlDecision = ({
+  decision = null,
+  meter = null,
+  meterId = "",
+  capabilityId = "",
+  roomCode = "",
+} = {}) => {
+  const reasonCode = String(decision?.reasonCode || USAGE_CONTROL_REASON_CODES.workspaceUnavailable);
+  const messages = {
+    [USAGE_CONTROL_REASON_CODES.platformCircuitOpen]: "Live provider features are temporarily paused. Cached, indexed, and local media still work.",
+    [USAGE_CONTROL_REASON_CODES.capabilityCircuitOpen]: "This live provider feature is paused. Cached, indexed, and local media still work.",
+    [USAGE_CONTROL_REASON_CODES.workspaceUnavailable]: `${meter?.label || "This provider feature"} is not available for this workspace.`,
+    [USAGE_CONTROL_REASON_CODES.workspaceHardLimitReached]: `${meter?.label || "Provider usage"} hard limit reached for this workspace.`,
+    [USAGE_CONTROL_REASON_CODES.roomHardLimitReached]: `${meter?.label || "Provider usage"} hard limit reached for this Room.`,
+  };
+  const isCircuitOpen = [
+    USAGE_CONTROL_REASON_CODES.platformCircuitOpen,
+    USAGE_CONTROL_REASON_CODES.capabilityCircuitOpen,
+  ].includes(reasonCode);
+  const isUnavailable = reasonCode === USAGE_CONTROL_REASON_CODES.workspaceUnavailable;
+  throw new HttpsError(
+    isCircuitOpen ? "unavailable" : isUnavailable ? "failed-precondition" : "resource-exhausted",
+    messages[reasonCode] || messages[USAGE_CONTROL_REASON_CODES.workspaceUnavailable],
+    {
+      reasonCode,
+      scope: String(decision?.scope || "workspace"),
+      meterId: String(meterId || ""),
+      capabilityId: String(capabilityId || ""),
+      roomCode: String(roomCode || ""),
+      workspaceHardLimit: toWholeNumber(decision?.workspaceHardLimit, 0),
+      roomHardLimit: decision?.roomHardLimit === null ? null : toWholeNumber(decision?.roomHardLimit, 0),
+      protectedRoomCapabilitiesAvailable: true,
+    },
+  );
+};
+
 const reserveOrganizationUsageOperation = async ({
   orgId = "",
   entitlements = null,
   operationId = "",
   meterId = "",
+  capabilityId = "",
   units = 1,
   source = "",
   actorUid = "",
@@ -7662,17 +7736,20 @@ const reserveOrganizationUsageOperation = async ({
     planId: entitlements?.usagePlanId || entitlements?.planId || "free",
     status: entitlements?.usageStatus || entitlements?.status || "inactive",
   });
-  if (quota.hardLimit <= 0) {
-    throw new HttpsError("failed-precondition", `${meter.label} is not available for this workspace.`);
-  }
   const orgRef = orgsCollection().doc(safeOrgId);
   const usageRef = orgRef.collection("usage").doc(periodKey);
   const operationRef = orgRef.collection("usage_operations").doc(`${periodKey}:${safeOperationId}`);
+  const platformControlRef = admin.firestore().collection("platform_controls").doc(USAGE_PLATFORM_CONTROL_DOC);
+  const workspaceControlRef = orgRef.collection("usage_controls").doc(USAGE_WORKSPACE_CONTROL_DOC);
   const now = admin.firestore.FieldValue.serverTimestamp();
   const safeSource = sanitizeSecurityToken(source, 96);
   const safeActorUid = normalizeUidToken(actorUid);
   const safeRoomCode = normalizeRoomCode(roomCode || "");
   const safeSurface = sanitizeSecurityToken(surface, 32);
+  const safeCapabilityId = sanitizeSecurityToken(capabilityId, 64);
+  const roomControlRef = safeRoomCode
+    ? orgRef.collection("usage_room_controls").doc(safeRoomCode)
+    : null;
 
   return admin.firestore().runTransaction(async (tx) => {
     const operationSnap = await tx.get(operationRef);
@@ -7689,15 +7766,46 @@ const reserveOrganizationUsageOperation = async ({
       };
     }
 
-    const usageSnap = await tx.get(usageRef);
+    const [usageSnap, platformControlSnap, workspaceControlSnap, roomControlSnap] = await Promise.all([
+      tx.get(usageRef),
+      tx.get(platformControlRef),
+      tx.get(workspaceControlRef),
+      roomControlRef ? tx.get(roomControlRef) : Promise.resolve(null),
+    ]);
     const usageData = normalizeUsageDocumentData(usageSnap.data() || {});
     const meterData = usageData?.meters?.[meterId] || {};
     const lifecycle = normalizeUsageLifecycleCounts(meterData, meterData?.used);
-    const plannedReserved = lifecycle.reserved + safeUnits;
-    const plannedExposure = lifecycle.settled + plannedReserved;
-    if (quota.hardLimit > 0 && plannedExposure > quota.hardLimit) {
-      throw new HttpsError("resource-exhausted", `${meter.label} monthly hard limit reached for this workspace.`);
+    const roomMeterData = safeRoomCode ? meterData?.rooms?.[safeRoomCode] || {} : {};
+    const roomLifecycle = normalizeUsageLifecycleCounts(roomMeterData, roomMeterData?.used);
+    const platformControl = platformControlSnap.data() || {};
+    const workspaceControl = workspaceControlSnap.data() || {};
+    const roomControl = roomControlSnap?.data?.() || {};
+    const platformCapabilityState = normalizeControlState(platformControl?.capabilities?.[safeCapabilityId]?.state);
+    const workspaceCapabilityState = normalizeControlState(workspaceControl?.capabilities?.[safeCapabilityId]?.state);
+    const decision = resolveUsageControlDecision({
+      units: safeUnits,
+      planHardLimit: quota.hardLimit,
+      workspaceControl: workspaceControl?.meters?.[meterId],
+      roomControl: safeRoomCode ? roomControl?.meters?.[meterId] : null,
+      workspaceExposure: lifecycle.settled + lifecycle.reserved,
+      roomExposure: roomLifecycle.settled + roomLifecycle.reserved,
+      platformState: platformControl?.state,
+      capabilityState: platformCapabilityState === USAGE_CONTROL_STATES.blocked
+        || workspaceCapabilityState === USAGE_CONTROL_STATES.blocked
+        ? USAGE_CONTROL_STATES.blocked
+        : USAGE_CONTROL_STATES.enabled,
+    });
+    if (!decision.allowed) {
+      throwUsageControlDecision({
+        decision,
+        meter,
+        meterId,
+        capabilityId: safeCapabilityId,
+        roomCode: safeRoomCode,
+      });
     }
+    const plannedReserved = lifecycle.reserved + safeUnits;
+    const plannedRoomReserved = roomLifecycle.reserved + safeUnits;
 
     tx.create(operationRef, {
       schemaVersion: 1,
@@ -7705,6 +7813,7 @@ const reserveOrganizationUsageOperation = async ({
       orgId: safeOrgId,
       period: periodKey,
       meterId,
+      capabilityId: safeCapabilityId,
       units: safeUnits,
       state: USAGE_OPERATION_STATES.reserved,
       source: safeSource,
@@ -7714,7 +7823,9 @@ const reserveOrganizationUsageOperation = async ({
       planIdSnapshot: entitlements?.planId || "free",
       quotaSnapshot: {
         included: quota.included,
-        hardLimit: quota.hardLimit,
+        planHardLimit: quota.hardLimit,
+        workspaceHardLimit: decision.workspaceHardLimit,
+        roomHardLimit: decision.roomHardLimit,
         billableUnitRateCents: quota.billableUnitRateCents,
       },
       createdAt: now,
@@ -7733,11 +7844,24 @@ const reserveOrganizationUsageOperation = async ({
           ...lifecycle,
           reserved: plannedReserved,
           included: quota.included,
-          hardLimit: quota.hardLimit,
+          hardLimit: decision.workspaceHardLimit,
           overageRateCents: quota.overageRateCents,
           passThroughUnitCostCents: quota.passThroughUnitCostCents,
           markupMultiplier: quota.markupMultiplier,
           billableUnitRateCents: quota.billableUnitRateCents,
+          ...(safeRoomCode ? {
+            rooms: {
+              [safeRoomCode]: {
+                used: roomLifecycle.settled,
+                ...roomLifecycle,
+                reserved: plannedRoomReserved,
+                roomCode: safeRoomCode,
+                label: safeRoomCode,
+                hardLimit: decision.roomHardLimit,
+                updatedAt: now,
+              },
+            },
+          } : {}),
           updatedAt: now,
         },
       },
@@ -7788,11 +7912,28 @@ const transitionOrganizationUsageOperation = async ({
       ...lifecycle,
       updatedAt: now,
     };
+    const operationRoomCode = normalizeRoomCode(operation.roomCode || "");
+    if (operationRoomCode) {
+      const roomMeterData = meterData?.rooms?.[operationRoomCode] || {};
+      const roomLifecycle = applyUsageLifecycleTransition(
+        normalizeUsageLifecycleCounts(roomMeterData, roomMeterData?.used),
+        { fromState: USAGE_OPERATION_STATES.reserved, toState, units },
+      );
+      meterPatch.rooms = {
+        [operationRoomCode]: {
+          used: roomLifecycle.settled,
+          ...roomLifecycle,
+          roomCode: operationRoomCode,
+          label: operationRoomCode,
+          hardLimit: operation?.quotaSnapshot?.roomHardLimit ?? null,
+          updatedAt: now,
+        },
+      };
+    }
     if (toState === USAGE_OPERATION_STATES.settled) {
       const dimensions = [
         ["sources", String(operation.source || ""), "source"],
         ["actors", String(operation.actorUid || ""), "uid"],
-        ["rooms", String(operation.roomCode || ""), "roomCode"],
         ["surfaces", String(operation.surface || ""), "surface"],
       ];
       for (const [bucket, key, keyField] of dimensions) {
@@ -13677,6 +13818,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     entitlements,
     operationId: searchUsageOperationId,
     meterId: "youtube_data_request",
+    capabilityId: "youtube_live_search",
     units: 1,
     source: `${usageSource}_search_list`,
     ...buildUsageAttributionContext({
@@ -13730,10 +13872,13 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     return { items: [] };
   }
 
-  await reserveOrganizationUsageUnits({
+  const detailsUsageOperationId = resolveRequestUsageOperationId(request, "videos_list");
+  const detailsUsageReservation = await reserveOrganizationUsageOperation({
     orgId: entitlements.orgId,
     entitlements,
+    operationId: detailsUsageOperationId,
     meterId: "youtube_data_request",
+    capabilityId: "youtube_live_search",
     units: 1,
     source: `${usageSource}_videos_list`,
     ...buildUsageAttributionContext({
@@ -13742,13 +13887,34 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
       source: usageSource,
     }),
   });
-  await reserveYouTubeApiDailyCall({
-    method: "videos.list",
-    source: `${usageSource}_playability`,
-  });
+  if (!detailsUsageReservation.created) {
+    throw new HttpsError("aborted", `YouTube details usage operation is already ${detailsUsageReservation.state || "reserved"}.`);
+  }
+  try {
+    await reserveYouTubeApiDailyCall({
+      method: "videos.list",
+      source: `${usageSource}_playability`,
+    });
+  } catch (error) {
+    await releaseOrganizationUsageOperation({
+      orgId: entitlements.orgId,
+      operationId: detailsUsageOperationId,
+      periodKey: detailsUsageReservation.periodKey,
+    }).catch((releaseError) => console.warn("youtubeSearch: details usage reservation release failed", releaseError));
+    throw error;
+  }
   const ids = baseItems.map((item) => item.id).slice(0, 50);
   const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,contentDetails,statistics&id=${ids.join(",")}`;
-  const detailsRes = await fetch(detailsUrl);
+  let detailsRes;
+  try {
+    detailsRes = await fetch(detailsUrl);
+  } finally {
+    await settleOrganizationUsageOperation({
+      orgId: entitlements.orgId,
+      operationId: detailsUsageOperationId,
+      periodKey: detailsUsageReservation.periodKey,
+    });
+  }
   await assertYouTubeApiResponseOk(detailsRes, "YouTube playability check");
   const details = await detailsRes.json();
   const statusById = new Map();
@@ -23244,6 +23410,170 @@ exports.getMyUsageSummary = onCall({ cors: true }, async (request) => {
     periodKey: requestedPeriod,
   });
   return summary;
+});
+
+const USAGE_CAPABILITY_METERS = Object.freeze({
+  youtube_live_search: "youtube_data_request",
+});
+
+const readMyUsageControls = async ({ orgId = "", entitlements = null, roomCode = "" } = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  const orgRef = orgsCollection().doc(orgId);
+  const workspaceRef = orgRef.collection("usage_controls").doc(USAGE_WORKSPACE_CONTROL_DOC);
+  const platformRef = admin.firestore().collection("platform_controls").doc(USAGE_PLATFORM_CONTROL_DOC);
+  const roomRef = safeRoomCode ? orgRef.collection("usage_room_controls").doc(safeRoomCode) : null;
+  const [workspaceSnap, platformSnap, roomSnap] = await Promise.all([
+    workspaceRef.get(),
+    platformRef.get(),
+    roomRef ? roomRef.get() : Promise.resolve(null),
+  ]);
+  const workspace = workspaceSnap.data() || {};
+  const platform = platformSnap.data() || {};
+  const room = roomSnap?.data?.() || {};
+  const meters = {};
+  Object.keys(USAGE_METER_DEFINITIONS).forEach((meterId) => {
+    const quota = resolveUsageMeterQuota({
+      meterId,
+      planId: entitlements?.usagePlanId || entitlements?.planId || "free",
+      status: entitlements?.usageStatus || entitlements?.status || "inactive",
+    });
+    const workspaceHardLimit = resolveConfiguredHardLimit({
+      control: workspace?.meters?.[meterId],
+      maximumHardLimit: quota.hardLimit,
+      fallbackHardLimit: quota.hardLimit,
+    });
+    meters[meterId] = {
+      label: USAGE_METER_DEFINITIONS[meterId]?.label || meterId,
+      planHardLimit: quota.hardLimit,
+      workspaceHardLimit,
+      roomHardLimit: safeRoomCode && Object.prototype.hasOwnProperty.call(room?.meters?.[meterId] || {}, "hardLimit")
+        ? resolveConfiguredHardLimit({
+          control: room.meters[meterId],
+          maximumHardLimit: workspaceHardLimit,
+          fallbackHardLimit: workspaceHardLimit,
+        })
+        : null,
+    };
+  });
+  const capabilities = {};
+  Object.keys(USAGE_CAPABILITY_METERS).forEach((capabilityId) => {
+    const platformState = normalizeControlState(platform?.capabilities?.[capabilityId]?.state);
+    const workspaceState = normalizeControlState(workspace?.capabilities?.[capabilityId]?.state);
+    capabilities[capabilityId] = {
+      state: normalizeControlState(platform?.state) === USAGE_CONTROL_STATES.blocked
+        || platformState === USAGE_CONTROL_STATES.blocked
+        || workspaceState === USAGE_CONTROL_STATES.blocked
+        ? USAGE_CONTROL_STATES.blocked
+        : USAGE_CONTROL_STATES.enabled,
+      workspaceState,
+      platformState,
+      platformBlocked: normalizeControlState(platform?.state) === USAGE_CONTROL_STATES.blocked,
+    };
+  });
+  return {
+    ok: true,
+    orgId,
+    roomCode: safeRoomCode,
+    meters,
+    capabilities,
+    protectedRoomCapabilitiesAvailable: true,
+  };
+};
+
+exports.manageMyUsageControls = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "manage_my_usage_controls", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "manage_my_usage_controls");
+  const { uid, entitlements } = await requireHostWorkspaceAccess(request, {
+    deniedMessage: "Managing usage controls requires active Host access.",
+  });
+  if (!["owner", "admin"].includes(String(entitlements?.role || "").toLowerCase())) {
+    throw new HttpsError("permission-denied", "Only Workspace owners/admins can manage usage controls.");
+  }
+  const orgId = String(entitlements?.orgId || "").trim();
+  if (!orgId) throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  const action = sanitizeSecurityToken(request.data?.action || "get", 40).toLowerCase();
+  const meterId = sanitizeSecurityToken(request.data?.meterId || "", 64);
+  const capabilityId = sanitizeSecurityToken(request.data?.capabilityId || "", 64);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const orgRef = orgsCollection().doc(orgId);
+  const workspaceRef = orgRef.collection("usage_controls").doc(USAGE_WORKSPACE_CONTROL_DOC);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  if (action === "get") {
+    return readMyUsageControls({ orgId, entitlements, roomCode });
+  }
+
+  if (action === "set_capability_state") {
+    if (!USAGE_CAPABILITY_METERS[capabilityId]) {
+      throw new HttpsError("invalid-argument", "Unsupported usage capability.");
+    }
+    const requestedState = String(request.data?.state || "").trim().toLowerCase();
+    if (!Object.values(USAGE_CONTROL_STATES).includes(requestedState)) {
+      throw new HttpsError("invalid-argument", "state must be enabled or blocked.");
+    }
+    await workspaceRef.set({
+      schemaVersion: 1,
+      capabilities: { [capabilityId]: { state: requestedState, updatedAt: now, updatedBy: uid } },
+      updatedAt: now,
+      updatedBy: uid,
+    }, { merge: true });
+    return readMyUsageControls({ orgId, entitlements, roomCode });
+  }
+
+  if (!["set_workspace_meter", "set_room_meter", "clear_room_meter"].includes(action)) {
+    throw new HttpsError("invalid-argument", "Unsupported usage-control action.");
+  }
+  if (!USAGE_METER_DEFINITIONS[meterId]) {
+    throw new HttpsError("invalid-argument", "Unsupported usage meter.");
+  }
+  const quota = resolveUsageMeterQuota({
+    meterId,
+    planId: entitlements?.usagePlanId || entitlements?.planId || "free",
+    status: entitlements?.usageStatus || entitlements?.status || "inactive",
+  });
+  const requestedHardLimit = Number(request.data?.hardLimit);
+  if (action !== "clear_room_meter" && (!Number.isInteger(requestedHardLimit) || requestedHardLimit < 0)) {
+    throw new HttpsError("invalid-argument", "hardLimit must be a non-negative whole number.");
+  }
+  if (action === "set_workspace_meter") {
+    if (requestedHardLimit > quota.hardLimit) {
+      throw new HttpsError("invalid-argument", "Workspace hard limit cannot exceed the plan maximum.");
+    }
+    await workspaceRef.set({
+      schemaVersion: 1,
+      meters: { [meterId]: { hardLimit: requestedHardLimit, updatedAt: now, updatedBy: uid } },
+      updatedAt: now,
+      updatedBy: uid,
+    }, { merge: true });
+    return readMyUsageControls({ orgId, entitlements, roomCode });
+  }
+  if (!roomCode) throw new HttpsError("invalid-argument", "roomCode is required for a Room budget.");
+  const sourceRoomSnap = await getRootRef().collection("rooms").doc(roomCode).get();
+  if (!sourceRoomSnap.exists || String(sourceRoomSnap.data()?.orgId || "").trim() !== orgId) {
+    throw new HttpsError("permission-denied", "That Room does not belong to this Workspace.");
+  }
+  const currentWorkspace = await workspaceRef.get();
+  const workspaceHardLimit = resolveConfiguredHardLimit({
+    control: currentWorkspace.data()?.meters?.[meterId],
+    maximumHardLimit: quota.hardLimit,
+    fallbackHardLimit: quota.hardLimit,
+  });
+  if (action === "set_room_meter" && requestedHardLimit > workspaceHardLimit) {
+    throw new HttpsError("invalid-argument", "Room hard limit cannot exceed the Workspace hard limit.");
+  }
+  const roomControlRef = orgRef.collection("usage_room_controls").doc(roomCode);
+  await roomControlRef.set({
+    schemaVersion: 1,
+    roomCode,
+    meters: {
+      [meterId]: action === "clear_room_meter"
+        ? admin.firestore.FieldValue.delete()
+        : { hardLimit: requestedHardLimit, updatedAt: now, updatedBy: uid },
+    },
+    updatedAt: now,
+    updatedBy: uid,
+  }, { merge: true });
+  return readMyUsageControls({ orgId, entitlements, roomCode });
 });
 
 exports.getMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {

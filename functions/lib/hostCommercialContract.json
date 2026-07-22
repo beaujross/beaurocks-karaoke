@@ -205,6 +205,15 @@
     "liabilityModel": "prepaid_or_hard_capped_no_uncapped_postpaid",
     "lifecycleStates": ["reserved", "settled", "released", "billable", "invoiced"],
     "warningThresholdBps": [5000, 8000, 10000],
+    "budgetScopes": ["workspace", "room"],
+    "circuitBreakerCapabilities": ["youtube_live_search"],
+    "denialReasonCodes": [
+      "usage_platform_circuit_open",
+      "usage_capability_circuit_open",
+      "usage_workspace_unavailable",
+      "usage_workspace_hard_limit_reached",
+      "usage_room_hard_limit_reached"
+    ],
     "protectedLiveRoomCapabilities": [
       "queue_management",
       "host_override",

@@ -1578,6 +1578,20 @@ async function run() {
       await assertFails(db.doc(`${ROOT}/global_youtube_indexes/karaoke`).set({ ytIndex: [] }));
     }],
 
+    ["firestore: usage controls remain server-only", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      const protectedPaths = [
+        "platform_controls/usage",
+        "organizations/org_host-uid/usage_controls/current",
+        "organizations/org_host-uid/usage_room_controls/ROOM1",
+        "organizations/org_host-uid/usage_operations/202607:operation-one",
+      ];
+      for (const protectedPath of protectedPaths) {
+        await assertFails(db.doc(protectedPath).get());
+        await assertFails(db.doc(protectedPath).set({ state: "enabled", hardLimit: 999999 }));
+      }
+    }],
+
     ["firestore: global youtube index is readable by app clients", async () => {
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const db = context.firestore();

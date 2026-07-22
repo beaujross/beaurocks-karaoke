@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 process.env.YOUTUBE_API_KEY = "integration-test-key";
 
 const admin = require("../../functions/node_modules/firebase-admin");
-const { youtubeSearch } = require("../../functions/index.js");
+const { manageMyUsageControls, youtubeSearch } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const APP_ID = "bross-app";
@@ -31,15 +31,24 @@ const expectHttpsError = async (run, expectedCode) => {
     await run();
   } catch (error) {
     assert.ok(String(error?.code || "").includes(expectedCode), `Expected ${expectedCode}, got ${error?.code}`);
-    return;
+    return error;
   }
   assert.fail(`Expected ${expectedCode} but callable succeeded.`);
 };
 
 const setup = async () => {
+  await db.doc(`users/${HOST_UID}`).set({
+    uid: HOST_UID,
+    organization: { orgId: ORG_ID, role: "owner" },
+  });
   await db.doc(`organizations/${ORG_ID}`).set({
     orgId: ORG_ID,
     ownerUid: HOST_UID,
+    status: "active",
+  });
+  await db.doc(`organizations/${ORG_ID}/members/${HOST_UID}`).set({
+    uid: HOST_UID,
+    role: "owner",
     status: "active",
   });
   await db.doc(`organizations/${ORG_ID}/subscription/current`).set({
@@ -65,12 +74,31 @@ const run = async () => {
   await setup();
   const originalFetch = global.fetch;
   let providerCalls = 0;
-  global.fetch = async () => {
+  global.fetch = async (url) => {
     providerCalls += 1;
+    if (String(url || "").includes("/youtube/v3/search")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [{
+            id: { videoId: "video-one" },
+            snippet: { title: "Test Song", channelTitle: "Test Channel", thumbnails: {} },
+          }],
+        }),
+      };
+    }
     return {
       ok: true,
       status: 200,
-      json: async () => ({ items: [] }),
+      json: async () => ({
+        items: [{
+          id: "video-one",
+          status: { embeddable: true, uploadStatus: "processed", privacyStatus: "public" },
+          contentDetails: { duration: "PT3M30S" },
+          statistics: { viewCount: "1000" },
+        }],
+      }),
     };
   };
 
@@ -85,29 +113,103 @@ const run = async () => {
       roomCode: ROOM_CODE,
       usageContext,
     }));
-    assert.deepEqual(first.items, []);
-    assert.equal(providerCalls, 1);
+    assert.equal(first.items.length, 1);
+    assert.equal(providerCalls, 2);
 
     const period = new Date().toISOString().slice(0, 7).replace("-", "");
     const usageSnap = await db.doc(`organizations/${ORG_ID}/usage/${period}`).get();
     assert.equal(usageSnap.get("meters.youtube_data_request.reserved"), 0);
-    assert.equal(usageSnap.get("meters.youtube_data_request.settled"), 1);
-    assert.equal(usageSnap.get("meters.youtube_data_request.used"), 1);
+    assert.equal(usageSnap.get("meters.youtube_data_request.settled"), 2);
+    assert.equal(usageSnap.get("meters.youtube_data_request.used"), 2);
+    assert.equal(usageSnap.get(`meters.youtube_data_request.rooms.${ROOM_CODE}.reserved`), 0);
+    assert.equal(usageSnap.get(`meters.youtube_data_request.rooms.${ROOM_CODE}.settled`), 2);
+    assert.equal(usageSnap.get(`meters.youtube_data_request.rooms.${ROOM_CODE}.used`), 2);
     const operationSnap = await db.doc(
       `organizations/${ORG_ID}/usage_operations/${period}:youtube-search:integration:one:search_list`
     ).get();
     assert.equal(operationSnap.get("state"), "settled");
     assert.equal(operationSnap.get("meterId"), "youtube_data_request");
+    const detailsOperationSnap = await db.doc(
+      `organizations/${ORG_ID}/usage_operations/${period}:youtube-search:integration:one:videos_list`
+    ).get();
+    assert.equal(detailsOperationSnap.get("state"), "settled");
 
     await expectHttpsError(() => youtubeSearch.run(requestFor({
       query: "different query same usage operation",
       roomCode: ROOM_CODE,
       usageContext,
     })), "aborted");
-    assert.equal(providerCalls, 1, "an idempotent replay must not call the provider again");
+    assert.equal(providerCalls, 2, "an idempotent replay must not call the provider again");
     const afterReplay = await db.doc(`organizations/${ORG_ID}/usage/${period}`).get();
-    assert.equal(afterReplay.get("meters.youtube_data_request.settled"), 1);
-    console.log("PASS YouTube search usage operation reserves, settles, and blocks replayed provider work");
+    assert.equal(afterReplay.get("meters.youtube_data_request.settled"), 2);
+
+    const savedRoomControls = await manageMyUsageControls.run(requestFor({
+      action: "set_room_meter",
+      roomCode: ROOM_CODE,
+      meterId: "youtube_data_request",
+      hardLimit: 2,
+    }));
+    assert.equal(savedRoomControls.meters.youtube_data_request.roomHardLimit, 2);
+    const roomLimitError = await expectHttpsError(() => youtubeSearch.run(requestFor({
+      query: "room budget must stop provider work",
+      roomCode: ROOM_CODE,
+      usageContext: {
+        ...usageContext,
+        operationId: "youtube-search:integration:room-limit",
+      },
+    })), "resource-exhausted");
+    assert.equal(roomLimitError?.details?.reasonCode, "usage_room_hard_limit_reached");
+    assert.equal(roomLimitError?.details?.scope, "room");
+    assert.equal(roomLimitError?.details?.roomHardLimit, 2);
+    assert.equal(roomLimitError?.details?.protectedRoomCapabilitiesAvailable, true);
+    assert.equal(providerCalls, 2, "a Room limit must stop work before the provider call");
+
+    await manageMyUsageControls.run(requestFor({
+      action: "clear_room_meter",
+      roomCode: ROOM_CODE,
+      meterId: "youtube_data_request",
+    }));
+    const savedWorkspaceControls = await manageMyUsageControls.run(requestFor({
+      action: "set_workspace_meter",
+      meterId: "youtube_data_request",
+      hardLimit: 2,
+    }));
+    assert.equal(savedWorkspaceControls.meters.youtube_data_request.workspaceHardLimit, 2);
+    const workspaceLimitError = await expectHttpsError(() => youtubeSearch.run(requestFor({
+      query: "workspace budget must stop provider work",
+      roomCode: ROOM_CODE,
+      usageContext: {
+        ...usageContext,
+        operationId: "youtube-search:integration:workspace-limit",
+      },
+    })), "resource-exhausted");
+    assert.equal(workspaceLimitError?.details?.reasonCode, "usage_workspace_hard_limit_reached");
+    assert.equal(workspaceLimitError?.details?.scope, "workspace");
+    assert.equal(providerCalls, 2, "a Workspace limit must stop work before the provider call");
+
+    await manageMyUsageControls.run(requestFor({
+      action: "set_workspace_meter",
+      meterId: "youtube_data_request",
+      hardLimit: 25000,
+    }));
+
+    await db.doc("platform_controls/usage").set({
+      schemaVersion: 1,
+      state: "blocked",
+    });
+    const circuitError = await expectHttpsError(() => youtubeSearch.run(requestFor({
+      query: "platform circuit must stop provider work",
+      roomCode: "",
+      usageContext: {
+        ...usageContext,
+        operationId: "youtube-search:integration:platform-circuit",
+      },
+    })), "unavailable");
+    assert.equal(circuitError?.details?.reasonCode, "usage_platform_circuit_open");
+    assert.equal(circuitError?.details?.scope, "platform");
+    assert.equal(providerCalls, 2, "an open platform circuit must stop work before the provider call");
+
+    console.log("PASS usage operations enforce replay protection, Room budgets, and platform circuits");
   } finally {
     global.fetch = originalFetch;
   }

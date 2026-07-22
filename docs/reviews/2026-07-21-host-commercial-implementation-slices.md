@@ -25,8 +25,8 @@ This is the authoritative execution order. The source roadmaps retain strategy, 
 | 01 | accepted | Commercial contract and vocabulary source of truth | None | A |
 | 02 | accepted | Host plan checkout and room-creation entitlement | 01 | B1 |
 | 03 | production canary | First Room and Tonight Setup | 02 | B2 |
-| 04 | planned | Room cost envelope and database fan-out containment | 01-03 | C1 |
-| 05 | planned | Usage states, Host budgets, and graceful degradation | 04 | C2 |
+| 04 | production canary | Room cost envelope and database fan-out containment | 01-03 | C1 |
+| 05 | in progress | Usage states, Host budgets, and graceful degradation | 04 | C2 |
 | 06 | planned | Prepaid usage packs and capped auto-refill | 05 | C3 |
 | 07 | later | Vetted postpaid usage accounts | 06 plus production evidence | C4 |
 | 08 | planned | Host Tip outbound destination | 03 | D1 |
@@ -203,3 +203,5 @@ Broader self-service Host access remains blocked by Gate C1 and Slice 05 usage-b
 Slice 05.1 is active for the controlled cohort: the shared contract now names reserved, settled, released, billable, and invoiced states; hard-limit exposure includes outstanding reservations; Host Money > Billing & Usage shows application-calculated 50%, 80%, and 100% capacity state; and the protected live-room floor is explicit. True idempotent reservation operations, per-Room budgets, circuit breakers, and the degradation matrix remain open, so Gate C2 is not accepted.
 
 Slice 05.2 begins with the live YouTube search boundary: Workspace capacity is reserved before provider work, settled after an attempted provider call, released before an unattempted call, and replay-protected by a client/server operation ID. Approved cohort access now resolves to finite internal meter caps without changing its public subscription record, and zero-cap meter configurations fail closed. Remaining provider boundaries, per-Room budgets, platform caps, and degradation controls keep Gate C2 open.
+
+Slice 05.3 is deployed to the controlled production cohort. Workspace owners/admins can lower the live-search request ceiling, give the open Room a smaller optional budget, return it to the Workspace ceiling, or pause fresh live search. Both YouTube live-search provider calls read Workspace, Room, capability, and server-only platform controls before provider work; concurrent reservations include Room-level `reserved` exposure; and stable denial reason codes preserve cached/indexed tracks, local media, queue management, Host override, Room shutdown, and Room export. The live revisions are `youtubesearch-00147-kem`, `getmyusagesummary-00136-jix`, and `managemyusagecontrols-00001-vok`; Hosting release `1784707991819000` serves the Host controls. Remaining provider migrations and the cross-surface degradation matrix keep Gate C2 open.

@@ -1,7 +1,7 @@
 # Usage Control Contract
 
-Last updated: 2026-07-21  
-Status: Slice 05.1 compatibility boundary; internal guardrail, not public pricing
+Last updated: 2026-07-22
+Status: Slice 05.3 controlled production boundary; internal guardrail, not public pricing
 
 ## Decision
 
@@ -35,6 +35,21 @@ Older cached clients receive a server-generated operation ID for compatibility. 
 
 Approved canary Hosts retain their public `free` / `inactive` subscription record but receive the finite internal `host_monthly` metering profile. A zero configured hard limit now fails closed instead of meaning unlimited usage.
 
+### Slice 05.3 budgets and circuit breakers
+
+Live YouTube search now reads its controls inside the same Firestore transaction that creates the reservation:
+
+- the plan hard limit remains the maximum liability ceiling;
+- a Workspace owner/admin may lower, but never raise, that ceiling in Money > Billing & Usage;
+- an open Room may receive a smaller optional request budget, with settled and outstanding reserved units both included in its exposure;
+- removing a Room budget returns that Room to the Workspace ceiling;
+- the Workspace may pause `youtube_live_search`, while BeauRocks operations retain a server-only platform breaker;
+- a concurrent control update conflicts with an in-flight reservation transaction, which must retry against the new control before provider work;
+- rejected work creates no usage operation and does not call the provider;
+- control documents are default-denied to clients and mutate through the owner/admin callable or server operations only.
+
+Stable denial reason codes are `usage_platform_circuit_open`, `usage_capability_circuit_open`, `usage_workspace_unavailable`, `usage_workspace_hard_limit_reached`, and `usage_room_hard_limit_reached`. Every denial confirms that protected Room capabilities remain available.
+
 ## Host warnings
 
 Money > Billing & Usage receives application-calculated capacity state at 50%, 80%, and 100% of the configured hard limit. Outstanding reservations are included in exposure so concurrent work cannot hide above the cap. Prices and included amounts remain marked `existing_unvalidated_do_not_publish` until Gate C1 evidence and owner approval are complete.
@@ -46,15 +61,18 @@ Variable-cost degradation must not disable queue management, Host override, exis
 ## Remaining Slice 05 work
 
 1. Migrate the remaining YouTube, Apple Music, and AI provider attempts to operation documents.
-2. Add Workspace and optional per-Room budget controls with server-authoritative maximums.
-3. Add per-capability and platform circuit breakers with stable reason codes.
-4. Implement the tested degradation matrix and recovery guidance.
-5. Keep `billable` and `invoiced` disabled until prepaid or vetted-credit policy is approved.
+2. Extend operation-level budgets and stable circuit reasons to the remaining migrated provider capabilities.
+3. Implement the tested degradation matrix and recovery guidance across Host Dashboard, Audience App, and Public TV.
+4. Keep `billable` and `invoiced` disabled until prepaid or vetted-credit policy is approved.
 
 ## Controlled production state
 
 - `youtubeSearch` revision `youtubesearch-00146-puy` owns the first operation-level reserve/settle/replay boundary.
 - `getMyUsageSummary` revision `getmyusagesummary-00135-tuf` calculates lifecycle-compatible exposure and controlled-cohort caps while suppressing rates and estimated charges unless the Workspace has an entitled paid Host plan.
 - Hosting release `1784706338199000`, version `28633fc799ada798`, supplies current clients with operation IDs after cache misses.
+- `youtubeSearch` revision `youtubesearch-00147-kem` applies operation-level Workspace, Room, capability, and platform controls to both live-search provider calls.
+- `getMyUsageSummary` revision `getmyusagesummary-00136-jix` reports the effective Workspace ceiling.
+- `manageMyUsageControls` revision `managemyusagecontrols-00001-vok` is the owner/admin mutation boundary.
+- Hosting release `1784707991819000`, version `4f4d0d07cb82d1ce`, serves the Cost Guardrails UI in Money > Billing & Usage.
 - Other provider callables remain on their prior revisions and continue writing the legacy `used` count, which the summary reads as settled use until each boundary migrates.
 - No public plan, price, payment behavior, postpaid eligibility, or billing claim changed in this sub-slice.
