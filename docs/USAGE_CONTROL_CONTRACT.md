@@ -1,7 +1,7 @@
 # Usage Control Contract
 
 Last updated: 2026-07-22
-Status: Slice 06.3 pre-event Room capacity planning; checkout and auto-refill disabled
+Status: Slice 06.4 simplified Host capacity home; checkout and auto-refill disabled
 
 ## Decision
 
@@ -89,6 +89,14 @@ The callable is read-only and returns no cloud cost, provisional margin, overage
 
 The 2026-07-22 90-day observation report still has only one Host Room-day, no sampled Audience observation, and no Private event or Large event coverage. The model is therefore useful as conservative planning guidance but not sufficient evidence for pack economics or Gate C3 approval.
 
+### Slice 06.4 Host capacity home
+
+Money > Billing & Usage now leads with one server-grounded Workspace capacity answer and one next action. A hard limit or paused live-search circuit says `Action needed`; an allowance at or above 80% says `Keep an eye on it`; lower current exposure says `On track`; missing finite Host plan limits and refresh failures cannot render a healthy state. `On track` describes current exposure only and sends the Host to Plan a Room for an event-specific check.
+
+Plan a Room remains direct. Purchase readiness, receipts, manual Safety limits, technical meters/rates/attribution, live diagnostics, and invoice tools remain available behind named secondary disclosures. The default view no longer leads with an overage-dollar estimate, and the technical view states that its legacy meter rates are not an Additional usage quote or an open purchase offer.
+
+This is a presentation-only simplification. No Function, rule, entitlement, meter, hard limit, pack, price, checkout, auto-refill, postpaid behavior, or protected live-room fallback changed.
+
 ## Host warnings
 
 Money > Billing & Usage receives application-calculated capacity state at 50%, 80%, and 100% of the configured hard limit. Outstanding reservations are included in exposure so concurrent work cannot hide above the cap. Prices and included amounts remain marked `existing_unvalidated_do_not_publish` until Gate C1 evidence and owner approval are complete.
@@ -128,3 +136,5 @@ Variable-cost degradation must not disable queue management, Host override, exis
 - Slice 06.3 `previewMyRoomCapacity` revision `previewmyroomcapacity-00001-vex` is Ready at 100% traffic.
 - Hosting release `1784733914438000`, version `3b084952d2cafe56`, serves `HostApp-Dp_25wcS.js`. Live smoke returned HTTP 200 for the entry and Host assets and found all six required planning, fit-state, meter-boundary, and disabled-purchase strings.
 - Slice 06.3 did not enable a pack, price, checkout function, purchase button, auto-refill, postpaid usage, client Firestore permission, or payment configuration. Gate C3 remains open.
+- Hosting release `1784735015265000`, version `917824ee335a5bea`, serves the Slice 06.4 capacity home in `HostApp-WsJX8lUe.js`. Live smoke found eight required summary, planning, disclosure, and pricing-boundary strings and confirmed the former top-level `Overage Estimate` copy is absent.
+- Slice 06.4 is Hosting-only and changes no Function, rule, entitlement, limit, price, pack, checkout, auto-refill, or postpaid behavior. Gate C3 remains open.

@@ -81,6 +81,7 @@ import { EMOJI } from '../../lib/emoji';
 import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
 import { buildBrowseCuratedYouTubeIndex } from '../../lib/curatedKaraokeIndex';
 import { buildYouTubeEventReadiness } from '../../lib/youtubeEventReadiness';
+import { buildHostUsageReadiness } from '../../lib/hostUsageReadiness';
 import {
     getYouTubeSearchTelemetrySnapshot,
     getYouTubeQuotaBlockedUntilMs,
@@ -6887,6 +6888,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const usageHardLimitHits = useMemo(() => {
         return usageMeters.filter(meter => !!meter?.hardLimitReached);
     }, [usageMeters]);
+    const hostUsageReadiness = useMemo(() => buildHostUsageReadiness({
+        loading: usageSummary?.loading || (canManageUsageControls && usageControls?.loading),
+        error: usageSummary?.error || (canManageUsageControls ? usageControls?.error : ''),
+        meters: usageMeters,
+        liveSearchState: usageControls?.capabilities?.youtube_live_search?.state,
+    }), [canManageUsageControls, usageControls?.capabilities?.youtube_live_search?.state, usageControls?.error, usageControls?.loading, usageMeters, usageSummary?.error, usageSummary?.loading]);
     const usageAttributionMeters = useMemo(() => {
         return usageMeters.filter((meter) => {
             const breakdowns = meter?.breakdowns || {};
@@ -26100,83 +26107,87 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 </div>
                                 <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3 space-y-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="text-xs uppercase tracking-widest text-zinc-500">Usage ({usagePeriodLabel})</div>
-                                        {usageSummary?.loading && <div className="text-[10px] uppercase tracking-widest text-zinc-500">Refreshing...</div>}
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <div>
-                                            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Billing Period</div>
-                                            <select
-                                                value={selectedUsagePeriod}
-                                                onChange={(e) => setSelectedUsagePeriod(e.target.value)}
-                                                className={STYLES.input}
+                                    <div data-feature-id="host-usage-home" className={`rounded-xl border p-4 ${
+                                        hostUsageReadiness.status === 'action_needed'
+                                            ? 'border-rose-300/30 bg-rose-500/8'
+                                            : hostUsageReadiness.status === 'watch' || hostUsageReadiness.status === 'setup_required'
+                                                ? 'border-amber-300/30 bg-amber-500/8'
+                                                : hostUsageReadiness.status === 'ready'
+                                                    ? 'border-emerald-300/25 bg-emerald-500/8'
+                                                    : 'border-cyan-300/20 bg-cyan-500/8'
+                                    }`}>
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Workspace capacity · {usagePeriodLabel}</div>
+                                                <div className="mt-1 text-lg font-black text-white">{hostUsageReadiness.title}</div>
+                                                <div className="mt-1 max-w-2xl text-sm text-zinc-300">{hostUsageReadiness.summary}</div>
+                                                {hostUsageReadiness.attentionMeterLabels.length > 0 && (
+                                                    <div className="mt-2 text-xs text-amber-100">Needs attention: {hostUsageReadiness.attentionMeterLabels.join(', ')}</div>
+                                                )}
+                                            </div>
+                                            <span className="rounded-full border border-white/15 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-white">
+                                                {hostUsageReadiness.label}
+                                            </span>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap items-end gap-2">
+                                            <label className="min-w-[190px] text-[11px] text-zinc-400">
+                                                <span className="mb-1 block text-[10px] uppercase tracking-widest text-zinc-500">Month</span>
+                                                <select
+                                                    value={selectedUsagePeriod}
+                                                    onChange={(e) => setSelectedUsagePeriod(e.target.value)}
+                                                    className={STYLES.input}
+                                                >
+                                                    {usagePeriodOptions.map((option) => (
+                                                        <option key={`usage-period-${option.key}`} value={option.key}>
+                                                            {option.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (hostUsageReadiness.status === 'unknown') {
+                                                        refreshUsageSummary(true);
+                                                        return;
+                                                    }
+                                                    const targetFeature = hostUsageReadiness.status === 'setup_required'
+                                                        ? 'host-plan-actions'
+                                                        : hostUsageReadiness.status === 'action_needed'
+                                                            ? 'usage-cost-guardrails'
+                                                            : 'room-capacity-planner';
+                                                    const target = document.querySelector(`[data-feature-id="${targetFeature}"]`);
+                                                    if (target?.tagName === 'DETAILS') target.open = true;
+                                                    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                }}
+                                                disabled={hostUsageReadiness.status === 'syncing'}
+                                                className={`${STYLES.btnStd} ${hostUsageReadiness.status === 'action_needed' ? STYLES.btnSecondary : STYLES.btnPrimary} ${hostUsageReadiness.status === 'syncing' ? 'cursor-not-allowed opacity-60' : ''}`}
                                             >
-                                                {usagePeriodOptions.map((option) => (
-                                                    <option key={`usage-period-${option.key}`} value={option.key}>
-                                                        {option.label}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Invoice Customer</div>
-                                            <input
-                                                value={invoiceCustomerName}
-                                                onChange={(e) => setInvoiceCustomerName(e.target.value)}
-                                                className={STYLES.input}
-                                                placeholder="Customer / client name"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
-                                            <div className="text-xs uppercase tracking-widest text-zinc-500">Overage Estimate</div>
-                                            <div className="text-white font-semibold mt-1">
-                                                {formatUsdFromCents(usageSummary?.totals?.estimatedOverageCents || 0)}
-                                            </div>
-                                            <div className="text-xs text-zinc-400 mt-1">
-                                                Meters tracked: {usageMeters.length}
-                                            </div>
-                                        </div>
-                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
-                                            <div className="text-xs uppercase tracking-widest text-zinc-500">AI Generations (Quick View)</div>
-                                            <div className="text-white font-semibold mt-1">
-                                                {Number(aiUsageMeter?.used || 0).toLocaleString()} / {Number(aiUsageMeter?.included || 0).toLocaleString()} included
-                                            </div>
-                                            <div className="text-xs text-zinc-400 mt-1">
-                                                Hard limit: {Number(aiUsageMeter?.hardLimit || 0).toLocaleString()}
-                                            </div>
-                                        </div>
-                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
-                                            <div className="text-xs uppercase tracking-widest text-zinc-500">Workspace YouTube Request Allowance</div>
-                                            <div className="text-white font-semibold mt-1">
-                                                {Number(youtubeUsageMeter?.used || 0).toLocaleString()} / {Number(youtubeUsageMeter?.included || 0).toLocaleString()} included
-                                            </div>
-                                            <div className="text-xs text-zinc-400 mt-1">
-                                                Hard limit: {Number(youtubeUsageMeter?.hardLimit || 0).toLocaleString()}
-                                            </div>
-                                            <div className="text-[11px] text-zinc-500 mt-1">
-                                                App request allowance—not Google project quota.
-                                            </div>
+                                                {hostUsageReadiness.nextAction}
+                                            </button>
+                                            {hostUsageReadiness.maxUsagePercent > 0 && (
+                                                <div className="pb-2 text-[11px] text-zinc-500">Highest metered use: {hostUsageReadiness.maxUsagePercent}%</div>
+                                            )}
                                         </div>
                                     </div>
                                     <div data-feature-id="additional-usage-readiness" className="rounded-xl border border-cyan-300/20 bg-cyan-500/5 p-3 space-y-3">
                                         <div className="flex flex-wrap items-start justify-between gap-3">
                                             <div>
-                                                <div className="text-xs uppercase tracking-widest text-cyan-100/80">Additional usage</div>
+                                                <div className="text-xs uppercase tracking-widest text-cyan-100/80">Room planning</div>
                                                 <div className="mt-1 text-sm text-zinc-200">
-                                                    Prepaid Room capacity will be offered here after the first pack, price, and customer-facing allowance are approved.
+                                                    Check the date, party size, and duration before the night.
                                                 </div>
                                                 <div className="mt-1 text-[11px] text-zinc-500">
-                                                    BeauRocks will not silently create an uncapped overage balance. Capacity is granted only after verified payment.
+                                                    Additional usage will appear only after its pack, price, and allowance are approved. BeauRocks will not silently create an uncapped balance.
                                                 </div>
                                             </div>
                                             <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${additionalUsage?.checkoutEnabled ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`}>
-                                                {additionalUsage?.checkoutEnabled ? 'Purchases available' : 'Purchases not open'}
+                                                {additionalUsage?.checkoutEnabled ? 'Additional usage available' : 'Additional usage not open'}
                                             </span>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                                        <details className="rounded-lg border border-white/10 bg-black/15 p-3">
+                                            <summary className="cursor-pointer list-none text-xs font-semibold text-zinc-200">Purchase readiness <span className="ml-1 text-[11px] font-normal text-zinc-500">Checkout, auto-refill, and funded capacity</span></summary>
+                                        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
                                             <div className="rounded-lg border border-white/10 bg-black/20 p-3">
                                                 <div className="text-[10px] uppercase tracking-widest text-zinc-500">Checkout</div>
                                                 <div className="mt-1 font-semibold text-white">{additionalUsage?.checkoutEnabled ? 'Enabled' : 'Disabled'}</div>
@@ -26199,6 +26210,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 </div>
                                             </div>
                                         </div>
+                                        </details>
                                         <div data-feature-id="room-capacity-planner" className="rounded-lg border border-cyan-300/20 bg-black/20 p-3 space-y-3">
                                             <div className="flex flex-wrap items-start justify-between gap-3">
                                                 <div>
@@ -26310,10 +26322,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-2">
+                                        <details className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                            <summary className="cursor-pointer list-none text-xs font-semibold text-zinc-200">Receipts & adjustments <span className="ml-1 text-[11px] font-normal text-zinc-500">Purchase and refund history</span></summary>
+                                            <div className="mt-3 space-y-2">
                                             <div className="flex flex-wrap items-center justify-between gap-2">
                                                 <div>
-                                                    <div className="text-[10px] uppercase tracking-widest text-zinc-500">Receipts & adjustments</div>
+                                                    <div className="text-[10px] uppercase tracking-widest text-zinc-500">Purchase history</div>
                                                     <div className="mt-1 text-[11px] text-zinc-500">Purchases, refunds, and chargebacks remain separate immutable entries.</div>
                                                     <div className="mt-1 text-[11px] text-zinc-500">Any refund or chargeback revokes the remaining capacity from that purchase.</div>
                                                 </div>
@@ -26369,13 +26383,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     })}
                                                 </div>
                                             )}
-                                        </div>
+                                            </div>
+                                        </details>
                                     </div>
                                     {canManageUsageControls && (
-                                        <div data-feature-id="usage-cost-guardrails" className="rounded-xl border border-amber-300/20 bg-amber-500/5 p-3 space-y-3">
+                                        <details data-feature-id="usage-cost-guardrails" className="rounded-xl border border-amber-300/20 bg-amber-500/5 p-3">
+                                            <summary className="cursor-pointer list-none text-xs font-semibold text-amber-100">Safety limits <span className="ml-1 text-[11px] font-normal text-zinc-400">Workspace ceiling, Room budget, and live search</span></summary>
+                                            <div className="mt-3 space-y-3">
                                             <div className="flex flex-wrap items-start justify-between gap-3">
                                                 <div>
-                                                    <div className="text-xs uppercase tracking-widest text-amber-100/80">Cost Guardrails</div>
+                                                    <div className="text-xs uppercase tracking-widest text-amber-100/80">Advanced controls</div>
                                                     <div className="mt-1 text-sm text-zinc-200">
                                                         Set a Workspace ceiling, optionally give the open Room a smaller budget, or pause live search.
                                                     </div>
@@ -26487,8 +26504,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     {usageControls.error}
                                                 </div>
                                             )}
-                                        </div>
+                                            </div>
+                                        </details>
                                     )}
+                                    <details data-feature-id="technical-usage-details" className="rounded-xl border border-white/10 bg-black/15 p-3">
+                                        <summary className="cursor-pointer list-none text-xs font-semibold text-zinc-200">Technical usage details <span className="ml-1 text-[11px] font-normal text-zinc-500">Live diagnostics, meters, rates, and attribution</span></summary>
+                                        <div className="mt-3 space-y-3">
+                                    <div className="rounded-lg border border-amber-300/15 bg-amber-500/5 px-3 py-2 text-[11px] text-zinc-400">
+                                        Advanced account view. Meter rates shown here are not an Additional usage quote or an open purchase offer.
+                                    </div>
                                     <div data-feature-id="admin-live-ops-health" className="rounded-xl border border-cyan-300/20 bg-gradient-to-r from-cyan-500/8 via-zinc-950/82 to-emerald-500/8 p-3 space-y-3">
                                         <div className="flex flex-wrap items-start justify-between gap-3">
                                             <div>
@@ -26718,6 +26742,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                         </div>
                                     )}
+                                        </div>
+                                    </details>
                                     {usageHardLimitHits.length > 0 && (
                                         <div className="text-sm text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded-lg px-3 py-2">
                                             Hard limit reached: {usageHardLimitHits.map(m => m.label).join(', ')}. Upgrade plan or wait for next monthly period.
@@ -26728,6 +26754,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             {usageSummary.error}
                                         </div>
                                     )}
+                                    <details data-feature-id="invoice-tools" className="rounded-xl border border-white/10 bg-black/15 p-3">
+                                        <summary className="cursor-pointer list-none text-xs font-semibold text-zinc-200">Invoice tools <span className="ml-1 text-[11px] font-normal text-zinc-500">Customer drafts, exports, and history</span></summary>
+                                        <div className="mt-3 space-y-3">
                                     <FeatureGate
                                         capabilities={capabilities}
                                         capability={CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS}
@@ -26737,6 +26766,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                         )}
                                     >
+                                    <div>
+                                        <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Invoice Customer</div>
+                                        <input
+                                            value={invoiceCustomerName}
+                                            onChange={(e) => setInvoiceCustomerName(e.target.value)}
+                                            className={STYLES.input}
+                                            placeholder="Customer / client name"
+                                        />
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                         <label className="flex items-center gap-2 text-xs text-zinc-300">
                                             <input
@@ -26898,8 +26936,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                     </div>
                                     </FeatureGate>
+                                        </div>
+                                    </details>
                                 </div>
-                                <div className="flex flex-wrap gap-2">
+                                <div data-feature-id="host-plan-actions" className="flex flex-wrap gap-2">
                                     <button
                                         onClick={() => refreshBillingEntitlements(true)}
                                         disabled={orgContext.loading}

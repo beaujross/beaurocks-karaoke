@@ -3,6 +3,17 @@
 Last updated: 2026-04-26
 Owner: Product / Host surface
 
+## 2026-07-22 Billing & Usage application
+
+The same interaction-budget rules now apply outside the live Queue to Money > Billing & Usage:
+
+- lead with one current Workspace-capacity answer and one next action;
+- keep Plan a Room direct because it answers a common pre-event question;
+- open the exact repair disclosure when the summary says action is needed;
+- keep purchase readiness, receipts, manual limits, technical diagnostics, raw rates, attribution, and invoice tools secondary;
+- preserve advanced functionality without making a private-party Host interpret an operations dashboard;
+- never use a current healthy state as a guarantee that a future Room will fit.
+
 ## 2026-04-26 Event Hardening Notes
 
 These decisions are now part of the May 1 event posture:
