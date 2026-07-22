@@ -1,4 +1,5 @@
 import { callFunction } from './firebase';
+import { createUsageOperationId } from './usageOperationId';
 
 const YOUTUBE_SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const YOUTUBE_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
@@ -486,6 +487,7 @@ export const searchYouTubeCatalog = async ({
             return { items: intentCachedItems, cached: true, cacheLayer: 'client' };
         }
     }
+    const usageOperationId = createUsageOperationId('youtube-search');
     try {
         const data = await withTimeout(callFunction('youtubeSearch', {
             query: safeQuery,
@@ -494,6 +496,7 @@ export const searchYouTubeCatalog = async ({
             roomCode,
             usageContext: {
                 source: usageSource,
+                operationId: usageOperationId,
                 ...(usageSurface ? { surface: usageSurface } : {}),
             },
         }), timeoutMs);

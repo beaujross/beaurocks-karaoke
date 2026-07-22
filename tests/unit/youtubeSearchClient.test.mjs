@@ -53,6 +53,10 @@ test('searchYouTubeCatalog caches successful client searches', async () => {
   assert.equal(second.items.length, 1);
   assert.equal(second.cacheLayer, 'client');
   assert.equal(callFunction.mock.calls.length, 1);
+  assert.equal(callFunction.mock.calls[0][0], 'youtubeSearch');
+  assert.match(callFunction.mock.calls[0][1]?.usageContext?.operationId || '', /^youtube-search:/);
+  assert.equal(callFunction.mock.calls[0][1]?.usageContext?.source, 'test_search');
+  assert.equal(callFunction.mock.calls[0][1]?.usageContext?.surface, 'host');
   const telemetry = getYouTubeSearchTelemetrySnapshot();
   assert.equal(telemetry.recentSearches, 2);
   assert.equal(telemetry.liveCalls, 1);

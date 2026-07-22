@@ -31,6 +31,12 @@ const {
   shouldSampleRoomCostObservation,
 } = require("./lib/roomCostObservation");
 const {
+  USAGE_OPERATION_STATES,
+  applyUsageLifecycleTransition,
+  normalizeUsageLifecycleCounts,
+  normalizeUsageOperationId,
+} = require("./lib/usageOperationLifecycle");
+const {
   normalizeCheckoutToken,
   buildSubscriptionCheckoutIdempotencyKey,
 } = require("./lib/subscriptionCheckout");
@@ -4369,11 +4375,20 @@ const readOrganizationUsageSummary = async ({
   let estimatedOverageCents = 0;
 
   Object.keys(USAGE_METER_DEFINITIONS).forEach((meterId) => {
-    const quota = resolveUsageMeterQuota({
+    const capacityQuota = resolveUsageMeterQuota({
       meterId,
-      planId: entitlements?.planId || "free",
-      status: entitlements?.status || "inactive",
+      planId: entitlements?.usagePlanId || entitlements?.planId || "free",
+      status: entitlements?.usageStatus || entitlements?.status || "inactive",
     });
+    const billingPlan = getPlanDefinition(entitlements?.planId || "free");
+    const billingEligible = billingPlan?.tier === "host" && isEntitledStatus(entitlements?.status || "inactive");
+    const quota = billingEligible ? capacityQuota : {
+      ...capacityQuota,
+      overageRateCents: 0,
+      passThroughUnitCostCents: 0,
+      markupMultiplier: 1,
+      billableUnitRateCents: 0,
+    };
     const meterBucket = meterData?.[meterId] || {};
     const used = toWholeNumber(meterBucket?.used, 0);
     const summary = buildUsageMeterSummary({
@@ -4391,6 +4406,7 @@ const readOrganizationUsageSummary = async ({
       rooms: meterBucket?.rooms || {},
       surfaces: meterBucket?.surfaces || {},
     });
+    summary.billingEligible = billingEligible;
     meters[meterId] = summary;
     estimatedOverageCents += summary.estimatedOverageCents;
   });
@@ -7445,9 +7461,12 @@ const settleOrganizationUsageAttempt = async ({
   const periodKey = getUsagePeriodKey();
   const quota = resolveUsageMeterQuota({
     meterId,
-    planId: entitlements?.planId || "free",
-    status: entitlements?.status || "inactive",
+    planId: entitlements?.usagePlanId || entitlements?.planId || "free",
+    status: entitlements?.usageStatus || entitlements?.status || "inactive",
   });
+  if (quota.hardLimit <= 0) {
+    throw new HttpsError("failed-precondition", `${meter.label} is not available for this workspace.`);
+  }
   const usageRef = orgsCollection().doc(orgId).collection("usage").doc(periodKey);
   const now = admin.firestore.FieldValue.serverTimestamp();
   const db = admin.firestore();
@@ -7611,6 +7630,206 @@ const buildUsageAttributionContext = ({
     actorUid: shouldTrackUsageActor(resolvedSurface) ? resolvedActorUidRaw : "",
   };
 };
+
+const resolveRequestUsageOperationId = (request, suffix = "attempt") => {
+  const requested = normalizeUsageOperationId(request?.data?.usageContext?.operationId || "");
+  const fallback = `legacy:${crypto.randomUUID().replace(/-/g, "")}`;
+  return normalizeUsageOperationId(`${requested || fallback}:${suffix}`);
+};
+
+const reserveOrganizationUsageOperation = async ({
+  orgId = "",
+  entitlements = null,
+  operationId = "",
+  meterId = "",
+  units = 1,
+  source = "",
+  actorUid = "",
+  roomCode = "",
+  surface = "",
+}) => {
+  const safeOrgId = String(orgId || "").trim();
+  const safeOperationId = normalizeUsageOperationId(operationId);
+  const meter = USAGE_METER_DEFINITIONS[meterId];
+  if (!safeOrgId) throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  if (!safeOperationId) throw new HttpsError("invalid-argument", "A usage operation ID is required.");
+  if (!meter) throw new HttpsError("invalid-argument", `Unknown usage meter "${meterId}".`);
+
+  const safeUnits = Math.max(1, toWholeNumber(units, 1));
+  const periodKey = getUsagePeriodKey();
+  const quota = resolveUsageMeterQuota({
+    meterId,
+    planId: entitlements?.usagePlanId || entitlements?.planId || "free",
+    status: entitlements?.usageStatus || entitlements?.status || "inactive",
+  });
+  if (quota.hardLimit <= 0) {
+    throw new HttpsError("failed-precondition", `${meter.label} is not available for this workspace.`);
+  }
+  const orgRef = orgsCollection().doc(safeOrgId);
+  const usageRef = orgRef.collection("usage").doc(periodKey);
+  const operationRef = orgRef.collection("usage_operations").doc(`${periodKey}:${safeOperationId}`);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const safeSource = sanitizeSecurityToken(source, 96);
+  const safeActorUid = normalizeUidToken(actorUid);
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  const safeSurface = sanitizeSecurityToken(surface, 32);
+
+  return admin.firestore().runTransaction(async (tx) => {
+    const operationSnap = await tx.get(operationRef);
+    if (operationSnap.exists) {
+      const existing = operationSnap.data() || {};
+      if (existing.meterId !== meterId || toWholeNumber(existing.units, 0) !== safeUnits) {
+        throw new HttpsError("already-exists", "Usage operation ID was already used for different work.");
+      }
+      return {
+        created: false,
+        operationId: safeOperationId,
+        periodKey,
+        state: String(existing.state || ""),
+      };
+    }
+
+    const usageSnap = await tx.get(usageRef);
+    const usageData = normalizeUsageDocumentData(usageSnap.data() || {});
+    const meterData = usageData?.meters?.[meterId] || {};
+    const lifecycle = normalizeUsageLifecycleCounts(meterData, meterData?.used);
+    const plannedReserved = lifecycle.reserved + safeUnits;
+    const plannedExposure = lifecycle.settled + plannedReserved;
+    if (quota.hardLimit > 0 && plannedExposure > quota.hardLimit) {
+      throw new HttpsError("resource-exhausted", `${meter.label} monthly hard limit reached for this workspace.`);
+    }
+
+    tx.create(operationRef, {
+      schemaVersion: 1,
+      operationId: safeOperationId,
+      orgId: safeOrgId,
+      period: periodKey,
+      meterId,
+      units: safeUnits,
+      state: USAGE_OPERATION_STATES.reserved,
+      source: safeSource,
+      actorUid: safeActorUid,
+      roomCode: safeRoomCode,
+      surface: safeSurface,
+      planIdSnapshot: entitlements?.planId || "free",
+      quotaSnapshot: {
+        included: quota.included,
+        hardLimit: quota.hardLimit,
+        billableUnitRateCents: quota.billableUnitRateCents,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+    tx.set(usageRef, {
+      orgId: safeOrgId,
+      period: periodKey,
+      planIdSnapshot: entitlements?.planId || "free",
+      statusSnapshot: entitlements?.status || "inactive",
+      ...(!usageSnap.exists ? { createdAt: now } : {}),
+      updatedAt: now,
+      meters: {
+        [meterId]: {
+          used: lifecycle.settled,
+          ...lifecycle,
+          reserved: plannedReserved,
+          included: quota.included,
+          hardLimit: quota.hardLimit,
+          overageRateCents: quota.overageRateCents,
+          passThroughUnitCostCents: quota.passThroughUnitCostCents,
+          markupMultiplier: quota.markupMultiplier,
+          billableUnitRateCents: quota.billableUnitRateCents,
+          updatedAt: now,
+        },
+      },
+    }, { merge: true });
+    return { created: true, operationId: safeOperationId, periodKey, state: USAGE_OPERATION_STATES.reserved };
+  });
+};
+
+const transitionOrganizationUsageOperation = async ({
+  orgId = "",
+  operationId = "",
+  periodKey = "",
+  toState = "",
+}) => {
+  const safeOrgId = String(orgId || "").trim();
+  const safeOperationId = normalizeUsageOperationId(operationId);
+  const safePeriodKey = normalizeUsagePeriodKey(periodKey || getUsagePeriodKey());
+  if (!safeOrgId || !safeOperationId) throw new HttpsError("invalid-argument", "Organization and usage operation ID are required.");
+  if (!safePeriodKey) throw new HttpsError("invalid-argument", "A valid usage period is required.");
+  if (![USAGE_OPERATION_STATES.settled, USAGE_OPERATION_STATES.released].includes(toState)) {
+    throw new HttpsError("invalid-argument", "Unsupported usage operation transition.");
+  }
+  const orgRef = orgsCollection().doc(safeOrgId);
+  const usageRef = orgRef.collection("usage").doc(safePeriodKey);
+  const operationRef = orgRef.collection("usage_operations").doc(`${safePeriodKey}:${safeOperationId}`);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  return admin.firestore().runTransaction(async (tx) => {
+    const operationSnap = await tx.get(operationRef);
+    if (!operationSnap.exists) throw new HttpsError("not-found", "Usage operation was not reserved.");
+    const operation = operationSnap.data() || {};
+    const currentState = String(operation.state || "");
+    if (currentState === toState) return { changed: false, operationId: safeOperationId, state: currentState };
+    if (currentState !== USAGE_OPERATION_STATES.reserved) {
+      throw new HttpsError("failed-precondition", `Usage operation is already ${currentState || "finalized"}.`);
+    }
+    const usageSnap = await tx.get(usageRef);
+    const usageData = normalizeUsageDocumentData(usageSnap.data() || {});
+    const meterId = String(operation.meterId || "");
+    const units = Math.max(1, toWholeNumber(operation.units, 1));
+    const meterData = usageData?.meters?.[meterId] || {};
+    const lifecycle = applyUsageLifecycleTransition(
+      normalizeUsageLifecycleCounts(meterData, meterData?.used),
+      { fromState: USAGE_OPERATION_STATES.reserved, toState, units },
+    );
+    const meterPatch = {
+      used: lifecycle.settled,
+      ...lifecycle,
+      updatedAt: now,
+    };
+    if (toState === USAGE_OPERATION_STATES.settled) {
+      const dimensions = [
+        ["sources", String(operation.source || ""), "source"],
+        ["actors", String(operation.actorUid || ""), "uid"],
+        ["rooms", String(operation.roomCode || ""), "roomCode"],
+        ["surfaces", String(operation.surface || ""), "surface"],
+      ];
+      for (const [bucket, key, keyField] of dimensions) {
+        if (!key) continue;
+        const current = toWholeNumber(meterData?.[bucket]?.[key]?.used, 0);
+        meterPatch[bucket] = {
+          [key]: {
+            used: current + units,
+            [keyField]: key,
+            label: formatUsageDimensionLabel(key, key),
+            updatedAt: now,
+          },
+        };
+      }
+    }
+    tx.set(usageRef, {
+      updatedAt: now,
+      meters: { [meterId]: meterPatch },
+    }, { merge: true });
+    tx.update(operationRef, {
+      state: toState,
+      updatedAt: now,
+      ...(toState === USAGE_OPERATION_STATES.settled ? { settledAt: now } : { releasedAt: now }),
+    });
+    return { changed: true, operationId: safeOperationId, state: toState };
+  });
+};
+
+const settleOrganizationUsageOperation = (args = {}) => transitionOrganizationUsageOperation({
+  ...args,
+  toState: USAGE_OPERATION_STATES.settled,
+});
+
+const releaseOrganizationUsageOperation = (args = {}) => transitionOrganizationUsageOperation({
+  ...args,
+  toState: USAGE_OPERATION_STATES.released,
+});
 
 const trackOrganizationUsageAnalytics = async ({
   orgId = "",
@@ -7832,6 +8051,9 @@ const resolveUserEntitlements = async (uid) => {
       renewalAtMs: entitlements.renewalAtMs,
       cancelAtPeriodEnd: false,
       source: "super_admin",
+      usagePlanId: "host_annual",
+      usageStatus: "active",
+      usageAccessSource: "super_admin",
       capabilities: normalizeCapabilities({
         ...BASE_CAPABILITIES,
         [ROOM_CREATE_CAPABILITY]: true,
@@ -7854,6 +8076,7 @@ const resolveUserEntitlements = async (uid) => {
   const allowLegacyTierEntitlements = ["1", "true", "yes", "on"].includes(
     String(process.env.ALLOW_LEGACY_USER_TIER_ENTITLEMENTS || "").trim().toLowerCase()
   );
+  let legacyMeterAccessEnabled = false;
   if (allowLegacyTierEntitlements) {
     const userSnap = await db.collection("users").doc(uid).get();
     const userData = userSnap.data() || {};
@@ -7868,9 +8091,13 @@ const resolveUserEntitlements = async (uid) => {
         renewalAtMs: entitlements.renewalAtMs,
         cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
         source: entitlements.source,
+        usagePlanId: hostApprovalEnabled ? "host_monthly" : entitlements.planId,
+        usageStatus: hostApprovalEnabled ? "active" : entitlements.status,
+        usageAccessSource: hostApprovalEnabled ? "approved_host_override" : entitlements.source,
         capabilities,
       };
     }
+    legacyMeterAccessEnabled = true;
     capabilities["ai.generate_content"] = true;
     capabilities["api.youtube_data"] = true;
     capabilities["api.apple_music"] = true;
@@ -7887,6 +8114,13 @@ const resolveUserEntitlements = async (uid) => {
     renewalAtMs: entitlements.renewalAtMs,
     cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
     source: entitlements.source,
+    usagePlanId: hostApprovalEnabled || legacyMeterAccessEnabled ? "host_monthly" : entitlements.planId,
+    usageStatus: hostApprovalEnabled || legacyMeterAccessEnabled ? "active" : entitlements.status,
+    usageAccessSource: hostApprovalEnabled
+      ? "approved_host_override"
+      : legacyMeterAccessEnabled
+        ? "legacy_host_tier"
+        : entitlements.source,
     capabilities,
   };
 };
@@ -13437,9 +13671,11 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
   }
-  await reserveOrganizationUsageUnits({
+  const searchUsageOperationId = resolveRequestUsageOperationId(request, "search_list");
+  const searchUsageReservation = await reserveOrganizationUsageOperation({
     orgId: entitlements.orgId,
     entitlements,
+    operationId: searchUsageOperationId,
     meterId: "youtube_data_request",
     units: 1,
     source: `${usageSource}_search_list`,
@@ -13449,12 +13685,33 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
       source: usageSource,
     }),
   });
-  await reserveYouTubeApiDailyCall({
-    method: "search.list",
-    source: usageSource,
-  });
+  if (!searchUsageReservation.created) {
+    throw new HttpsError("aborted", `YouTube search usage operation is already ${searchUsageReservation.state || "reserved"}.`);
+  }
+  try {
+    await reserveYouTubeApiDailyCall({
+      method: "search.list",
+      source: usageSource,
+    });
+  } catch (error) {
+    await releaseOrganizationUsageOperation({
+      orgId: entitlements.orgId,
+      operationId: searchUsageOperationId,
+      periodKey: searchUsageReservation.periodKey,
+    }).catch((releaseError) => console.warn("youtubeSearch: usage reservation release failed", releaseError));
+    throw error;
+  }
   const url = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&q=${encodeURIComponent(query)}&part=snippet&type=video&maxResults=${maxResults}&order=relevance`;
-  const res = await fetch(url);
+  let res;
+  try {
+    res = await fetch(url);
+  } finally {
+    await settleOrganizationUsageOperation({
+      orgId: entitlements.orgId,
+      operationId: searchUsageOperationId,
+      periodKey: searchUsageReservation.periodKey,
+    });
+  }
   await assertYouTubeApiResponseOk(res, "YouTube search");
   const data = await res.json();
   const baseItems = (data.items || []).map((item) => ({

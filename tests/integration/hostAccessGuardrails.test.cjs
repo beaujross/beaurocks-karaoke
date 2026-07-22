@@ -6,6 +6,7 @@ const {
   youtubeSearch,
   geminiGenerate,
   createAppleMusicToken,
+  getMyUsageSummary,
   setHostApprovalStatus,
 } = require("../../functions/index.js");
 
@@ -178,6 +179,17 @@ async function run() {
       );
       assert.equal(result.ok, true);
       assert.ok(String(result.roomCode || "").trim().length > 0);
+    }],
+    ["approved host override receives a capped internal usage profile", async () => {
+      await grantPrivateHostAccess(USER_UID);
+      const summary = await getMyUsageSummary.run(requestFor(USER_UID));
+      assert.equal(summary.planId, "free", "public plan must remain unchanged");
+      assert.equal(summary.status, "inactive", "public subscription status must remain unchanged");
+      assert.equal(summary.meters.youtube_data_request.hardLimit, 25000);
+      assert.equal(summary.meters.ai_generate_content.hardLimit, 2500);
+      assert.equal(summary.meters.youtube_data_request.billingEligible, false);
+      assert.equal(summary.meters.youtube_data_request.billableUnitRateCents, 0);
+      assert.equal(summary.meters.youtube_data_request.estimatedOverageCents, 0);
     }],
     ["free user cannot hit youtube data api callable", async () => {
       await expectHttpsError(

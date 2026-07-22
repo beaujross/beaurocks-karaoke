@@ -19,6 +19,22 @@ The machine-readable policy lives in `functions/lib/hostCommercialContract.json`
 
 Current synchronous provider boundaries settle the attempt atomically because a failed provider response can still consume quota. This first compatibility step does not fabricate `reserved`, `released`, `billable`, or `invoiced` values for historical activity.
 
+### Slice 05.2 operation canary
+
+Live YouTube `search.list` is the first true operation-level boundary:
+
+- the client creates a bounded operation ID only after client-cache misses;
+- the server reserves Workspace capacity and creates one server-only `usage_operations` document before provider work;
+- a failure before the provider boundary releases the reservation;
+- a provider attempt settles the reservation even when the provider returns an error, because quota may have been consumed;
+- a replayed or concurrent operation ID is rejected before another provider call;
+- settlement uses the reservation's original UTC usage period, including across a month boundary;
+- cached/indexed YouTube results and local media remain outside this variable-cost boundary.
+
+Older cached clients receive a server-generated operation ID for compatibility. They remain hard-capped but do not gain replay identity until they load the current client bundle.
+
+Approved canary Hosts retain their public `free` / `inactive` subscription record but receive the finite internal `host_monthly` metering profile. A zero configured hard limit now fails closed instead of meaning unlimited usage.
+
 ## Host warnings
 
 Money > Billing & Usage receives application-calculated capacity state at 50%, 80%, and 100% of the configured hard limit. Outstanding reservations are included in exposure so concurrent work cannot hide above the cap. Prices and included amounts remain marked `existing_unvalidated_do_not_publish` until Gate C1 evidence and owner approval are complete.
@@ -29,7 +45,7 @@ Variable-cost degradation must not disable queue management, Host override, exis
 
 ## Remaining Slice 05 work
 
-1. Add idempotent operation documents for true reserve, settle, and release transitions.
+1. Migrate the remaining YouTube, Apple Music, and AI provider attempts to operation documents.
 2. Add Workspace and optional per-Room budget controls with server-authoritative maximums.
 3. Add per-capability and platform circuit breakers with stable reason codes.
 4. Implement the tested degradation matrix and recovery guidance.
@@ -37,7 +53,8 @@ Variable-cost degradation must not disable queue management, Host override, exis
 
 ## Controlled production state
 
-- `getMyUsageSummary` revision `getmyusagesummary-00133-rag` calculates lifecycle-compatible exposure and 50% / 80% / 100% warning state.
-- Hosting release `1784705152537000`, version `e0fe9eb9e7329ddb`, displays Capacity Status in Money > Billing & Usage and labels zero-cap meters as unavailable.
-- Provider callables remain on their prior revisions. They continue writing the legacy `used` count, which the new summary reads as settled use; they will move only when idempotent operation documents are ready.
-- No plan limit, entitlement, price, payment behavior, or public pricing claim changed in this sub-slice.
+- `youtubeSearch` revision `youtubesearch-00146-puy` owns the first operation-level reserve/settle/replay boundary.
+- `getMyUsageSummary` revision `getmyusagesummary-00135-tuf` calculates lifecycle-compatible exposure and controlled-cohort caps while suppressing rates and estimated charges unless the Workspace has an entitled paid Host plan.
+- Hosting release `1784706338199000`, version `28633fc799ada798`, supplies current clients with operation IDs after cache misses.
+- Other provider callables remain on their prior revisions and continue writing the legacy `used` count, which the summary reads as settled use until each boundary migrates.
+- No public plan, price, payment behavior, postpaid eligibility, or billing claim changed in this sub-slice.
