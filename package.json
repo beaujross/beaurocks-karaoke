@@ -102,6 +102,7 @@
     "ops:watch:launch": "powershell -ExecutionPolicy Bypass -File scripts/ops/watch-launch-signals.ps1",
     "ops:report:playtest": "node scripts/ops/playtest-room-report.mjs",
     "ops:report:room-cost": "node scripts/ops/room-cost-observation-report.mjs",
+    "ops:report:additional-usage-readiness": "node scripts/ops/additional-usage-pack-readiness.mjs",
     "ops:appcheck:event-mode": "node scripts/ops/set-app-check-event-mode.mjs",
     "ops:appcheck:event-mode:check": "node scripts/ops/set-app-check-event-mode.mjs --check",
     "ops:audit:async-pipelines": "node scripts/ops/async-pipeline-audit.mjs",

@@ -71,6 +71,12 @@ Money > Billing & Usage can now translate the established Home party, Private ev
 
 The 90-day report on 2026-07-22 still contains one Host Room-day, no sampled Audience observation, and no Private event or Large event coverage. `percentileEvidenceReady` remains false, so the Host surface calls the result an `Early planning range`; it must not be described as measured p95 evidence or used alone to set a pack price.
 
+### Slice 06.5 first-pack decision gate
+
+Run `npm run ops:report:additional-usage-readiness -- --days=90` to combine the observation report with reconciliation and approval inputs. The internal packet refuses pricing readiness until representative Room evidence and verified billing/provider reconciliation pass. It refuses controlled activation until owner economics, modeled high-use meter coverage, reconciled cost basis, gross margin, expiration, auto-refill posture, cohort, and activation are all explicitly approved.
+
+The checked-in decision record contains no candidate pack or price. It is an audit input only and cannot enable runtime behavior.
+
 ### Production state
 
 - `recordRoomCostObservation` is active in `us-west1` at revision `recordroomcostobservation-00001-gir`.

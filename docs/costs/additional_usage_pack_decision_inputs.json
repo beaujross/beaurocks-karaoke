@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "status": "evidence_collection_checkout_disabled",
+  "publicPricing": false,
+  "reconciliation": {
+    "approvedToleranceBps": null,
+    "requiredSources": ["google_cloud_billing_export", "provider_invoices"],
+    "rows": []
+  },
+  "economics": {
+    "approvalStatus": "not_approved",
+    "grossMarginFloorBps": null,
+    "maxSubsidizedRoomCostCents": null,
+    "decisionRef": ""
+  },
+  "firstPack": {
+    "approvalStatus": "not_approved",
+    "packId": "",
+    "publicLabel": "",
+    "guestBandId": "",
+    "durationHours": null,
+    "amountCents": null,
+    "costBasisCents": null,
+    "costBasisRef": "",
+    "currency": "",
+    "capacityByMeter": {},
+    "expiration": { "mode": "not_approved", "days": null },
+    "decisionRef": ""
+  },
+  "autoRefill": {
+    "launchDecision": "not_approved",
+    "refillPackId": "",
+    "monthlyMaximumCents": null,
+    "warningThresholdBps": null,
+    "immediateDisableControl": false,
+    "decisionRef": ""
+  },
+  "cohort": {
+    "approved": false,
+    "maxWorkspaces": null,
+    "decisionRef": ""
+  },
+  "activation": {
+    "approved": false,
+    "decisionRef": ""
+  },
+  "notes": [
+    "This file records approvals; blank values are blockers, not defaults.",
+    "Updating this file does not mutate the commercial catalog or enable checkout.",
+    "Do not add public pricing until representative evidence and reconciliation gates pass."
+  ]
+}

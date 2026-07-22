@@ -1,7 +1,7 @@
 # Usage Control Contract
 
 Last updated: 2026-07-22
-Status: Slice 06.4 simplified Host capacity home; checkout and auto-refill disabled
+Status: Slice 06.5 first-pack readiness gate; checkout and auto-refill disabled
 
 ## Decision
 
@@ -96,6 +96,14 @@ Money > Billing & Usage now leads with one server-grounded Workspace capacity an
 Plan a Room remains direct. Purchase readiness, receipts, manual Safety limits, technical meters/rates/attribution, live diagnostics, and invoice tools remain available behind named secondary disclosures. The default view no longer leads with an overage-dollar estimate, and the technical view states that its legacy meter rates are not an Additional usage quote or an open purchase offer.
 
 This is a presentation-only simplification. No Function, rule, entitlement, meter, hard limit, pack, price, checkout, auto-refill, postpaid behavior, or protected live-room fallback changed.
+
+### Slice 06.5 first-pack readiness
+
+`npm run ops:report:additional-usage-readiness -- --days=90` produces the internal Gate C3 decision packet. It combines the privacy-bounded Room evidence report with `docs/costs/additional_usage_pack_decision_inputs.json`, the commercial contract, and the Room cost contract. The packet separately gates representative evidence, billing/provider reconciliation, owner economics, first-pack definition, auto-refill launch posture, controlled cohort, and final activation.
+
+The first pack must fund every enforced provider-request meter through the selected Room band's modeled high-use range. Its approved reconciled cost basis must satisfy the owner-approved gross-margin floor. Blank values are blockers rather than defaults, and `publicPricing` must stay false. Even a green packet performs no mutation; enabling a pack or checkout remains a separate reviewed change.
+
+The 2026-07-22 production run is `blocked_checkout_disabled`: only prelaunch commercial safety and decision-record integrity pass. No price or pack proposal has been recorded.
 
 ## Host warnings
 
