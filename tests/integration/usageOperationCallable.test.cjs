@@ -9,6 +9,7 @@ const {
   getMyUsageSummary,
   listMyAdditionalUsageTransactions,
   manageMyUsageControls,
+  previewMyRoomCapacity,
   youtubeSearch,
 } = require("../../functions/index.js");
 
@@ -18,6 +19,7 @@ const ROOT = `artifacts/${APP_ID}/public/data`;
 const ORG_ID = "org_usage_operation_test";
 const ROOM_CODE = "USAGE1";
 const HOST_UID = "usage-operation-host";
+const MEMBER_UID = "usage-operation-member";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error("FIRESTORE_EMULATOR_HOST is required for callable integration tests.");
@@ -26,8 +28,8 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
 process.env.GCLOUD_PROJECT = PROJECT_ID;
 const db = admin.firestore();
 
-const requestFor = (data = {}) => ({
-  auth: { uid: HOST_UID, token: { email: `${HOST_UID}@test.local` } },
+const requestFor = (data = {}, uid = HOST_UID) => ({
+  auth: { uid, token: { email: `${uid}@test.local` } },
   app: null,
   data,
   rawRequest: { ip: "127.0.0.1", get: () => "" },
@@ -56,6 +58,15 @@ const setup = async () => {
   await db.doc(`organizations/${ORG_ID}/members/${HOST_UID}`).set({
     uid: HOST_UID,
     role: "owner",
+    status: "active",
+  });
+  await db.doc(`users/${MEMBER_UID}`).set({
+    uid: MEMBER_UID,
+    organization: { orgId: ORG_ID, role: "member" },
+  });
+  await db.doc(`organizations/${ORG_ID}/members/${MEMBER_UID}`).set({
+    uid: MEMBER_UID,
+    role: "member",
     status: "active",
   });
   await db.doc(`organizations/${ORG_ID}/subscription/current`).set({
@@ -250,6 +261,24 @@ const run = async () => {
     assert.equal(receipts.transactions[0].label, "Extra private karaoke night");
     assert.equal(receipts.transactions[0].amountCents, 1200);
     assert.deepEqual(receipts.transactions[0].capacityByMeter, { youtube_data_request: 10 });
+    const roomCapacity = await previewMyRoomCapacity.run(requestFor({
+      period,
+      guestBandId: "home_party",
+      durationHours: 3,
+    }));
+    assert.equal(roomCapacity.status, "fits_current_workspace_capacity");
+    assert.equal(roomCapacity.guestBand.label, "Home party");
+    assert.equal(roomCapacity.meters.youtube_data_request.expectedUnits, 120);
+    assert.equal(roomCapacity.meters.youtube_data_request.highUseUnits, 180);
+    assert.equal(roomCapacity.pricing.quoteAvailable, false);
+    assert.equal(roomCapacity.pricing.estimatedChargeCents, null);
+    assert.equal(roomCapacity.pricing.checkoutEnabled, false);
+    assert.ok(roomCapacity.generatedAtMs > 0);
+    await expectHttpsError(() => previewMyRoomCapacity.run(requestFor({
+      period,
+      guestBandId: "home_party",
+      durationHours: 3,
+    }, MEMBER_UID)), "permission-denied");
 
     await db.doc("platform_controls/usage").set({
       schemaVersion: 1,

@@ -63,6 +63,24 @@ const buildRoomCostEnvelope = ({ scenarioId, scenario, pricingInputs, envelopeCo
 
 const validateRoomCostEnvelopeContract = (envelopeContract = contract) => {
   const errors = [];
+  const planning = envelopeContract.capacityPlanning || {};
+  const planningMeterIds = Array.isArray(planning.meterIds) ? planning.meterIds : [];
+  if (planning.publicPricing !== false) errors.push("Capacity planning must remain separate from public pricing");
+  if (Number(planning.highUseMultiplier || 0) < 1) errors.push("Capacity planning high-use multiplier must be at least 1");
+  if (Number(planning.minimumDurationHours || 0) <= 0
+    || Number(planning.maximumDurationHours || 0) < Number(planning.minimumDurationHours || 0)) {
+    errors.push("Capacity planning duration bounds are invalid");
+  }
+  for (const band of envelopeContract.guestBands || []) {
+    if (!band?.id || Number(band?.maxActiveGuests || 0) <= 0 || Number(band?.defaultHours || 0) <= 0) {
+      errors.push(`Guest band is incomplete: ${band?.id || "missing"}`);
+    }
+    for (const meterId of planningMeterIds) {
+      if (Number(band?.baselineMeterDemand?.[meterId] || 0) <= 0) {
+        errors.push(`${band?.id || "guest band"} is missing positive baseline demand for ${meterId}`);
+      }
+    }
+  }
   const ids = new Set();
   for (const entry of envelopeContract.listenerInventory || []) {
     if (!entry.id || ids.has(entry.id)) errors.push(`Listener id must be present and unique: ${entry.id || "missing"}`);

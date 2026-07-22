@@ -65,6 +65,12 @@ Run `npm run ops:report:room-cost` for a read-only trailing-30-day production re
 
 The report is sampling evidence, not cloud-bill reconciliation. Reads, writes, Functions, egress, and provider totals must still be joined to the Google Cloud billing export and provider invoices before the provisional stress multipliers can be replaced.
 
+### Slice 06.3 Host planning use
+
+Money > Billing & Usage can now translate the established Home party, Private event, and Large event scenarios into a public-safe request range for a Host-selected date and duration. The result compares expected and high-use request demand with current Workspace capacity. It does not expose the internal dollar-cost envelope, reserve values, target margin, or a price.
+
+The 90-day report on 2026-07-22 still contains one Host Room-day, no sampled Audience observation, and no Private event or Large event coverage. `percentileEvidenceReady` remains false, so the Host surface calls the result an `Early planning range`; it must not be described as measured p95 evidence or used alone to set a pack price.
+
 ### Production state
 
 - `recordRoomCostObservation` is active in `us-west1` at revision `recordroomcostobservation-00001-gir`.
@@ -72,6 +78,7 @@ The report is sampling evidence, not cloud-bill reconciliation. Reads, writes, F
 - Firestore TTL for `room_cost_observations.expiresAt` is `ACTIVE`.
 - Hosting release `1784704413290000`, version `71e3ad9c6d188b55`, serves the corrected Host and Audience observers.
 - The first trailing-30-day report found one Host Room-day, no raw identity fields, and correctly left percentile readiness blocked pending representative coverage.
+- `previewMyRoomCapacity` revision `previewmyroomcapacity-00001-vex` and Hosting release `1784733914438000` expose the provisional request range to Workspace owners/admins without exposing the internal dollar model or enabling purchases.
 
 Each unbounded entry has a Slice 04.2 containment action in the machine-readable inventory. A retained live listener must be bounded or have an explicit singleton/real-time justification.
 

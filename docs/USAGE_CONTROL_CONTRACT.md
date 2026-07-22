@@ -1,7 +1,7 @@
 # Usage Control Contract
 
 Last updated: 2026-07-22
-Status: Slice 06.2 reversible prepaid accounting and Host receipts; checkout and auto-refill disabled
+Status: Slice 06.3 pre-event Room capacity planning; checkout and auto-refill disabled
 
 ## Decision
 
@@ -81,6 +81,14 @@ The conservative pre-launch policy revokes all remaining capacity after any refu
 
 This sub-slice does not enable a pack, price, checkout action, purchase button, auto-refill, postpaid use, or new client Firestore permission. Gate C3 remains open until the customer-facing unit, economics, expiration, pre-event estimate, auto-refill cap, and cohort are approved.
 
+### Slice 06.3 Plan a Room
+
+Workspace owners and admins can preview a Home party, Private event, or Large event for a future date and one-to-twelve-hour duration. The server scales the existing provisional scenario demand into expected and high-use ranges for AI generations, Workspace YouTube request allowance, and Apple Music requests, then compares the high-use range with the selected month’s effective metered Workspace request ceiling minus current exposure. The timestamped result explicitly does not claim to predict every database read/write or media transfer.
+
+The callable is read-only and returns no cloud cost, provisional margin, overage rate, price, or charge estimate. It does not reserve capacity or create a billing record. The Host Dashboard labels it `Early planning range` and states that it is not a price quote, bill, reservation, measured percentile, or guarantee. Recovery points to cached/indexed tracks, local media, reduced fresh provider use, a smaller plan, or prepaid capacity only after purchases open.
+
+The 2026-07-22 90-day observation report still has only one Host Room-day, no sampled Audience observation, and no Private event or Large event coverage. The model is therefore useful as conservative planning guidance but not sufficient evidence for pack economics or Gate C3 approval.
+
 ## Host warnings
 
 Money > Billing & Usage receives application-calculated capacity state at 50%, 80%, and 100% of the configured hard limit. Outstanding reservations are included in exposure so concurrent work cannot hide above the cap. Prices and included amounts remain marked `existing_unvalidated_do_not_publish` until Gate C1 evidence and owner approval are complete.
@@ -117,3 +125,6 @@ Variable-cost degradation must not disable queue management, Host override, exis
 - Slice 06.2 revisions are `stripewebhook-00148-vid` and `listmyadditionalusagetransactions-00001-vin`, both Ready at 100% traffic.
 - Hosting release `1784731848817000`, version `58186aa686fa2c10`, serves `HostApp-CMn_LT5b.js`. Live smoke returned HTTP 200 for the index, entry, and Host assets and found the receipt, refresh, conservative-revocation, and empty-state copy.
 - Slice 06.2 did not enable a pack, price, checkout function, purchase button, auto-refill, postpaid usage, client Firestore permission, or payment configuration. Gate C3 remains open.
+- Slice 06.3 `previewMyRoomCapacity` revision `previewmyroomcapacity-00001-vex` is Ready at 100% traffic.
+- Hosting release `1784733914438000`, version `3b084952d2cafe56`, serves `HostApp-Dp_25wcS.js`. Live smoke returned HTTP 200 for the entry and Host assets and found all six required planning, fit-state, meter-boundary, and disabled-purchase strings.
+- Slice 06.3 did not enable a pack, price, checkout function, purchase button, auto-refill, postpaid usage, client Firestore permission, or payment configuration. Gate C3 remains open.

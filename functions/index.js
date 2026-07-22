@@ -33,6 +33,9 @@ const {
   shouldSampleRoomCostObservation,
 } = require("./lib/roomCostObservation");
 const {
+  buildRoomCapacityEstimate,
+} = require("./lib/roomCapacityEstimate");
+const {
   USAGE_OPERATION_STATES,
   applyUsageLifecycleTransition,
   normalizeUsageLifecycleCounts,
@@ -23528,6 +23531,42 @@ exports.getMyUsageSummary = onCall({ cors: true }, async (request) => {
     periodKey: requestedPeriod,
   });
   return summary;
+});
+
+exports.previewMyRoomCapacity = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "preview_my_room_capacity", { perMinute: 20, perHour: 160 });
+  const uid = requireAuth(request);
+  enforceAppCheckIfEnabled(request, "preview_my_room_capacity");
+  const entitlements = await resolveUserEntitlements(uid);
+  const role = String(entitlements?.role || "").toLowerCase();
+  if (!["owner", "admin"].includes(role)) {
+    throw new HttpsError("permission-denied", "Only Workspace owners/admins can preview Room capacity.");
+  }
+  const orgId = String(entitlements?.orgId || "").trim();
+  if (!orgId) {
+    throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  }
+  const period = normalizeUsagePeriodKey(request.data?.period || "");
+  if (!period) {
+    throw new HttpsError("invalid-argument", "period must be in YYYYMM format.");
+  }
+  const usageSummary = await readOrganizationUsageSummary({
+    orgId,
+    entitlements,
+    periodKey: period,
+  });
+  const estimate = buildRoomCapacityEstimate({
+    guestBandId: sanitizeSecurityToken(request.data?.guestBandId || "", 40),
+    durationHours: request.data?.durationHours,
+    usageSummary,
+    meterDefinitions: USAGE_METER_DEFINITIONS,
+  });
+  if (!estimate.ok) {
+    throw new HttpsError("invalid-argument", "Unsupported Room capacity planning input.", {
+      reasonCode: estimate.reasonCode,
+    });
+  }
+  return { ...estimate, orgId };
 });
 
 const USAGE_CAPABILITY_METERS = Object.freeze({

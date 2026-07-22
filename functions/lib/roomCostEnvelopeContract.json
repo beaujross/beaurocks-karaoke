@@ -8,10 +8,18 @@
   "percentileMethod": "stress_multiplier_until_room_telemetry_is_available",
   "percentileMultipliers": { "expected": 1, "p95": 1.5, "p99": 2 },
   "guestBands": [
-    { "id": "home_party", "label": "Home party", "maxActiveGuests": 25, "defaultHours": 3, "scenarioId": "casual" },
-    { "id": "private_event", "label": "Private event", "maxActiveGuests": 75, "defaultHours": 4, "scenarioId": "busy" },
-    { "id": "large_event", "label": "Large event", "maxActiveGuests": 180, "defaultHours": 6, "scenarioId": "tournament" }
+    { "id": "home_party", "label": "Home party", "maxActiveGuests": 25, "defaultHours": 3, "scenarioId": "casual", "baselineMeterDemand": { "ai_generate_content": 25, "youtube_data_request": 120, "apple_music_request": 80 } },
+    { "id": "private_event", "label": "Private event", "maxActiveGuests": 75, "defaultHours": 4, "scenarioId": "busy", "baselineMeterDemand": { "ai_generate_content": 120, "youtube_data_request": 600, "apple_music_request": 400 } },
+    { "id": "large_event", "label": "Large event", "maxActiveGuests": 180, "defaultHours": 6, "scenarioId": "tournament", "baselineMeterDemand": { "ai_generate_content": 400, "youtube_data_request": 1800, "apple_music_request": 1200 } }
   ],
+  "capacityPlanning": {
+    "status": "provisional_modeled_range",
+    "publicPricing": false,
+    "highUseMultiplier": 1.5,
+    "minimumDurationHours": 1,
+    "maximumDurationHours": 12,
+    "meterIds": ["ai_generate_content", "youtube_data_request", "apple_music_request"]
+  },
   "attributionDimensions": ["organizationId", "roomCode", "surface", "source", "actorUid", "meterId", "period"],
   "costMeters": [
     "firestore_document_read",

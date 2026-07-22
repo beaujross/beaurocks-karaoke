@@ -52,6 +52,7 @@ import {
     bootstrapOnboardingWorkspace,
     getMyEntitlements,
     getMyUsageSummary,
+    previewMyRoomCapacity,
     manageMyUsageControls,
     getMyUsageInvoiceDraft,
     recordRoomCostObservation,
@@ -2412,6 +2413,25 @@ const getCurrentUsagePeriodKey = () => {
     const m = String(now.getUTCMonth() + 1).padStart(2, '0');
     return `${y}${m}`;
 };
+
+const getTodayDateInputValue = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const getUsagePeriodForDateInput = (value = "") => {
+    const safe = String(value || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(safe) ? safe.slice(0, 7).replace('-', '') : getCurrentUsagePeriodKey();
+};
+
+const ROOM_CAPACITY_GUEST_BANDS = [
+    { id: 'home_party', label: 'Home party', maxActiveGuests: 25, defaultHours: 3 },
+    { id: 'private_event', label: 'Private event', maxActiveGuests: 75, defaultHours: 4 },
+    { id: 'large_event', label: 'Large event', maxActiveGuests: 180, defaultHours: 6 }
+];
 
 const buildRecentUsagePeriods = (count = 6) => {
     const periods = [];
@@ -6622,6 +6642,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [additionalUsageTransactions, setAdditionalUsageTransactions] = useState([]);
     const [additionalUsageTransactionsLoading, setAdditionalUsageTransactionsLoading] = useState(false);
     const [additionalUsageTransactionsError, setAdditionalUsageTransactionsError] = useState('');
+    const [roomCapacityPlan, setRoomCapacityPlan] = useState(() => ({
+        eventDate: getTodayDateInputValue(),
+        guestBandId: 'home_party',
+        durationHours: '3'
+    }));
+    const [roomCapacityEstimate, setRoomCapacityEstimate] = useState(null);
+    const [roomCapacityEstimateLoading, setRoomCapacityEstimateLoading] = useState(false);
+    const [roomCapacityEstimateError, setRoomCapacityEstimateError] = useState('');
+    const roomCapacityPlanDuration = Number(roomCapacityPlan.durationHours || 0);
+    const roomCapacityPlanValid = /^\d{4}-\d{2}-\d{2}$/.test(String(roomCapacityPlan.eventDate || ''))
+        && Number.isFinite(roomCapacityPlanDuration)
+        && roomCapacityPlanDuration >= 1
+        && roomCapacityPlanDuration <= 12;
     const [invoiceCustomerName, setInvoiceCustomerName] = useState('');
     const [invoiceIncludeBasePlan, setInvoiceIncludeBasePlan] = useState(false);
     const [invoiceTaxRatePercent, setInvoiceTaxRatePercent] = useState('0');
@@ -17162,6 +17195,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAdditionalUsageTransactionsLoading(false);
         }
     };
+    const previewRoomCapacityPlan = async () => {
+        if (!canManageUsageControls || roomCapacityEstimateLoading) return null;
+        setRoomCapacityEstimateLoading(true);
+        setRoomCapacityEstimateError('');
+        try {
+            const estimate = await previewMyRoomCapacity({
+                period: getUsagePeriodForDateInput(roomCapacityPlan.eventDate),
+                guestBandId: roomCapacityPlan.guestBandId,
+                durationHours: Number(roomCapacityPlan.durationHours || 0)
+            });
+            setRoomCapacityEstimate(estimate || null);
+            return estimate || null;
+        } catch (error) {
+            hostLogger.error('Room capacity preview failed', error);
+            setRoomCapacityEstimate(null);
+            setRoomCapacityEstimateError('Could not preview this Room. Check the event date and duration, then try again.');
+            return null;
+        } finally {
+            setRoomCapacityEstimateLoading(false);
+        }
+    };
     const saveInvoiceDraftSnapshot = async () => {
         if (!canUseInvoiceDrafts) {
             toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS)} is not available on this plan.`);
@@ -26144,6 +26198,117 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         : 'Your current plan and Workspace ceiling remain authoritative.'}
                                                 </div>
                                             </div>
+                                        </div>
+                                        <div data-feature-id="room-capacity-planner" className="rounded-lg border border-cyan-300/20 bg-black/20 p-3 space-y-3">
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="text-[10px] uppercase tracking-widest text-cyan-100/80">Plan a Room</div>
+                                                    <div className="mt-1 text-sm font-semibold text-white">Check an early metered request range before the party.</div>
+                                                    <div className="mt-1 text-[11px] text-zinc-500">This compares a modeled Home party, Private event, or Large event with the selected month&apos;s current Workspace ceilings.</div>
+                                                </div>
+                                                <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+                                                    Early planning range
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+                                                <label className="text-[11px] text-zinc-400">
+                                                    <span className="mb-1 block text-[10px] uppercase tracking-widest text-zinc-500">Event date</span>
+                                                    <input
+                                                        type="date"
+                                                        min={getTodayDateInputValue()}
+                                                        value={roomCapacityPlan.eventDate}
+                                                        onChange={(event) => {
+                                                            setRoomCapacityPlan((current) => ({ ...current, eventDate: event.target.value }));
+                                                            setRoomCapacityEstimate(null);
+                                                            setRoomCapacityEstimateError('');
+                                                        }}
+                                                        className={STYLES.input}
+                                                    />
+                                                </label>
+                                                <label className="text-[11px] text-zinc-400">
+                                                    <span className="mb-1 block text-[10px] uppercase tracking-widest text-zinc-500">Party size</span>
+                                                    <select
+                                                        value={roomCapacityPlan.guestBandId}
+                                                        onChange={(event) => {
+                                                            const nextBand = ROOM_CAPACITY_GUEST_BANDS.find((band) => band.id === event.target.value) || ROOM_CAPACITY_GUEST_BANDS[0];
+                                                            setRoomCapacityPlan((current) => ({ ...current, guestBandId: nextBand.id, durationHours: String(nextBand.defaultHours) }));
+                                                            setRoomCapacityEstimate(null);
+                                                            setRoomCapacityEstimateError('');
+                                                        }}
+                                                        className={STYLES.input}
+                                                    >
+                                                        {ROOM_CAPACITY_GUEST_BANDS.map((band) => (
+                                                            <option key={`room-capacity-band-${band.id}`} value={band.id}>{band.label} · up to {band.maxActiveGuests}</option>
+                                                        ))}
+                                                    </select>
+                                                </label>
+                                                <label className="text-[11px] text-zinc-400">
+                                                    <span className="mb-1 block text-[10px] uppercase tracking-widest text-zinc-500">Planned hours</span>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="12"
+                                                        step="0.5"
+                                                        value={roomCapacityPlan.durationHours}
+                                                        onChange={(event) => {
+                                                            setRoomCapacityPlan((current) => ({ ...current, durationHours: event.target.value }));
+                                                            setRoomCapacityEstimate(null);
+                                                            setRoomCapacityEstimateError('');
+                                                        }}
+                                                        className={STYLES.input}
+                                                    />
+                                                </label>
+                                                <div className="flex items-end">
+                                                    <button
+                                                        type="button"
+                                                        onClick={previewRoomCapacityPlan}
+                                                        disabled={!canManageUsageControls || !roomCapacityPlanValid || roomCapacityEstimateLoading}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full ${!canManageUsageControls || !roomCapacityPlanValid || roomCapacityEstimateLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                    >
+                                                        {roomCapacityEstimateLoading ? 'Checking...' : 'Check request capacity'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            {roomCapacityEstimateError && <div className="text-xs text-rose-200">{roomCapacityEstimateError}</div>}
+                                            {roomCapacityEstimate && (
+                                                <div className="space-y-3 rounded-lg border border-white/10 bg-zinc-950/60 p-3">
+                                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                                        <div>
+                                                            <div className="text-sm font-semibold text-white">{roomCapacityEstimate.guestBand?.label} · {Number(roomCapacityEstimate.durationHours || 0)} hours</div>
+                                                            <div className="mt-1 text-xs text-zinc-400">{roomCapacityEstimate.guidance}</div>
+                                                        </div>
+                                                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${roomCapacityEstimate.fitsCurrentCapacity ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/30 bg-amber-500/10 text-amber-100'}`}>
+                                                            {roomCapacityEstimate.status === 'host_plan_required'
+                                                                ? 'Host plan required'
+                                                                : roomCapacityEstimate.fitsCurrentCapacity
+                                                                    ? 'Fits metered capacity'
+                                                                    : 'Plan for more headroom'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                                                        {Object.values(roomCapacityEstimate.meters || {}).map((meter) => (
+                                                            <div key={`room-capacity-meter-${meter.meterId}`} className="rounded-lg border border-zinc-800 bg-black/20 p-3 text-xs">
+                                                                <div className="font-semibold text-zinc-200">{meter.label}</div>
+                                                                <div className="mt-2 text-white">{Number(meter.expectedUnits || 0).toLocaleString()}–{Number(meter.highUseUnits || 0).toLocaleString()} modeled</div>
+                                                                <div className="mt-1 text-zinc-500">{Number(meter.remainingCapacity || 0).toLocaleString()} remaining in {roomCapacityEstimate.period}</div>
+                                                                <div className={`mt-2 text-[10px] font-black uppercase tracking-widest ${meter.fitsHighUse ? 'text-emerald-200' : 'text-amber-200'}`}>
+                                                                    {meter.fitsHighUse ? 'High-use range fits' : `${Number(meter.additionalCapacityNeeded || 0).toLocaleString()} more may be needed`}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <div className="text-[11px] text-zinc-500">
+                                                        Early modeled range—not a price quote, bill, reservation, or guarantee. The Workspace ceiling and live usage transaction remain authoritative.
+                                                    </div>
+                                                    <div className="text-[11px] text-zinc-500">
+                                                        Checks enforced provider-request meters, not every database read/write or media transfer.
+                                                        {roomCapacityEstimate.generatedAtMs ? ` Capacity snapshot: ${new Date(roomCapacityEstimate.generatedAtMs).toLocaleString()}.` : ''}
+                                                    </div>
+                                                    {!roomCapacityEstimate.pricing?.checkoutEnabled && (
+                                                        <div className="text-[11px] text-zinc-500">Additional usage purchases are not open. Cached/indexed tracks and local media can reduce fresh provider use.</div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-2">
                                             <div className="flex flex-wrap items-center justify-between gap-2">

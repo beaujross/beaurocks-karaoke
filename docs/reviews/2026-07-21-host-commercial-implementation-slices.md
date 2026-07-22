@@ -27,7 +27,7 @@ This is the authoritative execution order. The source roadmaps retain strategy, 
 | 03 | production canary | First Room and Tonight Setup | 02 | B2 |
 | 04 | production canary | Room cost envelope and database fan-out containment | 01-03 | C1 |
 | 05 | in progress | Usage states, Host budgets, and graceful degradation | 04 | C2 |
-| 06 | in progress | Prepaid usage packs and capped auto-refill; 06.2 reversible accounting and receipts verified with checkout disabled | 05 | C3 |
+| 06 | in progress | Prepaid usage packs and capped auto-refill; 06.3 pre-event capacity planning deployed with checkout disabled | 05 | C3 |
 | 07 | later | Vetted postpaid usage accounts | 06 plus production evidence | C4 |
 | 08 | planned | Host Tip outbound destination | 03 | D1 |
 | 09 | planned | Money-action clarity and checkout ownership | 01, 08 | D2 |
@@ -112,6 +112,8 @@ Sell understandable additional Room capacity only after verified payment, preven
 Recommended presentation: included private karaoke nights with stated duration and active-guest bands. Internally meter active guest-hours and infrastructure consumption. Offer extra-night and large-party packs before granular usage billing.
 
 Slice 06.2 adds immutable refund/chargeback adjustments, one-time remaining-capacity revocation, and owner/admin receipt history. It does not approve a unit, price, pack, expiration rule, checkout, or auto-refill; Gate C3 therefore remains open.
+
+Slice 06.3 adds a read-only `Plan a Room` range for the established Home party, Private event, and Large event bands. It compares provisional expected/high-use request demand with current Workspace capacity without exposing a price or reserving usage. Representative telemetry, first-pack economics, expiration, and capped auto-refill remain open.
 
 ## Slice 07 - Vetted postpaid usage accounts
 

@@ -13,6 +13,22 @@ test("room cost contract is internally complete and source-anchored", () => {
   assert.equal(contract.percentileMethod, "stress_multiplier_until_room_telemetry_is_available");
   assert.equal(contract.observationPolicy.audienceSampleModulus, 16);
   assert.equal(contract.observationPolicy.rawAudienceUidStored, false);
+  const scenarioMeterFields = {
+    ai_generate_content: "ai_requests",
+    youtube_data_request: "youtube_requests",
+    apple_music_request: "apple_requests",
+  };
+  for (const band of contract.guestBands) {
+    const scenario = inputs.scenarios[band.scenarioId];
+    assert.ok(scenario, `${band.id} scenario is missing`);
+    for (const [meterId, scenarioField] of Object.entries(scenarioMeterFields)) {
+      assert.equal(
+        band.baselineMeterDemand[meterId],
+        scenario[scenarioField],
+        `${band.id} ${meterId} baseline drifted from ${band.scenarioId}`,
+      );
+    }
+  }
   assert.ok(contract.listenerInventory.some((entry) => entry.id === "audience_room_users" && entry.limit === 250));
   assert.ok(contract.listenerInventory.some((entry) => entry.id === "audience_room_songs" && entry.limits?.fallback === 500));
   assert.ok(contract.listenerInventory.some((entry) => entry.id === "tv_reactions" && entry.shape === "bounded_query_with_bounded_fallback"));
