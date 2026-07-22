@@ -1591,6 +1591,8 @@ async function run() {
         "additional_usage_payment_refs/pi_server_only",
         "beaurocks_ledger_accounts/account__guest-uid__beaubucks",
         "beaurocks_ledger_entries/entry-one",
+        "beaurocks_account_entitlements/entitlement-one",
+        "beaurocks_entitlement_operations/operation-one",
         "beaurocks_payment_refs/payment-one",
         "beaurocks_payment_adjustments/adjustment-one",
         "beaurocks_pending_payment_adjustments/payment-one",

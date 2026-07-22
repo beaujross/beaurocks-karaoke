@@ -19,6 +19,7 @@ import {
 import { getRoomCurrencyPresentation } from '../../../lib/roomCurrencyPresentation';
 import { getRoomEconomySummary } from '../../../lib/roomEconomySummary';
 import { getRoomSpendIntentGuide } from '../../../lib/roomSpendIntent';
+import { CurrencyIcon } from '../../../components/CurrencyToken';
 
 const cardClass = 'rounded-2xl border border-white/10 bg-black/18 p-4';
 const inputClass = 'mt-2 w-full rounded-xl border border-cyan-400/20 bg-black/25 px-3 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45';
@@ -255,12 +256,12 @@ const EventCreditsConfigPanel = ({
                     <div className="mt-4 rounded-2xl border border-fuchsia-300/22 bg-fuchsia-500/8 p-4" data-feature-id="host-beaubucks-tonight-control">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="max-w-2xl">
-                                <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/75">BeauBucks tonight</div>
+                                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/75"><CurrencyIcon currency="beaubucks" size="xs" /> BeauBucks cosmetics</div>
                                 <div className="mt-1 text-base font-black text-white">
-                                    {beauBucksEnabledTonight ? 'Available for paid reactions' : 'Off — guests use earned Points'}
+                                    {beauBucksEnabledTonight ? 'Premium collection available' : 'Off — live play still uses Points'}
                                 </div>
                                 <div className="mt-1 text-sm leading-6 text-zinc-300">
-                                    BeauBucks stay with each guest&apos;s signed-in BeauRocks account. Turning this on lets guests use their balance for the premium actions allowed in this Room; checkout only appears when BeauRocks has enabled purchases.
+                                    Guests keep BeauBucks and unlocked cosmetics on their account. This opens permanent profile emoji and reaction-slot unlocks; live Room actions still use earned Points.
                                 </div>
                             </div>
                             <label className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-3 py-2 text-sm font-black ${eventCreditsConfig?.enabled ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-50' : 'cursor-not-allowed border-white/10 bg-black/20 text-zinc-500'}`}>
@@ -274,7 +275,7 @@ const EventCreditsConfigPanel = ({
                             </label>
                         </div>
                         {!eventCreditsConfig?.enabled ? (
-                            <div className="mt-3 text-xs text-amber-100/80">Enable the Room experience above before making BeauBucks available.</div>
+                            <div className="mt-3 text-xs text-amber-100/80">Enable the Room experience above before opening premium cosmetics.</div>
                         ) : null}
                     </div>
                 ) : null}

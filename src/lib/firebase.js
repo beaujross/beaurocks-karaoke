@@ -906,6 +906,12 @@ const spendAudienceBeauBucks = async (payload = {}) => {
   return data || null;
 };
 
+const purchaseBeauBucksEntitlement = async (payload = {}) => {
+  await requireAppCheckToken("purchaseBeauBucksEntitlement");
+  const data = await callFunction("purchaseBeauBucksEntitlement", payload || {});
+  return data || null;
+};
+
 const createBeauBucksCheckout = async (payload = {}) => {
   await requireAppCheckToken("createBeauBucksCheckout");
   const data = await callFunction("createBeauBucksCheckout", payload || {});
@@ -1339,6 +1345,7 @@ export {
   spendAudienceRoomCredits,
   getMyRoomBeauBucksWallet,
   spendAudienceBeauBucks,
+  purchaseBeauBucksEntitlement,
   createBeauBucksCheckout,
   uploadAudienceRoomPhoto,
   createMediaUploadSession,

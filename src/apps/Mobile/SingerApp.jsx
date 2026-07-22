@@ -18,7 +18,7 @@ import {
     updateAudienceIdentity,
     spendAudienceRoomCredits,
     getMyRoomBeauBucksWallet,
-    spendAudienceBeauBucks,
+    purchaseBeauBucksEntitlement,
     createBeauBucksCheckout,
     listMyRoomCreditActivity,
     uploadAudienceRoomPhoto,
@@ -112,6 +112,13 @@ import { FameLevelProgressBar } from '../../components/FameLevelBadge';
 import UserMetaCard from '../../components/UserMetaCard';
 import { FAME_LEVELS, getLevelFromFame, getProgressToNextLevel } from '../../lib/fameConstants';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
+import { CurrencyAmount, CurrencyIcon } from '../../components/CurrencyToken';
+import {
+    PREMIUM_PROFILE_EMOJIS,
+    REACTION_SLOT_PRODUCTS,
+    getAudienceReactionSlotCount,
+    getOwnedPremiumEntitlementIds,
+} from '../../lib/premiumCosmetics';
 import groupChatMessages from '../../lib/chatGrouping';
 import {
     DEFAULT_POP_TRIVIA_ROUND_SEC,
@@ -818,7 +825,8 @@ const AVATAR_CATALOG = [
     { id: 'twilight_vamp_m', emoji: emoji(0x1F9DB, 0x200D, 0x2642, 0xFE0F), label: 'Vampire', flavor: 'Night shift crooner.', unlock: { type: 'vip' } },
     { id: 'twilight_sparkle', emoji: emoji(0x1F48E), label: 'Sparkle', flavor: 'Headliner shine.', unlock: { type: 'vip' } },
     { id: 'crown', emoji: emoji(0x1F451), label: 'Crown', flavor: 'Royal ad-lib.', unlock: { type: 'vip' } },
-    { id: 'moonface', emoji: emoji(0x1F31A), label: 'Moon Face', flavor: 'Night set glow.', unlock: { type: 'vip' } }
+    { id: 'moonface', emoji: emoji(0x1F31A), label: 'Moon Face', flavor: 'Night set glow.', unlock: { type: 'vip' } },
+    ...PREMIUM_PROFILE_EMOJIS,
 ];
 
 const AVATAR_BY_EMOJI = new Map(AVATAR_CATALOG.map((item) => [item.emoji, item]));
@@ -1667,6 +1675,7 @@ const SingerApp = ({ roomCode, uid }) => {
         }
         if (item.unlock.type === 'guitar_winner') return { locked: !unlocked.includes(item.id), note: 'WIN SOLO' };
         if (item.unlock.type === 'points') return { locked: !unlocked.includes(item.id), note: `${item.unlock.cost} PTS` };
+        if (item.unlock.type === 'beaubucks') return { locked: !unlocked.includes(item.id), note: `B$ ${item.unlock.cost}` };
         return { locked: false, note: '' };
     }, [customEmojiAccountGateEnabled, isAnon, isVipAccount, premiumBadgeShortLabel, profile]);
 
@@ -1679,6 +1688,7 @@ const SingerApp = ({ roomCode, uid }) => {
         if (item.unlock.type === 'first_performance') return 'Sing one song to unlock.';
         if (item.unlock.type === 'guitar_winner') return 'Win Guitar Mode to unlock.';
         if (item.unlock.type === 'points') return `Unlock for ${item.unlock.cost} points.`;
+        if (item.unlock.type === 'beaubucks') return `Keep forever for ${item.unlock.cost} BeauBucks.`;
         return '';
     }, [customEmojiAccountGateEnabled, isAnon, premiumAccessLabel]);
 
@@ -1800,6 +1810,7 @@ const SingerApp = ({ roomCode, uid }) => {
         wallet: null,
         error: '',
     });
+    const [premiumUnlockPendingId, setPremiumUnlockPendingId] = useState('');
     const [supportEmbedOpen, setSupportEmbedOpen] = useState(false);
     const [pointsCheckoutPendingKey, setPointsCheckoutPendingKey] = useState('');
     const [eventGrantCode, setEventGrantCode] = useState('');
@@ -3286,34 +3297,55 @@ const SingerApp = ({ roomCode, uid }) => {
         setBeauBucksWalletState({ status: 'idle', roomCode: '', wallet: null, error: '' });
     }, [activeEventCredits.beauBucksEnabledTonight, activeEventCredits.enabled, roomCode]);
     useEffect(() => {
-        if (!showPoints || !beauBucksRoomCandidate) return;
+        if (!beauBucksRoomCandidate || !authUserUid || isAnon) return;
         if (beauBucksWalletState.roomCode === roomCode && beauBucksWalletState.status !== 'idle') return;
         void loadBeauBucksWallet();
-    }, [beauBucksRoomCandidate, beauBucksWalletState.roomCode, beauBucksWalletState.status, loadBeauBucksWallet, roomCode, showPoints]);
-    const requestBeauBucksReactionSpend = useCallback(async ({ reactionType = '', payload = {}, retryKey = '' } = {}) => {
-        const safeRetryKey = `beaubucks:${String(retryKey || reactionType || 'reaction')}`;
-        const pendingOperationId = pendingSpendOperationIdsRef.current.get(safeRetryKey) || '';
-        const clientOperationId = pendingOperationId || createAudienceSpendOperationId('beaubucks_reaction');
-        pendingSpendOperationIdsRef.current.set(safeRetryKey, clientOperationId);
-        const result = await spendAudienceBeauBucks({
-            roomCode,
-            kind: 'reaction',
-            clientOperationId,
-            payload: { ...payload, reactionType },
-        });
-        const definitiveOutcome = ['accepted', 'insufficient_balance', 'account_restricted'].includes(String(result?.outcome || ''));
-        if (definitiveOutcome) pendingSpendOperationIdsRef.current.delete(safeRetryKey);
-        if (Number.isFinite(Number(result?.balanceAfter))) {
+    }, [authUserUid, beauBucksRoomCandidate, beauBucksWalletState.roomCode, beauBucksWalletState.status, isAnon, loadBeauBucksWallet, roomCode]);
+    const purchasePremiumEntitlement = useCallback(async (productId = '') => {
+        const safeProductId = String(productId || '').trim();
+        if (!safeProductId || premiumUnlockPendingId) return null;
+        if (!authUserUid || isAnon) {
+            setShowPhoneModal(true);
+            return null;
+        }
+        setPremiumUnlockPendingId(safeProductId);
+        try {
+            const result = await purchaseBeauBucksEntitlement({
+                roomCode,
+                productId: safeProductId,
+                clientOperationId: createAudienceSpendOperationId('premium_unlock'),
+            });
+            if (result?.outcome === 'insufficient_balance') {
+                toast('Not enough BeauBucks yet.');
+                setShowPoints(true);
+                return result;
+            }
+            if (!['accepted', 'already_owned'].includes(String(result?.outcome || ''))) {
+                toast(result?.outcome === 'account_restricted' ? 'BeauBucks spending is unavailable for this account.' : 'Unlock could not be completed.');
+                return result;
+            }
             setBeauBucksWalletState((current) => ({
                 ...current,
                 status: 'ready',
                 roomCode,
-                wallet: { ...(current.wallet || {}), balance: Math.max(0, Number(result.balanceAfter) || 0) },
+                wallet: {
+                    ...(current.wallet || {}),
+                    balance: Math.max(0, Number(result.balanceAfter) || 0),
+                    entitlementIds: result.entitlementIds || current.wallet?.entitlementIds || [],
+                    reactionSlotCount: Number(result.reactionSlotCount || current.wallet?.reactionSlotCount || 5),
+                },
                 error: '',
             }));
+            toast(result?.outcome === 'already_owned' ? 'Already in your collection.' : 'Premium unlock added!');
+            return result;
+        } catch (error) {
+            console.error(error);
+            toast('Unlock could not be completed.');
+            return null;
+        } finally {
+            setPremiumUnlockPendingId('');
         }
-        return result || { ok: false, outcome: 'unknown' };
-    }, [roomCode]);
+    }, [authUserUid, isAnon, premiumUnlockPendingId, roomCode, toast]);
     const roomCurrencyPresentation = useMemo(() => getRoomCurrencyPresentation(activeEventCredits), [activeEventCredits]);
     const roomSpendIntentGuide = useMemo(() => getRoomSpendIntentGuide(activeEventCredits), [activeEventCredits]);
     const isRunOfShowCoHost = runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host';
@@ -3610,7 +3642,6 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [allowsDonationAccess, openEmailAccessModal, roomSupportHasEmbed, roomSupportOffer, simplifyFestivalSupportAccess]);
     const formatPointsLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} ${roomCurrencyPresentation.shortLabel}`;
     const formatEarnedPointsLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} ${beauBucksRoomCandidate ? 'PTS' : roomCurrencyPresentation.shortLabel}`;
-    const formatBeauBucksLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} BB`;
     const formatDollarLabel = (value = 0) => {
         const amount = Math.max(0, Number(value) || 0);
         return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`;
@@ -3750,14 +3781,21 @@ const SingerApp = ({ roomCode, uid }) => {
     const visibleBeauBucksWalletState = beauBucksWalletState.roomCode === roomCode
         ? beauBucksWalletState
         : { status: 'idle', wallet: null, error: '' };
+    const signedInBeauRocksAccount = !!authUserUid && !isAnon;
+    const ownedPremiumEntitlementIds = getOwnedPremiumEntitlementIds(visibleBeauBucksWalletState.wallet);
+    const baseReactionSlotCount = getAudienceReactionSlotCount({
+        signedIn: signedInBeauRocksAccount,
+        wallet: visibleBeauBucksWalletState.wallet,
+    });
+    const reactionSlotCount = premiumReactionsUnlocked ? 6 : baseReactionSlotCount;
+    const bonusReactionTypes = ['rocket', 'crown'].slice(0, Math.max(0, reactionSlotCount - 4));
+    const sixthReactionSlotProduct = REACTION_SLOT_PRODUCTS.find((product) => Number(product.slotCount || 0) === 6) || null;
     const pointsDrawerContent = (
         <>
             <div className="space-y-5" data-feature-id="audience-points-storefront">
                 <section className="relative overflow-hidden rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(34,211,238,0.22),rgba(236,72,153,0.15)_42%,rgba(12,18,32,0.98))] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.34)]">
                     <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/78">{beauBucksRoomCandidate ? 'Earned Points' : roomCurrencyPresentation.balanceLabel}</div>
-                    <div className="mt-2 text-[clamp(3rem,15vw,5rem)] font-black leading-none text-white">
-                        {formatEarnedPointsLabel(getEffectivePoints())}
-                    </div>
+                    <CurrencyAmount currency="points" amount={getEffectivePoints()} size="lg" className="mt-2 text-[clamp(3rem,15vw,5rem)] leading-none" />
                     <div className="mt-3 flex flex-wrap gap-2">
                         {activeEventCredits.generalAdmissionPoints > 0 ? (
                             <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black text-white">
@@ -3775,21 +3813,40 @@ const SingerApp = ({ roomCode, uid }) => {
                 {beauBucksRoomCandidate ? (
                     <section className="rounded-[1.25rem] border border-fuchsia-300/22 bg-[linear-gradient(145deg,rgba(192,38,211,0.14),rgba(12,18,32,0.96))] p-4" data-feature-id="audience-beaubucks-wallet">
                         <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100/70">BeauBucks</div>
-                                <div className="mt-1 text-sm font-black text-white">
-                                    {beauBucksIntentEnabled ? 'Your BeauBucks, across Rooms' : 'Off tonight'}
+                            <div className="flex items-center gap-3">
+                                <CurrencyIcon currency="beaubucks" size="lg" />
+                                <div>
+                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100/70">BeauBucks</div>
+                                    <div className="mt-1 text-sm font-black text-white">Premium. Yours forever.</div>
                                 </div>
                             </div>
                             {visibleBeauBucksWalletState.status === 'ready' ? (
-                                <div className="rounded-full border border-fuchsia-200/20 bg-fuchsia-500/12 px-3 py-1 text-lg font-black text-fuchsia-50">
-                                    {formatBeauBucksLabel(visibleBeauBucksWalletState.wallet?.balance || 0)}
-                                </div>
+                                <CurrencyAmount currency="beaubucks" amount={visibleBeauBucksWalletState.wallet?.balance || 0} size="sm" className="text-lg" />
                             ) : null}
                         </div>
-                        <div className="mt-2 text-xs leading-5 text-zinc-300">
-                            Points are earned through the party. BeauBucks stay with your signed-in BeauRocks account across Rooms; this Host controls which premium actions are available tonight.
+                        <div className="mt-4 grid grid-cols-6 gap-1.5" aria-label="Premium profile emoji collection">
+                            {PREMIUM_PROFILE_EMOJIS.map((item) => (
+                                <div key={item.id} className={`grid aspect-square place-items-center rounded-xl border text-2xl ${profile?.unlockedEmojis?.includes(item.id) ? 'border-fuchsia-300/45 bg-fuchsia-500/16' : 'border-white/8 bg-black/25 opacity-55'}`} title={item.label}>
+                                    {item.emoji}
+                                </div>
+                            ))}
                         </div>
+                        {sixthReactionSlotProduct && !ownedPremiumEntitlementIds.has(sixthReactionSlotProduct.id) && !premiumReactionsUnlocked ? (
+                            <button
+                                type="button"
+                                data-feature-id="unlock-reaction-slot-6"
+                                onClick={() => purchasePremiumEntitlement(sixthReactionSlotProduct.id)}
+                                disabled={premiumUnlockPendingId === sixthReactionSlotProduct.id || visibleBeauBucksWalletState.status !== 'ready'}
+                                className="mt-4 flex min-h-[68px] w-full items-center justify-between rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-violet-500/25 via-fuchsia-500/18 to-pink-500/20 px-4 text-left shadow-[0_0_28px_rgba(217,70,239,0.18)] disabled:opacity-50"
+                            >
+                                <span className="flex items-center gap-3"><span className="text-4xl">{getReactionEmoji('crown')}</span><span><span className="block font-black text-white">6th reaction slot</span><span className="block text-[11px] uppercase tracking-[0.14em] text-fuchsia-100/65">Includes Royal</span></span></span>
+                                <CurrencyAmount currency="beaubucks" amount={sixthReactionSlotProduct.cost} size="sm" />
+                            </button>
+                        ) : reactionSlotCount >= 6 ? (
+                            <div className="mt-4 flex items-center justify-between rounded-2xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-4 py-3">
+                                <span className="font-black text-white">6 / 6 reactions</span><span className="text-2xl">{getReactionEmoji('crown')}</span>
+                            </div>
+                        ) : null}
                         {visibleBeauBucksWalletState.status === 'loading' || visibleBeauBucksWalletState.status === 'idle' ? (
                             <div className="mt-3 text-xs text-zinc-400" role="status">Loading BeauBucks balance...</div>
                         ) : visibleBeauBucksWalletState.status === 'error' ? (
@@ -3812,7 +3869,7 @@ const SingerApp = ({ roomCode, uid }) => {
                                 {visibleBeauBucksWalletState.wallet?.accountEligible === false
                                     ? 'Sign in to a BeauRocks account to carry BeauBucks between parties.'
                                     : beauBucksIntentEnabled
-                                        ? 'Purchases are not open right now. Existing BeauBucks can still be used for reactions.'
+                                        ? 'Purchases are not open right now. Your unlocked cosmetics stay available.'
                                         : 'The Host has not made BeauBucks available for this party.'}
                             </div>
                         )}
@@ -5821,9 +5878,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const reactionCostLabel = useCallback((cost = 0) => formatRoomActionDisclosure({
         intent: 'performer',
         cost,
-        currencyLabel: beauBucksIntentEnabled ? 'BB' : roomCurrencyPresentation.shortLabel,
+        currencyLabel: roomCurrencyPresentation.shortLabel,
         free: coHostFreeReactions,
-    }), [beauBucksIntentEnabled, coHostFreeReactions, roomCurrencyPresentation.shortLabel]);
+    }), [coHostFreeReactions, roomCurrencyPresentation.shortLabel]);
     const renderReactionCooldownFill = useCallback((
         reactionKey = '',
         fillClass = 'bg-white/20',
@@ -7892,9 +7949,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (takeoverClapVotingActive && safeType === 'clap') nextCost = 0;
         if (coHostFreeReactions) nextCost = 0;
         if (!currentSinger && !applauseModeActive && !takeoverClapVotingActive) return toast('Reactions wake up once someone is on stage or a scene goes live.');
-        const useBeauBucks = nextCost > 0 && beauBucksIntentEnabled && !coHostUnlimitedCredits;
         if (!user) return toast('Join the Room before sending reactions.');
-        if (!useBeauBucks && !canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} ${roomCurrencyPresentation.shortLabel}!`);
+        if (!canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} ${roomCurrencyPresentation.shortLabel}!`);
         const now = Date.now();
         const cooldownUntil = Number(reactionCooldownByType?.[safeType] || 0);
         if (reactionTapCooldownMs > 0 && cooldownUntil > now) {
@@ -7903,32 +7959,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         }
         try {
             let chargedCost = nextCost;
-            if (useBeauBucks) {
-                const spendResult = await requestBeauBucksReactionSpend({
-                    reactionType: safeType,
-                    retryKey: `reaction:${safeType}:${currentSinger?.id || 'scene'}`,
-                    payload: {
-                        performanceId: currentSinger?.id || '',
-                        canonicalSongId: currentSinger?.canonicalSongId || '',
-                        backingTrackId: currentSinger?.backingTrackId || currentSinger?.trackId || '',
-                        performerUid: currentSinger?.singerUid || '',
-                    },
-                });
-                if (spendResult?.outcome === 'insufficient_balance') {
-                    toast(`Need ${nextCost} BB!`);
-                    setShowPoints(true);
-                    return;
-                }
-                if (spendResult?.outcome === 'account_restricted') {
-                    toast('BeauBucks spending is unavailable for this account.');
-                    return;
-                }
-                if (spendResult?.outcome !== 'accepted') {
-                    toast('Could not confirm the BeauBucks charge. Try that reaction again.');
-                    return;
-                }
-                chargedCost = Math.max(0, Number(spendResult.chargedAmount || nextCost) || 0);
-            } else if (nextCost > 0 && spendAuthority === 'server_canary' && !coHostUnlimitedCredits) {
+            if (nextCost > 0 && spendAuthority === 'server_canary' && !coHostUnlimitedCredits) {
                 const spendResult = await requestServerSpend({
                     kind: 'reaction',
                     retryKey: `reaction:${safeType}:${currentSinger?.id || 'scene'}`,
@@ -7969,7 +8000,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setTimeout(() => setLocalReactions(prev => prev.filter(r => r.id !== id)), 4000);
             toast(getReactionFeedback({
                 cost: chargedCost,
-                currencyLabel: useBeauBucks ? 'BB' : roomCurrencyPresentation.shortLabel,
+                currencyLabel: roomCurrencyPresentation.shortLabel,
                 performerName: takeoverClapVotingActive ? '' : currentSinger?.singerName,
                 roomInfluence: takeoverClapVotingActive,
             }));
@@ -11604,6 +11635,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         const lockedAvatar = avatarUnlockModal.item || {};
         const unlockType = String(avatarUnlockModal.status?.unlockType || lockedAvatar?.unlock?.type || '').trim().toLowerCase();
         const pointsCost = Math.max(0, Number(lockedAvatar?.unlock?.cost || 0));
+        const beauBucksCost = unlockType === 'beaubucks' ? pointsCost : 0;
+        const beauBucksBalance = Math.max(0, Number(visibleBeauBucksWalletState.wallet?.balance || 0) || 0);
         const modalEffectivePoints = coHostUnlimitedCredits ? Number.POSITIVE_INFINITY : Math.max(0, getEffectivePoints());
         const canBuyWithPoints = unlockType === 'points' && !!user && (coHostUnlimitedCredits || modalEffectivePoints >= pointsCost);
         const canNotAffordWithPoints = unlockType === 'points' && !coHostUnlimitedCredits && modalEffectivePoints < pointsCost;
@@ -11635,6 +11668,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 : `You have ${modalEffectivePoints} PTS. Earn or buy more points later if you want to unlock this one.`}
                         </div>
                     ) : null}
+                    {unlockType === 'beaubucks' ? (
+                        <div className="mt-3 flex items-center justify-between rounded-2xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-4 py-3">
+                            <span className="text-sm font-black text-fuchsia-50">Keep forever</span>
+                            <CurrencyAmount currency="beaubucks" amount={beauBucksCost} size="sm" />
+                        </div>
+                    ) : null}
                     {unlockType === 'vip' ? (
                         <div className="mt-3 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-500/10 px-4 py-3 text-sm text-zinc-200">
                             {premiumAccessLabel} avatars are optional. You can keep going as a guest right now and link or verify later if you want the premium pack.
@@ -11647,7 +11686,25 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     ) : null}
                     <div className="mt-5 flex gap-2">
                         <button onClick={() => setAvatarUnlockModal(null)} className="flex-1 bg-zinc-700 py-3 rounded-xl font-bold">Keep Guest Avatar</button>
-                        {canBuyWithPoints ? (
+                        {unlockType === 'beaubucks' ? (
+                            <button
+                                data-feature-id="unlock-premium-profile-emoji"
+                                onClick={async () => {
+                                    const result = await purchasePremiumEntitlement(lockedAvatar?.unlock?.productId);
+                                    if (!['accepted', 'already_owned'].includes(String(result?.outcome || ''))) return;
+                                    setProfile((current) => ({
+                                        ...(current || {}),
+                                        unlockedEmojis: [...new Set([...(current?.unlockedEmojis || []), lockedAvatar.id])],
+                                    }));
+                                    setForm((current) => ({ ...current, emoji: lockedAvatar.emoji || current.emoji }));
+                                    setAvatarUnlockModal(null);
+                                }}
+                                disabled={!beauBucksRoomCandidate || visibleBeauBucksWalletState.status !== 'ready' || premiumUnlockPendingId === lockedAvatar?.unlock?.productId}
+                                className="flex-1 rounded-xl bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 py-3 font-black text-black disabled:opacity-45"
+                            >
+                                {beauBucksBalance < beauBucksCost ? 'Get BeauBucks' : premiumUnlockPendingId ? 'Unlocking...' : 'Unlock'}
+                            </button>
+                        ) : canBuyWithPoints ? (
                             <button
                                 onClick={async () => {
                                     try {
@@ -14754,7 +14811,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                  {coHostReactionPolicyLabel}
                                              </div>
                                          ) : null}
-                                         <div className="grid grid-cols-2 gap-4">{['rocket','diamond','money','crown'].map(t => {
+                                         {bonusReactionTypes.length ? <div className="grid grid-cols-2 gap-4">{bonusReactionTypes.map(t => {
                                              const accent = {
                                                  rocket: 'border-pink-400/80 text-pink-200 bg-pink-500/10 shadow-[0_0_24px_rgba(236,72,153,0.45)]',
                                                  diamond: 'border-cyan-300/80 text-cyan-200 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.45)]',
@@ -14763,25 +14820,25 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                              }[t];
                                              const cost = REACTION_COSTS[t];
                                              return (
-                                             <button key={t} disabled={isReactionCoolingDown(t) && premiumReactionsUnlocked} onClick={()=>premiumReactionsUnlocked ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all ${premiumReactionsUnlocked ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'} ${isReactionCoolingDown(t) && premiumReactionsUnlocked ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
-                                                    {premiumReactionsUnlocked ? renderReactionCooldownFill(t, 'bg-cyan-300/18', 'border-white/15 bg-black/55 text-cyan-50') : null}
+                                             <button key={t} disabled={isReactionCoolingDown(t)} onClick={()=>react(t, cost)} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent} ${isReactionCoolingDown(t) ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
+                                                    {renderReactionCooldownFill(t, 'bg-cyan-300/18', 'border-white/15 bg-black/55 text-cyan-50')}
                                                     <span className={`${getReactionOptionIconClass(t)} mb-2`}>{getEmojiChar(t)}</span>
                                                     <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'BLOOM'}[t]}</span>
                                                     <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
                                                          {reactionCostLabel(cost)}
                                                      </div>
-                                                     {!premiumReactionsUnlocked && (
-                                                         <div className="absolute top-2 right-2 text-[11px] text-cyan-200 bg-black/60 border border-cyan-500/50 px-2 py-1 rounded-full flex items-center gap-1 leading-none">
-                                                             <i className="fa-solid fa-lock text-[11px]"></i>
-                                                            <span className="leading-none">{allowsDonationAccess ? supporterAccessLabel : premiumAccessLabel}</span>
-                                                         </div>
-                                                     )}
                                                  </button>
                                              );
-                                         })}</div>
-                                         {!premiumReactionsUnlocked && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">
-                                             {allowsDonationAccess ? `UNLOCK ${supporterAccessLabel.toUpperCase()} PERKS` : `UNLOCK ${premiumAccessLabel.toUpperCase()} WITH EMAIL +5000 PTS ${emoji(0x1F4E7)}`}
-                                         </button>}
+                                         })}</div> : null}
+                                         {reactionSlotCount === 4 ? (
+                                             <button onClick={()=>openVipUpgrade('email')} className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 text-left shadow-[0_0_22px_rgba(34,211,238,0.12)]">
+                                                 <span><span className="block font-black text-white">Add reaction slot 5</span><span className="block text-xs text-cyan-100/65">Create your BeauRocks account</span></span><span className="text-4xl">{getReactionEmoji('rocket')}</span>
+                                             </button>
+                                         ) : reactionSlotCount === 5 && sixthReactionSlotProduct ? (
+                                             <button onClick={() => { setShowPoints(true); }} className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-4 text-left shadow-[0_0_22px_rgba(217,70,239,0.14)]">
+                                                 <span><span className="block font-black text-white">Add reaction slot 6</span><span className="block text-xs text-fuchsia-100/65">Royal included</span></span><CurrencyAmount currency="beaubucks" amount={sixthReactionSlotProduct.cost} size="sm" />
+                                             </button>
+                                         ) : null}
                                      </>
                                  )}
                              </>

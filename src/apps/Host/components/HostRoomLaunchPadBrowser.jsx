@@ -62,19 +62,19 @@ const LAUNCH_ECONOMY_OPTIONS = Object.freeze([
         id: 'beaubucks',
         label: 'BeauBucks',
         eyebrow: 'Premium',
-        summary: 'Give each guest a clear starting balance for boosts, voting, and premium room interactions.',
+        summary: 'Open permanent profile emoji and reaction-slot cosmetics for signed-in guests.',
     },
     {
         id: 'event',
         label: 'Ticket Value',
         eyebrow: 'Ticketed',
-        summary: 'Translate admission into a defined BeauBucks balance that guests can allocate during the event.',
+        summary: 'Turn admission into a clear Points grant for participation during this event.',
     },
     {
         id: 'fundraiser',
         label: 'Fundraiser',
         eyebrow: 'Support',
-        summary: 'Connect BeauBucks and support actions to performers, campaigns, or the room.',
+        summary: 'Keep support actions clear and separate from Points and BeauBucks cosmetics.',
     },
     {
         id: 'custom',

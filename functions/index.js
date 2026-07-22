@@ -172,6 +172,18 @@ const {
   resolveReactionSpendCost,
 } = require("./lib/beauBucksSpend");
 const { buildSpendOperationReadiness } = require("./lib/beauBucksSpendReadiness");
+const premiumCosmeticCatalog = require("./lib/premiumCosmeticCatalog.json");
+const {
+  BEAUBUCKS_ENTITLEMENT_COLLECTION,
+  BEAUBUCKS_ENTITLEMENT_OPERATION_COLLECTION,
+  BEAUBUCKS_ENTITLEMENT_SCHEMA_VERSION,
+  buildEntitlementDocumentId,
+  buildEntitlementOperationId,
+  getPremiumProduct,
+  getReactionSlotCount,
+  listPublicPremiumProducts,
+  normalizeEntitlementIds,
+} = require("./lib/beauBucksEntitlements");
 const { buildPublicVibeIndexProjection } = require("./lib/publicVibeIndex");
 const {
   buildPublicVibeEvidenceRecord,
@@ -20098,6 +20110,13 @@ const AUDIENCE_AVATAR_CATALOG = Object.freeze([
   Object.freeze({ id: "twilight_sparkle", emoji: String.fromCodePoint(0x1F48E), unlock: Object.freeze({ type: "vip" }) }),
   Object.freeze({ id: "crown", emoji: String.fromCodePoint(0x1F451), unlock: Object.freeze({ type: "vip" }) }),
   Object.freeze({ id: "moonface", emoji: String.fromCodePoint(0x1F31A), unlock: Object.freeze({ type: "vip" }) }),
+  ...Object.values(premiumCosmeticCatalog.products || {})
+    .filter((product) => product?.kind === "profile_emoji" && product?.publicOffer === true)
+    .map((product) => Object.freeze({
+      id: String(product.avatarId || "").trim(),
+      emoji: String.fromCodePoint(...product.emojiCodePoints),
+      unlock: Object.freeze({ type: "beaubucks", productId: product.id, cost: product.cost }),
+    })),
 ]);
 const AUDIENCE_AVATAR_BY_EMOJI = new Map(AUDIENCE_AVATAR_CATALOG.map((item) => [item.emoji, item]));
 const getAudienceAvatarRecord = (avatar = "") => AUDIENCE_AVATAR_BY_EMOJI.get(String(avatar || "").trim()) || null;
@@ -20116,6 +20135,7 @@ const getAudienceAvatarSelectionState = (avatar = "", userData = {}) => {
   if (unlock.type === "first_performance") return { allowed: !!userData.firstPerformanceUnlocked || unlocked.includes(avatarRecord.id), reason: "first_performance" };
   if (unlock.type === "guitar_winner") return { allowed: unlocked.includes(avatarRecord.id), reason: "guitar_winner" };
   if (unlock.type === "points") return { allowed: unlocked.includes(avatarRecord.id), reason: "points" };
+  if (unlock.type === "beaubucks") return { allowed: unlocked.includes(avatarRecord.id), reason: "beaubucks" };
   return { allowed: false, reason: "unsupported" };
 };
 const sanitizeAudienceAvatar = (avatar = "", userData = {}) => {
@@ -21029,6 +21049,7 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
   const experienceEnabled = isRoomBeauBucksExperienceEnabled({ roomCode, roomData });
   const checkoutEnabled = accountEligible && experienceEnabled && isBeauBucksCheckoutEnabled();
   const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
+  const entitlementIds = normalizeEntitlementIds(accountData.entitlementIds);
   const starterPackCandidate = checkoutEnabled ? getBeauBucksPack("beaubucks_starter_1200") : null;
   const starterPack = starterPackCandidate?.publicOffer === true ? starterPackCandidate : null;
   const purchaseLimitRef = db.collection(BEAUBUCKS_PURCHASE_LIMIT_COLLECTION).doc(accountId);
@@ -21061,9 +21082,156 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
       ? purchaseReadiness?.reasonCode || "purchase_unavailable"
       : !accountEligible ? "beaurocks_account_required" : "",
     accountStatus: String(accountData.status || "active"),
-    allowedSpendKinds: experienceEnabled ? [SPEND_KINDS.reaction] : [],
+    entitlementIds,
+    reactionSlotCount: getReactionSlotCount({ accountEligible, entitlementIds }),
+    premiumCatalog: listPublicPremiumProducts(),
+    allowedSpendKinds: authorityEnabled
+      ? [...(experienceEnabled ? [SPEND_KINDS.reaction] : []), "durable_cosmetic_unlock"]
+      : [],
     pack: starterPack,
   };
+});
+
+exports.purchaseBeauBucksEntitlement = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "purchase_beaubucks_entitlement", { perMinute: 30, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "purchase_beaubucks_entitlement");
+  const callerUid = requireAuth(request);
+  if (!requestHasNonAnonymousAccount(request)) {
+    throw new HttpsError("failed-precondition", "Sign in to unlock BeauBucks cosmetics.");
+  }
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const product = getPremiumProduct(request.data?.productId || "");
+  const clientOperationId = String(request.data?.clientOperationId || "").trim();
+  if (!roomCode) throw new HttpsError("invalid-argument", "roomCode is required.");
+  if (!product) throw new HttpsError("invalid-argument", "That premium unlock is not available.");
+
+  let operationDocumentId;
+  try {
+    operationDocumentId = buildEntitlementOperationId({ uid: callerUid, clientOperationId });
+  } catch {
+    throw new HttpsError("invalid-argument", "clientOperationId is invalid.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const userRef = db.collection("users").doc(callerUid);
+  const accountId = buildBeauBucksAccountId({ uid: callerUid });
+  const accountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(accountId);
+  const entitlementDocumentId = buildEntitlementDocumentId({ uid: callerUid, productId: product.id });
+  const entitlementRef = db.collection(BEAUBUCKS_ENTITLEMENT_COLLECTION).doc(entitlementDocumentId);
+  const operationRef = db.collection(BEAUBUCKS_ENTITLEMENT_OPERATION_COLLECTION).doc(operationDocumentId);
+
+  return db.runTransaction(async (tx) => {
+    const [operationSnap, roomSnap, roomUserSnap, accountSnap, entitlementSnap] = await Promise.all([
+      tx.get(operationRef), tx.get(roomRef), tx.get(roomUserRef), tx.get(accountRef), tx.get(entitlementRef),
+    ]);
+    if (operationSnap.exists) {
+      const prior = operationSnap.data() || {};
+      return { ...prior, duplicate: true };
+    }
+    if (!roomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
+    if (!roomUserSnap.exists) throw new HttpsError("failed-precondition", "Join the Room before unlocking cosmetics.");
+    const roomData = roomSnap.data() || {};
+    if (!isRoomBeauBucksAuthorityEnabled({ roomCode, roomData })) {
+      throw new HttpsError("failed-precondition", "BeauBucks unlocks are not available here yet.");
+    }
+
+    const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
+    const balanceBefore = Math.max(0, Math.floor(Number(accountData.balance || 0) || 0));
+    const accountStatus = String(accountData.status || "active");
+    const previousEntitlementIds = normalizeEntitlementIds(accountData.entitlementIds);
+    const alreadyOwned = entitlementSnap.exists || previousEntitlementIds.includes(product.id);
+    const outcome = alreadyOwned ? "already_owned"
+      : accountStatus === "restricted" ? "account_restricted"
+        : product.cost > balanceBefore ? "insufficient_balance" : "accepted";
+    const chargedAmount = outcome === "accepted" ? product.cost : 0;
+    const balanceAfter = balanceBefore - chargedAmount;
+    const entitlementIds = normalizeEntitlementIds([
+      ...previousEntitlementIds,
+      ...((alreadyOwned || outcome === "accepted") ? [product.id] : []),
+    ]);
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+    const result = {
+      ok: outcome === "accepted" || outcome === "already_owned",
+      outcome,
+      duplicate: false,
+      authority: "account_entitlement_ledger",
+      currency: "beaubucks",
+      roomCode,
+      productId: product.id,
+      productKind: product.kind,
+      chargedAmount,
+      balanceAfter,
+      entitlementIds,
+      reactionSlotCount: getReactionSlotCount({ accountEligible: true, entitlementIds }),
+    };
+
+    tx.create(operationRef, {
+      schemaVersion: BEAUBUCKS_ENTITLEMENT_SCHEMA_VERSION,
+      operationDocumentId,
+      clientOperationId,
+      uid: callerUid,
+      accountId,
+      ...result,
+      createdAt: serverNow,
+      updatedAt: serverNow,
+    });
+    if (outcome === "accepted") {
+      tx.create(entitlementRef, {
+        schemaVersion: BEAUBUCKS_ENTITLEMENT_SCHEMA_VERSION,
+        entitlementDocumentId,
+        uid: callerUid,
+        accountId,
+        productId: product.id,
+        productKind: product.kind,
+        sourceRoomCode: roomCode,
+        cost: product.cost,
+        currency: "beaubucks",
+        status: "active",
+        createdAt: serverNow,
+        updatedAt: serverNow,
+      });
+      tx.set(accountRef, {
+        schemaVersion: BEAUBUCKS_AUTHORITY_SCHEMA_VERSION,
+        accountId,
+        uid: callerUid,
+        currency: "beaubucks",
+        scope: "account",
+        balance: balanceAfter,
+        status: accountStatus,
+        entitlementIds: admin.firestore.FieldValue.arrayUnion(product.id),
+        lifetimeSpent: admin.firestore.FieldValue.increment(product.cost),
+        lastActivityRoomCode: roomCode,
+        lastEntryAt: serverNow,
+        updatedAt: serverNow,
+      }, { merge: true });
+      if (product.kind === "profile_emoji" && product.avatarId) {
+        tx.set(userRef, {
+          uid: callerUid,
+          unlockedEmojis: admin.firestore.FieldValue.arrayUnion(product.avatarId),
+          updatedAt: serverNow,
+        }, { merge: true });
+      }
+      createAuthoritativeLedgerEntry({
+        writer: tx,
+        db,
+        idempotencyKey: `beaubucks_entitlement:${operationDocumentId}`,
+        roomCode,
+        uid: callerUid,
+        eventCredits: roomData.eventCredits || { enabled: true, presetId: "beaubucks" },
+        walletScope: "account",
+        type: "cosmetic_unlock",
+        amount: product.cost,
+        direction: "debit",
+        source: { provider: "beaurocks", sourceId: entitlementDocumentId, sourceCollection: BEAUBUCKS_ENTITLEMENT_COLLECTION },
+        attribution: { productId: product.id, productKind: product.kind },
+        serverTimestamp: serverNow,
+      });
+    }
+    return result;
+  });
 });
 
 exports.spendAudienceBeauBucks = onCall({ cors: true }, async (request) => {

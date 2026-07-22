@@ -176,7 +176,7 @@ async function run() {
   assert.equal(offWallet.hostEnabledTonight, false);
   assert.equal(offWallet.experienceEnabled, false);
   assert.equal(offWallet.unavailableReason, 'host_disabled');
-  assert.deepEqual(offWallet.allowedSpendKinds, []);
+  assert.deepEqual(offWallet.allowedSpendKinds, ['durable_cosmetic_unlock']);
   await expectHttpsError(
     () => spendAudienceBeauBucks.run(requestFor(USER_UID, {
       roomCode: ROOM_CODE,
@@ -223,7 +223,7 @@ async function run() {
   assert.equal(wallet.experienceEnabled, true);
   assert.equal(wallet.unavailableReason, '');
   assert.equal(wallet.canPurchase, false);
-  assert.deepEqual(wallet.allowedSpendKinds, ['reaction']);
+  assert.deepEqual(wallet.allowedSpendKinds, ['reaction', 'durable_cosmetic_unlock']);
 
   const spendRequest = requestFor(USER_UID, {
     roomCode: ROOM_CODE,

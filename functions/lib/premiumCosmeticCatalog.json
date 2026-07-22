@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "currency": "beaubucks",
+  "defaultReactionSlots": 4,
+  "accountReactionSlots": 5,
+  "maxReactionSlots": 6,
+  "products": {
+    "profile_disco_ball": {
+      "id": "profile_disco_ball",
+      "kind": "profile_emoji",
+      "avatarId": "disco_ball",
+      "label": "Disco Ball",
+      "flavor": "Mirrorball energy for every chorus.",
+      "emojiCodePoints": [129705],
+      "cost": 120,
+      "publicOffer": true
+    },
+    "profile_crystal_ball": {
+      "id": "profile_crystal_ball",
+      "kind": "profile_emoji",
+      "avatarId": "crystal_ball",
+      "label": "Crystal Ball",
+      "flavor": "Already knows the encore.",
+      "emojiCodePoints": [128302],
+      "cost": 140,
+      "publicOffer": true
+    },
+    "profile_peacock": {
+      "id": "profile_peacock",
+      "kind": "profile_emoji",
+      "avatarId": "peacock",
+      "label": "Peacock",
+      "flavor": "Maximum entrance, zero apologies.",
+      "emojiCodePoints": [129434],
+      "cost": 160,
+      "publicOffer": true
+    },
+    "profile_comet": {
+      "id": "profile_comet",
+      "kind": "profile_emoji",
+      "avatarId": "comet",
+      "label": "Comet",
+      "flavor": "One bright pass through the room.",
+      "emojiCodePoints": [9732, 65039],
+      "cost": 180,
+      "publicOffer": true
+    },
+    "profile_black_cat": {
+      "id": "profile_black_cat",
+      "kind": "profile_emoji",
+      "avatarId": "black_cat",
+      "label": "Black Cat",
+      "flavor": "Midnight luck with perfect timing.",
+      "emojiCodePoints": [128008, 8205, 11035],
+      "cost": 200,
+      "publicOffer": true
+    },
+    "profile_shooting_star": {
+      "id": "profile_shooting_star",
+      "kind": "profile_emoji",
+      "avatarId": "shooting_star",
+      "label": "Shooting Star",
+      "flavor": "A rare wish with headliner glow.",
+      "emojiCodePoints": [127756],
+      "cost": 220,
+      "publicOffer": true
+    },
+    "reaction_slot_6": {
+      "id": "reaction_slot_6",
+      "kind": "reaction_slot",
+      "label": "Royal Sixth Slot",
+      "flavor": "Equip one more reaction and bring Royal with it.",
+      "slotCount": 6,
+      "grantedReactionType": "crown",
+      "cost": 300,
+      "publicOffer": true
+    }
+  },
+  "plannedCosmeticKinds": [
+    "reaction_unlock",
+    "profile_frame",
+    "nameplate_style",
+    "public_tv_trail",
+    "room_recap_flair"
+  ]
+}

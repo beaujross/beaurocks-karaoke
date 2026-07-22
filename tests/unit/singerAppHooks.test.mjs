@@ -398,11 +398,10 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     /const premiumReactionsUnlocked = hasPremiumRoomAccess \|\| premiumReactionAccess\.allowed;/,
     "SingerApp should unlock featured voting reactions from either premium access or room audience access policy",
   );
-  assert.match(
-    source,
-    /premiumReactionsUnlocked \? react\(t, cost\) : openVipUpgrade\(\)/,
-    "SingerApp featured reaction buttons should use the room access policy instead of only VIP/support state",
-  );
+  assert.match(source, /getAudienceReactionSlotCount/);
+  assert.match(source, /const bonusReactionTypes = \['rocket', 'crown'\]\.slice/);
+  assert.match(source, /const reactionSlotCount = premiumReactionsUnlocked \? 6 : baseReactionSlotCount/);
+  assert.match(source, /data-feature-id="unlock-reaction-slot-6"/);
   assert.match(
     source,
     /grid w-full gap-2 \$\{isStreamlinedAudienceShell \? 'grid-cols-2' : 'grid-cols-3'\}/,

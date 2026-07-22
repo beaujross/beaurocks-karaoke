@@ -293,21 +293,24 @@ export const SUBSCRIPTION_TIERS = {
 // ============================================
 
 export const PREMIUM_CURRENCY = {
-    name: "Stars",
-    symbol: "⭐",
+    id: "beaubucks",
+    name: "BeauBucks",
+    symbol: "B$",
     canBuyFamePoints: false, // NO pay-to-win
     usesFor: [
         "Cosmetic avatars",
+        "Reaction slots",
+        "Reaction styles",
         "Custom profile frames",
         "Special effects during gameplay",
         "Exclusive username colors",
         "Profile badges"
     ],
     pricingPackages: [
-        { stars: 100, price: 0.99 },
-        { stars: 500, price: 4.99 },
-        { stars: 1200, price: 9.99 },
-        { stars: 2700, price: 19.99 }
+        { beaubucks: 100, price: 0.99 },
+        { beaubucks: 500, price: 4.99 },
+        { beaubucks: 1200, price: 9.99 },
+        { beaubucks: 2700, price: 19.99 }
     ]
 };
 

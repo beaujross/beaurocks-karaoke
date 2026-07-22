@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { FAME_LEVELS } from '../lib/fameConstants';
+import { CurrencyAmount, CurrencyIcon } from './CurrencyToken';
 
 export function FameLevelBadge({ 
   level = 0, 
@@ -44,13 +45,13 @@ export function FameLevelBadge({
   return (
     <div className="flex items-center gap-2">
       <div className={`bg-gradient-to-br ${getGradient(level)} ${containerClass} text-white shadow-lg`}>
-        {level}
+        <span className="flex flex-col items-center leading-none"><span className="text-[0.55em]">LV</span>{level}</span>
       </div>
       {showName && size !== 'xs' && (
         <div className="flex flex-col">
           <span className="font-semibold text-sm truncate">{levelData.name}</span>
           {showPoints && (
-            <span className="text-xs text-gray-600">{totalPoints} pts</span>
+            <CurrencyAmount currency="fame" amount={totalPoints} size="xs" className="text-xs" />
           )}
         </div>
       )}
@@ -71,8 +72,8 @@ export function FameLevelCard({ level = 0, totalPoints = 0, progressToNext = 0 }
       {/* Level Display */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-3xl font-bold">
-            {level}
+          <div className="w-16 h-16 rounded-full border border-amber-200/50 bg-gradient-to-br from-amber-200 via-yellow-400 to-orange-500 flex flex-col items-center justify-center text-xl font-black text-black shadow-[0_0_24px_rgba(251,191,36,0.25)]">
+            <span className="text-[9px] tracking-[0.18em]">LEVEL</span>{level}
           </div>
           <div>
             <h2 className="text-2xl font-bold">{currentLevel.name}</h2>
@@ -82,10 +83,10 @@ export function FameLevelCard({ level = 0, totalPoints = 0, progressToNext = 0 }
       </div>
 
       {/* Points Info */}
-      <div className="mb-4 p-3 bg-slate-700 bg-opacity-50 rounded">
-        <div className="flex justify-between text-sm mb-2">
-          <span className="text-gray-300">Total Fame Points</span>
-          <span className="font-semibold">{totalPoints}</span>
+      <div className="mb-4 rounded-2xl border border-amber-300/25 bg-amber-400/10 p-3">
+        <div className="flex items-center justify-between text-sm">
+          <span className="flex items-center gap-2 text-amber-100"><CurrencyIcon currency="fame" size="sm" /> Fame</span>
+          <CurrencyAmount currency="fame" amount={totalPoints} size="xs" />
         </div>
       </div>
 
@@ -113,7 +114,7 @@ export function FameLevelCard({ level = 0, totalPoints = 0, progressToNext = 0 }
       {/* Max Level */}
       {level === 20 && (
         <div className="mt-4 p-3 bg-gradient-to-r from-yellow-500 to-orange-500 rounded text-sm font-bold text-center">
-          🏆 ULTIMATE LEGEND - MAX LEVEL REACHED
+          ULTIMATE LEGEND · MAX LEVEL
         </div>
       )}
     </div>
