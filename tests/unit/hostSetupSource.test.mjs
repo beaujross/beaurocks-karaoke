@@ -283,23 +283,23 @@ test('room formats are optional while room creation centers on defaults', () => 
   );
   assert.match(
     launchPadBrowserSource,
-    /How should points work\?/,
+    /Choose tonight&apos;s rewards/,
     'Room creation should make the launch points and rewards model a first-class decision.',
   );
   assert.match(
     launchPadBrowserSource,
-    /Just for Fun[\s\S]*BeauBucks[\s\S]*Ticket Value[\s\S]*Fundraiser[\s\S]*Custom Rules/,
+    /Just for Fun[\s\S]*Ticket Value[\s\S]*Fundraiser[\s\S]*Custom Rules/,
     'Room creation should expose plain-language participation, premium, ticket, fundraiser, and advanced economy choices.',
   );
   assert.match(
     launchPadBrowserSource,
-    /if \(mode === 'beaubucks'\)[\s\S]*presetId: 'beaubucks',[\s\S]*eventId: 'beaubucks',[\s\S]*eventLabel: 'BeauBucks',[\s\S]*generalAdmissionPoints: 100/,
-    'The BeauBucks outcome should compile to a stable premium-currency launch payload.',
+    /if \(mode === 'beaubucks'\)[\s\S]*presetId: 'beaubucks',[\s\S]*eventId: 'beaubucks',[\s\S]*eventLabel: 'Points \+ BeauBucks',[\s\S]*generalAdmissionPoints: 100[\s\S]*beauBucksEnabledTonight: true/,
+    'The BeauBucks outcome should keep Points in live play while opening account-owned cosmetics.',
   );
   assert.match(
     launchPadBrowserSource,
-    /LAUNCH_ECONOMY_OPTIONS\.filter\(\(option\) => showAdvancedSetup \|\| option\.id !== 'custom'\)/,
-    'Custom economy rules should stay behind Advanced Setup.',
+    /LAUNCH_ECONOMY_OPTIONS\.filter\(\(option\) => option\.id !== 'beaubucks' && \(showAdvancedSetup \|\| option\.id !== 'custom'\)\)/,
+    'Custom economy rules stay advanced and BeauBucks appears only after server-authorized Room creation.',
   );
   assert.match(
     launchPadBrowserSource,

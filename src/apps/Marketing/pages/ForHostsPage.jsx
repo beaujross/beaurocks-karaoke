@@ -35,9 +35,9 @@ const ForHostsPage = ({
   const queueCount = Math.max(0, Number(pendingHostApplicationsCount || 0));
   const heroSignals = [
     {
-      label: "Reviewed access",
-      title: queueCount > 0 ? `${queueCount} applications already in review` : "Applications are reviewed in batches",
-      copy: "Host access opens after BeauRocks reviews the account, not from a self-serve unlock.",
+      label: "Private parties",
+      title: "Your Room, your pace",
+      copy: "Host-Led and Assisted Host controls make at-home karaoke and private events easy to run without a professional operator.",
     },
     {
       label: "Approved hosts",
@@ -45,9 +45,9 @@ const ForHostsPage = ({
       copy: "Queue, TV, and join flow stay in one operating surface once access is approved.",
     },
     {
-      label: "Live network",
-      title: liveListingsCount > 0 ? `${liveListingsCount.toLocaleString()} live listings already running` : "Live rooms already running on BeauRocks",
-      copy: "The host queue feeds into an active network of nights that are already live for guests.",
+      label: "Reviewed access",
+      title: queueCount > 0 ? `${queueCount} applications already in review` : "Applications are reviewed in batches",
+      copy: liveListingsCount > 0 ? `${liveListingsCount.toLocaleString()} public listings are already helping guests find karaoke while Host access expands carefully.` : "Host access expands in reviewed batches while BeauRocks protects Room reliability and support quality.",
     },
   ];
 
@@ -205,11 +205,12 @@ const ForHostsPage = ({
     <PersonaPageFrame theme="host">
       <article className="mk3-persona-simple-hero mk3-persona-simple-hero-host">
         <div className="mk3-persona-simple-copy">
-          <div className="mk3-rebuild-kicker">For hosts</div>
-          <h1>Join the BeauRocks host waitlist.</h1>
+          <div className="mk3-rebuild-kicker">For at-home and private-party hosts</div>
+          <h1>Put the karaoke night in your hands.</h1>
           <p>
-            Host access opens in reviewed batches. Apply once, then come back to the same
-            account when BeauRocks unlocks the dashboard.
+            Run the queue, Public TV, guest phones, and room energy from Host Dashboard—or use
+            Assisted Host when you want the party to keep moving. Access opens in reviewed batches.
+            Apply once, then come back to the same account when BeauRocks approves it.
           </p>
           <div className="mk3-demand-pill-row" aria-label="Host access signals">
             <span>Approved hosts only</span>

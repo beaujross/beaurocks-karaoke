@@ -60,9 +60,9 @@ const LAUNCH_ECONOMY_OPTIONS = Object.freeze([
     },
     {
         id: 'beaubucks',
-        label: 'BeauBucks',
+        label: 'Points + BeauBucks',
         eyebrow: 'Premium',
-        summary: 'Open permanent profile emoji and reaction-slot cosmetics for signed-in guests.',
+        summary: 'Keep live play on Points and open permanent BeauBucks cosmetics for signed-in guests.',
     },
     {
         id: 'event',
@@ -386,15 +386,13 @@ const HostRoomLaunchPadBrowser = ({
         setEventCreditsConfig((prev) => {
             if (mode === 'standard') return applyEventCreditsPreset('off', prev);
             if (mode === 'event') return applyEventCreditsPreset('ticketed_event', prev);
-            if (mode === 'fundraiser') {
-                const next = applyEventCreditsPreset('custom_event_credits', prev);
             if (mode === 'beaubucks') {
                 const next = applyEventCreditsPreset('custom_event_credits', prev);
                 return {
                     ...next,
                     presetId: 'beaubucks',
                     eventId: 'beaubucks',
-                    eventLabel: 'BeauBucks',
+                    eventLabel: 'Points + BeauBucks',
                     generalAdmissionPoints: 100,
                     vipBonusPoints: 0,
                     skipLineBonusPoints: 0,
@@ -402,8 +400,11 @@ const HostRoomLaunchPadBrowser = ({
                     socialPromoPoints: 0,
                     timedLobbyEnabled: false,
                     supportPoints: 0,
+                    beauBucksEnabledTonight: true,
                 };
             }
+            if (mode === 'fundraiser') {
+                const next = applyEventCreditsPreset('custom_event_credits', prev);
                 return {
                     ...next,
                     eventLabel: next.eventLabel || launchRoomSummaryName || 'Fundraiser Room',
@@ -1286,13 +1287,16 @@ const HostRoomLaunchPadBrowser = ({
                             <div className="space-y-3">
                                 <section className="rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3">
                                     <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/62">Step 3 - Points & rewards</div>
-                                    <div className="mt-1 text-lg font-black text-white">How should points work?</div>
-                                    <div className="mt-1 text-sm text-fuchsia-100/68">Pick the launch economy. Host gifts, crowd rewards, and refill pacing can be adjusted quickly from the host panel.</div>
+                                    <div className="mt-1 text-lg font-black text-white">Choose tonight&apos;s rewards</div>
+                                    <div className="mt-1 text-sm text-fuchsia-100/68">Points run live participation. You can also open account-owned BeauBucks cosmetics, ticket perks, or fundraiser support without changing performance scores.</div>
                                     <div className="mt-3 grid gap-2">
-                                        {LAUNCH_ECONOMY_OPTIONS.filter((option) => showAdvancedSetup || option.id !== 'custom').map((option) => {
+                                        {LAUNCH_ECONOMY_OPTIONS.filter((option) => option.id !== 'beaubucks' && (showAdvancedSetup || option.id !== 'custom')).map((option) => {
                                             const selected = option.id === launchEconomyMode;
                                             return (<button key={option.id} type="button" onClick={() => applyLaunchEconomy(option.id)} className={`rounded-xl border px-3 py-3 text-left transition ${selected ? 'border-fuchsia-300/45 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/72 hover:border-fuchsia-300/24 hover:bg-fuchsia-500/8'}`}><div className="flex items-center justify-between gap-3"><div className="text-sm font-semibold">{option.label}</div><span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${selected ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/58'}`}>{option.eyebrow}</span></div><div className="mt-1 text-xs leading-5 opacity-82">{option.summary}</div></button>);
                                         })}
+                                    </div>
+                                    <div className="mt-3 rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/[0.06] px-3 py-2 text-xs leading-5 text-fuchsia-100/72">
+                                        Eligible Rooms get one separate <strong className="text-fuchsia-50">BeauBucks cosmetics</strong> switch after creation. It never changes Points or performance scoring.
                                     </div>
                                     <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3" data-launch-economy-preview="true">
                                         <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/58">What guests experience</div>

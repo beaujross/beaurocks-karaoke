@@ -73,8 +73,8 @@
         "params": {}
       },
       "routePath": "/charts",
-      "title": "Global Karaoke Charts | BeauRocks Karaoke",
-      "description": "Explore BeauRocks karaoke charts, see the top score for each song, and find the singers and hosted nights moving the room.",
+      "title": "Karaoke Leaderboards, Song Crowns and Active Nights | BeauRocks",
+      "description": "Explore karaoke high scores, Song Crowns, Singer Momentum, and the most active public karaoke nights on BeauRocks.",
       "canonicalUrl": "https://beaurocks.app/charts",
       "robots": "index,follow,max-image-preview:large",
       "ogType": "website",
@@ -90,8 +90,8 @@
         {
           "@context": "https://schema.org",
           "@type": "WebPage",
-          "name": "Global Karaoke Charts | BeauRocks Karaoke",
-          "description": "Explore BeauRocks karaoke charts, see the top score for each song, and find the singers and hosted nights moving the room.",
+          "name": "Karaoke Leaderboards, Song Crowns and Active Nights | BeauRocks",
+          "description": "Explore karaoke high scores, Song Crowns, Singer Momentum, and the most active public karaoke nights on BeauRocks.",
           "url": "https://beaurocks.app/charts",
           "image": "https://beaurocks.app/images/social/charts.png"
         }
@@ -101,8 +101,8 @@
         "https://beaurocks.app/images/social/charts.png"
       ],
       "staticContent": {
-        "heading": "Global Karaoke Charts",
-        "summary": "Explore BeauRocks karaoke charts, see the top score for each song, and find the singers and hosted nights moving the room.",
+        "heading": "Karaoke Leaderboards, Song Crowns and Active Nights",
+        "summary": "Explore karaoke high scores, Song Crowns, Singer Momentum, and the most active public karaoke nights on BeauRocks.",
         "facts": [],
         "links": [
           {
@@ -117,7 +117,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-23T00:17:21.023Z",
+      "lastmod": "2026-07-23T01:35:03.951Z",
       "priority": "0.9"
     },
     {
@@ -181,8 +181,8 @@
         "params": {}
       },
       "routePath": "/for-hosts",
-      "title": "Apply To Host Karaoke Nights | BeauRocks Karaoke",
-      "description": "Apply for BeauRocks host access and launch karaoke nights from a single operator deck.",
+      "title": "Host Karaoke at Home and Private Parties | BeauRocks",
+      "description": "Host karaoke at home or at a private event with one dashboard for the queue, Public TV, Audience App, reactions, and pacing.",
       "canonicalUrl": "https://beaurocks.app/for-hosts",
       "robots": "index,follow,max-image-preview:large",
       "ogType": "website",
@@ -198,8 +198,8 @@
         {
           "@context": "https://schema.org",
           "@type": "WebPage",
-          "name": "Apply To Host Karaoke Nights | BeauRocks Karaoke",
-          "description": "Apply for BeauRocks host access and launch karaoke nights from a single operator deck.",
+          "name": "Host Karaoke at Home and Private Parties | BeauRocks",
+          "description": "Host karaoke at home or at a private event with one dashboard for the queue, Public TV, Audience App, reactions, and pacing.",
           "url": "https://beaurocks.app/for-hosts",
           "image": "https://beaurocks.app/images/social/for_hosts.png"
         }
@@ -209,8 +209,8 @@
         "https://beaurocks.app/images/social/for_hosts.png"
       ],
       "staticContent": {
-        "heading": "Apply To Host Karaoke Nights",
-        "summary": "Apply for BeauRocks host access and launch karaoke nights from a single operator deck.",
+        "heading": "Host Karaoke at Home and Private Parties",
+        "summary": "Host karaoke at home or at a private event with one dashboard for the queue, Public TV, Audience App, reactions, and pacing.",
         "facts": [],
         "links": [
           {
@@ -225,7 +225,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-23T00:17:21.424Z",
+      "lastmod": "2026-07-23T01:35:04.346Z",
       "priority": "0.9"
     },
     {
@@ -235,8 +235,8 @@
         "params": {}
       },
       "routePath": "/for-venues",
-      "title": "For Venues | BeauRocks Karaoke",
-      "description": "Claim your venue profile, publish recurring karaoke cadence, and make the night easier to trust.",
+      "title": "Karaoke Venue Listings and Activity | BeauRocks",
+      "description": "Claim a karaoke venue listing, publish the real schedule, connect active BeauRocks Rooms, and help guests return.",
       "canonicalUrl": "https://beaurocks.app/for-venues",
       "robots": "index,follow,max-image-preview:large",
       "ogType": "website",
@@ -252,8 +252,8 @@
         {
           "@context": "https://schema.org",
           "@type": "WebPage",
-          "name": "For Venues | BeauRocks Karaoke",
-          "description": "Claim your venue profile, publish recurring karaoke cadence, and make the night easier to trust.",
+          "name": "Karaoke Venue Listings and Activity | BeauRocks",
+          "description": "Claim a karaoke venue listing, publish the real schedule, connect active BeauRocks Rooms, and help guests return.",
           "url": "https://beaurocks.app/for-venues",
           "image": "https://beaurocks.app/images/social/for_venues.png"
         }
@@ -263,8 +263,8 @@
         "https://beaurocks.app/images/social/for_venues.png"
       ],
       "staticContent": {
-        "heading": "For Venues",
-        "summary": "Claim your venue profile, publish recurring karaoke cadence, and make the night easier to trust.",
+        "heading": "Karaoke Venue Listings and Activity",
+        "summary": "Claim a karaoke venue listing, publish the real schedule, connect active BeauRocks Rooms, and help guests return.",
         "facts": [],
         "links": [
           {
@@ -279,7 +279,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-23T00:17:21.653Z",
+      "lastmod": "2026-07-23T01:35:04.586Z",
       "priority": "0.9"
     },
     {
@@ -289,8 +289,8 @@
         "params": {}
       },
       "routePath": "/for-performers",
-      "title": "For Performers | BeauRocks Karaoke",
-      "description": "Find standout karaoke rooms, compare schedules, and build a weekly rotation.",
+      "title": "Karaoke Song Crowns and Singer Momentum | BeauRocks",
+      "description": "Find active karaoke Rooms, compare schedules, chase Song Crowns, and build Singer Momentum from qualified performances.",
       "canonicalUrl": "https://beaurocks.app/for-performers",
       "robots": "index,follow,max-image-preview:large",
       "ogType": "website",
@@ -306,8 +306,8 @@
         {
           "@context": "https://schema.org",
           "@type": "WebPage",
-          "name": "For Performers | BeauRocks Karaoke",
-          "description": "Find standout karaoke rooms, compare schedules, and build a weekly rotation.",
+          "name": "Karaoke Song Crowns and Singer Momentum | BeauRocks",
+          "description": "Find active karaoke Rooms, compare schedules, chase Song Crowns, and build Singer Momentum from qualified performances.",
           "url": "https://beaurocks.app/for-performers",
           "image": "https://beaurocks.app/images/social/for_performers.png"
         }
@@ -317,8 +317,8 @@
         "https://beaurocks.app/images/social/for_performers.png"
       ],
       "staticContent": {
-        "heading": "For Performers",
-        "summary": "Find standout karaoke rooms, compare schedules, and build a weekly rotation.",
+        "heading": "Karaoke Song Crowns and Singer Momentum",
+        "summary": "Find active karaoke Rooms, compare schedules, chase Song Crowns, and build Singer Momentum from qualified performances.",
         "facts": [],
         "links": [
           {
@@ -333,7 +333,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-23T00:17:21.813Z",
+      "lastmod": "2026-07-23T01:35:04.748Z",
       "priority": "0.8"
     },
     {
@@ -343,8 +343,8 @@
         "params": {}
       },
       "routePath": "/",
-      "title": "Live Karaoke Finder and Host Tools | BeauRocks Karaoke",
-      "description": "Discover live karaoke nights, run smoother hosted events, and keep the TV, queue, and guest phones moving together with BeauRocks.",
+      "title": "Host Karaoke at Home or Find a Live Night | BeauRocks",
+      "description": "Run self-hosted karaoke at home or at a private party, or discover live karaoke nights near you with BeauRocks.",
       "canonicalUrl": "https://beaurocks.app/",
       "robots": "index,follow,max-image-preview:large",
       "ogType": "website",
@@ -373,8 +373,8 @@
         {
           "@context": "https://schema.org",
           "@type": "WebPage",
-          "name": "Live Karaoke Finder and Host Tools | BeauRocks Karaoke",
-          "description": "Discover live karaoke nights, run smoother hosted events, and keep the TV, queue, and guest phones moving together with BeauRocks.",
+          "name": "Host Karaoke at Home or Find a Live Night | BeauRocks",
+          "description": "Run self-hosted karaoke at home or at a private party, or discover live karaoke nights near you with BeauRocks.",
           "url": "https://beaurocks.app/",
           "image": "https://beaurocks.app/images/social/for_fans.png"
         }
@@ -384,8 +384,8 @@
         "https://beaurocks.app/images/social/for_fans.png"
       ],
       "staticContent": {
-        "heading": "Live Karaoke Finder and Host Tools",
-        "summary": "Discover live karaoke nights, run smoother hosted events, and keep the TV, queue, and guest phones moving together with BeauRocks.",
+        "heading": "Host Karaoke at Home or Find a Live Night",
+        "summary": "Run self-hosted karaoke at home or at a private party, or discover live karaoke nights near you with BeauRocks.",
         "facts": [],
         "links": [
           {
@@ -400,7 +400,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-23T00:17:21.909Z",
+      "lastmod": "2026-07-23T01:35:04.839Z",
       "priority": "0.8"
     },
     {

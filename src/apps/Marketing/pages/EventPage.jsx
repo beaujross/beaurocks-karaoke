@@ -173,7 +173,7 @@ const EventPage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
               </div>
             )}
           </div>
-          <h2>{eventItem.title}</h2>
+          <h1>{eventItem.title}</h1>
           <div className="mk3-detail-meta">
             {formatDateTime(eventItem.startsAtMs)}
             {eventItem.endsAtMs ? ` -> ${formatDateTime(eventItem.endsAtMs)}` : ""}

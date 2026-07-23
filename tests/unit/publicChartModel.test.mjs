@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   buildOpeningSongScores,
+  buildPublicSongItemListJsonLd,
   mergePublicSongChart,
   PUBLIC_CHART_VISIBLE_LIMIT,
 } from "../../src/apps/Marketing/pages/publicChartModel.js";
@@ -29,4 +30,17 @@ test("a real score replaces the matching opening score instead of creating a dup
   assert.equal(matches.length, 1);
   assert.equal(matches[0].id, "real-result");
   assert.equal(matches[0].isOpeningScore, false);
+});
+
+
+test("structured chart data includes only evidence-backed real Song Crown leaders", () => {
+  const opening = buildOpeningSongScores()[0];
+  const itemList = buildPublicSongItemListJsonLd([
+    opening,
+    { resultId: "result-1", songTitle: "Dreams", artist: "Fleetwood Mac", displayName: "Night Owl", bestScore: 122 },
+  ]);
+  assert.equal(itemList["@type"], "ItemList");
+  assert.equal(itemList.numberOfItems, 1);
+  assert.equal(itemList.itemListElement[0].item.name, "Dreams");
+  assert.match(itemList.itemListElement[0].item.description, /122 points/);
 });

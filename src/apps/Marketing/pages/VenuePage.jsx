@@ -174,7 +174,7 @@ const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
               </div>
             )}
           </div>
-          <h2>{venue.title}</h2>
+          <h1>{venue.title}</h1>
           <div className="mk3-detail-meta">{[venue.city, venue.state, venue.address1].filter(Boolean).join(" | ")}</div>
         </div>
 

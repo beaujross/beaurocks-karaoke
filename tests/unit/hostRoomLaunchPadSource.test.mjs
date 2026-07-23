@@ -129,9 +129,11 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
 
   assert.match(browserSource, /ROOM_SETUP_TABS = Object\.freeze\(\[/);
   assert.match(browserSource, /id: 'manage'/);
-  assert.match(browserSource, /How should points work\?/);
+  assert.match(browserSource, /Choose tonight&apos;s rewards/);
   assert.doesNotMatch(browserSource, /Credits and promos/);
   assert.doesNotMatch(browserSource, /EventCreditsConfigPanel/);
+  assert.match(browserSource, /Eligible Rooms get one separate/);
+  assert.match(browserSource, /It never changes Points or performance scoring/);
 });
 
 test('quick setup compiles night outcomes and hides overlapping primitives by default', () => {

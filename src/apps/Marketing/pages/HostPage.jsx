@@ -134,7 +134,7 @@ const HostPage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEnt
               </div>
             )}
           </div>
-          <h2>{hostName}</h2>
+          <h1>{hostName}</h1>
           <div className="mk3-detail-meta">{[profile.city, profile.state, profile.country].filter(Boolean).join(" | ")}</div>
         </div>
         <div className="mk3-venue-stat-grid">

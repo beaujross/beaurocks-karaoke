@@ -50,8 +50,8 @@ const ForVenuesPage = ({ navigate, session, authFlow, onHostLogin }) => {
       <article className="mk3-persona-simple-hero mk3-persona-simple-hero-center">
         <div className="mk3-persona-simple-copy is-center">
           <div className="mk3-rebuild-kicker">For venues</div>
-          <h1>Make karaoke night easy to find and easy to trust.</h1>
-          <p>Run the night with BeauRocks and publish it from Host setup, or submit an independent venue or karaoke schedule for review.</p>
+          <h1>Turn karaoke activity into repeat traffic.</h1>
+          <p>Publish a trustworthy schedule, connect approved BeauRocks Rooms, and give guests a place to find the night, follow its activity, and come back.</p>
           <div className="mk3-rebuild-action-row is-centered">
             <button
               type="button"

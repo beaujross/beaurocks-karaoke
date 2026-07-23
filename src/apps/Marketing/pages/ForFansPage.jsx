@@ -140,11 +140,11 @@ const ForFansPage = ({ navigate, heroStats, pendingHostApplicationsCount = 0, on
       <section className="mk3-fans-home-minimal">
         <section className="mk3-fans-hero-simplified">
           <div className="mk3-fans-hero-simplified-copy">
-            <div className="mk3-rebuild-kicker">Live party tech for karaoke rooms</div>
-            <h1>Turn karaoke night into a room-wide party game.</h1>
+            <div className="mk3-rebuild-kicker">Self-hosted karaoke for home and private parties</div>
+            <h1>Run the karaoke night you imagined.</h1>
             <p>
-              BeauRocks keeps the TV, host, and crowd working together so people sing more,
-              react faster, and stay connected to the same moment.
+              BeauRocks puts the queue, Public TV, Audience App, reactions, and pacing in one Room.
+              Take control yourself or let Assisted Host keep the party moving.
             </p>
             <div className="mk3-rebuild-action-row mk3-fans-home-hero-actions">
               <button

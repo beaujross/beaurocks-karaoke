@@ -67,3 +67,35 @@ export const mergePublicSongChart = (
     })
     .slice(0, Math.max(3, Number(limitCount || PUBLIC_CHART_VISIBLE_LIMIT)));
 };
+
+export const buildPublicSongItemListJsonLd = (publicSongs = []) => {
+  const realSongs = (Array.isArray(publicSongs) ? publicSongs : [])
+    .filter((song) => !song?.isOpeningScore && String(song?.resultId || "").trim())
+    .sort((left, right) => Number(right?.bestScore || 0) - Number(left?.bestScore || 0))
+    .slice(0, PUBLIC_CHART_VISIBLE_LIMIT);
+  if (!realSongs.length) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "BeauRocks karaoke Song Crown leaders",
+    description: "Evidence-backed top karaoke song performances from qualified BeauRocks Host nights.",
+    itemListOrder: "https://schema.org/ItemListOrderDescending",
+    numberOfItems: realSongs.length,
+    itemListElement: realSongs.map((song, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      item: {
+        "@type": "MusicRecording",
+        name: String(song.songTitle || "Untitled song"),
+        byArtist: {
+          "@type": "MusicGroup",
+          name: String(song.artist || "Unknown artist"),
+        },
+        description: String(song.displayName || "BeauRocks Singer")
+          + " holds the BeauRocks Song Crown with "
+          + Math.max(0, Number(song.bestScore || 0) || 0).toLocaleString("en-US")
+          + " points.",
+      },
+    })),
+  };
+};

@@ -5846,6 +5846,7 @@
 }
 
 .mk3-discover-card h3,
+.mk3-detail-card h1,
 .mk3-detail-card h2,
 .mk3-actions-card h4,
 .mk3-sub-list h3 {
@@ -6212,6 +6213,7 @@
 }
 
 .mk3-listing-hero-content h2,
+.mk3-venue-hero-content h1,
 .mk3-venue-hero-content h2 {
   text-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
 }

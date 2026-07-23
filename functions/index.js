@@ -196,6 +196,10 @@ const {
 } = require("./lib/beauBucksCanary");
 const { buildPublicVibeIndexProjection } = require("./lib/publicVibeIndex");
 const {
+  buildPublicSongLeaderEntry,
+  mergePublicSongLeaders,
+} = require("./lib/publicChartSongLeaders");
+const {
   buildPublicVibeEvidenceRecord,
   buildSessionRecapEvidenceRecords,
   isPublicVibeEvidenceTimeEligible,
@@ -1304,6 +1308,20 @@ const selectBestPublicChartPerformance = (docs = []) => docs.reduce((best, docSn
     }
   ) ? docSnap : best;
 }, null);
+const selectTopPublicChartPerformances = (docs = [], limit = 3) => [...docs]
+  .sort((left, right) => {
+    const scoreDelta = getPublicChartPerformanceScore(right.data() || {})
+      - getPublicChartPerformanceScore(left.data() || {});
+    if (scoreDelta) return scoreDelta;
+    const applauseDelta = getPublicChartPerformanceApplause(right.data() || {})
+      - getPublicChartPerformanceApplause(left.data() || {});
+    if (applauseDelta) return applauseDelta;
+    const timeDelta = getPublicChartPerformanceTimestampMs(right.data() || {})
+      - getPublicChartPerformanceTimestampMs(left.data() || {});
+    if (timeDelta) return timeDelta;
+    return String(left.id || "").localeCompare(String(right.id || ""));
+  })
+  .slice(0, Math.max(1, Math.min(3, Number(limit || 3))));
 const selectLatestPublicChartPerformance = (docs = []) => docs.reduce((latest, docSnap) => {
   if (!latest) return docSnap;
   return getPublicChartPerformanceTimestampMs(docSnap.data() || {})
@@ -13013,6 +13031,9 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     const publicNightRef = isApprovedPublicNight
       ? admin.firestore().collection(PUBLIC_CHART_NIGHTS_COLLECTION).doc(discoverListingId)
       : null;
+    const qualifiedNightLabel = isApprovedPublicNight
+      ? safeDirectoryString(roomSessionData.title || roomSessionData.venueName || "Public BeauRocks night", 120)
+      : "Approved BeauRocks night";
 
     await admin.firestore().runTransaction(async (tx) => {
       const reads = [
@@ -13053,25 +13074,55 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
       }, { merge: true });
 
       const publicSongData = publicSongSnap.exists ? (publicSongSnap.data() || {}) : null;
-      if (isBetterScore(totalScore, applauseScore, publicSongData)) {
-        tx.set(publicSongRef, {
-          schemaVersion: 1,
-          songId,
-          canonicalSongId: songId,
-          songTitle: canonicalTitle,
-          artist: canonicalArtist,
-          albumArtUrl: albumArtUrl || null,
-          bestScore: totalScore,
-          applauseScore,
-          memberKey: chartIdentity.memberKey,
-          displayName: chartIdentity.displayName,
-          identityVisibility: chartIdentity.identityVisibility,
-          profileUid: admin.firestore.FieldValue.delete(),
-          avatarUrl: chartIdentity.avatarUrl,
-          resultId: performanceDocId,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
+      const legacyChampion = publicSongData?.resultId
+        ? buildPublicSongLeaderEntry({
+          resultId: publicSongData.resultId,
+          memberKey: publicSongData.memberKey,
+          displayName: publicSongData.displayName,
+          identityVisibility: publicSongData.identityVisibility,
+          avatarUrl: publicSongData.avatarUrl,
+          score: publicSongData.bestScore,
+          applauseScore: publicSongData.applauseScore,
+          qualifiedNightLabel: publicSongData.qualifiedNightLabel,
+          performedAtMs: publicSongData.performedAtMs,
+        })
+        : null;
+      const candidateLeader = buildPublicSongLeaderEntry({
+        resultId: performanceDocId,
+        memberKey: chartIdentity.memberKey,
+        displayName: chartIdentity.displayName,
+        identityVisibility: chartIdentity.identityVisibility,
+        avatarUrl: chartIdentity.avatarUrl,
+        score: totalScore,
+        applauseScore,
+        qualifiedNightLabel,
+        performedAtMs: Date.now(),
+      });
+      const leaders = mergePublicSongLeaders(
+        [...(Array.isArray(publicSongData?.leaders) ? publicSongData.leaders : []), legacyChampion],
+        candidateLeader
+      );
+      const songHasNewBest = isBetterScore(totalScore, applauseScore, publicSongData);
+      tx.set(publicSongRef, {
+        schemaVersion: 2,
+        songId,
+        canonicalSongId: songId,
+        songTitle: songHasNewBest ? canonicalTitle : (publicSongData?.songTitle || canonicalTitle),
+        artist: songHasNewBest ? canonicalArtist : (publicSongData?.artist || canonicalArtist),
+        albumArtUrl: songHasNewBest ? (albumArtUrl || null) : (publicSongData?.albumArtUrl || null),
+        bestScore: songHasNewBest ? totalScore : Math.max(0, Number(publicSongData?.bestScore || 0) || 0),
+        applauseScore: songHasNewBest ? applauseScore : Math.max(0, Number(publicSongData?.applauseScore || 0) || 0),
+        memberKey: songHasNewBest ? chartIdentity.memberKey : (publicSongData?.memberKey || null),
+        displayName: songHasNewBest ? chartIdentity.displayName : (publicSongData?.displayName || "BeauRocks Singer"),
+        identityVisibility: songHasNewBest ? chartIdentity.identityVisibility : (publicSongData?.identityVisibility || "anonymous"),
+        profileUid: admin.firestore.FieldValue.delete(),
+        avatarUrl: songHasNewBest ? chartIdentity.avatarUrl : (publicSongData?.avatarUrl || null),
+        resultId: songHasNewBest ? performanceDocId : (publicSongData?.resultId || performanceDocId),
+        qualifiedNightLabel: songHasNewBest ? qualifiedNightLabel : (publicSongData?.qualifiedNightLabel || "Approved BeauRocks night"),
+        performedAtMs: songHasNewBest ? candidateLeader.performedAtMs : Math.max(0, Number(publicSongData?.performedAtMs || 0) || 0),
+        leaders,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
 
       if (publicNightRef) {
         const publicNightData = publicNightSnap?.exists ? (publicNightSnap.data() || {}) : {};
@@ -13261,13 +13312,15 @@ exports.moderatePublicChartResult = onCall({ cors: true, timeoutSeconds: 120 }, 
     const songDocs = songSnap.docs.filter(remainsEligible);
     const nightDocs = nightSnap ? nightSnap.docs.filter(remainsEligible) : [];
     const latestMemberDoc = selectLatestPublicChartPerformance(memberDocs);
-    const bestSongDoc = selectBestPublicChartPerformance(songDocs);
+    const topSongDocs = selectTopPublicChartPerformances(songDocs);
+    const bestSongDoc = topSongDocs[0] || null;
     const bestNightDoc = selectBestPublicChartPerformance(nightDocs);
     const weekDocs = weekKey
       ? songDocs.filter((docSnap) => String(docSnap.get("weekKey") || "").trim() === weekKey)
       : [];
-    const bestWeekDoc = selectBestPublicChartPerformance(weekDocs);
-    const identityDocs = [latestMemberDoc, bestSongDoc, bestNightDoc, bestWeekDoc].filter(Boolean);
+    const topWeekDocs = selectTopPublicChartPerformances(weekDocs);
+    const bestWeekDoc = topWeekDocs[0] || null;
+    const identityDocs = [latestMemberDoc, ...topSongDocs, bestNightDoc, ...topWeekDocs].filter(Boolean);
     const identityByUid = new Map();
     for (const docSnap of identityDocs) {
       const uid = normalizeUidToken(docSnap.get("singerUid") || "");
@@ -13342,15 +13395,30 @@ exports.moderatePublicChartResult = onCall({ cors: true, timeoutSeconds: 120 }, 
       }, { merge: false });
     }
 
-    const writeBestSong = (ref, docSnap, extra = {}) => {
+    const writeBestSong = (ref, docSnap, extra = {}, leaderDocs = []) => {
       if (!docSnap) {
         tx.delete(ref);
         return;
       }
       const data = docSnap.data() || {};
       const identity = identityFor(docSnap);
+      const leaders = mergePublicSongLeaders(leaderDocs.map((leaderDoc) => {
+        const leaderData = leaderDoc.data() || {};
+        const leaderIdentity = identityFor(leaderDoc);
+        return {
+          resultId: leaderDoc.id,
+          memberKey: leaderIdentity.memberKey,
+          displayName: leaderIdentity.displayName,
+          identityVisibility: leaderIdentity.identityVisibility,
+          avatarUrl: leaderIdentity.avatarUrl,
+          score: getPublicChartPerformanceScore(leaderData),
+          applauseScore: getPublicChartPerformanceApplause(leaderData),
+          qualifiedNightLabel: "Approved BeauRocks night",
+          performedAtMs: getPublicChartPerformanceTimestampMs(leaderData),
+        };
+      }), null);
       tx.set(ref, {
-        schemaVersion: 1,
+        schemaVersion: 2,
         songId: canonicalSongId,
         canonicalSongId,
         songTitle: String(data.songTitle || "Untitled song").trim() || "Untitled song",
@@ -13370,13 +13438,16 @@ exports.moderatePublicChartResult = onCall({ cors: true, timeoutSeconds: 120 }, 
         globalLeaderboardEligible: true,
         qualificationVersion: 1,
         qualifiedHostUid: data.qualifiedHostUid || null,
+        qualifiedNightLabel: leaders[0]?.qualifiedNightLabel || "Approved BeauRocks night",
+        performedAtMs: leaders[0]?.performedAtMs || getPublicChartPerformanceTimestampMs(data),
+        leaders,
         ...extra,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: false });
     };
-    writeBestSong(publicSongRef, bestSongDoc);
-    writeBestSong(hallRef, bestSongDoc);
-    if (weeklyRef) writeBestSong(weeklyRef, bestWeekDoc, { weekKey });
+    writeBestSong(publicSongRef, bestSongDoc, {}, topSongDocs);
+    writeBestSong(hallRef, bestSongDoc, {}, topSongDocs);
+    if (weeklyRef) writeBestSong(weeklyRef, bestWeekDoc, { weekKey }, topWeekDocs);
 
     const roomSessionData = roomSessionSnap?.exists ? (roomSessionSnap.data() || {}) : {};
     const roomRemainsPublic = roomSessionSnap?.exists

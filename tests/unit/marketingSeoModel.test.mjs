@@ -51,7 +51,7 @@ test("marketingSeoModel uses the updated homepage title and featured image alt t
     },
   });
 
-  assert.equal(record.title, "Live Karaoke Finder and Host Tools | BeauRocks Karaoke");
-  assert.equal(record.description, "Discover live karaoke nights, run smoother hosted events, and keep the TV, queue, and guest phones moving together with BeauRocks.");
+  assert.equal(record.title, "Host Karaoke at Home or Find a Live Night | BeauRocks");
+  assert.equal(record.description, "Run self-hosted karaoke at home or at a private party, or discover live karaoke nights near you with BeauRocks.");
   assert.equal(record.image.alt, "BeauRocks Karaoke neon logo with microphone over a retro stage grid.");
 });

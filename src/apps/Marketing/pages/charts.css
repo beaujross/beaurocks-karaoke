@@ -267,3 +267,56 @@
     text-align: left;
   }
 }
+
+
+.mk3-chart-view-explainer,
+.mk3-song-challenger-ladder,
+.mk3-chart-persona-cta {
+  margin-top: 1rem;
+  border: 1px solid rgba(126, 238, 255, 0.16);
+  border-radius: 1.2rem;
+  background: linear-gradient(145deg, rgba(12, 25, 42, 0.94), rgba(24, 12, 33, 0.92));
+}
+
+.mk3-chart-view-explainer {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.32fr) 1fr;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.15rem;
+}
+
+.mk3-chart-view-explainer > span,
+.mk3-chart-persona-cta span { color: #78eaff; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+.mk3-chart-view-explainer h2,
+.mk3-chart-persona-cta h2,
+.mk3-song-challenger-ladder h2 { margin: 0; color: #f7fbff; font-family: var(--mk3-host-font-display); line-height: 1.05; }
+.mk3-chart-view-explainer p,
+.mk3-chart-persona-cta p,
+.mk3-song-challenger-ladder p { margin: 0.35rem 0 0; color: #a9bbd0; line-height: 1.55; }
+
+.mk3-song-challenger-ladder { padding: 1.1rem; border-color: rgba(255, 210, 104, 0.26); }
+.mk3-song-challenger-ladder header { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+.mk3-song-challenger-ladder header > span { flex: 0 0 auto; border: 1px solid rgba(255, 210, 104, 0.25); border-radius: 999px; padding: 0.4rem 0.65rem; color: #ffda7d; font-size: 0.68rem; }
+.mk3-song-challenger-ladder ol { display: grid; gap: 0.5rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.mk3-song-challenger-ladder li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 0.75rem; align-items: center; padding: 0.7rem 0.8rem; border: 1px solid rgba(255,255,255,0.08); border-radius: 0.8rem; background: rgba(0,0,0,0.2); }
+.mk3-song-challenger-ladder li b { color: #ffda7d; }
+.mk3-song-challenger-ladder li div { display: grid; min-width: 0; }
+.mk3-song-challenger-ladder li strong { color: #f7fbff; }
+.mk3-song-challenger-ladder li span { overflow: hidden; color: #8196ae; font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
+.mk3-song-challenger-ladder li em { color: #ff72b8; font-size: 1.15rem; font-style: normal; font-weight: 900; }
+.mk3-song-challenger-ladder li a { color: #7890aa; font-size: 0.68rem; }
+
+.mk3-chart-persona-cta { display: flex; justify-content: space-between; gap: 1.5rem; align-items: center; margin-top: 1.5rem; padding: 1.25rem; }
+.mk3-chart-persona-cta.is-songs { border-color: rgba(255, 114, 184, 0.25); }
+.mk3-chart-persona-cta.is-nights { border-color: rgba(255, 175, 76, 0.27); }
+.mk3-chart-persona-cta button { flex: 0 0 auto; min-height: 44px; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; padding: 0.7rem 1rem; background: linear-gradient(100deg, #db2777, #14b8a6); color: white; cursor: pointer; font-weight: 900; }
+
+@media (max-width: 700px) {
+  .mk3-chart-view-explainer { grid-template-columns: 1fr; }
+  .mk3-chart-persona-cta,
+  .mk3-song-challenger-ladder header { align-items: stretch; flex-direction: column; }
+  .mk3-chart-persona-cta button { width: 100%; }
+  .mk3-song-challenger-ladder li { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .mk3-song-challenger-ladder li a { grid-column: 2; }
+}

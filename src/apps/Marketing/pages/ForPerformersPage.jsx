@@ -34,8 +34,8 @@ const ForPerformersPage = ({ navigate }) => {
       <article className="mk3-persona-simple-hero mk3-persona-simple-hero-center">
         <div className="mk3-persona-simple-copy is-center">
           <div className="mk3-rebuild-kicker">For performers</div>
-          <h1>Find karaoke nights you will actually want to come back to.</h1>
-          <p>Skip the guesswork. Look for rooms with a real crowd and a clear schedule.</p>
+          <h1>Find the Room, sing the song, chase the crown.</h1>
+          <p>Compare real schedules and active nights, then build Singer Momentum from qualified performances at approved BeauRocks Host nights.</p>
           <div className="mk3-rebuild-action-row is-centered">
             <button
               type="button"

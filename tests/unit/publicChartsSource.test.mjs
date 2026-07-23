@@ -25,6 +25,8 @@ test("server projections separate member, canonical song, and approved public ni
   assert.match(functionsSource, /roomSessionData\.status === "approved"/);
   assert.match(functionsSource, /roomSessionData\.visibility === "public"/);
   assert.match(functionsSource, /BeauRocks Singer/);
+  assert.match(functionsSource, /mergePublicSongLeaders/);
+  assert.match(functionsSource, /schemaVersion: 2/);
 });
 
 test("charts stay low-friction and reportable", () => {
@@ -32,6 +34,13 @@ test("charts stay low-friction and reportable", () => {
   assert.match(chartsSource, /mailto:hello@beaurocks\.app/);
   assert.match(chartsSource, /One song, one leaderboard/);
   assert.match(chartsSource, /Take the crown/);
+  assert.match(chartsSource, /Song Crowns/);
+  assert.match(chartsSource, /Singer Momentum/);
+  assert.match(chartsSource, /Active Nights/);
+  assert.match(chartsSource, /For private-party hosts/);
+  assert.match(chartsSource, /For singers and party guests/);
+  assert.match(chartsSource, /For venues and recurring nights/);
+  assert.match(chartsSource, /Top performances for/);
   assert.doesNotMatch(chartsSource, /canonical song/i);
   assert.match(discoverSource, /PublicChartsTeaser/);
   assert.doesNotMatch(chartsSource, /Claim this score/);
@@ -41,6 +50,8 @@ test("song charts launch with transparent low opening scores from the browse cat
   assert.match(chartModelSource, /BROWSE_CATEGORIES/);
   assert.match(chartModelSource, /popular_now/);
   assert.match(chartModelSource, /isOpeningScore: true/);
+  assert.match(chartModelSource, /ItemList/);
+  assert.match(chartsSource, /application\/ld\+json/);
   assert.match(chartsSource, /not singer performances/);
   assert.match(chartsSource, /first qualified score on a song replaces its opening score/);
 });

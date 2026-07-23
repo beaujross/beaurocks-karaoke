@@ -808,6 +808,15 @@ async function run() {
       assert.equal(publicSongSnap.get("displayName"), "Beau On The Mic");
       assert.equal(publicSongSnap.get("resultId"), performanceSnap.docs[0].id);
       assert.equal(publicSongSnap.get("profileUid"), undefined);
+      assert.equal(publicSongSnap.get("schemaVersion"), 2);
+      const publicSongLeaders = publicSongSnap.get("leaders");
+      assert.equal(publicSongLeaders.length, 1);
+      assert.equal(publicSongLeaders[0].resultId, performanceSnap.docs[0].id);
+      assert.equal(publicSongLeaders[0].displayName, "Beau On The Mic");
+      assert.equal(publicSongLeaders[0].score, 120);
+      assert.equal(publicSongLeaders[0].memberKey, memberChartsSnap.docs[0].id);
+      assert.equal(publicSongLeaders[0].singerUid, undefined);
+      assert.equal(publicSongLeaders[0].roomCode, undefined);
       const publicNightSnap = await db.doc("public_chart_nights/room_roomx").get();
       assert.equal(publicNightSnap.exists, true);
       assert.equal(publicNightSnap.get("title"), "Friday Spotlight");

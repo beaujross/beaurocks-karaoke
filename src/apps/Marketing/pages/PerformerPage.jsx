@@ -90,7 +90,7 @@ const PerformerPage = ({ id, route, session, navigate, authFlow, setSeoEntity })
       <article className="mk3-detail-card">
         <div className="mk3-listing-title-block">
           <div className="mk3-chip">performer profile</div>
-          <h2>{performerName}</h2>
+          <h1>{performerName}</h1>
           <div className="mk3-detail-meta">{[profile.city, profile.state, profile.country].filter(Boolean).join(" | ")}</div>
         </div>
         <div className="mk3-venue-stat-grid">

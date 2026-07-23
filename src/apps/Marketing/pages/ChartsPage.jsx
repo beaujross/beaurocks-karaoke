@@ -1,14 +1,47 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { subscribePublicCharts } from "../api/directoryApi";
 import { trackEvent } from "../lib/marketingAnalytics";
-import { mergePublicSongChart, PUBLIC_CHART_VISIBLE_LIMIT } from "./publicChartModel.js";
+import { buildPublicSongItemListJsonLd, mergePublicSongChart, PUBLIC_CHART_VISIBLE_LIMIT } from "./publicChartModel.js";
 import "./charts.css";
 
 const TABS = Object.freeze([
-  { id: "members", label: "Singers" },
-  { id: "songs", label: "Songs" },
-  { id: "nights", label: "Karaoke Nights" },
+  { id: "songs", label: "Song Crowns" },
+  { id: "members", label: "Singer Momentum" },
+  { id: "nights", label: "Active Nights" },
 ]);
+
+const CHART_STORIES = Object.freeze({
+  songs: {
+    eyebrow: "Highest single performance",
+    title: "Which songs are waiting for a new champion?",
+    copy: "Song Crowns rank the highest qualified performance for each song. Different backing versions still compete for the same crown.",
+    ctaKicker: "For private-party hosts",
+    ctaTitle: "Put a karaoke night in your own hands.",
+    ctaCopy: "Run the queue, TV, guest phones, reactions, and song challenges from one Room—at home or at a private event.",
+    ctaLabel: "Apply to Host",
+    ctaPage: "for_hosts",
+  },
+  members: {
+    eyebrow: "Qualified points over time",
+    title: "Who keeps showing up and moving the room?",
+    copy: "Singer Momentum adds qualified performance points across public BeauRocks nights. It rewards participation and performance, not one vocal score.",
+    ctaKicker: "For singers and party guests",
+    ctaTitle: "Find a Room and make your run.",
+    ctaCopy: "Join with a BeauRocks account, perform at an approved Host night, and your qualified results can build momentum here.",
+    ctaLabel: "Find Karaoke",
+    ctaPage: "discover",
+  },
+  nights: {
+    eyebrow: "Total qualified Room activity",
+    title: "Where is the most karaoke activity happening?",
+    copy: "Active Nights rank approved public Rooms by the total qualified performance points created there. Bigger, busier nights naturally build more activity.",
+    ctaKicker: "For venues and recurring nights",
+    ctaTitle: "Turn real activity into a discoverable story.",
+    ctaCopy: "Claim a venue, publish the schedule, and connect approved BeauRocks Rooms so guests can find the night and see what happened.",
+    ctaLabel: "Get on the Map",
+    ctaPage: "for_venues",
+  },
+});
 
 const formatScore = (value = 0) =>
   Math.max(0, Number(value || 0) || 0).toLocaleString();
@@ -45,7 +78,7 @@ const getChartItemView = (item = {}, tab = "members") => {
       subtitle: [item.venueName, item.city, item.state].filter(Boolean).join(" · ") || "Public BeauRocks room",
       context: `${item.topSingerName || "BeauRocks Singer"} · best ${formatScore(item.bestScore)}`,
       score: item.rankScore,
-      scoreLabel: "night pts",
+      scoreLabel: "activity pts",
     };
   }
   return {
@@ -55,7 +88,7 @@ const getChartItemView = (item = {}, tab = "members") => {
       ? `Latest: ${item.latestSongTitle}${item.latestArtist ? ` · ${item.latestArtist}` : ""}`
       : "Qualified BeauRocks performances",
     score: item.rankScore,
-    scoreLabel: "chart pts",
+    scoreLabel: "momentum pts",
   };
 };
 
@@ -92,6 +125,33 @@ const ChartPodium = ({ items = [], activeTab = "members", navigate }) => (
   </div>
 );
 
+const FeaturedSongLadder = ({ song = {} }) => {
+  const leaders = Array.isArray(song?.leaders) ? song.leaders.slice(0, 3) : [];
+  if (song?.isOpeningScore || !leaders.length) return null;
+  return (
+    <section className="mk3-song-challenger-ladder" aria-labelledby="mk3-song-challenger-title">
+      <header>
+        <div>
+          <div className="mk3-rebuild-kicker">King of the hill · real performances</div>
+          <h2 id="mk3-song-challenger-title">Top performances for {song.songTitle || "this song"}</h2>
+          <p>{song.artist || "Unknown artist"} · Beat the current score to take the Song Crown.</p>
+        </div>
+        <span>{leaders.length}/3 places claimed</span>
+      </header>
+      <ol>
+        {leaders.map((leader, index) => (
+          <li key={leader.resultId}>
+            <b>#{index + 1}</b>
+            <div><strong>{leader.displayName || "BeauRocks Singer"}</strong><span>{leader.qualifiedNightLabel || "Approved BeauRocks night"}</span></div>
+            <em>{formatScore(leader.score)}</em>
+            <a href={buildReportResultHref(leader.resultId)}>Report</a>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+};
+
 const ChartsPage = ({ navigate }) => {
   const [activeTab, setActiveTab] = useState("songs");
   const [charts, setCharts] = useState({ members: [], songs: [], nights: [] });
@@ -116,6 +176,20 @@ const ChartsPage = ({ navigate }) => {
     [charts.songs]
   );
 
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const nodeId = "mk3-charts-itemlist-jsonld";
+    document.getElementById(nodeId)?.remove();
+    const payload = buildPublicSongItemListJsonLd(charts.songs);
+    if (!payload) return undefined;
+    const node = document.createElement("script");
+    node.id = nodeId;
+    node.type = "application/ld+json";
+    node.textContent = JSON.stringify(payload);
+    document.head.appendChild(node);
+    return () => node.remove();
+  }, [charts.songs]);
+
   const activeItems = useMemo(
     () => (activeTab === "songs"
       ? chartSongs
@@ -125,6 +199,10 @@ const ChartsPage = ({ navigate }) => {
 
   const chartRows = activeItems.slice(3);
   const hasOpeningScores = activeTab === "songs" && activeItems.some((item) => item.isOpeningScore);
+  const activeStory = CHART_STORIES[activeTab] || CHART_STORIES.songs;
+  const featuredRealSong = activeTab === "songs"
+    ? activeItems.find((item) => !item.isOpeningScore && Array.isArray(item.leaders) && item.leaders.length)
+    : null;
 
   const openTab = (tabId) => {
     setActiveTab(tabId);
@@ -171,6 +249,11 @@ const ChartsPage = ({ navigate }) => {
         ))}
       </nav>
 
+      <section className="mk3-chart-view-explainer" aria-live="polite">
+        <span>{activeStory.eyebrow}</span>
+        <div><h2>{activeStory.title}</h2><p>{activeStory.copy}</p></div>
+      </section>
+
       {loading && <div className="mk3-status">Syncing live crowns...</div>}
       {error && <div className="mk3-status mk3-status-warning">{error}</div>}
       {!loading && !error && activeItems.length === 0 && (
@@ -190,6 +273,7 @@ const ChartsPage = ({ navigate }) => {
             </div>
           )}
           <ChartPodium items={activeItems} activeTab={activeTab} navigate={navigate} />
+          {featuredRealSong && <FeaturedSongLadder song={featuredRealSong} />}
           {!!chartRows.length && (
             <div className="mk3-chart-list" aria-label={`${TABS.find((tab) => tab.id === activeTab)?.label || "Chart"} ranks 4 through ${activeItems.length}`}>
               {chartRows.map((item, index) => {
@@ -202,7 +286,7 @@ const ChartsPage = ({ navigate }) => {
                         <strong>{item.displayName || "BeauRocks Singer"}</strong>
                         <span>{formatScore(item.performanceCount)} performances · best {formatScore(item.bestScore)}</span>
                       </div>
-                      <div className="mk3-chart-score"><strong>{formatScore(item.rankScore)}</strong><span>chart pts</span></div>
+                      <div className="mk3-chart-score"><strong>{formatScore(item.rankScore)}</strong><span>momentum pts</span></div>
                       {!!item.latestResultId && (
                         <a className="mk3-chart-report" href={buildReportResultHref(item.latestResultId)}>Report</a>
                       )}
@@ -244,7 +328,7 @@ const ChartsPage = ({ navigate }) => {
                       <span>Top performance</span>
                       <strong>{item.topSingerName || "BeauRocks Singer"} · {formatScore(item.bestScore)}</strong>
                     </div>
-                    <div className="mk3-chart-score"><strong>{formatScore(item.rankScore)}</strong><span>night pts</span></div>
+                    <div className="mk3-chart-score"><strong>{formatScore(item.rankScore)}</strong><span>activity pts</span></div>
                     {!!item.topResultId && (
                       <a className="mk3-chart-report" href={buildReportResultHref(item.topResultId)}>Report</a>
                     )}
@@ -255,6 +339,11 @@ const ChartsPage = ({ navigate }) => {
           )}
         </>
       )}
+
+      <section className={`mk3-chart-persona-cta is-${activeTab}`}>
+        <div><span>{activeStory.ctaKicker}</span><h2>{activeStory.ctaTitle}</h2><p>{activeStory.ctaCopy}</p></div>
+        <button type="button" onClick={() => { trackEvent("mk_public_chart_persona_cta", { chart: activeTab, destination: activeStory.ctaPage }); navigate(activeStory.ctaPage); }}>{activeStory.ctaLabel}</button>
+      </section>
 
       <footer className="mk3-charts-footnote">
         Guests still appear in their live room. Public crowns require a BeauRocks account and an approved BeauRocks host night.
