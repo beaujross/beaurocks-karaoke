@@ -2,7 +2,7 @@
 
 Date: 2026-07-22
 
-Status: implementation verified; production release pending
+Status: deployed to production and browser-smoke accepted
 
 ## Outcome
 
@@ -71,3 +71,11 @@ Each chart has an explicit audience and conversion path. Search language include
 5. Follow each chart CTA to the Host, Discover, and Venue persona paths.
 6. Open the home, Host, performer, venue, and event pages; confirm private-party positioning and one visible primary page heading.
 7. In Host Room creation, confirm Points, ticket perks, fundraiser support, and custom rules remain available; BeauBucks appears only after entering an eligible Room.
+
+## Release evidence
+
+- Source commit: `bebd29f` on `main`.
+- Functions: `logPerformance-00141-huh` and `moderatePublicChartResult-00007-jeg`, both serving 100% traffic.
+- Hosting release: `1784770832827000` at `https://beaurocks-karaoke-v2.web.app` and `https://beaurocks.app`.
+- Live metadata returned 200 for `/`, `/charts`, and `/for-hosts` with the new intent titles.
+- Production browser smoke passed Charts and Discover handoff at 1440x960 and 390x844 with no page errors, warning state, or horizontal overflow.

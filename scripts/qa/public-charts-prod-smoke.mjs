@@ -27,15 +27,16 @@ try {
         timeout: TIMEOUT_MS,
       });
       await page.getByRole("heading", {
-        name: /the room makes the score\. your account makes the charts/i,
+        name: /every song has a score to beat/i,
       }).waitFor({ state: "visible", timeout: TIMEOUT_MS });
       const tabs = page.getByRole("navigation", { name: "Leaderboard views" });
-      for (const label of ["Global", "Songs", "Public Rooms"]) {
+      for (const label of ["Song Crowns", "Singer Momentum", "Active Nights"]) {
         const tab = tabs.getByRole("button", { name: label, exact: true });
         await tab.waitFor({ state: "visible", timeout: TIMEOUT_MS });
         await tab.click();
       }
-      await page.getByText("Loading charts...").waitFor({ state: "hidden", timeout: TIMEOUT_MS });
+      await page.getByText("Syncing live crowns...").waitFor({ state: "hidden", timeout: TIMEOUT_MS });
+      await page.getByText("For venues and recurring nights", { exact: true }).waitFor({ state: "visible", timeout: TIMEOUT_MS });
       const warning = page.locator(".mk3-charts-page .mk3-status-warning");
       assert(await warning.count() === 0, "Charts rendered an error state: " + await warning.allTextContents());
       const overflow = await page.evaluate(() => ({
