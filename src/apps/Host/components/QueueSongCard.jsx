@@ -29,6 +29,8 @@ const QueueSongCard = ({
     compactViewport = false,
     selected = false,
     onSelect,
+    expandSelectedInline = true,
+    inspectorMode = false,
     runOfShowAssignableSlots = [],
     runOfShowOpenSlots = [],
     onAssignQueueSongToRunOfShowItem,
@@ -104,14 +106,15 @@ const QueueSongCard = ({
         || queueUsesExternalWindow
         || isAudienceSelectedUnverified
         || ['needs_user_token', 'capability_blocked', 'error'].includes(lyricsStatus);
-    const showCompactActionRail = !compactViewport || !touchReorderMode;
+    const selectedExpanded = selected && expandSelectedInline;
+    const showCompactActionRail = !touchReorderMode;
     const canFastAssignToOpenSlot = !isHeld && !needsTrackReview && !isPendingApproval && !isAssignedToRunOfShow
         && typeof onAssignQueueSongToNextOpenRunOfShowSlot === 'function'
         && !!nextOpenSlot?.id;
-    const canReorderQueueItem = !touchReorderEnabled && !isHeld && !lockedInLineup;
+    const canReorderQueueItem = touchReorderMode && !touchReorderEnabled && !isHeld && !lockedInLineup;
     const canPromoteToNext = !lockedInLineup && !isHeld && !needsTrackReview && !isPendingApproval && !isAssignedToRunOfShow && typeof onMoveNext === 'function';
-    const canShowSelectedExtras = selected && showCompactActionRail;
-    const canShowRunOfShowAssignment = selected
+    const canShowSelectedExtras = selectedExpanded && showCompactActionRail;
+    const canShowRunOfShowAssignment = selectedExpanded
         && !isHeld
         && !needsTrackReview
         && !isPendingApproval
@@ -146,17 +149,41 @@ const QueueSongCard = ({
         };
     }, [selfServeState?.toneKey]);
     const displayPositionLabel = String(queuePositionLabel || '').trim() || String(index + 1);
+    const isImmediateReady = ['start', 'next'].includes(displayPositionLabel.toLowerCase())
+        && !isHeld
+        && !needsTrackReview
+        && !isPendingApproval
+        && !isAssignedToRunOfShow;
     const positionLabelCompact = displayPositionLabel.length <= 2;
-    const actionRailContainerClass = compactViewport
+    const actionRailContainerClass = selectedExpanded && compactViewport
         ? 'w-full'
-        : selected
+        : selectedExpanded
             ? 'shrink-0 min-w-[192px]'
-            : 'shrink-0 min-w-[88px]';
-    const actionRailLayoutClass = compactViewport
-        ? 'grid grid-cols-3 gap-1'
-        : selected
-            ? 'grid grid-cols-2 gap-1'
-            : 'flex flex-col gap-1';
+            : 'shrink-0';
+    const actionRailLayoutClass = selectedExpanded
+        ? (compactViewport ? 'grid grid-cols-3 gap-1' : 'grid grid-cols-2 gap-1')
+        : 'flex items-center gap-1';
+    const overviewStatus = selfServeState?.badgeLabel
+        ? {
+            label: selfServeState.badgeLabel,
+            icon: selfServeState?.icon || 'fa-sparkles',
+            className: selfServeTone.badgeClass,
+        }
+        : needsTrackReview
+            ? { label: 'Track Check', icon: 'fa-wand-magic-sparkles', className: ' border-amber-300/45 text-amber-100 bg-amber-500/10' }
+            : isPendingApproval
+                ? { label: 'Approve', icon: 'fa-circle-check', className: ' border-orange-300/45 text-orange-100 bg-orange-500/10' }
+                : isAssignedToRunOfShow
+                    ? { label: 'Planner', icon: 'fa-link', className: ' border-violet-300/40 text-violet-100 bg-violet-500/10' }
+                    : isHeld
+                        ? { label: 'Held', icon: 'fa-pause', className: ' border-zinc-300/35 text-zinc-100 bg-zinc-500/10' }
+                        : lockedInLineup
+                            ? { label: lineupSlotLabel || 'Locked', icon: 'fa-lock', className: ' border-emerald-300/40 text-emerald-100 bg-emerald-500/10' }
+                            : !queuePlaybackReady
+                                ? { label: 'Needs Backing', icon: 'fa-triangle-exclamation', className: ' border-amber-300/45 text-amber-100 bg-amber-500/10' }
+                                : ['needs_user_token', 'capability_blocked', 'error'].includes(lyricsStatus)
+                                    ? { label: lyricsChipLabel, icon: 'fa-triangle-exclamation', className: lyricsChipTone }
+                                    : { label: 'Ready', icon: 'fa-circle-check', className: ' border-cyan-300/35 text-cyan-100 bg-cyan-500/10' };
 
     React.useEffect(() => {
         if (!song?.id) {
@@ -169,8 +196,10 @@ const QueueSongCard = ({
 
     return (
         <div
-            data-queue-id={song.id}
-            draggable={canReorderQueueItem}
+            data-queue-id={inspectorMode ? undefined : song.id}
+            data-queue-selected={selected ? 'true' : 'false'}
+            data-feature-id={inspectorMode ? 'queue-song-inspector-card' : undefined}
+            draggable={!inspectorMode && canReorderQueueItem}
             onDragStart={() => setDragQueueId(song.id)}
             onDragEnd={() => { setDragQueueId(null); setDragOverId(null); }}
             onDragOver={(e) => { e.preventDefault(); setDragOverId(song.id); }}
@@ -179,7 +208,7 @@ const QueueSongCard = ({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             onTouchCancel={handleTouchEnd}
-            className={`bg-zinc-900/50 ${compactViewport ? 'p-1.5 rounded-lg' : 'p-1.5 rounded-xl'} border ${
+            className={`bg-zinc-900/50 p-1 ${compactViewport ? 'rounded-lg' : 'rounded-xl'} border ${
                 lockedInLineup
                     ? 'border-emerald-300/28 bg-emerald-500/[0.06]'
                     : selected
@@ -191,13 +220,14 @@ const QueueSongCard = ({
                                 : 'border-white/5'
             }`}
         >
-            <div className={`flex ${compactViewport ? 'flex-col gap-2' : 'items-start justify-between gap-2'}`}>
+            <div className={`flex ${compactViewport && selectedExpanded ? 'flex-col gap-2' : 'items-center justify-between gap-2'}`}>
                 <button
                     type="button"
                     onClick={() => onSelect?.(song)}
-                    className={`min-w-0 flex flex-1 items-start text-left ${compactViewport ? 'gap-1.5' : 'gap-2'}`}
+                    className={`min-h-[44px] min-w-0 flex flex-1 items-center text-left ${compactViewport ? 'gap-1.5' : 'gap-2'}`}
                 >
                     <span className={`shrink-0 rounded-md border border-white/10 bg-black/20 px-1.5 py-1 text-center font-black uppercase leading-none text-zinc-300 ${positionLabelCompact ? 'min-w-[26px] text-[10px] tracking-[0.12em]' : 'min-w-[42px] text-[9px] tracking-[0.1em]'} ${compactViewport ? 'mt-0.5' : 'mt-0.5'}`}>{displayPositionLabel}</span>
+                    {touchReorderMode ? (
                         <span
                             data-queue-drag-handle="true"
                             className={`inline-flex items-center justify-center rounded-md border transition hover:text-zinc-300 ${
@@ -213,10 +243,12 @@ const QueueSongCard = ({
                     >
                         <i className={`fa-solid ${lockedInLineup ? 'fa-lock' : 'fa-grip-lines'} text-xs`}></i>
                     </span>
-                    {song.albumArtUrl && <img src={song.albumArtUrl} className={`${compactViewport ? 'w-7 h-7' : 'w-7 h-7'} rounded-lg shadow-sm mt-0.5`}/>}
+                    ) : null}
+                    {song.albumArtUrl && (!compactViewport || selectedExpanded) ? <img src={song.albumArtUrl} className="h-7 w-7 rounded-lg shadow-sm"/> : null}
                     <div className="min-w-0">
                         <div className={`font-bold text-white truncate ${compactViewport ? 'text-[13px] leading-tight' : 'text-[13px] leading-tight'}`}>{song.songTitle}</div>
                         <div className={`text-zinc-400 truncate ${compactViewport ? 'text-[11px] leading-tight' : 'text-[11px] leading-tight'}`}>{song.singerName}</div>
+                        {selectedExpanded ? (
                         <div className={`mt-1 flex flex-wrap gap-1 text-[10px] uppercase ${compactViewport ? 'tracking-[0.12em]' : 'tracking-[0.14em]'}`}>
                             {selfServeState?.badgeLabel ? (
                                 <span className={`${statusPill}${selfServeTone.badgeClass}`}>
@@ -276,12 +308,13 @@ const QueueSongCard = ({
                                 </span>
                             ) : null}
                         </div>
-                        {selfServeState?.detail && selected ? (
+                        ) : null}
+                        {selfServeState?.detail && selectedExpanded ? (
                             <div className={`mt-1 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'} ${selfServeTone.detailClass}`}>
                                 {selfServeState.detail}
                             </div>
                         ) : null}
-                        {showSupportText ? (
+                        {showSupportText && selectedExpanded ? (
                             <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
                                 {isAssignedToRunOfShow
                                     ? `Reserved for ${assignedRunOfShowSlot?.label || 'a run of show slot'}.`
@@ -294,12 +327,12 @@ const QueueSongCard = ({
                                             : lyricsSupportText}
                             </div>
                         ) : null}
-                        {lockedInLineup && selected ? (
+                        {lockedInLineup && selectedExpanded ? (
                             <div className={`mt-1 text-zinc-400 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
                                 Protected next-up slot.
                             </div>
                         ) : null}
-                        {isAudienceSelectedUnverified && (typeof onApproveAudienceBacking === 'function' || typeof onAvoidAudienceBacking === 'function') ? (
+                        {selectedExpanded && isAudienceSelectedUnverified && (typeof onApproveAudienceBacking === 'function' || typeof onAvoidAudienceBacking === 'function') ? (
                             <div className="mt-1.5 inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-cyan-300/20 bg-black/25 px-1.5 py-1">
                                 <span className="px-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-100">
                                     Track check
@@ -327,6 +360,12 @@ const QueueSongCard = ({
                             </div>
                         ) : null}
                     </div>
+                    {!selectedExpanded ? (
+                        <span className={`${statusPill}${overviewStatus.className} shrink-0 whitespace-nowrap`}>
+                            <i className={`fa-solid ${overviewStatus.icon} mr-1`}></i>
+                            {overviewStatus.label}
+                        </span>
+                    ) : null}
                 </button>
                 {showCompactActionRail ? (
                     <div className={actionRailContainerClass}>
@@ -369,7 +408,7 @@ const QueueSongCard = ({
                                 >
                                     <i className="fa-solid fa-link mr-1.5"></i>Linked
                                 </button>
-                            ) : (
+                            ) : (selectedExpanded || isImmediateReady) ? (
                                 <button
                                     type="button"
                                     title="Start performance"
@@ -378,10 +417,10 @@ const QueueSongCard = ({
                                     }}
                                     className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
                                 >
-                                    <i className="fa-solid fa-play mr-1.5"></i>Start
+                                    <i className="fa-solid fa-play mr-1.5"></i>{isImmediateReady ? 'Start Next' : 'Start'}
                                 </button>
-                            )}
-                            {canPromoteToNext ? (
+                            ) : null}
+                            {selectedExpanded && canPromoteToNext ? (
                                 <button
                                     type="button"
                                     title="Move this singer next"
@@ -404,11 +443,11 @@ const QueueSongCard = ({
                             ) : null}
                             <button
                                 type="button"
-                                title={selected ? 'Hide queue item actions' : 'Show queue item actions'}
+                                title={selected ? 'Close performance details' : 'Open performance details'}
                                 onClick={() => onSelect?.(song)}
                                 className={`${styles.btnStd} ${styles.btnSecondary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
                             >
-                                <i className={`fa-solid ${selected ? 'fa-chevron-up' : 'fa-sliders'} mr-1.5`}></i>{selected ? 'Less' : 'More'}
+                                <i className={`fa-solid ${selected ? 'fa-xmark' : 'fa-sliders'} mr-1.5`}></i>{selected ? 'Close' : 'Details'}
                             </button>
                             {canShowSelectedExtras && typeof startEdit === 'function' ? (
                                 <button
@@ -454,11 +493,7 @@ const QueueSongCard = ({
                             ) : null}
                         </div>
                     </div>
-                ) : (
-                    <div className="w-full rounded-lg border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
-                        {lockedInLineup ? `${lineupSlotLabel || 'Locked lineup'} is protected while the room is live.` : 'Drag this card with the handle to reorder the live queue.'}
-                    </div>
-                )}
+                ) : null}
             </div>
             {canShowRunOfShowAssignment ? (
                 <div className="mt-2 rounded-xl border border-white/10 bg-black/20 p-2.5" data-feature-id="queue-song-slot-assignment">

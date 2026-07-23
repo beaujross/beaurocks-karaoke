@@ -135,7 +135,14 @@ const buildRunOfShowObject = (item = {}, {
         : itemType === 'scene' || itemType === 'announcement'
             ? 'scene'
             : 'moment';
-    const performerLabel = normalizeText(item?.performerName || item?.assignedSingerName || item?.singerName);
+    const performerLabel = normalizeText(
+        item?.performerName
+        || item?.assignedPerformerName
+        || item?.assignedSingerName
+        || item?.singerName
+    );
+    const songLabel = normalizeText(item?.songTitle || item?.trackTitle);
+    const artistLabel = normalizeText(item?.artistName || item?.artist);
     const title = normalizeText(item?.title || item?.label || item?.name)
         || (objectType === 'performance' ? 'Planned performance' : 'Planned moment');
     return {
@@ -143,7 +150,9 @@ const buildRunOfShowObject = (item = {}, {
         objectType,
         objectRole: role,
         title: performerLabel || title,
-        subtitle: performerLabel ? title : (normalizeText(item?.description) || 'Planned next object'),
+        subtitle: performerLabel
+            ? ([songLabel, artistLabel].filter(Boolean).join(' — ') || title)
+            : (normalizeText(item?.description) || (objectType === 'performance' && songLabel ? songLabel : 'Planned next object')),
         detail: normalizeText(item?.status) || normalizeText(itemType) || 'planned',
         status: normalizeText(item?.status).toLowerCase() || 'planned',
         statusLabel: normalizeText(item?.status) || 'Planned',

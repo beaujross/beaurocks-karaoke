@@ -320,3 +320,44 @@
   .mk3-song-challenger-ladder li { grid-template-columns: auto minmax(0, 1fr) auto; }
   .mk3-song-challenger-ladder li a { grid-column: 2; }
 }
+
+/* Chart labels carry scoring meaning; they must remain readable without
+   competing with the crown, singer, and score hierarchy. */
+.mk3-charts-page p {
+  color: #c3d2e4;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.mk3-charts-page span,
+.mk3-charts-page em,
+.mk3-charts-page a {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.mk3-charts-page button {
+  min-width: 44px;
+  min-height: 48px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.25;
+}
+
+.mk3-chart-identity span,
+.mk3-chart-score span,
+.mk3-chart-night-best span,
+.mk3-song-challenger-ladder li span,
+.mk3-song-challenger-ladder li a,
+.mk3-charts-footnote {
+  color: #aebfd4;
+}
+
+.mk3-song-challenger-ladder li em,
+.mk3-chart-score strong {
+  font-size: 1.2rem;
+}
+
+.mk3-chart-story li > b {
+  font-size: 0.8125rem;
+}

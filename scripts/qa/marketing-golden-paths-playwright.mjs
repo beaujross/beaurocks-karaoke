@@ -167,7 +167,7 @@ const run = async () => {
       if (pathname !== "/" && pathname !== "/for-fans") {
         throw new Error(`Expected fan route to resolve to "/" or "/for-fans", got "${parsed.pathname}${parsed.search}".`);
       }
-      await page.getByText(/turn karaoke night into a room-wide party game/i).first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByRole("heading", { name: /run the karaoke night you imagined/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
       return page.url();
     });
 

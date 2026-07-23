@@ -1535,3 +1535,98 @@ html, body, #root { height: 100%; width: 100%; }
 .host-app .host-admin-workspace [data-admin-section-item]:focus-visible {
   border-left-color: rgba(103, 232, 249, 0.9);
 }
+
+/* Host readability system.
+   Desktop keeps operational density at a 44px control floor; touch layouts
+   receive 48px targets. Small uppercase telemetry stays subordinate but is
+   never rendered as 9–11px text. */
+.host-app {
+  --host-readable-ink: #f8fafc;
+  --host-readable-muted: #cbd5e1;
+  --host-readable-subtle: #aebdce;
+  --host-readable-focus: #67e8f9;
+  color: var(--host-readable-ink);
+  font-size: 16px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.host-app .text-zinc-500,
+.host-app .text-zinc-600 {
+  color: var(--host-readable-subtle);
+}
+
+.host-app [class~="text-[9px]"],
+.host-app [class~="text-[10px]"],
+.host-app [class~="text-[11px]"] {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.host-app button,
+.host-app summary,
+.host-app [role="button"] {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 0.875rem;
+  line-height: 1.25;
+}
+
+.host-app .host-btn {
+  min-height: 44px;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.host-app input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.host-app select,
+.host-app textarea {
+  min-height: 48px;
+  border-color: rgba(148, 163, 184, 0.5);
+  background-color: rgba(7, 11, 19, 0.96);
+  color: var(--host-readable-ink);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.host-app textarea {
+  min-height: 104px;
+}
+
+.host-app button:focus-visible,
+.host-app a:focus-visible,
+.host-app input:focus-visible,
+.host-app select:focus-visible,
+.host-app textarea:focus-visible,
+.host-app summary:focus-visible,
+.host-app [role="button"]:focus-visible {
+  outline: 3px solid var(--host-readable-focus);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(3, 8, 16, 0.92);
+}
+
+.host-app button[class*="text-[9px]"],
+.host-app button[class*="text-[10px]"],
+.host-app button[class*="text-[11px]"] {
+  font-size: 0.875rem;
+}
+
+.host-app .host-autocomplete-field-wrap [data-search-control],
+.host-app .host-autocomplete-field-wrap button[aria-label="Open YouTube search"] {
+  min-height: 44px;
+  padding: 0.62rem 0.8rem;
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+@media (max-width: 720px), (hover: none) and (pointer: coarse) {
+  .host-app button,
+  .host-app summary,
+  .host-app [role="button"],
+  .host-app .host-btn {
+    min-width: 48px;
+    min-height: 48px;
+  }
+}

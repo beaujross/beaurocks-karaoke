@@ -58,6 +58,11 @@ export const QA_HOST_SCENARIOS = Object.freeze([
         expectedTexts: ['Co-Host Song Face-Off', 'Which queued song should go next?', 'Make Taylor Next']
     },
     {
+        id: 'queue-overview-density',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Live Queue', 'Reorder']
+    },
+    {
         id: 'cohost-helper-catalog',
         roomCode: 'DEMOAAHF',
         expectedTexts: ['Co-Host Helper Catalog', 'Browse And Add For Guests', 'Copy Helper Link']
@@ -585,6 +590,16 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     },
                 },
             },
+            activities: [
+                ...(Array.isArray(fixture.activities) ? fixture.activities : []),
+                {
+                    id: 'cohost_signal_track_1',
+                    type: 'cohost_signal',
+                    signalId: 'track_issue',
+                    user: 'Stage Manager',
+                    timestamp: nowMs - 3_000,
+                },
+            ],
             songs: [
                 {
                     id: 'perf_live_1',
@@ -635,6 +650,105 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     duration: 201,
                     priorityScore: 20,
                 }
+            ],
+        };
+    }
+    if (safeId === 'queue-overview-density') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        const readySongs = [
+            ['Jordan', 'Valerie', 'Amy Winehouse'],
+            ['Taylor', 'Since U Been Gone', 'Kelly Clarkson'],
+            ['Morgan', 'Mr. Brightside', 'The Killers'],
+            ['Casey', 'Before He Cheats', 'Carrie Underwood'],
+            ['Riley', 'No Scrubs', 'TLC'],
+            ['Avery', 'I Want It That Way', 'Backstreet Boys'],
+            ['Cameron', 'Man! I Feel Like a Woman!', 'Shania Twain'],
+            ['Quinn', 'What Is Love', 'Haddaway'],
+            ['Reese', 'You Oughta Know', 'Alanis Morissette'],
+            ['Drew', 'Kiss Me', 'Sixpence None the Richer'],
+            ['Skyler', 'Genie in a Bottle', 'Christina Aguilera'],
+            ['Parker', 'Zombie', 'The Cranberries'],
+        ];
+        return {
+            ...fixture,
+            tab: 'stage',
+            room: {
+                ...(fixture.room || {}),
+                runOfShowEnabled: true,
+            },
+            songs: [
+                {
+                    id: 'density_live',
+                    singerName: 'Alex Rivers',
+                    singer: 'Alex Rivers',
+                    songTitle: 'Dreams',
+                    title: 'Dreams',
+                    artist: 'Fleetwood Mac',
+                    artistName: 'Fleetwood Mac',
+                    status: 'performing',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
+                    youtubeId: 'yt_demo_backing_01',
+                    albumArtUrl: QA_DREAMS_ART_URL,
+                    lyrics: 'Thunder only happens when it is raining',
+                },
+                ...readySongs.map(([singerName, songTitle, artistName], index) => ({
+                    id: `density_ready_${index + 1}`,
+                    singerUid: `density_audience_${index + 1}`,
+                    singerName,
+                    singer: singerName,
+                    songTitle,
+                    title: songTitle,
+                    artist: artistName,
+                    artistName,
+                    status: 'requested',
+                    mediaUrl: `https://www.youtube.com/watch?v=density_backing_${index + 1}`,
+                    youtubeId: `density_backing_${index + 1}`,
+                    resolutionStatus: 'ready',
+                    duration: 180 + index,
+                    priorityScore: 100 - index,
+                    createdAtMs: nowMs - (readySongs.length - index) * 1_000,
+                })),
+                {
+                    id: 'density_pending',
+                    singerName: 'Sam',
+                    singer: 'Sam',
+                    songTitle: 'Believe',
+                    title: 'Believe',
+                    artistName: 'Cher',
+                    artist: 'Cher',
+                    status: 'pending',
+                    resolutionStatus: 'ready',
+                    mediaUrl: 'https://www.youtube.com/watch?v=density_pending',
+                    youtubeId: 'density_pending',
+                },
+                {
+                    id: 'density_assigned',
+                    singerName: 'Jamie',
+                    singer: 'Jamie',
+                    songTitle: 'Torn',
+                    title: 'Torn',
+                    artistName: 'Natalie Imbruglia',
+                    artist: 'Natalie Imbruglia',
+                    status: 'assigned',
+                    runOfShowItemId: 'perf_next',
+                    resolutionStatus: 'ready',
+                    mediaUrl: 'https://www.youtube.com/watch?v=density_assigned',
+                    youtubeId: 'density_assigned',
+                },
+                {
+                    id: 'density_held',
+                    singerName: 'Robin',
+                    singer: 'Robin',
+                    songTitle: 'Iris',
+                    title: 'Iris',
+                    artistName: 'Goo Goo Dolls',
+                    artist: 'Goo Goo Dolls',
+                    status: 'held',
+                    holdReason: 'not_here',
+                    resolutionStatus: 'ready',
+                    mediaUrl: 'https://www.youtube.com/watch?v=density_held',
+                    youtubeId: 'density_held',
+                },
             ],
         };
     }

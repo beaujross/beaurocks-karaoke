@@ -105,6 +105,28 @@ test('hostRuntimeShellModel groups the live lane and candidate pool for the expe
   assert.equal(model.topQuestions.needsIntervention?.title, '2 queue issues');
 });
 
+test('hostRuntimeShellModel presents assigned Planner performances with singer and song copy', () => {
+  const model = buildHostRuntimeShellModel({
+    room: {},
+    runOfShowEnabled: true,
+    runOfShowNextItem: {
+      id: 'planned-performance',
+      type: 'performance',
+      title: 'Feature Slot 1',
+      assignedPerformerName: 'Alex Rivers',
+      songTitle: 'Dreams',
+      artistName: 'Fleetwood Mac',
+      status: 'ready',
+    },
+    autoDj: true,
+  });
+
+  assert.equal(model.nextPerformance?.objectType, 'performance');
+  assert.equal(model.nextPerformance?.title, 'Alex Rivers');
+  assert.equal(model.nextPerformance?.subtitle, 'Dreams — Fleetwood Mac');
+  assert.equal(model.roomControlsSummary.autoDj, true);
+});
+
 test('hostRuntimeShellModel derives the correct runtime emphasis from governance and show state', () => {
   const crowdVoteModel = buildHostRuntimeShellModel({
     room: {},

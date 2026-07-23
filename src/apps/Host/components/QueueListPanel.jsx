@@ -7,18 +7,46 @@ import {
     SELF_SERVE_FORMATS,
 } from '../../../lib/selfServeKaraoke';
 import QueueSongCard from './QueueSongCard';
+import QueueSongInspector from './QueueSongInspector';
 
-const QueueSectionHeader = ({ label, count, toneClass, detail = '' }) => (
-    <div className={`mb-2 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 ${toneClass}`}>
-        <div className="flex min-h-[28px] items-center justify-between gap-2">
-            <span className="text-xs font-bold uppercase tracking-[0.16em]">{label}</span>
-            <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
-                {count}
+const QueueSectionHeader = ({
+    label,
+    count,
+    toneClass,
+    detail = '',
+    open = null,
+    onToggle = null,
+    featureId = '',
+}) => {
+    const content = (
+        <>
+            <span className="min-w-0">
+                <span className="block truncate text-xs font-bold uppercase tracking-[0.16em]">{label}</span>
+                {detail && open ? <span className="mt-0.5 block text-[11px] leading-4 text-zinc-400">{detail}</span> : null}
             </span>
-        </div>
-        {detail ? <div className="mt-1 text-[11px] leading-4 text-zinc-400">{detail}</div> : null}
-    </div>
-);
+            <span className="flex shrink-0 items-center gap-2">
+                <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
+                    {count}
+                </span>
+                {onToggle ? <i className={`fa-solid ${open ? 'fa-chevron-up' : 'fa-chevron-down'} text-[10px] text-zinc-400`}></i> : null}
+            </span>
+        </>
+    );
+    const className = `mb-1 flex min-h-[44px] w-full items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-left ${toneClass}`;
+    if (!onToggle) return <div className={className}>{content}</div>;
+    return (
+        <button
+            type="button"
+            className={`${className} transition hover:border-white/20 hover:bg-white/[0.04]`}
+            aria-expanded={!!open}
+            title={detail}
+            data-feature-id={featureId || undefined}
+            onClick={onToggle}
+        >
+            {content}
+        </button>
+    );
+};
 
 export const QueueSummaryBar = ({
     showQueueSummaryBar = true,
@@ -278,7 +306,6 @@ const QueueListPanel = ({
     setDragQueueId,
     setDragOverId,
     reorderQueue,
-    touchReorderAvailable = false,
     touchReorderEnabled,
     touchReorderMode = false,
     handleTouchStart,
@@ -311,13 +338,18 @@ const QueueListPanel = ({
     nextQueueReasonDetail = '',
 }) => {
     const [selectedSongId, setSelectedSongId] = React.useState('');
+    const [expandedSections, setExpandedSections] = React.useState({
+        pending: false,
+        assigned: false,
+        held: false,
+    });
     const allSongs = React.useMemo(
         () => [...reviewRequired, ...pending, ...queue, ...assigned, ...held],
         [assigned, held, pending, queue, reviewRequired]
     );
     const selectedSong = React.useMemo(
-        () => allSongs.find((song) => song.id === selectedSongId) || queue[0] || pending[0] || assigned[0] || held[0] || null,
-        [allSongs, assigned, held, pending, queue, selectedSongId]
+        () => allSongs.find((song) => song.id === selectedSongId) || null,
+        [allSongs, selectedSongId]
     );
     const selfServePresentation = React.useMemo(
         () => (selfServeMode?.enabled ? buildSelfServeModePresentation(selfServeMode) : null),
@@ -347,12 +379,41 @@ const QueueListPanel = ({
     React.useEffect(() => {
         if (!selectedSong?.id && selectedSongId) {
             setSelectedSongId('');
-            return;
-        }
-        if (!selectedSongId && selectedSong?.id) {
-            setSelectedSongId(selectedSong.id);
         }
     }, [selectedSong?.id, selectedSongId]);
+    const toggleSection = React.useCallback((sectionKey) => {
+        setExpandedSections((current) => ({
+            ...current,
+            [sectionKey]: !current[sectionKey],
+        }));
+    }, []);
+    React.useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const focusQueueSong = (event) => {
+            const requestedSongId = String(event?.detail?.songId || '').trim();
+            if (!requestedSongId) return;
+            const requestedSong = allSongs.find((song) => String(song?.id || '').trim() === requestedSongId);
+            if (!requestedSong) return;
+            const requestedStatus = String(requestedSong?.status || '').trim().toLowerCase();
+            if (requestedStatus === 'pending') {
+                setExpandedSections((current) => ({ ...current, pending: true }));
+            } else if (requestedStatus === 'assigned') {
+                setExpandedSections((current) => ({ ...current, assigned: true }));
+            } else if (requestedStatus === 'held') {
+                setExpandedSections((current) => ({ ...current, held: true }));
+            }
+            setSelectedSongId(requestedSongId);
+            window.requestAnimationFrame(() => {
+                const row = Array.from(document.querySelectorAll('[data-queue-id]'))
+                    .find((node) => String(node.getAttribute('data-queue-id') || '').trim() === requestedSongId);
+                row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const focusTarget = row?.querySelector('button, [tabindex]:not([tabindex="-1"])');
+                focusTarget?.focus?.({ preventScroll: true });
+            });
+        };
+        window.addEventListener('beaurocks:focus-queue-song', focusQueueSong);
+        return () => window.removeEventListener('beaurocks:focus-queue-song', focusQueueSong);
+    }, [allSongs]);
     const buildSelfServeRowState = React.useCallback((song, { lockedIndex = -1 } = {}) => {
         if (!song?.id || !selfServeMode?.enabled) return null;
         const songId = String(song.id || '').trim();
@@ -425,6 +486,24 @@ const QueueListPanel = ({
         if (safeIndex === 2) return 'Then';
         return `Q${safeIndex + 1}`;
     };
+    const selectedReadyIndex = selectedSong
+        ? queue.findIndex((song) => song.id === selectedSong.id)
+        : -1;
+    const selectedAssignedIndex = selectedSong
+        ? assigned.findIndex((song) => song.id === selectedSong.id)
+        : -1;
+    const selectedStatus = String(selectedSong?.status || '').trim().toLowerCase();
+    const selectedInspectorIndex = selectedReadyIndex >= 0
+        ? selectedReadyIndex
+        : selectedAssignedIndex >= 0
+            ? queue.length + selectedAssignedIndex
+            : 0;
+    const selectedInspectorPosition = selectedReadyIndex >= 0
+        ? getReadyQueuePositionLabel(selectedReadyIndex)
+        : selectedStatus === 'assigned'
+            ? 'Linked'
+            : selectedStatus === 'held' ? 'Held' : 'Check';
+    const selectedLockedInLineup = selectedReadyIndex >= 0 && selectedReadyIndex < safeProtectedReadyQueueCount;
 
     return (
         <>
@@ -449,17 +528,19 @@ const QueueListPanel = ({
                 />
             ) : null}
             <div className="mb-3">
-                {touchReorderAvailable && touchReorderMode ? (
+                {touchReorderMode ? (
                     <div className="mb-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
                         Reorder mode is live. Drag a song by its handle, then tap Done Reordering.
                     </div>
                 ) : null}
-                <QueueSectionHeader
-                    label={readyQueueHeaderLabel}
-                    count={queue.length}
-                    toneClass={spotlightAuctionLive ? 'text-amber-200' : 'text-cyan-200'}
-                    detail={readyQueueHeaderDetail}
-                />
+                {selfServePresentation ? (
+                    <QueueSectionHeader
+                        label={readyQueueHeaderLabel}
+                        count={queue.length}
+                        toneClass={spotlightAuctionLive ? 'text-amber-200' : 'text-cyan-200'}
+                        detail={readyQueueHeaderDetail}
+                    />
+                ) : null}
                 {queue.map((s, i) => {
                     const lockedInLiveLineup = i < safeProtectedReadyQueueCount;
                     return (
@@ -493,6 +574,7 @@ const QueueListPanel = ({
                             styles={styles}
                             compactViewport={compactViewport}
                             selected={selectedSong?.id === s.id}
+                            expandSelectedInline={false}
                             onSelect={(song) => setSelectedSongId((prev) => prev === song?.id ? '' : (song?.id || ''))}
                             runOfShowAssignableSlots={runOfShowAssignableSlots}
                             runOfShowOpenSlots={runOfShowOpenSlots}
@@ -514,8 +596,11 @@ const QueueListPanel = ({
                         count={pending.length}
                         toneClass="text-orange-300"
                         detail="Approve or review these before they enter the live queue."
+                        open={expandedSections.pending}
+                        onToggle={() => toggleSection('pending')}
+                        featureId="queue-section-pending-toggle"
                     />
-                    {pending.map((s, i) => (
+                    {expandedSections.pending ? pending.map((s, i) => (
                             <QueueSongCard
                                 key={s.id}
                                 song={s}
@@ -542,6 +627,7 @@ const QueueListPanel = ({
                                 styles={styles}
                                 compactViewport={compactViewport}
                                 selected={selectedSong?.id === s.id}
+                                expandSelectedInline={false}
                                 onSelect={(song) => setSelectedSongId((prev) => prev === song?.id ? '' : (song?.id || ''))}
                                 runOfShowAssignableSlots={runOfShowAssignableSlots}
                                 runOfShowOpenSlots={runOfShowOpenSlots}
@@ -550,7 +636,7 @@ const QueueListPanel = ({
                                 onApprovePending={onApprovePending}
                                 onDeletePending={onDeletePending}
                             />
-                        ))}
+                        )) : null}
                 </div>
             ) : null}
             {assigned.length > 0 ? (
@@ -560,8 +646,11 @@ const QueueListPanel = ({
                         count={assigned.length}
                         toneClass="text-violet-200"
                         detail="Linked songs are controlled by run-of-show slots, not the live queue order."
+                        open={expandedSections.assigned}
+                        onToggle={() => toggleSection('assigned')}
+                        featureId="queue-section-assigned-toggle"
                     />
-                    {assigned.map((s, i) => (
+                    {expandedSections.assigned ? assigned.map((s, i) => (
                             <QueueSongCard
                                 key={s.id}
                                 song={s}
@@ -592,6 +681,7 @@ const QueueListPanel = ({
                                 styles={styles}
                                 compactViewport={compactViewport}
                                 selected={selectedSong?.id === s.id}
+                                expandSelectedInline={false}
                                 onSelect={(song) => setSelectedSongId((prev) => prev === song?.id ? '' : (song?.id || ''))}
                                 runOfShowAssignableSlots={runOfShowAssignableSlots}
                                 runOfShowOpenSlots={runOfShowOpenSlots}
@@ -600,7 +690,7 @@ const QueueListPanel = ({
                                 onApprovePending={onApprovePending}
                                 onDeletePending={onDeletePending}
                             />
-                        ))}
+                        )) : null}
                 </div>
             ) : null}
             {held.length > 0 ? (
@@ -610,8 +700,11 @@ const QueueListPanel = ({
                         count={held.length}
                         toneClass="text-zinc-200"
                         detail="Held singers are parked until they are restored."
+                        open={expandedSections.held}
+                        onToggle={() => toggleSection('held')}
+                        featureId="queue-section-held-toggle"
                     />
-                    {held.map((s, i) => (
+                    {expandedSections.held ? held.map((s, i) => (
                         <QueueSongCard
                             key={s.id}
                             song={s}
@@ -642,6 +735,7 @@ const QueueListPanel = ({
                             styles={styles}
                             compactViewport={compactViewport}
                             selected={selectedSong?.id === s.id}
+                            expandSelectedInline={false}
                             onSelect={(song) => setSelectedSongId((prev) => prev === song?.id ? '' : (song?.id || ''))}
                             runOfShowAssignableSlots={runOfShowAssignableSlots}
                             runOfShowOpenSlots={runOfShowOpenSlots}
@@ -650,9 +744,60 @@ const QueueListPanel = ({
                             onApprovePending={onApprovePending}
                             onDeletePending={onDeletePending}
                         />
-                    ))}
+                    )) : null}
                 </div>
             ) : null}
+            <QueueSongInspector
+                song={selectedSong}
+                compactViewport={compactViewport}
+                onClose={() => setSelectedSongId('')}
+            >
+                {selectedSong ? (
+                    <QueueSongCard
+                        song={selectedSong}
+                        index={selectedInspectorIndex}
+                        queuePositionLabel={selectedInspectorPosition}
+                        dragQueueId={null}
+                        dragOverId={null}
+                        setDragQueueId={() => {}}
+                        setDragOverId={() => {}}
+                        reorderQueue={() => {}}
+                        touchReorderEnabled={false}
+                        touchReorderMode={false}
+                        handleTouchStart={() => {}}
+                        handleTouchMove={() => {}}
+                        handleTouchEnd={() => {}}
+                        updateStatus={updateStatus}
+                        startEdit={startEdit}
+                        onRetryLyrics={onRetryLyrics}
+                        onFetchTimedLyrics={onFetchTimedLyrics}
+                        onApproveAudienceBacking={onApproveAudienceBacking}
+                        onAvoidAudienceBacking={onAvoidAudienceBacking}
+                        onMoveNext={lockedLineupComplete ? null : onMoveNext}
+                        onHoldSinger={onHoldSinger}
+                        onRestoreSinger={onRestoreSinger}
+                        onRemove={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
+                        backingDecisionBusyKey={backingDecisionBusyKey}
+                        statusPill={statusPill}
+                        styles={styles}
+                        compactViewport
+                        selected
+                        inspectorMode
+                        onSelect={() => setSelectedSongId('')}
+                        runOfShowAssignableSlots={runOfShowAssignableSlots}
+                        runOfShowOpenSlots={runOfShowOpenSlots}
+                        onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                        onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
+                        onApprovePending={onApprovePending}
+                        onDeletePending={onDeletePending}
+                        lockedInLineup={selectedLockedInLineup}
+                        lineupSlotLabel={selectedLockedInLineup ? selectedInspectorPosition : ''}
+                        selfServeState={buildSelfServeRowState(selectedSong, {
+                            lockedIndex: selectedLockedInLineup ? selectedReadyIndex : -1,
+                        })}
+                    />
+                ) : null}
+            </QueueSongInspector>
         </>
     );
 };

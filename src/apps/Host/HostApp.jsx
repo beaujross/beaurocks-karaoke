@@ -4,6 +4,7 @@ import { GAMES_META } from '../../lib/gameRegistry';
 import { getRoomGameLaunchPreflight, getRunOfShowGameMode } from '../../lib/gameLaunchCompatibility';
 import HostChatPanel from './components/HostChatPanel';
 import HostTopChrome from './components/HostTopChrome';
+import HostQueueHorizon from './components/HostQueueHorizon';
 import SelfServeModeLauncher from './components/SelfServeModeLauncher';
 import { buildQaHostFixture } from './qaHostFixtures';
 import MissionSetupShell from './components/setup/MissionSetupShell';
@@ -139,6 +140,8 @@ import {
 import { computeOpenSlotAssignments, isOpenRunOfShowPerformanceSlot } from './lib/openSlotSuggestions';
 import { prepareRunOfShowQueueAssignment } from './lib/runOfShowQueueAssignment';
 import { buildCurrentRoomRunOfShowDraft } from './lib/currentRoomRunOfShowDraft';
+import buildHostRuntimeShellModel from './lib/hostRuntimeShellModel';
+import buildHostQueueHorizonModel from './lib/hostQueueHorizonModel';
 import {
     getHostMomentCueMeta,
     getHostMomentCueSoundCandidates
@@ -10647,6 +10650,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         + Math.max(0, Number(dmUnread || 0));
     const queueAttentionCount = queueAttentionNeedsHostCount + Math.max(0, Number(chatUnread || 0));
     const queueAttentionNeedsHost = queueAttentionNeedsHostCount > 0;
+    const hostHorizonRuntimeModel = useMemo(() => buildHostRuntimeShellModel({
+        room,
+        current: currentSong || null,
+        nextQueueSong: missionQueueSongs[0] || null,
+        queue: missionQueueSongs,
+        queueNeedsAttention: queueAttentionCount,
+        inboxTotalCount: Math.max(0, Number(moderationQueueState.totalPending || 0)),
+        moderationPendingCount: Math.max(0, Number(moderationQueueState.totalPending || 0)),
+        runOfShowEnabled: isRunOfShowRoom,
+        runOfShowStagedItem,
+        runOfShowNextItem,
+        activeReleaseWindow: runOfShowDirector?.releaseWindow || null,
+        autoDj,
+        nowMs: nowMs(),
+    }), [
+        autoDj,
+        currentSong,
+        isRunOfShowRoom,
+        missionQueueSongs,
+        moderationQueueState.totalPending,
+        queueAttentionCount,
+        room,
+        runOfShowDirector?.releaseWindow,
+        runOfShowNextItem,
+        runOfShowStagedItem,
+    ]);
+    const hostQueueHorizonModel = useMemo(() => buildHostQueueHorizonModel({
+        runtimeModel: hostHorizonRuntimeModel,
+        queueTotalCount: missionQueueSongs.length,
+        attentionCount: queueAttentionCount,
+    }), [hostHorizonRuntimeModel, missionQueueSongs.length, queueAttentionCount]);
     const {
         smokeRunning,
         smokeResults,
@@ -22353,7 +22387,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     tvBase={tvBase}
                     launchUrls={activeRoomLaunchUrls}
                     roomCode={roomCode}
-                    queuePreviewSongs={queuedSongs.slice(0, 3)}
                     tab={tab}
                     setTab={handleTopChromeTabChange}
                     showLaunchMenu={showLaunchMenu}
@@ -22547,6 +22580,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onUndoOperatingStylePreset={undoLiveBundle}
                     liveCrowdModeHistoryLabel={liveCrowdModeHistoryEntry?.label ? `Last live crowd mode: ${liveCrowdModeHistoryEntry.label}` : 'Live changes affect tonight only.'}
                     liveOperatingStyleHistoryLabel={liveOperatingStyleHistoryEntry?.label ? `Last live operating style: ${liveOperatingStyleHistoryEntry.label}` : 'Live changes affect tonight only.'}
+                />
+                <HostQueueHorizon
+                    model={hostQueueHorizonModel}
+                    compact={mediumHostViewport || tabletTouchViewport}
+                    onOpenQueue={openQueueWorkspaceFromAdmin}
+                    onOpenAttention={() => {
+                        openQueueWorkspaceFromAdmin();
+                        window.dispatchEvent(new CustomEvent('beaurocks:focus-host-inbox'));
+                    }}
+                    onOpenAutomation={toggleAutoDjQuick}
+                    onSelectSegment={(segment) => {
+                        const item = segment?.item || null;
+                        const isPlannerObject = item?.sourceLabel === 'Show';
+                        if ((isPlannerObject || item?.objectType !== 'performance') && item?.id) {
+                            leaveAdminWithTarget('run_of_show');
+                            setRunOfShowFocusRequest({
+                                itemId: String(item.id || '').trim(),
+                                token: Date.now(),
+                            });
+                            return;
+                        }
+                        openQueueWorkspaceFromAdmin();
+                        if (typeof window === 'undefined') return;
+                        if (segment?.key === 'on-stage') {
+                            window.dispatchEvent(new CustomEvent('beaurocks:focus-current-performance'));
+                            return;
+                        }
+                        window.dispatchEvent(new CustomEvent('beaurocks:focus-queue-song', {
+                            detail: { songId: String(item?.raw?.id || item?.id || '').trim() },
+                        }));
+                    }}
                 />
             {hostDeploymentBanners && (
                 <div className="px-3 sm:px-4 md:px-5 lg:px-6 pt-3">

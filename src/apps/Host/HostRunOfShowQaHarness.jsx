@@ -42,7 +42,7 @@ export default function HostRunOfShowQaHarness({ fixtureId = 'run-of-show-consol
     };
 
     return (
-        <div className="min-h-screen bg-zinc-950 px-4 py-6 text-white">
+        <div className="host-app min-h-screen bg-zinc-950 px-4 py-6 text-white">
             <div
                 className="mx-auto max-w-[1480px] space-y-4"
                 data-host-qa-ready="true"

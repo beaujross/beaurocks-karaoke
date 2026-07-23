@@ -21216,3 +21216,389 @@
     display: grid;
   }
 }
+
+/* Public-site readability system.
+   Keep the cinematic palette while making secondary copy, controls, and focus
+   states usable at a glance on phones, laptops, and low-contrast displays. */
+.mk3-site {
+  --mk3-readable-ink: #f8fbff;
+  --mk3-readable-muted: #c8d6e5;
+  --mk3-readable-subtle: #acbfd2;
+  --mk3-readable-focus: #8cecff;
+  --mk3-readable-control-bg: rgba(7, 15, 24, 0.94);
+  --mk3-muted: var(--mk3-readable-muted);
+  color: var(--mk3-readable-ink);
+  font-size: 16px;
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mk3-site button,
+.mk3-site input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.mk3-site select,
+.mk3-site textarea,
+.mk3-site summary,
+.mk3-site [role="button"] {
+  min-width: 44px;
+  min-height: 48px;
+  font-family: var(--mk3-host-font-ui);
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.mk3-site input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.mk3-site select,
+.mk3-site textarea {
+  border-color: rgba(164, 190, 211, 0.42);
+  background-color: var(--mk3-readable-control-bg);
+  color: var(--mk3-readable-ink);
+  font-size: 1rem;
+}
+
+.mk3-site input::placeholder,
+.mk3-site textarea::placeholder {
+  color: #9eb1c5;
+  opacity: 1;
+}
+
+.mk3-site button:focus-visible,
+.mk3-site a:focus-visible,
+.mk3-site input:focus-visible,
+.mk3-site select:focus-visible,
+.mk3-site textarea:focus-visible,
+.mk3-site summary:focus-visible,
+.mk3-site [role="button"]:focus-visible {
+  outline: 3px solid var(--mk3-readable-focus);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(4, 16, 24, 0.92);
+}
+
+.mk3-links a,
+.mk3-links button,
+.mk3-more-trigger,
+.mk3-mobile-link-grid a,
+.mk3-mobile-link-grid button,
+.mk3-account-action,
+.mk3-mobile-toggle {
+  min-height: 48px;
+  padding: 0.7rem 0.95rem;
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+.mk3-auth-mode-label,
+.mk3-auth-hint,
+.mk3-private-pill,
+.mk3-rebuild-kicker,
+.mk3-site-footer-brand span {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.mk3-auth-hint,
+.mk3-site-footer-brand span {
+  color: var(--mk3-readable-muted);
+}
+
+.mk3-private-pill {
+  min-height: 32px;
+  padding: 0.42rem 0.72rem;
+  color: #f2f7ff;
+}
+
+.mk3-rebuild-kicker {
+  color: #ff74d8;
+}
+
+.mk3-rebuild-button,
+.mk3-actions-inline button,
+.mk3-finder-cta-row button,
+.mk3-auth-box button,
+.mk3-detail-card button,
+.mk3-actions-card button,
+.mk3-discover-card button {
+  min-height: 50px;
+  padding: 0.82rem 1.15rem;
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.mk3-site-footer-links a,
+.mk3-site-footer-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 48px;
+  padding: 0.72rem 1rem;
+  border: 1px solid rgba(166, 196, 218, 0.28);
+  border-radius: 999px;
+  background: rgba(7, 15, 24, 0.88);
+  color: #edf5ff;
+  font-size: 0.875rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.mk3-site-footer-links a:hover,
+.mk3-site-footer-links a:focus-visible {
+  border-color: rgba(140, 236, 255, 0.72);
+  background: rgba(15, 34, 48, 0.96);
+  color: #ffffff;
+}
+
+.mk3-site-footer-actions button {
+  min-height: 50px;
+  font-size: 0.9rem;
+}
+
+/* Discover has the densest public interaction layer. Preserve its hierarchy,
+   but remove sub-12px labels and undersized map/filter controls. */
+.mk3-discover-radar-hero span,
+.mk3-discover-shell span,
+.mk3-mobile-discover-switch span,
+.mk3-discover-live-rail span {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.mk3-discover-radar-meta,
+.mk3-discover-filter-meta,
+.mk3-map-legend,
+.mk3-map-discovery-hint,
+.mk3-rail-head-meta,
+.mk3-filter-chip-label {
+  color: var(--mk3-readable-subtle);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.mk3-map-toolbar button,
+.mk3-rail-view-toggle button,
+.mk3-discover-category-toggle-row button,
+.mk3-discover-filter-meta button,
+.mk3-discover-fast-chip,
+.mk3-mobile-discover-switch button,
+.mk3-filter-chips button,
+.mk3-discover-live-card-actions button,
+.mk3-ghost-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.68rem 0.9rem;
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+.mk3-discover-filter-basic input,
+.mk3-discover-filter-advanced-field input,
+.mk3-discover-filter-advanced-field select {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+@media (max-width: 720px) {
+  .mk3-site button,
+  .mk3-site summary,
+  .mk3-site [role="button"],
+  .mk3-links a,
+  .mk3-mobile-link-grid a,
+  .mk3-site-footer-links a {
+    min-height: 48px;
+  }
+
+  .mk3-mobile-toggle {
+    min-width: 72px;
+    min-height: 48px;
+    padding-inline: 1rem;
+  }
+
+  .mk3-rebuild-button,
+  .mk3-actions-inline button,
+  .mk3-finder-cta-row button {
+    width: 100%;
+  }
+
+  .mk3-site-footer-links a,
+  .mk3-site-footer-actions button {
+    flex: 1 1 9rem;
+  }
+}
+
+/* Specificity closeout for theme and compact-layout rules defined above. */
+.mk3-site .mk3-account-action,
+.mk3-site .mk3-links a,
+.mk3-site .mk3-links button,
+.mk3-site .mk3-more-trigger,
+.mk3-site .mk3-mobile-link-grid a,
+.mk3-site .mk3-mobile-link-grid button {
+  min-height: 48px;
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+.mk3-site .mk3-rebuild-button.is-link {
+  min-height: 44px;
+  padding: 0.7rem 0.25rem;
+  font-size: 0.9rem;
+}
+
+.mk3-site .mk3-rail-head .mk3-rail-view-toggle button {
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0.68rem 0.9rem;
+  font-size: 0.875rem;
+}
+
+.mk3-site .mk3-discover-filter-basic {
+  color: #cfe4fa;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.mk3-fans-hero-tv-head span,
+.mk3-fans-hero-tv-head b,
+.mk3-fans-hero-tv-topline span,
+.mk3-fans-hero-tv-topline i,
+.mk3-fans-hero-tv-pill-row span,
+.mk3-fans-cinematic-pill-row span,
+.mk3-persona-simple-card span,
+.mk3-demand-pill-row span,
+.mk3-discover-chart-teaser > div span {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 720px) {
+  .mk3-site .mk3-rebuild-button.is-link {
+    min-height: 48px;
+    justify-content: center;
+  }
+}
+
+.mk3-site.mk3-site-cinematic.mk3-site-synthwave .mk3-links a,
+.mk3-site.mk3-site-cinematic.mk3-site-synthwave .mk3-links button,
+.mk3-site.mk3-site-cinematic.mk3-site-synthwave .mk3-more-trigger,
+.mk3-site.mk3-site-cinematic.mk3-site-synthwave .mk3-mobile-link-grid a,
+.mk3-site.mk3-site-cinematic.mk3-site-synthwave .mk3-mobile-link-grid button,
+.mk3-site.mk3-site-cinematic.mk3-site-synthwave .mk3-account-action,
+.mk3-site.mk3-site-cinematic.mk3-site-synthwave .mk3-nav-join-button {
+  min-height: 48px;
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+.mk3-fans-home-minimal .mk3-persona-simple-card span,
+.mk3-fans-home-minimal .mk3-fans-persona-card span,
+.mk3-fans-home-minimal .mk3-fans-home-cta-meta span,
+.mk3-discover-map-head-copy b {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.mk3-filter-chip-count,
+.mk3-discover-card .mk3-chip,
+.mk3-discover-card .mk3-discover-avatar,
+.mk3-discover-card .mk3-vibe-index span,
+.mk3-discover-card .mk3-vibe-index small,
+.mk3-discover-card .mk3-discover-room-kicker span,
+.mk3-discover-card .mk3-discover-room-kicker strong,
+.mk3-discover-card .mk3-leaderboard-pill,
+.mk3-discover-card .mk3-day-badge,
+.mk3-discover-card .mk3-day-badge span {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.mk3-discover-card .mk3-chip,
+.mk3-discover-card .mk3-discover-room-kicker strong,
+.mk3-discover-card .mk3-leaderboard-pill,
+.mk3-discover-card .mk3-day-badge {
+  min-height: 30px;
+  padding: 0.38rem 0.62rem;
+}
+
+.mk3-discover-card .mk3-card-subtitle,
+.mk3-discover-card .mk3-discover-meta-row,
+.mk3-discover-card .mk3-discover-support {
+  color: var(--mk3-readable-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.mk3-actions-inline a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 50px;
+  padding: 0.82rem 1.15rem;
+  border: 1px solid var(--mk3-btn-border-primary);
+  border-radius: var(--mk3-btn-pill-radius);
+  background: var(--mk3-btn-gradient-primary);
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
+  color: var(--mk3-btn-ink-primary);
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.mk3-actions-inline a:hover,
+.mk3-actions-inline a:focus-visible {
+  border-color: rgba(140, 236, 255, 0.78);
+  filter: brightness(1.08);
+}
+
+.mk3-actions-inline a[aria-disabled="true"] {
+  cursor: not-allowed;
+  filter: grayscale(0.45);
+  opacity: 0.58;
+}
+
+.mk3-map-placeholder {
+  color: var(--mk3-readable-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.mk3-surface-mock-head > span,
+.mk3-surface-mock-head > b,
+.mk3-surface-mock-pill-row span,
+.mk3-surface-mock-phone-screen > span,
+.mk3-surface-mock-code,
+.mk3-surface-mock-tv-topline span,
+.mk3-surface-mock-tv-topline i,
+.mk3-surface-mock-radar-list span,
+.mk3-surface-mock-schedule-list span,
+.mk3-chip {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.mk3-chip {
+  min-height: 30px;
+  padding: 0.38rem 0.62rem;
+}
+
+.mk3-site .mk3-auth-box .mk3-auth-mode-tabs button {
+  min-height: 56px;
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.25;
+}
+
+.mk3-site .mk3-auth-box .mk3-auth-link {
+  min-height: 44px;
+  padding: 0.65rem 0.25rem;
+  color: #b8eaff;
+  font-size: 0.875rem;
+  line-height: 1.25;
+}

@@ -773,6 +773,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [deferredTrackChecks, setDeferredTrackChecks] = useState([]);
     const [dismissedTrackCheckKeys, setDismissedTrackCheckKeys] = useState([]);
     const [desktopQueueSurfaceTab, setDesktopQueueSurfaceTab] = useState('queue');
+    const [desktopQueueReorderMode, setDesktopQueueReorderMode] = useState(false);
     const runtimeShellMode = getHostRuntimeShellMode(room);
     const useExperimentalRuntimeShell = runtimeVisible && runtimeShellMode === 'social_game_night_experiment';
     const postPerformanceBackingPromptEnabled = isPostPerformanceBackingPromptEnabled(room);
@@ -1579,7 +1580,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         dragOverId,
         setDragOverId,
         reorderQueue,
-        touchReorderAvailable,
         touchReorderEnabled,
         handleTouchStart,
         handleTouchMove,
@@ -4176,11 +4176,23 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         const focusInbox = () => {
             focusInboxWorkspace();
         };
+        const focusCurrentPerformance = () => {
+            setDesktopQueueSurfaceTab('queue');
+            queueSurface.activateCompactTab('queue');
+            window.requestAnimationFrame(() => {
+                const transport = document.querySelector('[data-feature-id="host-unified-stage-transport"]');
+                transport?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const focusTarget = transport?.querySelector('button, [tabindex]:not([tabindex="-1"])');
+                focusTarget?.focus?.({ preventScroll: true });
+            });
+        };
         window.addEventListener('beaurocks:focus-queue-live-controls', focusQueueControls);
         window.addEventListener('beaurocks:focus-host-inbox', focusInbox);
+        window.addEventListener('beaurocks:focus-current-performance', focusCurrentPerformance);
         return () => {
             window.removeEventListener('beaurocks:focus-queue-live-controls', focusQueueControls);
             window.removeEventListener('beaurocks:focus-host-inbox', focusInbox);
+            window.removeEventListener('beaurocks:focus-current-performance', focusCurrentPerformance);
         };
     }, [focusInboxWorkspace, queueSurface]);
     const deferredTrackCheckInboxItems = useMemo(() => (
@@ -5390,7 +5402,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     );
     const queueListSection = (
         <div className={`flex-1 min-h-0 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
-            {queueSurface.isCompactQueueSurface ? runOfShowQueueHudSection : null}
             <SectionHeader
                 label="Live Queue"
                 open={showQueueList}
@@ -5416,9 +5427,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 setDragQueueId={setDragQueueId}
                 setDragOverId={setDragOverId}
                 reorderQueue={reorderQueue}
-                touchReorderAvailable={touchReorderAvailable}
                 touchReorderEnabled={touchReorderEnabled}
-                touchReorderMode={queueSurface.touchReorderMode}
+                touchReorderMode={queueSurface.isCompactQueueSurface
+                    ? queueSurface.touchReorderMode
+                    : desktopQueueReorderMode}
                 handleTouchStart={handleTouchStart}
                 handleTouchMove={handleTouchMove}
                 handleTouchEnd={handleTouchEnd}
@@ -6111,6 +6123,22 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     activeToneClass: queueWorkspaceToneMap.show.activeToneClass,
                     badgeToneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
                 })}
+                {desktopQueueSurfaceTab === 'queue' ? (
+                    <button
+                        type="button"
+                        onClick={() => setDesktopQueueReorderMode((current) => !current)}
+                        data-feature-id="queue-surface-reorder-toggle-desktop"
+                        aria-pressed={desktopQueueReorderMode}
+                        className={`ml-auto inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 text-[11px] font-black uppercase tracking-[0.14em] transition ${
+                            desktopQueueReorderMode
+                                ? 'border-cyan-300/40 bg-cyan-500/15 text-cyan-100'
+                                : 'border-white/10 bg-black/25 text-zinc-200 hover:border-cyan-300/30 hover:text-white'
+                        }`}
+                    >
+                        <i className={`fa-solid ${desktopQueueReorderMode ? 'fa-check' : 'fa-arrow-down-up-across-line'}`}></i>
+                        {desktopQueueReorderMode ? 'Done' : 'Reorder'}
+                    </button>
+                ) : null}
             </div>
             {queueWorkspaceHeader}
             {desktopQueueSurfaceTab === 'show'
@@ -6179,7 +6207,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         badgeToneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
                     })}
                 </div>
-                {touchReorderAvailable && queueSurface.activeCompactTab === 'queue' ? (
+                {queueSurface.activeCompactTab === 'queue' ? (
                     <button
                         type="button"
                         onClick={queueSurface.toggleTouchReorderMode}
