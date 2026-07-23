@@ -113,7 +113,13 @@ const {
   buildOneMinuteMicRoomPatch,
   getOneMinuteMicFinalizeCandidate,
 } = require("./lib/audienceDecisionAutomation");
-const REACTION_POINT_COSTS = require("./lib/reactionPointCosts.json");
+const {
+  getReactionDefinition,
+  getReactionPointCosts,
+  isReactionUnlocked,
+} = require("./lib/reactionCatalog");
+const REACTION_POINT_COSTS = getReactionPointCosts();
+const { calculatePerformanceFame, getFameLevel } = require("./lib/fameProgression");
 const OFFICIAL_BEAUROCKS_DISCOVER_LISTINGS = require("./lib/officialBeauRocksDiscoverListings.json");
 const { shouldIncludeDiscoverListing } = require("./lib/discoverVisibility");
 const {
@@ -12645,6 +12651,63 @@ exports.resolveCanonicalTrackIdentityBatch = onCall({ cors: true }, async (reque
   return { items: results };
 });
 
+const awardAccountFameForPerformance = async ({ performanceRef, roomCode = '' } = {}) => {
+  const db = admin.firestore();
+  return db.runTransaction(async (tx) => {
+    const performanceSnap = await tx.get(performanceRef);
+    if (!performanceSnap.exists) return { awarded: 0, status: "performance_missing" };
+    const performance = performanceSnap.data() || {};
+    if (Number(performance.fameAwardVersion || 0) >= 1) {
+      return {
+        awarded: Math.max(0, Number(performance.fameAwarded || 0) || 0),
+        totalFamePoints: Math.max(0, Number(performance.fameTotalAfter || 0) || 0),
+        fameLevel: Math.max(0, Number(performance.fameLevelAfter || 0) || 0),
+        status: String(performance.fameAwardStatus || "awarded"),
+        duplicate: true,
+      };
+    }
+    const singerUid = normalizeUidToken(performance.singerUid || "");
+    if (!singerUid) {
+      tx.set(performanceRef, { fameAwardVersion: 1, fameAwarded: 0, fameAwardStatus: "account_required" }, { merge: true });
+      return { awarded: 0, status: "account_required" };
+    }
+    const userRef = db.collection("users").doc(singerUid);
+    const roomUserRef = getRootRef().collection("room_users").doc(`${roomCode}_${singerUid}`);
+    const [userSnap, roomUserSnap] = await Promise.all([tx.get(userRef), tx.get(roomUserRef)]);
+    const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+    const roomUserData = roomUserSnap.exists ? (roomUserSnap.data() || {}) : {};
+    const accountEligible = userSnap.exists
+      && roomUserSnap.exists
+      && userData.leaderboardAccountEligible === true
+      && roomUserData.leaderboardAccountEligible === true;
+    if (!accountEligible) {
+      tx.set(performanceRef, { fameAwardVersion: 1, fameAwarded: 0, fameAwardStatus: "account_required" }, { merge: true });
+      return { awarded: 0, status: "account_required" };
+    }
+    const breakdown = calculatePerformanceFame({
+      hypeScore: performance.hypeScore,
+      peakDecibel: performance.peakDecibel,
+      hostMultiplier: 1,
+    });
+    const previousTotal = Math.max(0, Number(userData.totalFamePoints || 0) || 0);
+    const nextTotal = previousTotal + breakdown.totalFameAwarded;
+    const fameLevel = getFameLevel(nextTotal);
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+    tx.set(userRef, { totalFamePoints: nextTotal, currentLevel: fameLevel, fameLevel, fameUpdatedAt: serverNow }, { merge: true });
+    tx.set(roomUserRef, { totalFamePoints: nextTotal, currentLevel: fameLevel, fameLevel, fameUpdatedAt: serverNow }, { merge: true });
+    tx.set(performanceRef, {
+      fameAwardVersion: 1,
+      fameAwarded: breakdown.totalFameAwarded,
+      fameAwardBreakdown: breakdown,
+      fameAwardStatus: "awarded",
+      fameTotalAfter: nextTotal,
+      fameLevelAfter: fameLevel,
+      fameAwardedAt: serverNow,
+    }, { merge: true });
+    return { awarded: breakdown.totalFameAwarded, totalFamePoints: nextTotal, fameLevel, status: "awarded", duplicate: false };
+  });
+};
+
 exports.logPerformance = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "log_performance", { perMinute: 24, perHour: 240 });
   enforceAppCheckIfEnabled(request, "log_performance");
@@ -12691,6 +12754,7 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     && Number(existingPerformanceSnap.get("projectionVersion") || 0) >= 1
   ) {
     const existingPerformance = existingPerformanceSnap.data() || {};
+    const fameAward = await awardAccountFameForPerformance({ performanceRef, roomCode });
     return {
       songId: existingPerformance.songId || existingPerformance.canonicalSongId || null,
       canonicalSongId: existingPerformance.canonicalSongId || existingPerformance.songId || null,
@@ -12706,6 +12770,7 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
       leaderboardEligibility: existingPerformance.leaderboardEligibility || "room_only_guest",
       weekKey: existingPerformance.weekKey || getWeekKeyUtc(new Date()),
       duplicate: true,
+      fameAward,
     };
   }
   const data = {
@@ -12867,6 +12932,8 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     applauseScore,
     hypeScore,
     hostBonus,
+    peakDecibel: Math.max(40, Math.min(100, Number(data.peakDecibel || 65) || 65)),
+    fameHostMultiplier: 1,
     isOfficial,
     globalLeaderboardEligible,
     leaderboardEligibility,
@@ -12875,6 +12942,8 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     weekKey,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
+
+  const fameAward = await awardAccountFameForPerformance({ performanceRef, roomCode });
 
   const bestRef = admin.firestore().collection("song_hall_of_fame").doc(songId);
   const weeklyId = `${weekKey}__${songId}`;
@@ -13074,6 +13143,7 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     leaderboardEligibility,
     weekKey,
     duplicate: false,
+    fameAward,
   };
 });
 
@@ -20824,6 +20894,7 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
   const roomRef = rootRef.collection("rooms").doc(roomCode);
   const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
   const userRef = db.collection("users").doc(callerUid);
+  const beauBucksAccountRef = db.collection(BEAUBUCKS_ACCOUNT_COLLECTION).doc(buildBeauBucksAccountId({ uid: callerUid }));
   const roomSnap = await roomRef.get();
   if (!roomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
   const initialRoomData = roomSnap.data() || {};
@@ -20834,12 +20905,16 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
   const operationDocumentId = buildSpendOperationDocumentId({ roomCode, uid: callerUid, clientOperationId });
   const operationRef = db.collection(SPEND_OPERATIONS_COLLECTION).doc(operationDocumentId);
   const payload = request.data?.payload && typeof request.data.payload === "object" ? request.data.payload : {};
+  const reactionPerformanceId = kind === SPEND_KINDS.reaction ? String(payload.performanceId || "").trim() : "";
+  const reactionPerformanceRef = reactionPerformanceId ? rootRef.collection("karaoke_songs").doc(reactionPerformanceId) : null;
   const result = await db.runTransaction(async (tx) => {
-    const [operationSnap, currentRoomSnap, roomUserSnap, userSnap] = await Promise.all([
+    const [operationSnap, currentRoomSnap, roomUserSnap, userSnap, beauBucksAccountSnap, reactionPerformanceSnap] = await Promise.all([
       tx.get(operationRef),
       tx.get(roomRef),
       tx.get(roomUserRef),
       tx.get(userRef),
+      tx.get(beauBucksAccountRef),
+      reactionPerformanceRef ? tx.get(reactionPerformanceRef) : Promise.resolve(null),
     ]);
     if (operationSnap.exists) {
       const prior = operationSnap.data() || {};
@@ -20863,6 +20938,12 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
         name: String(prior.name || ""),
         avatar: String(prior.avatar || ""),
         avatarId: String(prior.avatarId || ""),
+        reactionType: String(prior.reactionType || ""),
+        scoreValue: Math.max(0, Number(prior.scoreValue || 0) || 0),
+        cooldownMs: Math.max(0, Number(prior.cooldownMs || 0) || 0),
+        cooldownUntilMs: Math.max(0, Number(prior.cooldownUntilMs || 0) || 0),
+        performanceId: String(prior.performanceId || ""),
+        performanceScoreAdded: Math.max(0, Number(prior.performanceScoreAdded || 0) || 0),
       };
     }
     if (!currentRoomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
@@ -20874,6 +20955,7 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
 
     const roomUserData = roomUserSnap.data() || {};
     const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+    const beauBucksAccountData = beauBucksAccountSnap.exists ? (beauBucksAccountSnap.data() || {}) : {};
     const eventCredits = normalizeRoomEventCredits(roomData.eventCredits || {});
     const balanceBefore = Math.max(0, Math.floor(Number(roomUserData.points || 0) || 0));
     let cost = 0;
@@ -20884,13 +20966,42 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
     let avatarUnlockId = "";
     let resolvedName = "";
     let resolvedAvatar = "";
+    let reactionDefinition = null;
+    let reactionCooldownMs = 0;
+    let reactionCooldownUntilMs = 0;
+    let performanceScoreAdded = 0;
+    const operationNowMs = Date.now();
 
     if (kind === SPEND_KINDS.reaction) {
       const reaction = resolveReactionSpendCost({ reactionType: payload.reactionType, reactionCosts: REACTION_POINT_COSTS });
-      if (!reaction.ok) throw new HttpsError("invalid-argument", "reactionType is not a paid reaction.");
+      if (!reaction.ok) throw new HttpsError("invalid-argument", "reactionType is not a scored reaction.");
+      reactionDefinition = getReactionDefinition(reaction.reactionType);
+      const reactionPerformanceData = reactionPerformanceSnap?.exists ? (reactionPerformanceSnap.data() || {}) : null;
+      if (!reactionPerformanceRef || !reactionPerformanceData
+        || normalizeRoomCode(reactionPerformanceData.roomCode || "") !== roomCode
+        || String(reactionPerformanceData.status || "").trim().toLowerCase() !== "performing") {
+        throw new HttpsError("failed-precondition", "Reactions can only score the performance currently on stage.");
+      }
+      const accountEligible = requestHasNonAnonymousAccount(request);
+      const fameLevel = Math.max(0, Number(userData.currentLevel ?? userData.fameLevel ?? getFameLevel(userData.totalFamePoints || 0)) || 0);
+      if (!isReactionUnlocked({
+        reaction: reactionDefinition,
+        accountEligible,
+        fameLevel,
+        entitlementIds: beauBucksAccountData.entitlementIds,
+      })) {
+        throw new HttpsError("permission-denied", "That reaction is not unlocked for this BeauRocks account.");
+      }
       cost = reaction.cost;
       spendType = "reaction_spend";
       sourceId = reaction.reactionType;
+      reactionCooldownMs = Math.max(0, Number(reactionDefinition?.cooldownMs || 0) || 0);
+      const cooldownMap = roomUserData.reactionCooldownUntilMs && typeof roomUserData.reactionCooldownUntilMs === "object"
+        ? roomUserData.reactionCooldownUntilMs
+        : {};
+      reactionCooldownUntilMs = Math.max(0, Number(cooldownMap[reaction.reactionType] || 0) || 0);
+      performanceScoreAdded = Math.max(0, Number(reactionDefinition?.scoreValue || 0) || 0)
+        * Math.max(1, Number(roomData.multiplier || 1) || 1);
     } else if (kind === SPEND_KINDS.profileChange) {
       const safeName = String(payload.name || "").trim().slice(0, 18) || "Guest";
       const requestedAvatar = String(payload.avatar || "").trim();
@@ -20934,7 +21045,11 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
     }
 
     const balanceAfter = Math.max(0, balanceBefore - cost);
-    const outcome = cost > balanceBefore ? "insufficient_balance" : "accepted";
+    const cooldownBlocked = kind === SPEND_KINDS.reaction && reactionCooldownUntilMs > operationNowMs;
+    const outcome = cooldownBlocked ? "cooldown" : cost > balanceBefore ? "insufficient_balance" : "accepted";
+    const nextReactionCooldownUntilMs = kind === SPEND_KINDS.reaction && outcome === "accepted"
+      ? operationNowMs + reactionCooldownMs
+      : reactionCooldownUntilMs;
     const serverNow = admin.firestore.FieldValue.serverTimestamp();
     const operationRecord = {
       schemaVersion: SPEND_OPERATION_SCHEMA_VERSION,
@@ -20952,13 +21067,19 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
       name: resolvedName,
       avatar: resolvedAvatar,
       avatarId: avatarUnlockId,
+      reactionType: reactionDefinition?.id || "",
+      scoreValue: reactionDefinition?.scoreValue || 0,
+      cooldownMs: reactionCooldownMs,
+      cooldownUntilMs: nextReactionCooldownUntilMs,
+      performanceId: reactionPerformanceId,
+      performanceScoreAdded: outcome === "accepted" ? performanceScoreAdded : 0,
       replayCount: 0,
       createdAt: serverNow,
       updatedAt: serverNow,
     };
     tx.create(operationRef, operationRecord);
 
-    if (outcome === "insufficient_balance") {
+    if (outcome !== "accepted") {
       return {
         ok: false,
         outcome,
@@ -20968,15 +21089,41 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
         kind,
         chargedAmount: 0,
         balanceAfter: balanceBefore,
+        reactionType: reactionDefinition?.id || "",
+        scoreValue: reactionDefinition?.scoreValue || 0,
+        cooldownMs: reactionCooldownMs,
+        cooldownUntilMs: reactionCooldownUntilMs,
+        performanceId: reactionPerformanceId,
+        performanceScoreAdded: 0,
       };
     }
 
+    const isSamePerformance = reactionPerformanceId && String(roomUserData.lastPerformanceId || "") === reactionPerformanceId;
     tx.set(roomUserRef, {
       points: balanceAfter,
       lastActiveAt: serverNow,
       lastSeen: serverNow,
+      ...(reactionDefinition && reactionPerformanceId ? {
+        lastPerformanceId: reactionPerformanceId,
+        performancePointsGifted: isSamePerformance
+          ? Math.max(0, Number(roomUserData.performancePointsGifted || 0) || 0) + performanceScoreAdded
+          : performanceScoreAdded,
+        totalPointsGifted: Math.max(0, Number(roomUserData.totalPointsGifted || 0) || 0) + performanceScoreAdded,
+      } : {}),
+      ...(reactionDefinition ? {
+        reactionCooldownUntilMs: {
+          ...((roomUserData.reactionCooldownUntilMs && typeof roomUserData.reactionCooldownUntilMs === "object") ? roomUserData.reactionCooldownUntilMs : {}),
+          [reactionDefinition.id]: nextReactionCooldownUntilMs,
+        },
+      } : {}),
       ...(roomIdentityPatch || {}),
     }, { merge: true });
+    if (reactionPerformanceRef && performanceScoreAdded > 0) {
+      tx.set(reactionPerformanceRef, {
+        hypeScore: admin.firestore.FieldValue.increment(performanceScoreAdded),
+        reactionScoreUpdatedAt: serverNow,
+      }, { merge: true });
+    }
     if (identityPatch) tx.set(userRef, { ...identityPatch, updatedAt: serverNow }, { merge: true });
     if (avatarUnlockId) {
       tx.set(userRef, {
@@ -21022,6 +21169,12 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
       name: resolvedName,
       avatar: resolvedAvatar,
       avatarId: avatarUnlockId,
+      reactionType: reactionDefinition?.id || "",
+      scoreValue: reactionDefinition?.scoreValue || 0,
+      cooldownMs: reactionCooldownMs,
+      cooldownUntilMs: nextReactionCooldownUntilMs,
+      performanceId: reactionPerformanceId,
+      performanceScoreAdded,
     };
   });
 

@@ -24578,7 +24578,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                   />
                                   Show Fame level on user cards
                               </label>
-                              <div className="host-form-helper">Adds a level badge to lobby + leaderboard cards.</div>
+                              <div className="host-form-helper">Display only. Signed-in BeauRocks accounts always keep earning Fame from completed performances.</div>
                               <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
                                   <input
                                       type="checkbox"

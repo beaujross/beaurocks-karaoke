@@ -74,9 +74,89 @@
       "grantedReactionType": "crown",
       "cost": 300,
       "publicOffer": true
+    },
+    "reaction_tomato_splash": {
+      "id": "reaction_tomato_splash",
+      "kind": "reaction_skin",
+      "reactionType": "tomato",
+      "baseReactionType": "clap",
+      "label": "Tomato Splash",
+      "flavor": "A harmless comedy splat across the TV.",
+      "emojiCodePoints": [
+        127813
+      ],
+      "cost": 160,
+      "publicOffer": true
+    },
+    "reaction_neon_bolt": {
+      "id": "reaction_neon_bolt",
+      "kind": "reaction_skin",
+      "reactionType": "lightning",
+      "baseReactionType": "fire",
+      "label": "Neon Bolt",
+      "flavor": "Strike the stage with an electric entrance.",
+      "emojiCodePoints": [
+        9889,
+        65039
+      ],
+      "cost": 180,
+      "publicOffer": true
+    },
+    "reaction_confetti_burst": {
+      "id": "reaction_confetti_burst",
+      "kind": "reaction_skin",
+      "reactionType": "confetti",
+      "baseReactionType": "heart",
+      "label": "Confetti Burst",
+      "flavor": "A full-color celebration with every send.",
+      "emojiCodePoints": [
+        127881
+      ],
+      "cost": 200,
+      "publicOffer": true
+    },
+    "reaction_mic_drop": {
+      "id": "reaction_mic_drop",
+      "kind": "reaction_skin",
+      "reactionType": "mic_drop",
+      "baseReactionType": "heart",
+      "label": "Mic Drop",
+      "flavor": "A spotlight slam for a monster moment.",
+      "emojiCodePoints": [
+        127908
+      ],
+      "cost": 240,
+      "publicOffer": true
+    },
+    "reaction_ufo_beam": {
+      "id": "reaction_ufo_beam",
+      "kind": "reaction_skin",
+      "reactionType": "ufo",
+      "baseReactionType": "fire",
+      "label": "UFO Beam",
+      "flavor": "Beam the singer into the next chorus.",
+      "emojiCodePoints": [
+        128760
+      ],
+      "cost": 280,
+      "publicOffer": true
+    },
+    "reaction_dragon_breath": {
+      "id": "reaction_dragon_breath",
+      "kind": "reaction_skin",
+      "reactionType": "dragon",
+      "baseReactionType": "fire",
+      "label": "Dragon Breath",
+      "flavor": "A legendary fire-breath flyover.",
+      "emojiCodePoints": [
+        128009
+      ],
+      "cost": 320,
+      "publicOffer": true
     }
   },
   "plannedCosmeticKinds": [
+    "reaction_skin",
     "reaction_unlock",
     "profile_frame",
     "nameplate_style",

@@ -266,6 +266,7 @@
     "plannedPremiumUnlockKinds": [
       "profile_emoji",
       "reaction_loadout_slot",
+      "reaction_skin",
       "reaction_unlock",
       "room_boost"
     ],

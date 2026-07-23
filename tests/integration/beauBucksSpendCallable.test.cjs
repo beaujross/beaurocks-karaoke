@@ -26,6 +26,7 @@ const otherRoomRef = db.doc(`${ROOT}/rooms/${OTHER_ROOM_CODE}`);
 const roomUserRef = db.doc(`${ROOT}/room_users/${ROOM_CODE}_${USER_UID}`);
 const otherRoomUserRef = db.doc(`${ROOT}/room_users/${OTHER_ROOM_CODE}_${USER_UID}`);
 const userRef = db.doc(`users/${USER_UID}`);
+const performanceRef = db.doc(`${ROOT}/karaoke_songs/performance-1`);
 
 const requestFor = (uid, data = {}) => ({
   auth: uid ? { uid } : null,
@@ -70,6 +71,7 @@ async function resetAccount({ points = 100, nameEmojiChangeCount = 1 } = {}) {
     roomUserRef.set({ roomCode: ROOM_CODE, uid: USER_UID, name: 'Before', avatar: '😀', points }),
     otherRoomUserRef.set({ roomCode: OTHER_ROOM_CODE, uid: USER_UID, name: 'Before', avatar: '😀', points }),
     userRef.set({ uid: USER_UID, name: 'Before', avatar: '😀', pointsBalance: 999, nameEmojiChangeCount }),
+    performanceRef.set({ roomCode: ROOM_CODE, status: 'performing', hypeScore: 0 }),
   ]);
 }
 
@@ -125,7 +127,22 @@ async function run() {
   assert.equal(duplicateReaction.replayCount, 1);
   const reactionOperationDocumentId = buildSpendOperationDocumentId({ roomCode: ROOM_CODE, uid: USER_UID, clientOperationId: reactionOperationId });
   assert.equal((await db.doc(`beaurocks_spend_operations/${reactionOperationDocumentId}`).get()).get('replayCount'), 1);
+  const scoredPerformance = (await performanceRef.get()).data();
+  const scoredRoomUser = (await roomUserRef.get()).data();
+  assert.equal(scoredRoomUser.points, 95);
+  assert.equal(scoredRoomUser.performancePointsGifted, 5);
+  assert.equal(scoredRoomUser.totalPointsGifted, 5);
+  assert.equal(scoredPerformance.hypeScore, 5);
+  assert.equal(acceptedReaction.performanceScoreAdded, 5);
+  const cooldownReaction = await spendAudienceRoomCredits.run(spendRequest({
+    kind: 'reaction',
+    clientOperationId: 'reaction:cooldown-1',
+    payload: { reactionType: 'fire', performanceId: 'performance-1' },
+  }));
+  assert.equal(cooldownReaction.outcome, 'cooldown');
+  assert.equal(cooldownReaction.chargedAmount, 0);
   assert.equal((await roomUserRef.get()).get('points'), 95);
+  assert.equal((await performanceRef.get()).get('hypeScore'), 5);
   assert.equal((await userRef.get()).get('pointsBalance'), 999);
   await assertOperationAndLedger({ clientOperationId: reactionOperationId, type: 'reaction_spend', amount: 5 });
 
@@ -134,7 +151,7 @@ async function run() {
   const insufficient = await spendAudienceRoomCredits.run(spendRequest({
     kind: 'reaction',
     clientOperationId: insufficientOperationId,
-    payload: { reactionType: 'fire' },
+    payload: { reactionType: 'fire', performanceId: 'performance-1' },
   }));
   assert.equal(insufficient.outcome, 'insufficient_balance');
   assert.equal(insufficient.chargedAmount, 0);
@@ -142,7 +159,7 @@ async function run() {
   const insufficientDuplicate = await spendAudienceRoomCredits.run(spendRequest({
     kind: 'reaction',
     clientOperationId: insufficientOperationId,
-    payload: { reactionType: 'fire' },
+    payload: { reactionType: 'fire', performanceId: 'performance-1' },
   }));
   assert.equal(insufficientDuplicate.outcome, 'insufficient_balance');
   assert.equal(insufficientDuplicate.duplicate, true);

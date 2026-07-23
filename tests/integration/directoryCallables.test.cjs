@@ -754,6 +754,8 @@ async function run() {
       assert.equal(result.globalLeaderboardEligible, true);
       assert.equal(result.leaderboardEligibility, "qualified_member");
       assert.equal(result.duplicate, false);
+      assert.equal(result.fameAward.status, "awarded");
+      assert.equal(result.fameAward.awarded, 86);
 
       const retryResult = await logPerformance.run(
         requestFor(USER_UID, {
@@ -774,12 +776,17 @@ async function run() {
       );
       assert.equal(retryResult.duplicate, true);
       assert.equal(retryResult.totalScore, 120);
+      assert.equal(retryResult.fameAward.duplicate, true);
+      assert.equal(retryResult.fameAward.awarded, 86);
+      assert.equal((await db.doc(`users/${USER_UID}`).get()).get("totalFamePoints"), 86);
 
       const performanceSnap = await db.collection("performances").where("canonicalSongId", "==", song.songId).get();
       assert.equal(performanceSnap.size, 1);
       assert.equal(performanceSnap.docs[0].get("backingCandidateId"), `${song.songId}__youtube__dQw4w9WgXcQ`);
       assert.equal(performanceSnap.docs[0].get("providerTrackId"), "dQw4w9WgXcQ");
       assert.equal(performanceSnap.docs[0].get("projectionVersion"), 1);
+      assert.equal(performanceSnap.docs[0].get("fameAwardVersion"), 1);
+      assert.equal(performanceSnap.docs[0].get("fameAwarded"), 86);
 
       const hallOfFameSnap = await db.doc(`song_hall_of_fame/${song.songId}`).get();
       assert.equal(hallOfFameSnap.exists, true);
@@ -884,9 +891,13 @@ async function run() {
 
       assert.equal(result.globalLeaderboardEligible, false);
       assert.equal(result.leaderboardEligibility, "room_only_guest");
+      assert.equal(result.fameAward.status, "account_required");
+      assert.equal(result.fameAward.awarded, 0);
+      assert.equal((await db.doc(`users/${OTHER_UID}`).get()).get("totalFamePoints"), undefined);
       const performanceSnap = await db.collection("performances").where("performanceId", "==", performanceId).get();
       assert.equal(performanceSnap.size, 1);
       assert.equal(performanceSnap.docs[0].get("globalLeaderboardEligible"), false);
+      assert.equal(performanceSnap.docs[0].get("fameAwardStatus"), "account_required");
       const hallSnap = await db.collection("song_hall_of_fame").limit(1).get();
       assert.equal(hallSnap.empty, true);
       assert.equal((await db.collection("public_chart_members").get()).empty, true);

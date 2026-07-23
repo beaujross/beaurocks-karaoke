@@ -17,7 +17,7 @@ const approvedInputs = {
     approvalStatus: 'approved', packId: 'beaubucks_starter_1200', publicLabel: 'Starter 1,200 BeauBucks',
     amountCents: 500, currency: 'usd', beauBucks: 1200, scope: 'account', maxPurchasesPerAccount: 1,
     decisionRef: 'decision-pack-1',
-    costEnvelope: { approvalStatus: 'approved', maximumEntitlementPurchasesPerPack: 6, maximumAuthorityWritesPerPack: 30, decisionRef: 'decision-cost-1' },
+    costEnvelope: { approvalStatus: 'approved', maximumEntitlementPurchasesPerPack: 7, maximumAuthorityWritesPerPack: 34, decisionRef: 'decision-cost-1' },
   },
   customerPromises: {
     approvalStatus: 'approved', accountPersistentDisclosure: true, noCashValueDisclosure: true,
@@ -66,16 +66,16 @@ test('pack approval must match the server catalog and durable entitlement cost e
       starterPack: {
         ...approvedInputs.starterPack,
         amountCents: 499,
-        costEnvelope: { ...approvedInputs.starterPack.costEnvelope, maximumEntitlementPurchasesPerPack: 5 },
+        costEnvelope: { ...approvedInputs.starterPack.costEnvelope, maximumEntitlementPurchasesPerPack: 6 },
       },
     },
   });
   const gate = packet.gates.find((candidate) => candidate.id === 'starter_pack');
   assert.equal(gate.passed, false);
   assert.equal(gate.details.minimumUnlockCost, 120);
-  assert.equal(gate.details.publicEntitlementCount, 7);
-  assert.equal(gate.details.maximumEntitlementPurchasesPerPack, 6);
-  assert.equal(gate.details.maximumAuthorityWritesPerPack, 30);
+  assert.equal(gate.details.publicEntitlementCount, 13);
+  assert.equal(gate.details.maximumEntitlementPurchasesPerPack, 7);
+  assert.equal(gate.details.maximumAuthorityWritesPerPack, 34);
   assert.ok(gate.blockers.some((blocker) => blocker.includes('amountCents')));
   assert.ok(gate.blockers.some((blocker) => blocker.includes('purchase ceiling')));
 });

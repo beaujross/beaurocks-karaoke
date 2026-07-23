@@ -112,9 +112,12 @@ import { FameLevelProgressBar } from '../../components/FameLevelBadge';
 import UserMetaCard from '../../components/UserMetaCard';
 import { FAME_LEVELS, getLevelFromFame, getProgressToNextLevel } from '../../lib/fameConstants';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
+import { REACTION_CATALOG, getReactionCooldownMs, getReactionDefinition, getReactionUnlockState } from '../../lib/reactionCatalog';
+import { buildReactionLoadout, equipBonusReaction, CORE_REACTION_TYPES } from '../../lib/reactionLoadout';
 import { CurrencyAmount, CurrencyIcon } from '../../components/CurrencyToken';
 import {
     PREMIUM_PROFILE_EMOJIS,
+    PREMIUM_COSMETIC_PRODUCTS,
     REACTION_SLOT_PRODUCTS,
     getAudienceReactionSlotCount,
     getOwnedPremiumEntitlementIds,
@@ -195,9 +198,7 @@ import {
 import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
 import {
     AUDIENCE_FEATURE_ACCESS_LEVELS,
-    AUDIENCE_FEATURE_KEYS,
     normalizeAudienceFeatureAccess,
-    resolveAudienceFeatureAccess,
 } from '../../lib/audienceFeatureAccess.js';
 import {
     getMediaSceneAudienceReactionMeta,
@@ -1797,6 +1798,22 @@ const SingerApp = ({ roomCode, uid }) => {
     const [showAccount, setShowAccount] = useState(false);
     const [showPoints, setShowPoints] = useState(false);
     const [creditActivityOpen, setCreditActivityOpen] = useState(false);
+    const [reactionDeckOpen, setReactionDeckOpen] = useState(false);
+    const [equippedBonusReactionTypes, setEquippedBonusReactionTypes] = useState(() => {
+        try {
+            const parsed = JSON.parse(window.localStorage.getItem('beaurocks_reaction_loadout') || '[]');
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    });
+    useEffect(() => {
+        try {
+            window.localStorage.setItem('beaurocks_reaction_loadout', JSON.stringify(equippedBonusReactionTypes));
+        } catch {
+            // The loadout still works for this visit when storage is unavailable.
+        }
+    }, [equippedBonusReactionTypes]);
     const [creditActivityState, setCreditActivityState] = useState({
         status: 'idle',
         roomCode: '',
@@ -3190,7 +3207,7 @@ const SingerApp = ({ roomCode, uid }) => {
             clientOperationId: resolvedOperationId,
             payload,
         });
-        const definitiveOutcome = ['accepted', 'insufficient_balance', 'legacy_fallback'].includes(String(result?.outcome || ''));
+        const definitiveOutcome = ['accepted', 'insufficient_balance', 'cooldown', 'legacy_fallback'].includes(String(result?.outcome || ''));
         if (definitiveOutcome) pendingSpendOperationIdsRef.current.delete(safeRetryKey);
         if (result?.outcome === 'legacy_fallback') {
             setSpendAuthority('legacy');
@@ -3514,14 +3531,6 @@ const SingerApp = ({ roomCode, uid }) => {
             || (Number(user?.roomBoosts || 0) > 0)
         );
     const hasPremiumRoomAccess = isVipAccount || hasSupporterAccess;
-    const premiumReactionAccess = useMemo(() => resolveAudienceFeatureAccess({
-        policy: audienceFeatureAccess,
-        featureKey: AUDIENCE_FEATURE_KEYS.premiumReactions,
-        isSignedIn: !!authUserUid && !isAnon,
-        hasSupporterAccess,
-        isVipAccount,
-    }), [audienceFeatureAccess, authUserUid, hasSupporterAccess, isAnon, isVipAccount]);
-    const premiumReactionsUnlocked = hasPremiumRoomAccess || premiumReactionAccess.allowed;
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !hasPremiumRoomAccess;
     const {
         accessActionLabel,
@@ -3787,8 +3796,29 @@ const SingerApp = ({ roomCode, uid }) => {
         signedIn: signedInBeauRocksAccount,
         wallet: visibleBeauBucksWalletState.wallet,
     });
-    const reactionSlotCount = premiumReactionsUnlocked ? 6 : baseReactionSlotCount;
-    const bonusReactionTypes = ['rocket', 'crown'].slice(0, Math.max(0, reactionSlotCount - 4));
+    const reactionSlotCount = baseReactionSlotCount;
+    const reactionFameLevel = Math.max(0, Number(profile?.currentLevel ?? profile?.fameLevel ?? getLevelFromFame(profile?.totalFamePoints || 0)) || 0);
+    const reactionUnlockStateByType = new Map(REACTION_CATALOG.map((reaction) => [reaction.id, getReactionUnlockState({
+        reaction,
+        accountEligible: signedInBeauRocksAccount,
+        fameLevel: reactionFameLevel,
+        entitlementIds: [...ownedPremiumEntitlementIds],
+    })]));
+    const isReactionAvailable = (reactionType = '') => reactionUnlockStateByType.get(reactionType)?.unlocked === true;
+    const reactionLoadout = buildReactionLoadout({
+        reactions: REACTION_CATALOG,
+        slotCount: reactionSlotCount,
+        equippedBonusTypes: equippedBonusReactionTypes,
+        isUnlocked: isReactionAvailable,
+    });
+    const bonusReactionTypes = reactionLoadout.slice(CORE_REACTION_TYPES.length);
+    const bonusReactionCapacity = Math.max(0, reactionSlotCount - CORE_REACTION_TYPES.length);
+    const reactionSkinProducts = PREMIUM_COSMETIC_PRODUCTS.filter((product) => product.kind === 'reaction_skin');
+    const equipReactionType = (reactionType = '') => {
+        if (!isReactionAvailable(reactionType) || !bonusReactionCapacity) return;
+        setEquippedBonusReactionTypes((current) => equipBonusReaction({ current, reactionType, capacity: bonusReactionCapacity }));
+        toast(`${getReactionDefinition(reactionType)?.label || 'Reaction'} equipped.`);
+    };
     const sixthReactionSlotProduct = REACTION_SLOT_PRODUCTS.find((product) => Number(product.slotCount || 0) === 6) || null;
     const pointsDrawerContent = (
         <>
@@ -3831,7 +3861,7 @@ const SingerApp = ({ roomCode, uid }) => {
                                 </div>
                             ))}
                         </div>
-                        {sixthReactionSlotProduct && !ownedPremiumEntitlementIds.has(sixthReactionSlotProduct.id) && !premiumReactionsUnlocked ? (
+                        {sixthReactionSlotProduct && !ownedPremiumEntitlementIds.has(sixthReactionSlotProduct.id) ? (
                             <button
                                 type="button"
                                 data-feature-id="unlock-reaction-slot-6"
@@ -3879,6 +3909,43 @@ const SingerApp = ({ roomCode, uid }) => {
                         )}
                     </section>
                 ) : null}
+
+                <section className="overflow-hidden rounded-[1.25rem] border border-violet-300/18 bg-[linear-gradient(145deg,rgba(91,33,182,0.12),rgba(12,18,32,0.96))]" data-feature-id="audience-reaction-collection">
+                    <button type="button" onClick={() => setReactionDeckOpen((open) => !open)} className="flex min-h-[72px] w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={reactionDeckOpen}>
+                        <span><span className="block text-[10px] font-black uppercase tracking-[0.2em] text-violet-200/70">Reaction collection</span><span className="mt-1 block text-base font-black text-white">Compare power. Pick your show.</span><span className="mt-1 block text-xs text-zinc-400">1 Point spent = +1 performance point</span></span>
+                        <span className="flex items-center gap-2"><span className="rounded-full bg-white/8 px-2 py-1 text-[10px] font-black text-zinc-300">{reactionSlotCount}/6 slots</span><i className={`fa-solid fa-chevron-${reactionDeckOpen ? 'up' : 'down'} text-zinc-400`} aria-hidden="true"></i></span>
+                    </button>
+                    {reactionDeckOpen ? (
+                        <div className="border-t border-white/10 p-3">
+                            <div className="grid grid-cols-2 gap-2">
+                                {REACTION_CATALOG.map((reaction) => {
+                                    const unlockState = reactionUnlockStateByType.get(reaction.id) || { unlocked: false, label: 'Unavailable' };
+                                    const unlocked = unlockState.unlocked;
+                                    const isCore = CORE_REACTION_TYPES.includes(reaction.id);
+                                    const equipped = reactionLoadout.includes(reaction.id);
+                                    const premiumProduct = reactionSkinProducts.find((product) => product.id === reaction.unlock?.productId) || (reaction.id === 'crown' ? sixthReactionSlotProduct : null);
+                                    const cooldownSeconds = (getReactionCooldownMs(reaction.id, reactionTapCooldownMs) / 1000).toFixed(getReactionCooldownMs(reaction.id, reactionTapCooldownMs) % 1000 ? 1 : 0);
+                                    return (
+                                        <article key={reaction.id} className={`rounded-2xl border p-3 ${reaction.premiumFlourish ? 'border-fuchsia-300/28 bg-fuchsia-500/10' : unlocked ? 'border-white/12 bg-black/24' : 'border-white/8 bg-black/18 opacity-75'}`}>
+                                            <div className="flex items-start justify-between gap-2"><span className="text-4xl">{reaction.emoji}</span><span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${reaction.premiumFlourish ? 'bg-fuchsia-400/18 text-fuchsia-100' : reaction.rarity === 'fame' ? 'bg-amber-300/14 text-amber-100' : 'bg-white/8 text-zinc-300'}`}>{reaction.rarity}</span></div>
+                                            <div className="mt-2 text-sm font-black text-white">{reaction.label}</div>
+                                            <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-black"><span className="inline-flex items-center gap-1 rounded-full bg-cyan-300/12 px-2 py-1 text-cyan-50"><CurrencyAmount currency="points" amount={reaction.pointCost} size="xs" /> → +{reaction.scoreValue}</span><span className="rounded-full bg-white/8 px-2 py-1 text-zinc-300">{cooldownSeconds}s</span></div>
+                                            <div className="mt-2 min-h-[2rem] text-[11px] leading-4 text-zinc-400">{reaction.abilityLabel}{reaction.impactMode === 'visual_only' ? ' · TV only' : ''}</div>
+                                            {isCore ? <div className="mt-2 text-[10px] font-black uppercase tracking-wider text-cyan-200">Core slot</div> : unlocked ? (
+                                                <button type="button" onClick={() => equipReactionType(reaction.id)} disabled={equipped || bonusReactionCapacity <= 0} className="mt-2 min-h-[38px] w-full rounded-xl bg-white/10 px-2 text-xs font-black text-white disabled:text-emerald-200 disabled:opacity-75">{equipped ? 'Equipped' : 'Equip'}</button>
+                                            ) : reaction.unlock?.type === 'entitlement' && premiumProduct ? (
+                                                <button type="button" onClick={() => purchasePremiumEntitlement(premiumProduct.id)} disabled={premiumUnlockPendingId === premiumProduct.id || visibleBeauBucksWalletState.status !== 'ready'} className="mt-2 flex min-h-[38px] w-full items-center justify-center gap-2 rounded-xl bg-fuchsia-400/18 px-2 text-xs font-black text-fuchsia-50 disabled:opacity-50"><span>Unlock</span><CurrencyAmount currency="beaubucks" amount={premiumProduct.cost} size="xs" /></button>
+                                            ) : reaction.unlock?.type === 'account' ? (
+                                                <button type="button" onClick={() => openVipUpgrade('email')} className="mt-2 min-h-[38px] w-full rounded-xl bg-cyan-400/14 px-2 text-xs font-black text-cyan-50">Create account</button>
+                                            ) : <div className="mt-2 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-amber-100">{reaction.unlock?.type === 'fame' ? <CurrencyIcon currency="fame" size="xs" /> : null}{unlockState.label}</div>}
+                                        </article>
+                                    );
+                                })}
+                            </div>
+                            <p className="mt-3 text-[11px] leading-4 text-zinc-500">Premium reactions add rare entrances and TV flourishes—not a better score exchange rate. Fame reactions unlock through play on your BeauRocks account.</p>
+                        </div>
+                    ) : null}
+                </section>
 
                 <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035]" data-feature-id="audience-credit-activity">
                     <button
@@ -4296,11 +4363,12 @@ const SingerApp = ({ roomCode, uid }) => {
             }
             trackEvent('reaction_sent', { room_code: roomCode, count: totalCount });
             const boostedPoints = totalCost * (room?.multiplier || 1);
+            const serverOwnsReactionScore = spendAuthority === 'server_canary';
             const isSamePerformance = !!performanceId && user?.lastPerformanceId === performanceId;
             const updates = {
                 totalEmojis: increment(totalCount)
             };
-            if (performanceId && boostedPoints > 0) {
+            if (!serverOwnsReactionScore && performanceId && boostedPoints > 0) {
                 updates.lastPerformanceId = performanceId;
                 updates.performancePointsGifted = isSamePerformance
                     ? increment(boostedPoints)
@@ -4308,7 +4376,7 @@ const SingerApp = ({ roomCode, uid }) => {
                 updates.totalPointsGifted = increment(boostedPoints);
             }
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), updates);
-            if (currentSinger && totalCost > 0) {
+            if (!serverOwnsReactionScore && currentSinger && totalCost > 0) {
                 try {
                     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', currentSinger.id), {
                         hypeScore: increment(totalCost * (room?.multiplier || 1))
@@ -4320,7 +4388,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, currentSinger, room?.multiplier, activeUid, isVipAccount]);
+    }, [roomCode, user, currentSinger, room?.multiplier, activeUid, isVipAccount, spendAuthority]);
 
     const queueReactionWrite = (type, cost) => {
         pendingReactions.current[type] = (pendingReactions.current[type] || 0) + 1;
@@ -4609,11 +4677,20 @@ const SingerApp = ({ roomCode, uid }) => {
     // Helpers
     const getReactionOptionIconClass = (t, sizeClass = 'text-5xl') => ({
         rocket: `reaction-option-icon animate-reaction-option-rocket ${sizeClass}`,
+        meteor: `reaction-option-icon animate-reaction-option-rocket ${sizeClass}`,
+        ufo: `reaction-option-icon animate-reaction-option-rocket ${sizeClass}`,
         diamond: `reaction-option-icon animate-reaction-option-diamond ${sizeClass}`,
+        star_power: `reaction-option-icon animate-reaction-option-diamond ${sizeClass}`,
+        galaxy: `reaction-option-icon animate-reaction-option-diamond ${sizeClass}`,
         crown: `reaction-option-icon animate-reaction-option-crown ${sizeClass}`,
+        mic_drop: `reaction-option-icon animate-reaction-option-crown ${sizeClass}`,
         money: `reaction-option-icon animate-reaction-option-blossom ${sizeClass}`,
+        tomato: `reaction-option-icon animate-reaction-option-blossom ${sizeClass}`,
+        confetti: `reaction-option-icon animate-reaction-option-blossom ${sizeClass}`,
         drink: `reaction-option-icon animate-reaction-option-drink ${sizeClass}`,
         fire: `reaction-option-icon animate-reaction-option-fire ${sizeClass}`,
+        lightning: `reaction-option-icon animate-reaction-option-fire ${sizeClass}`,
+        dragon: `reaction-option-icon animate-reaction-option-fire ${sizeClass}`,
         heart: `reaction-option-icon animate-reaction-option-heart ${sizeClass}`,
         clap: `reaction-option-icon animate-reaction-option-clap ${sizeClass}`
     }[t] || `reaction-option-icon ${sizeClass}`);
@@ -5870,7 +5947,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     ), [getReactionCooldownRemainingMs]);
     const getReactionCooldownProgressPct = useCallback((reactionKey = '') => {
         const remainingMs = getReactionCooldownRemainingMs(reactionKey);
-        const totalMs = Math.max(0, Number(reactionTapCooldownMs || 0) || 0);
+        const totalMs = getReactionCooldownMs(reactionKey, reactionTapCooldownMs);
         if (remainingMs <= 0 || totalMs <= 0) return 100;
         return Math.max(0, Math.min(100, 100 - ((remainingMs / totalMs) * 100)));
     }, [getReactionCooldownRemainingMs, reactionTapCooldownMs]);
@@ -7944,7 +8021,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const react = async (type, cost=10) => {
 
         const safeType = String(type || '').trim().toLowerCase();
-        let nextCost = Math.max(0, Number(cost || 0) || 0);
+        const reactionDefinition = getReactionDefinition(safeType);
+        let nextCost = Math.max(0, Number(reactionDefinition?.pointCost ?? cost ?? 0) || 0);
+        let effectiveCooldownMs = getReactionCooldownMs(safeType, reactionTapCooldownMs);
         const applauseModeActive = ['applause', 'applause_countdown', 'applause_result'].includes(String(room?.activeMode || '').trim().toLowerCase());
         if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_result') && safeType === 'clap') nextCost = 0;
         if (takeoverClapVotingActive && safeType !== 'clap') {
@@ -7957,7 +8036,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (!canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} ${roomCurrencyPresentation.shortLabel}!`);
         const now = Date.now();
         const cooldownUntil = Number(reactionCooldownByType?.[safeType] || 0);
-        if (reactionTapCooldownMs > 0 && cooldownUntil > now) {
+        if (effectiveCooldownMs > 0 && cooldownUntil > now) {
             triggerCooldownFlash(safeType);
             return;
         }
@@ -7979,6 +8058,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     toast(`Need ${nextCost} ${roomCurrencyPresentation.shortLabel}!`);
                     return;
                 }
+                if (spendResult?.outcome === 'cooldown') {
+                    const serverCooldownUntilMs = Math.max(now, Number(spendResult.cooldownUntilMs || 0) || 0);
+                    setReactionCooldownByType((previous) => ({ ...previous, [safeType]: serverCooldownUntilMs }));
+                    triggerCooldownFlash(safeType);
+                    return;
+                }
                 if (spendResult?.outcome === 'legacy_fallback') {
                     spendRoomPoints(nextCost);
                 } else if (spendResult?.outcome !== 'accepted') {
@@ -7986,13 +8071,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     return;
                 } else {
                     chargedCost = Math.max(0, Number(spendResult.chargedAmount || nextCost) || 0);
+                    effectiveCooldownMs = Math.max(effectiveCooldownMs, Number(spendResult.cooldownMs || 0) || 0);
                 }
             } else {
                 spendRoomPoints(nextCost);
             }
             queueReactionWrite(safeType, chargedCost);
-            if (reactionTapCooldownMs > 0) {
-                setReactionCooldownByType((prev) => applyReactionCooldown(prev, safeType, now, reactionTapCooldownMs));
+            if (effectiveCooldownMs > 0) {
+                setReactionCooldownByType((prev) => applyReactionCooldown(prev, safeType, now, effectiveCooldownMs));
             }
             markActive();
             if (((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') || takeoverClapVotingActive) && safeType === 'clap') {
@@ -14827,7 +14913,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                              <button key={t} disabled={isReactionCoolingDown(t)} onClick={()=>react(t, cost)} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent} ${isReactionCoolingDown(t) ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
                                                     {renderReactionCooldownFill(t, 'bg-cyan-300/18', 'border-white/15 bg-black/55 text-cyan-50')}
                                                     <span className={`${getReactionOptionIconClass(t)} mb-2`}>{getEmojiChar(t)}</span>
-                                                    <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'BLOOM'}[t]}</span>
+                                                    <span className="font-bold text-base uppercase">{getReactionDefinition(t)?.label || t}</span>
                                                     <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
                                                          {reactionCostLabel(cost)}
                                                      </div>

@@ -124,6 +124,7 @@ const normalizeHypeMeterDisplayMode = (value, fallback = HYPE_METER_DISPLAY_MODE
 };
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import { getSelfServeAuctionState } from '../../lib/selfServeAuction';
+import { getReactionDefinition } from '../../lib/reactionCatalog';
 import {
     getVolleyOrbTvInstructionCopy,
     getVolleyOrbUltimate,
@@ -10737,6 +10738,8 @@ const PublicTV = ({ roomCode }) => {
             <div className={`absolute inset-0 ${applauseOverlayVisible ? 'z-[285]' : 'z-[200]'} pointer-events-none overflow-hidden`}>
                 {reactions.filter((r) => !r.audienceDisplaySessionId).map(r => {
                     const reactionTheme = getTvReactionThemeKey(r.type);
+                    const reactionDefinition = getReactionDefinition(r.type);
+                    const premiumFlourish = reactionDefinition?.premiumFlourish === true;
                     return (
                         <div
                             key={r.id}
@@ -10758,16 +10761,17 @@ const PublicTV = ({ roomCode }) => {
                                 '--reaction-exit-scale': Number(r.motionExitScale || 0.92),
                             }}
                         >
-                            {r.isVip && (
-                                <div className="absolute -inset-10 rounded-full bg-gradient-to-tr from-yellow-400/30 via-pink-400/30 to-cyan-400/30 blur-xl animate-vip-glow"></div>
+                            {(r.isVip || premiumFlourish) && (
+                                <div className={`absolute -inset-10 rounded-full ${premiumFlourish ? 'bg-gradient-to-tr from-violet-500/35 via-fuchsia-400/35 to-cyan-300/30' : 'bg-gradient-to-tr from-yellow-400/30 via-pink-400/30 to-cyan-400/30'} blur-xl animate-vip-glow`}></div>
                             )}
+                            {reactionDefinition?.visualStyle === 'tomato_splat' ? <div className="absolute -inset-x-24 -top-24 grid h-56 place-items-center text-[9rem] opacity-35 animate-ping">{r.emojiChar || getEmojiChar(r.type)}</div> : null}
                             <div className="relative flex flex-col items-center">
-                                <div className={`reaction-impact-bloom reaction-impact-bloom-${reactionTheme} ${r.isVip ? 'reaction-impact-bloom-vip' : ''}`} />
-                                <div className={`reaction-impact-ring reaction-impact-ring-${reactionTheme} ${r.isVip ? 'reaction-impact-ring-vip' : ''}`} />
-                                <div className={`reaction-impact-ring reaction-impact-ring-${reactionTheme} reaction-impact-ring-delayed ${r.isVip ? 'reaction-impact-ring-vip' : ''}`} />
+                                <div className={`reaction-impact-bloom reaction-impact-bloom-${reactionTheme} ${(r.isVip || premiumFlourish) ? 'reaction-impact-bloom-vip' : ''}`} />
+                                <div className={`reaction-impact-ring reaction-impact-ring-${reactionTheme} ${(r.isVip || premiumFlourish) ? 'reaction-impact-ring-vip' : ''}`} />
+                                <div className={`reaction-impact-ring reaction-impact-ring-${reactionTheme} reaction-impact-ring-delayed ${(r.isVip || premiumFlourish) ? 'reaction-impact-ring-vip' : ''}`} />
                                 <div className={`relative ${getReactionClass(r.type)} ${r.isVip ? 'vip-reaction-emoji' : ''}`}>
                                     {r.emojiChar || getEmojiChar(r.type)}
-                                    {r.isVip && (
+                                    {(r.isVip || premiumFlourish) && (
                                         <span className="absolute -top-3 -right-3 md:-top-4 md:-right-4 text-xl md:text-3xl animate-vip-spin">{'\u2728'}</span>
                                     )}
                                 </div>
@@ -10785,6 +10789,7 @@ const PublicTV = ({ roomCode }) => {
                                         </div>
                                         <div className={`reaction-type-chip px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-xl font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/12' : 'text-cyan-200 border border-cyan-400/40 bg-black/64'}`}>
                                             {r.labelOverride || getTvReactionLabel(r.type)}
+                                            {premiumFlourish ? <span className="ml-2 rounded-full bg-fuchsia-400/18 px-2 py-0.5 text-[0.65em] text-fuchsia-100">B$ PREMIUM</span> : null}
                                             {Number(r.burstCount || 1) > 1 ? ` x${Number(r.burstCount || 1)}` : ''}
                                         </div>
                                         {Number(r.points || 0) > 0 && !r.spotlightSessionId && (

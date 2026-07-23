@@ -390,17 +390,17 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /featureKey: AUDIENCE_FEATURE_KEYS\.premiumReactions,/,
-    "SingerApp should evaluate room-level access for featured voting reaction emojis",
+    /getReactionUnlockState\(\{/,
+    "SingerApp should evaluate account, Fame, and entitlement access for each voting reaction",
   );
   assert.match(
     source,
-    /const premiumReactionsUnlocked = hasPremiumRoomAccess \|\| premiumReactionAccess\.allowed;/,
-    "SingerApp should unlock featured voting reactions from either premium access or room audience access policy",
+    /const isReactionAvailable = \(reactionType = ''\) => reactionUnlockStateByType\.get\(reactionType\)\?\.unlocked === true;/,
+    "SingerApp should keep reaction progression tied to account-owned unlock authority",
   );
   assert.match(source, /getAudienceReactionSlotCount/);
-  assert.match(source, /const bonusReactionTypes = \['rocket', 'crown'\]\.slice/);
-  assert.match(source, /const reactionSlotCount = premiumReactionsUnlocked \? 6 : baseReactionSlotCount/);
+  assert.match(source, /const reactionLoadout = buildReactionLoadout\(\{/);
+  assert.match(source, /const reactionSlotCount = baseReactionSlotCount/);
   assert.match(source, /data-feature-id="unlock-reaction-slot-6"/);
   assert.match(
     source,
@@ -897,8 +897,8 @@ test("SingerApp applies host-configured reaction cooldowns and co-host credit po
   );
   assert.match(
     source,
-    /setReactionCooldownByType\(\(prev\) => applyReactionCooldown\(prev, safeType, now, reactionTapCooldownMs\)\);/,
-    "SingerApp should start a cooldown only for the tapped reaction button via the extracted helper",
+    /setReactionCooldownByType\(\(prev\) => applyReactionCooldown\(prev, safeType, now, effectiveCooldownMs\)\);/,
+    "SingerApp should start the catalog-aware cooldown only for the tapped reaction button",
   );
   assert.match(
     source,
@@ -1072,8 +1072,8 @@ test("SingerApp presents the premium blossom reaction with themed icon motion", 
 
   assert.match(
     source,
-    /money:'BLOOM'/,
-    "SingerApp should rename the former Rich premium reaction to Bloom.",
+    /getReactionDefinition\(t\)\?\.label \|\| t/,
+    "SingerApp should source reaction labels such as Bloom from the shared catalog.",
   );
   assert.match(
     source,

@@ -1,10 +1,19 @@
 {
-  "fire": 5,
-  "heart": 5,
   "clap": 2,
+  "heart": 5,
+  "fire": 5,
   "drink": 15,
   "rocket": 8,
+  "star_power": 8,
   "diamond": 25,
+  "meteor": 15,
   "money": 50,
-  "crown": 75
+  "galaxy": 25,
+  "crown": 5,
+  "tomato": 2,
+  "lightning": 5,
+  "confetti": 5,
+  "mic_drop": 5,
+  "ufo": 5,
+  "dragon": 5
 }

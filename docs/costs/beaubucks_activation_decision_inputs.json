@@ -28,8 +28,8 @@
     "decisionRef": "",
     "costEnvelope": {
       "approvalStatus": "not_approved",
-      "maximumEntitlementPurchasesPerPack": 6,
-      "maximumAuthorityWritesPerPack": 30,
+      "maximumEntitlementPurchasesPerPack": 7,
+      "maximumAuthorityWritesPerPack": 34,
       "decisionRef": ""
     }
   },

@@ -13,6 +13,9 @@ import {
 test('Public TV reaction config preserves blossom presentation on the legacy money key', () => {
   assert.equal(getTvReactionLabel('money'), 'Bloom');
   assert.equal(getTvReactionThemeKey('money'), 'blossom');
+  assert.equal(getTvReactionThemeKey('tomato'), 'blossom');
+  assert.equal(getTvReactionThemeKey('lightning'), 'fire');
+  assert.equal(getTvReactionThemeKey('ufo'), 'rocket');
   assert.match(getTvReactionEmojiClass('money'), /reaction-emoji-blossom/);
 
   const motion = getTvReactionMotionSpec({ type: 'money', id: 'alpha', index: 0 });
@@ -28,6 +31,9 @@ test('Public TV reaction config keeps unique motion identities for the major rea
   assert.equal(getTvReactionMotionSpec({ type: 'fire', id: 'a', index: 0 }).variant, 'ember');
   assert.equal(getTvReactionMotionSpec({ type: 'heart', id: 'a', index: 0 }).variant, 'heart');
   assert.equal(getTvReactionMotionSpec({ type: 'clap', id: 'a', index: 0 }).variant, 'applause');
+  assert.equal(getTvReactionMotionSpec({ type: 'tomato', id: 'a', index: 0 }).variant, 'blossom');
+  assert.equal(getTvReactionMotionSpec({ type: 'dragon', id: 'a', index: 0 }).variant, 'ember');
+  assert.equal(getTvReactionMotionSpec({ type: 'ufo', id: 'a', index: 0 }).variant, 'launch');
 });
 
 test('Public TV reaction config exposes differentiated themed path tuning', () => {

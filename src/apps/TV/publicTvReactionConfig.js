@@ -1,3 +1,5 @@
+import { getReactionDefinition } from '../../lib/reactionCatalog';
+
 export const TV_REACTION_LABELS = Object.freeze({
     fire: 'Hype',
     heart: 'Love',
@@ -29,6 +31,8 @@ export const getTvReactionLabel = (type = '') => {
     const key = String(type || '').trim().toLowerCase();
     if (key.startsWith('vote_')) return 'Vote';
     if (TV_REACTION_LABELS[key]) return TV_REACTION_LABELS[key];
+    const catalogLabel = getReactionDefinition(key)?.label;
+    if (catalogLabel) return catalogLabel;
     if (!key) return 'Reaction';
     return key
         .split('_')
@@ -38,11 +42,20 @@ export const getTvReactionLabel = (type = '') => {
 
 export const getTvReactionThemeKey = (type = '') => ({
     rocket: 'rocket',
+    meteor: 'rocket',
+    ufo: 'rocket',
     diamond: 'diamond',
+    star_power: 'diamond',
+    galaxy: 'diamond',
     crown: 'crown',
+    mic_drop: 'crown',
     money: 'blossom',
+    tomato: 'blossom',
+    confetti: 'blossom',
     drink: 'drink',
     fire: 'fire',
+    lightning: 'fire',
+    dragon: 'fire',
     heart: 'heart',
     clap: 'clap',
     spotlight_fire: 'fire',
@@ -64,11 +77,20 @@ export const getTvReactionThemeKey = (type = '') => ({
 
 export const getTvReactionEmojiClass = (type = '') => ({
     rocket: 'reaction-emoji-rocket text-[clamp(2.75rem,9vw,8rem)]',
+    meteor: 'reaction-emoji-rocket text-[clamp(2.75rem,9vw,8rem)]',
+    ufo: 'reaction-emoji-rocket text-[clamp(2.75rem,9vw,8rem)]',
     diamond: 'reaction-emoji-diamond text-[clamp(3rem,9.5vw,9rem)]',
+    star_power: 'reaction-emoji-diamond text-[clamp(3rem,9.5vw,9rem)]',
+    galaxy: 'reaction-emoji-diamond text-[clamp(3rem,9.5vw,9rem)]',
     crown: 'reaction-emoji-crown text-[clamp(3.25rem,10vw,10rem)]',
+    mic_drop: 'reaction-emoji-crown text-[clamp(3.25rem,10vw,10rem)]',
     money: 'reaction-emoji-blossom text-[clamp(3rem,9.5vw,9rem)]',
+    tomato: 'reaction-emoji-blossom text-[clamp(3rem,9.5vw,9rem)]',
+    confetti: 'reaction-emoji-blossom text-[clamp(3rem,9.5vw,9rem)]',
     drink: 'reaction-emoji-drink text-[clamp(2.5rem,8vw,6rem)]',
     fire: 'reaction-emoji-fire text-[clamp(2.5rem,8vw,6rem)]',
+    lightning: 'reaction-emoji-fire text-[clamp(2.5rem,8vw,6rem)]',
+    dragon: 'reaction-emoji-fire text-[clamp(2.5rem,8vw,6rem)]',
     heart: 'reaction-emoji-heart text-[clamp(2.5rem,8vw,6rem)]',
     clap: 'reaction-emoji-clap text-[clamp(2.5rem,8vw,6rem)]',
     spotlight_fire: 'reaction-emoji-fire text-[clamp(2.5rem,8vw,6rem)]',
@@ -109,6 +131,7 @@ export const getTvReactionLaneLeft = ({ id = '', type = '', index = 0, wide = fa
 export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) => {
     const key = String(type || '').trim().toLowerCase();
     const themeKey = getTvReactionThemeKey(key);
+    const motionKey = themeKey === 'blossom' ? 'money' : themeKey;
     const seed = hashTvMotionSeed(`${key}:${id}:${index}`);
     const direction = seed % 2 === 0 ? 1 : -1;
     const pick = (items = []) => items[seed % items.length];
@@ -127,7 +150,7 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
         spinDeg: 8 + (seed % 20),
         exitScale: 0.92,
     };
-    if (key === 'clap') {
+    if (motionKey === 'clap') {
         return {
             ...base,
             variant: 'applause',
@@ -144,7 +167,7 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             exitScale: 0.9
         };
     }
-    if (key === 'heart') {
+    if (motionKey === 'heart') {
         return {
             ...base,
             variant: 'heart',
@@ -161,7 +184,7 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             exitScale: 0.94
         };
     }
-    if (key === 'drink') {
+    if (motionKey === 'drink') {
         return {
             ...base,
             variant: 'cheers',
@@ -177,7 +200,7 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             exitScale: 0.91
         };
     }
-    if (key === 'money') {
+    if (motionKey === 'money') {
         return {
             ...base,
             variant: 'blossom',
@@ -194,7 +217,7 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             exitScale: 0.9
         };
     }
-    if (key === 'rocket') {
+    if (motionKey === 'rocket') {
         return {
             ...base,
             variant: 'launch',
@@ -211,7 +234,7 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             exitScale: 0.88
         };
     }
-    if (key === 'diamond') {
+    if (motionKey === 'diamond') {
         return {
             ...base,
             variant: 'prism',
@@ -228,7 +251,7 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             exitScale: 0.95
         };
     }
-    if (key === 'crown') {
+    if (motionKey === 'crown') {
         return {
             ...base,
             variant: 'royal',
@@ -245,7 +268,7 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             exitScale: 0.95
         };
     }
-    if (key === 'fire') {
+    if (motionKey === 'fire') {
         return {
             ...base,
             variant: 'ember',

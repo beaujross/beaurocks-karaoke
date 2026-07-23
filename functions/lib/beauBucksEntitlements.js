@@ -22,6 +22,8 @@ const listPublicPremiumProducts = (source = catalog) => Object.values(source?.pr
     cost: whole(product.cost),
     slotCount: whole(product.slotCount),
     grantedReactionType: normalizedToken(product.grantedReactionType),
+    reactionType: normalizedToken(product.reactionType),
+    baseReactionType: normalizedToken(product.baseReactionType),
   }))
   .filter((product) => product.id && product.kind && product.cost > 0);
 
