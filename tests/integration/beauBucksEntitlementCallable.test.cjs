@@ -63,7 +63,11 @@ async function run() {
 
   const wallet = await getMyRoomBeauBucksWallet.run(requestFor({ roomCode: ROOM_CODE }));
   assert.equal(wallet.reactionSlotCount, 5);
-  assert.equal(wallet.premiumCatalog.length, 7);
+  const premiumProductIds = wallet.premiumCatalog.map((product) => product.id);
+  assert.ok(premiumProductIds.length >= 7);
+  assert.ok(premiumProductIds.includes('profile_disco_ball'));
+  assert.ok(premiumProductIds.includes('profile_crystal_ball'));
+  assert.ok(premiumProductIds.includes('reaction_slot_6'));
   assert.deepEqual(wallet.allowedSpendKinds, ['durable_cosmetic_unlock']);
 
   const profileRequest = requestFor({

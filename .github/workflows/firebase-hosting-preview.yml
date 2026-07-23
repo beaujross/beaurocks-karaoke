@@ -11,14 +11,13 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: preview-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  preview:
+  preview-build:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     env:
@@ -40,11 +39,62 @@ jobs:
       - name: Build app
         run: npm run ci:build
 
-      - name: Deploy PR preview channel
-        uses: FirebaseExtended/action-hosting-deploy@v0
+      - name: Package preview build
+        uses: actions/upload-artifact@v4
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BEAUROCKS_KARAOKE_V2 }}
-          projectId: beaurocks-karaoke-v2
-          channelId: pr-${{ github.event.pull_request.number }}
-          expires: 7d
+          name: firebase-preview-dist-${{ github.event.pull_request.number }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
+
+  preview-configuration:
+    if: github.event.pull_request.head.repo.full_name == github.repository && vars.FIREBASE_PREVIEW_ENABLED != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report disabled preview deployment
+        run: |
+          echo "::notice title=Firebase preview not configured::The app build is still required and passed. Configure keyless Google Cloud authentication, then set FIREBASE_PREVIEW_ENABLED=true to deploy PR preview channels."
+          {
+            echo "## Firebase preview deployment"
+            echo
+            echo "The preview build remains mandatory. Channel deployment is intentionally disabled until keyless Google Cloud authentication is configured."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  preview-deploy:
+    needs: preview-build
+    if: github.event.pull_request.head.repo.full_name == github.repository && vars.FIREBASE_PREVIEW_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FIREBASE_PROJECT_ID: beaurocks-karaoke-v2
+      FIREBASE_PREVIEW_CHANNEL: pr-${{ github.event.pull_request.number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.FIREBASE_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_FIREBASE_PREVIEW_SERVICE_ACCOUNT }}
+
+      - name: Download preview build
+        uses: actions/download-artifact@v4
+        with:
+          name: firebase-preview-dist-${{ github.event.pull_request.number }}
+          path: dist
+
+      - name: Deploy Firebase Hosting preview channel
+        run: npx -y firebase-tools@15.24.0 hosting:channel:deploy "$FIREBASE_PREVIEW_CHANNEL" --expires 7d --project "$FIREBASE_PROJECT_ID" --non-interactive

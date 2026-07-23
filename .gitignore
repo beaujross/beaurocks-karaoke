@@ -33,6 +33,7 @@ GoogleCloudSDKInstaller.exe
 .env
 .env.*
 !.env.example
+gha-creds-*.json
 .firebase/
 functions/.env*
 tmp/
