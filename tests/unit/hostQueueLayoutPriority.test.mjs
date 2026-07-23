@@ -27,11 +27,11 @@ test('live queue surface keeps the reorderable queue ahead of helper workflows',
   const readyQueueIndex = queueListPanelSource.indexOf('readyQueueHeaderLabel');
   const lockedQueueIndex = queueListPanelSource.indexOf('lockedInLineup={lockedInLiveLineup}');
   const awaitingApprovalIndex = queueListPanelSource.indexOf('Awaiting Approval');
-  const inlineActionsIndex = queueSongCardSource.indexOf("selected ? 'Less' : 'More'");
+  const detailsActionIndex = queueSongCardSource.indexOf("selected ? 'Close' : 'Details'");
   assert.notStrictEqual(lockedQueueIndex, -1, 'Queue list panel should still expose the protected live lineup');
   assert.notStrictEqual(readyQueueIndex, -1, 'Queue list panel should expose the unified ready queue heading');
   assert.notStrictEqual(awaitingApprovalIndex, -1, 'Queue list panel should still expose the pending approval section');
-  assert.notStrictEqual(inlineActionsIndex, -1, 'Queue songs should still expose inline queue actions');
+  assert.notStrictEqual(detailsActionIndex, -1, 'Queue songs should expose a contextual details action');
   assert.ok(
     readyQueueIndex < lockedQueueIndex && lockedQueueIndex < awaitingApprovalIndex,
     'Queue list panel should lead with the ready lineup, protect its live slots, then show approval work',

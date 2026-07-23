@@ -4,9 +4,11 @@ import { test } from 'vitest';
 
 const queueSongCardSource = readFileSync('src/apps/Host/components/QueueSongCard.jsx', 'utf8');
 const queueListPanelSource = readFileSync('src/apps/Host/components/QueueListPanel.jsx', 'utf8');
+const queueSongInspectorSource = readFileSync('src/apps/Host/components/QueueSongInspector.jsx', 'utf8');
 
-test('queue rows expose deeper actions inline instead of routing to a separate inspector', () => {
-  assert.match(queueSongCardSource, /selected \? 'Less' : 'More'/);
+test('queue rows expose contextual actions and preserve deeper operations in the selected card', () => {
+  assert.match(queueSongCardSource, /selected \? 'Close' : 'Details'/);
+  assert.match(queueSongCardSource, /expandSelectedInline/);
   assert.match(queueSongCardSource, /onSelect\?\.\(song\)/);
   assert.match(queueSongCardSource, /Approve/);
   assert.match(queueSongCardSource, /Review/);
@@ -20,8 +22,10 @@ test('queue rows expose deeper actions inline instead of routing to a separate i
   assert.doesNotMatch(queueSongCardSource, /data-feature-id="queue-song-expanded-actions"/);
 });
 
-test('queue list keeps queue-item operations inside the cards without a duplicate queue-controls slab', () => {
-  assert.doesNotMatch(queueListPanelSource, /data-feature-id="queue-song-inspector"/);
+test('queue list routes selection to a responsive inspector without a duplicate queue-controls slab', () => {
+  assert.match(queueListPanelSource, /<QueueSongInspector/);
+  assert.match(queueSongInspectorSource, /data-feature-id="queue-song-inspector"/);
+  assert.match(queueSongInspectorSource, /createPortal/);
   assert.doesNotMatch(queueListPanelSource, /data-feature-id="queue-live-controls"/);
   assert.doesNotMatch(queueListPanelSource, /Queue Controls/);
   assert.doesNotMatch(queueListPanelSource, /Queue Rules/);

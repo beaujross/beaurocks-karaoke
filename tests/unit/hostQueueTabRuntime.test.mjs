@@ -529,7 +529,7 @@ test('HostQueueTab protects the live lineup and exposes quick between-song inser
   });
 
   assert.match(markup, /Up Next/);
-  assert.match(markup, /Live Queue Order/);
+  assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.match(markup, /Next/);
   assert.match(markup, /Then/);
   assert.match(markup, /Q3/);

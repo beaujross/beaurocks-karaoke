@@ -91,7 +91,7 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-test('QueueListPanel keeps queue actions inline without rendering a duplicate queue-controls slab', async () => {
+test('QueueListPanel keeps the overview contextual and leaves deeper actions to selection', async () => {
   vi.doMock('../../src/lib/firebase.js', () => ({
     db: {},
     doc: (...parts) => ({ parts }),
@@ -109,16 +109,16 @@ test('QueueListPanel keeps queue actions inline without rendering a duplicate qu
   assert.doesNotMatch(markup, /Automation/);
   assert.doesNotMatch(markup, /Open Conveyor/);
   assert.doesNotMatch(markup, /data-feature-id="queue-song-expanded-actions"/);
-  assert.match(markup, /Start/);
-  assert.match(markup, /Next/);
-  assert.match(markup, /Edit/);
-  assert.match(markup, /Hold/);
-  assert.match(markup, /Remove/);
+  assert.match(markup, /Start Next/);
+  assert.match(markup, /Details/);
+  assert.doesNotMatch(markup, />Edit</);
+  assert.doesNotMatch(markup, />Hold</);
+  assert.doesNotMatch(markup, />Remove</);
   assert.doesNotMatch(markup, /Queue Inspector/);
   assert.doesNotMatch(markup, /Queue Actions/);
 });
 
-test('QueueListPanel inline queue actions adapt to held and review-needed queue items', async () => {
+test('QueueListPanel keeps held and review-needed work in collapsed overview trays', async () => {
   vi.doMock('../../src/lib/firebase.js', () => ({
     db: {},
     doc: (...parts) => ({ parts }),
@@ -139,7 +139,9 @@ test('QueueListPanel inline queue actions adapt to held and review-needed queue 
       quickControls: null,
     })),
   );
-  assert.match(heldMarkup, /Restore/);
+  assert.match(heldMarkup, /data-feature-id="queue-section-held-toggle"/);
+  assert.match(heldMarkup, /aria-expanded="false"/);
+  assert.doesNotMatch(heldMarkup, /Restore/);
 
   const reviewMarkup = renderToStaticMarkup(
     React.createElement(QueueListPanel, buildQueueListPanelProps({
@@ -153,7 +155,9 @@ test('QueueListPanel inline queue actions adapt to held and review-needed queue 
       quickControls: null,
     })),
   );
-  assert.match(reviewMarkup, /Review/);
+  assert.match(reviewMarkup, /data-feature-id="queue-section-pending-toggle"/);
+  assert.match(reviewMarkup, /aria-expanded="false"/);
+  assert.doesNotMatch(reviewMarkup, />Review</);
 });
 
 test('QueueListPanel exposes fast run-of-show fill actions when open slots and ready queue coexist', async () => {
@@ -181,8 +185,8 @@ test('QueueListPanel exposes fast run-of-show fill actions when open slots and r
   assert.match(markup, /data-feature-id="queue-open-slot-actions"/);
   assert.match(markup, /Fill Next Slot/);
   assert.match(markup, /Fill All Suggested/);
-  assert.match(markup, /Assign To Next Open Slot/);
-  assert.match(markup, /Assign Selected Slot/);
+  assert.doesNotMatch(markup, /Assign To Next Open Slot/);
+  assert.doesNotMatch(markup, /Assign Selected Slot/);
 });
 
 test('QueueListPanel tightens copy when there is only one open run-of-show slot', async () => {
@@ -206,7 +210,6 @@ test('QueueListPanel tightens copy when there is only one open run-of-show slot'
   );
 
   assert.match(markup, /1 open slot can pull from queue/);
-  assert.match(markup, /Assign To #1 · Opener/);
   assert.match(markup, /Fill Next Slot/);
   assert.doesNotMatch(markup, /Fill All Suggested/);
   assert.doesNotMatch(markup, /Assign To Next Open Slot/);
@@ -232,5 +235,5 @@ test('QueueListPanel does not show fast-fill actions for assignable slots that a
 
   assert.doesNotMatch(markup, /data-feature-id="queue-open-slot-actions"/);
   assert.doesNotMatch(markup, /Fill Next Slot/);
-  assert.match(markup, /Assign Selected Slot/);
+  assert.doesNotMatch(markup, /Assign Selected Slot/);
 });
