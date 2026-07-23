@@ -47,17 +47,14 @@ const MissionSetupPlanPreview = ({
                                 <div className="mt-1 text-[10px] leading-4 text-amber-200">Check: {domain.warnings.join(' ')}</div>
                             ) : null}
                             {Array.isArray(domain.details) && domain.details.length > 0 ? (
-                                <details className="mt-1.5">
-                                    <summary className="cursor-pointer list-none text-[10px] text-zinc-500 hover:text-zinc-300">View details</summary>
-                                    <div className="mt-1.5 space-y-1 border-t border-white/5 pt-1.5">
-                                        {domain.details.map((detail) => (
+                                <div className="mt-2 space-y-1 border-t border-white/5 pt-2" aria-label={`${domain.label} details`}>
+                                        {domain.details.slice(0, 3).map((detail) => (
                                             <div key={`${domain.key}-${detail.label}`} className="flex items-start justify-between gap-3 text-[10px] leading-4">
                                                 <span className="text-zinc-500">{detail.label}</span>
                                                 <span className="text-right text-zinc-300">{detail.value}</span>
                                             </div>
                                         ))}
-                                    </div>
-                                </details>
+                                </div>
                             ) : null}
                         </div>
                     ))}

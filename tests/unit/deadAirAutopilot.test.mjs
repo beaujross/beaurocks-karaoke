@@ -75,6 +75,7 @@ test('deadAirAutopilot maps assist levels to persisted filler payload modes', ()
     artist: 'Neil Diamond',
     browseSongKey: 'sweet caroline__neil diamond',
     hasApprovedBacking: true,
+    sourceLabel: 'BeauRocks catalog',
   });
 
   const manual = buildDeadAirFillerPayload({ assistLevel: 'manual_first', delaySec: 1 });

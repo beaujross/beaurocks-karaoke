@@ -33,14 +33,24 @@ export const isDeadAirAutoFillQueueItem = (song = {}) =>
     normalizeKeyText(song?.automationSource) === DEAD_AIR_AUTOFILL_SOURCE;
 
 export const normalizeDeadAirFillerSong = (song = {}) => {
-    const title = normalizeText(song?.title || song?.songTitle);
+    const title = normalizeText(song?.title || song?.songTitle || song?.trackName || song?.name);
     if (!title) return null;
-    const backing = normalizeDeadAirBacking(song?.backing);
+    const directMediaUrl = normalizeText(song?.mediaUrl || song?.url);
+    const backing = normalizeDeadAirBacking(song?.backing || (directMediaUrl ? {
+        mediaUrl: directMediaUrl,
+        trackSource: song?.trackSource || song?.source || 'local',
+        label: song?.label || title,
+        durationSec: song?.durationSec || song?.duration,
+        approved: song?.approved !== false,
+        playable: song?.playable !== false,
+        score: song?.score || 0
+    } : null));
     const normalized = {
         title,
-        artist: normalizeText(song?.artist || song?.artistName),
+        artist: normalizeText(song?.artist || song?.artistName || song?.performer),
         browseSongKey: normalizeText(song?.browseSongKey),
-        hasApprovedBacking: song?.hasApprovedBacking === true
+        hasApprovedBacking: song?.hasApprovedBacking === true,
+        sourceLabel: normalizeText(song?.sourceLabel || (directMediaUrl ? 'Local library' : 'BeauRocks catalog'))
     };
     if (backing) {
         normalized.backing = backing;
@@ -50,12 +60,22 @@ export const normalizeDeadAirFillerSong = (song = {}) => {
 };
 
 export const buildDeadAirFillerSongPlan = ({
+    sourceSongs = [],
     categories = BROWSE_CATEGORIES,
     categoryIds = DEAD_AIR_BROWSE_CATEGORY_IDS,
     limit = 8,
 } = {}) => {
     const allowedCategoryIds = new Set(Array.isArray(categoryIds) ? categoryIds : []);
     const songMap = new Map();
+    (Array.isArray(sourceSongs) ? sourceSongs : []).forEach((song) => {
+        const normalized = normalizeDeadAirFillerSong({
+            ...song,
+            sourceLabel: song?.sourceLabel || 'Local library'
+        });
+        if (!normalized?.backing?.mediaUrl) return;
+        const key = buildSongIdentityKey(normalized);
+        if (key && !songMap.has(key)) songMap.set(key, normalized);
+    });
     (Array.isArray(categories) ? categories : [])
         .filter((category) => allowedCategoryIds.has(category?.id))
         .flatMap((category) => Array.isArray(category?.songs) ? category.songs : [])
@@ -98,7 +118,7 @@ export const buildDeadAirFillerPayload = ({
     return {
         enabled: mode !== 'off',
         mode,
-        source: 'browse_catalog_known_good',
+        source: normalizedSongs.some((song) => song?.backing?.trackSource === 'local') ? 'connected_media_and_catalog' : 'browse_catalog_known_good',
         delaySec: safeDelaySec,
         songs: normalizedSongs,
     };

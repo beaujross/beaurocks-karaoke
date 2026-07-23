@@ -12,6 +12,8 @@ const HorizonSegment = ({ segment, onSelect, className = '' }) => {
     const isMoment = item.objectType !== 'performance';
     const title = String(item.title || (isMoment ? 'Planned moment' : 'Guest')).trim();
     const subtitle = String(item.subtitle || (isMoment ? 'Room moment' : 'Song')).trim();
+    const artworkUrl = String(item.artworkUrl || '').trim();
+    const avatarEmoji = String(item.avatarEmoji || '').trim();
     return (
         <button
             type="button"
@@ -19,8 +21,17 @@ const HorizonSegment = ({ segment, onSelect, className = '' }) => {
             className={`group flex min-h-[44px] min-w-0 items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left transition hover:border-white/30 hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80 ${SEGMENT_TONES[segment?.tone] || SEGMENT_TONES.then} ${className}`}
             aria-label={`${segment?.label || 'Queue'}: ${title}, ${subtitle}`}
         >
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/25 text-sm" aria-hidden="true">
-                {item.avatarEmoji || <i className={`fa-solid ${isMoment ? 'fa-clapperboard' : 'fa-microphone-lines'} text-[12px]`} />}
+            <span className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/25 text-sm" aria-hidden="true">
+                {artworkUrl ? (
+                    <img src={artworkUrl} alt="" className="h-full w-full rounded-lg object-cover" />
+                ) : (
+                    avatarEmoji || <i className={`fa-solid ${isMoment ? 'fa-clapperboard' : 'fa-microphone-lines'} text-[12px]`} />
+                )}
+                {artworkUrl && avatarEmoji ? (
+                    <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full border border-zinc-950 bg-zinc-900 text-[11px] shadow-md">
+                        {avatarEmoji}
+                    </span>
+                ) : null}
             </span>
             <span className="min-w-0 flex-1">
                 <span className="block text-[12px] font-black uppercase tracking-[0.12em] opacity-80">{segment?.label}</span>
@@ -131,8 +142,12 @@ const HostQueueHorizon = ({
                             ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100 hover:border-emerald-200/55'
                             : 'border-white/10 bg-white/[0.04] text-zinc-300 hover:border-cyan-300/30 hover:text-white'
                     }`}
-                    aria-label={automationEnabled ? 'Turn Auto-DJ off' : 'Turn Auto-DJ on'}
-                    title={automationEnabled ? 'Turn Auto-DJ off' : 'Turn Auto-DJ on'}
+                    aria-label={automationEnabled
+                        ? 'Auto-DJ is on. Turn it off to require the Host to start and advance every performance.'
+                        : 'Auto-DJ is off. Turn it on to start ready performances and advance the Queue after the configured delay.'}
+                    title={automationEnabled
+                        ? 'ON: BeauRocks starts ready performances and advances the Queue after the configured delay. Click for manual control.'
+                        : 'OFF: the Host starts and advances each performance. Click to let BeauRocks move through ready Queue entries.'}
                 >
                     <i className={`fa-solid ${automationEnabled ? 'fa-wand-magic-sparkles' : 'fa-hand'} text-[11px]`} aria-hidden="true"></i>
                     {model?.automation?.label || 'Manual'}

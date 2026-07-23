@@ -185,7 +185,7 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /buildHostLaunchDraftKey/);
   assert.match(
     source,
-    /persistHostLaunchDraftPart\(launchExperienceDraftKey, \{\s*joinAccessMode: launchJoinAccessMode,\s*operatingModel: launchOperatingModel,\s*nightType: launchNightType,\s*\}\);/,
+    /persistHostLaunchDraftPart\(launchExperienceDraftKey, \{\s*joinAccessMode: launchJoinAccessMode,\s*operatingModel: launchOperatingModel,\s*nightType: launchNightType,\s*mediaSources: launchMediaSources,\s*\}\);/,
     'Recovered experience drafts should store only non-secret setup choices',
   );
 });

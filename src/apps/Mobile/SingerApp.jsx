@@ -3337,6 +3337,10 @@ const SingerApp = ({ roomCode, uid }) => {
                 setShowPoints(true);
                 return result;
             }
+            if (result?.outcome === 'missing_prerequisite') {
+                toast('Unlock reaction slot 5 with Points first.');
+                return result;
+            }
             if (!['accepted', 'already_owned'].includes(String(result?.outcome || ''))) {
                 toast(result?.outcome === 'account_restricted' ? 'BeauBucks spending is unavailable for this account.' : 'Unlock could not be completed.');
                 return result;
@@ -3795,6 +3799,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const baseReactionSlotCount = getAudienceReactionSlotCount({
         signedIn: signedInBeauRocksAccount,
         wallet: visibleBeauBucksWalletState.wallet,
+        roomUser: user,
     });
     const reactionSlotCount = baseReactionSlotCount;
     const reactionFameLevel = Math.max(0, Number(profile?.currentLevel ?? profile?.fameLevel ?? getLevelFromFame(profile?.totalFamePoints || 0)) || 0);
@@ -3820,12 +3825,58 @@ const SingerApp = ({ roomCode, uid }) => {
         toast(`${getReactionDefinition(reactionType)?.label || 'Reaction'} equipped.`);
     };
     const sixthReactionSlotProduct = REACTION_SLOT_PRODUCTS.find((product) => Number(product.slotCount || 0) === 6) || null;
+    const fifthReactionSlotPointsCost = 250;
+    const unlockFifthReactionSlot = async () => {
+        if (reactionSlotCount >= 5) return;
+        if (!canAffordRoomCost(fifthReactionSlotPointsCost)) {
+            toast(`Need ${fifthReactionSlotPointsCost} ${roomCurrencyPresentation.shortLabel} for reaction slot 5.`);
+            return;
+        }
+        try {
+            const result = await requestServerSpend({
+                kind: 'reaction_slot_unlock',
+                retryKey: 'reaction_slot_unlock:5',
+                payload: { slotCount: 5 },
+            });
+            if (result?.outcome === 'insufficient_balance') {
+                toast(`Need ${fifthReactionSlotPointsCost} ${roomCurrencyPresentation.shortLabel} for reaction slot 5.`);
+                return;
+            }
+            if (result?.outcome === 'legacy_fallback') {
+                toast('Reaction slot purchases are not available in this room yet.');
+                return;
+            }
+            if (result?.outcome !== 'accepted') {
+                toast('Could not unlock the reaction slot. Try again.');
+                return;
+            }
+            syncPoints(true);
+            toast('Reaction slot 5 unlocked for this party.');
+        } catch (error) {
+            console.error(error);
+            toast('Could not unlock the reaction slot. Try again.');
+        }
+    };
     const pointsDrawerContent = (
         <>
             <div className="space-y-5" data-feature-id="audience-points-storefront">
-                <section className="relative overflow-hidden rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(34,211,238,0.22),rgba(236,72,153,0.15)_42%,rgba(12,18,32,0.98))] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.34)]">
-                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/78">{beauBucksRoomCandidate ? 'Earned Points' : roomCurrencyPresentation.balanceLabel}</div>
-                    <CurrencyAmount currency="points" amount={getEffectivePoints()} size="lg" className="mt-2 text-[clamp(3rem,15vw,5rem)] leading-none" />
+                <section className="relative overflow-hidden rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(34,211,238,0.22),rgba(236,72,153,0.15)_42%,rgba(12,18,32,0.98))] p-4 shadow-[0_24px_60px_rgba(0,0,0,0.34)]">
+                    <div className={`grid gap-2 ${beauBucksRoomCandidate ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        <div className="rounded-2xl bg-black/20 p-3">
+                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/78">{roomCurrencyPresentation.balanceLabel} · this party</div>
+                            <CurrencyAmount currency="points" amount={getEffectivePoints()} size="sm" className="mt-2 text-2xl" />
+                            <div className="mt-1 text-[11px] text-cyan-50/65">Spend on reactions and room unlocks.</div>
+                        </div>
+                        {beauBucksRoomCandidate ? (
+                            <button type="button" onClick={() => signedInBeauRocksAccount ? loadBeauBucksWallet({ force: true }) : openVipUpgrade('email')} className="rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 p-3 text-left">
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100/78">BeauBucks · permanent</div>
+                                {signedInBeauRocksAccount && visibleBeauBucksWalletState.status === 'ready'
+                                    ? <CurrencyAmount currency="beaubucks" amount={visibleBeauBucksWalletState.wallet?.balance || 0} size="sm" className="mt-2 text-2xl" />
+                                    : <div className="mt-2 text-sm font-black text-white">Create account</div>}
+                                <div className="mt-1 text-[11px] text-fuchsia-50/65">Premium cosmetics stay with your account.</div>
+                            </button>
+                        ) : null}
+                    </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                         {activeEventCredits.generalAdmissionPoints > 0 ? (
                             <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black text-white">
@@ -3877,7 +3928,11 @@ const SingerApp = ({ roomCode, uid }) => {
                                 <span className="font-black text-white">6 / 6 reactions</span><span className="text-2xl">{getReactionEmoji('crown')}</span>
                             </div>
                         ) : null}
-                        {visibleBeauBucksWalletState.status === 'loading' || visibleBeauBucksWalletState.status === 'idle' ? (
+                        {!signedInBeauRocksAccount ? (
+                            <button type="button" onClick={() => openVipUpgrade('email')} className="mt-3 min-h-[48px] w-full rounded-xl bg-gradient-to-r from-fuchsia-400 to-pink-400 px-4 font-black text-black">
+                                Create account to carry BeauBucks
+                            </button>
+                        ) : visibleBeauBucksWalletState.status === 'loading' || visibleBeauBucksWalletState.status === 'idle' ? (
                             <div className="mt-3 text-xs text-zinc-400" role="status">Loading BeauBucks balance...</div>
                         ) : visibleBeauBucksWalletState.status === 'error' ? (
                             <div className="mt-3 flex items-center justify-between gap-3">
@@ -8729,11 +8784,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     };
 
     const getNameEmojiChangeCost = () => {
+        if (signedInBeauRocksAccount) return 0;
         const count = profile?.nameEmojiChangeCount || 0;
         if (count === 0) return 0;
         return 500 * count;
     };
     const getNextNameEmojiChangeCost = () => {
+        if (signedInBeauRocksAccount) return 0;
         const count = profile?.nameEmojiChangeCount || 0;
         return 500 * (count + 1);
     };
@@ -11452,9 +11509,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             Points: <span className="text-white font-black">{Math.max(0, getEffectivePoints())}</span>
                         </div>
                         <div className="text-sm text-zinc-300 mt-1">
-                            {getNameEmojiChangeCost() === 0 ? 'First change is free.' : `This change costs ${getNameEmojiChangeCost()} PTS.`}
+                            {signedInBeauRocksAccount ? 'Profile changes are free with your BeauRocks account.' : getNameEmojiChangeCost() === 0 ? 'First guest change is free.' : `This guest change costs ${getNameEmojiChangeCost()} PTS.`}
                         </div>
-                        <div className="text-xs text-zinc-400 mt-1">Next change: {getNextNameEmojiChangeCost()} PTS.</div>
+                        {!signedInBeauRocksAccount ? <div className="text-xs text-zinc-400 mt-1">Next guest change: {getNextNameEmojiChangeCost()} PTS. This slows rapid anonymous name changes.</div> : null}
                     </div>
                     <input
                         value={form.name}
@@ -14921,12 +14978,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                              );
                                          })}</div> : null}
                                          {reactionSlotCount === 4 ? (
-                                             <button onClick={()=>openVipUpgrade('email')} className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 text-left shadow-[0_0_22px_rgba(34,211,238,0.12)]">
-                                                 <span><span className="block font-black text-white">Add reaction slot 5</span><span className="block text-xs text-cyan-100/65">Create your BeauRocks account</span></span><span className="text-4xl">{getReactionEmoji('rocket')}</span>
+                                             <button onClick={() => void unlockFifthReactionSlot()} className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 text-left shadow-[0_0_22px_rgba(34,211,238,0.12)]">
+                                                 <span><span className="block font-black text-white">Unlock reaction slot 5</span><span className="block text-xs text-cyan-100/65">For this party</span></span><CurrencyAmount currency="points" amount={fifthReactionSlotPointsCost} size="sm" />
                                              </button>
-                                         ) : reactionSlotCount === 5 && sixthReactionSlotProduct ? (
+                                         ) : null}
+                                         {reactionSlotCount < 6 && sixthReactionSlotProduct ? (
                                              <button onClick={() => { setShowPoints(true); }} className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-4 text-left shadow-[0_0_22px_rgba(217,70,239,0.14)]">
-                                                 <span><span className="block font-black text-white">Add reaction slot 6</span><span className="block text-xs text-fuchsia-100/65">Royal included</span></span><CurrencyAmount currency="beaubucks" amount={sixthReactionSlotProduct.cost} size="sm" />
+                                                 <span><span className="block font-black text-white">Unlock reaction slot 6</span><span className="block text-xs text-fuchsia-100/65">{reactionSlotCount < 5 ? 'Slot 5 required · Royal included' : 'Permanent · Royal included'}</span></span><CurrencyAmount currency="beaubucks" amount={sixthReactionSlotProduct.cost} size="sm" />
                                              </button>
                                          ) : null}
                                      </>

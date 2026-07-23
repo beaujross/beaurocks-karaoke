@@ -62,7 +62,7 @@ async function run() {
   assert.equal(anonymousWallet.reactionSlotCount, 4);
 
   const wallet = await getMyRoomBeauBucksWallet.run(requestFor({ roomCode: ROOM_CODE }));
-  assert.equal(wallet.reactionSlotCount, 5);
+  assert.equal(wallet.reactionSlotCount, 4);
   const premiumProductIds = wallet.premiumCatalog.map((product) => product.id);
   assert.ok(premiumProductIds.length >= 7);
   assert.ok(premiumProductIds.includes('profile_disco_ball'));
@@ -86,6 +86,14 @@ async function run() {
   const replay = await purchaseBeauBucksEntitlement.run(profileRequest);
   assert.equal(replay.duplicate, true);
   assert.equal((await accountRef.get()).get('balance'), 880);
+
+  const blockedSixthSlot = await purchaseBeauBucksEntitlement.run(requestFor({
+    roomCode: ROOM_CODE,
+    productId: 'reaction_slot_6',
+    clientOperationId: 'reaction-slot-6-blocked',
+  }));
+  assert.equal(blockedSixthSlot.outcome, 'missing_prerequisite');
+  await db.doc(`${ROOT}/room_users/${ROOM_CODE}_${USER_UID}`).set({ reactionSlot5Unlocked: true }, { merge: true });
 
   const sixthSlot = await purchaseBeauBucksEntitlement.run(requestFor({
     roomCode: ROOM_CODE,

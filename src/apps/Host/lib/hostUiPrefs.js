@@ -34,7 +34,7 @@ export const getHostRuntimeModeEmphasis = (room = null) => {
 export const isPostPerformanceBackingPromptEnabled = (room = null) => {
     const groupedValue = getHostUiPrefs(room).postPerformanceBackingPromptEnabled;
     if (typeof groupedValue === 'boolean') return groupedValue;
-    return room?.postPerformanceBackingPromptEnabled !== false;
+    return room?.postPerformanceBackingPromptEnabled === true;
 };
 
 export const buildHostUiPrefsPatch = (room = null, patch = {}) => ({

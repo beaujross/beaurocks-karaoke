@@ -15,9 +15,12 @@ export const PARTY_POLICY_DEFAULTS = Object.freeze({
 
 export const PARTY_AUTO_MOMENT_DEFAULTS = Object.freeze({
     autoCrowdMomentsEnabled: false,
+    autoCrowdMomentEverySongs: 1,
     autoCrowdMomentDelayMs: 400,
     autoCrowdMomentReadyCheckSec: 6,
     autoCrowdMomentVolleySec: 12,
+    autoCrowdMomentTriviaSec: 20,
+    autoCrowdMomentWyrSec: 18,
     autoCrowdMomentPreferredTypes: ['volley', 'ready_check']
 });
 
@@ -36,7 +39,7 @@ export const HEAVY_GROUP_MODES = new Set([
     'ballad'
 ]);
 
-const AUTO_CROWD_MOMENT_TYPES = new Set(['ready_check', 'volley']);
+const AUTO_CROWD_MOMENT_TYPES = new Set(['ready_check', 'volley', 'trivia', 'would_you_rather']);
 
 const normalizePositiveInt = (value, fallback, min, max) => {
     const parsed = Math.floor(toNumber(value, fallback));
@@ -84,6 +87,12 @@ export const normalizeAutoCrowdMomentConfig = (party = {}) => {
         : PARTY_AUTO_MOMENT_DEFAULTS.autoCrowdMomentPreferredTypes;
     return {
         autoCrowdMomentsEnabled: party?.autoCrowdMomentsEnabled === true,
+        autoCrowdMomentEverySongs: normalizePositiveInt(
+            party?.autoCrowdMomentEverySongs,
+            PARTY_AUTO_MOMENT_DEFAULTS.autoCrowdMomentEverySongs,
+            1,
+            10
+        ),
         autoCrowdMomentDelayMs: normalizePositiveInt(
             party?.autoCrowdMomentDelayMs,
             PARTY_AUTO_MOMENT_DEFAULTS.autoCrowdMomentDelayMs,
@@ -101,6 +110,18 @@ export const normalizeAutoCrowdMomentConfig = (party = {}) => {
             PARTY_AUTO_MOMENT_DEFAULTS.autoCrowdMomentVolleySec,
             4,
             30
+        ),
+        autoCrowdMomentTriviaSec: normalizePositiveInt(
+            party?.autoCrowdMomentTriviaSec,
+            PARTY_AUTO_MOMENT_DEFAULTS.autoCrowdMomentTriviaSec,
+            8,
+            45
+        ),
+        autoCrowdMomentWyrSec: normalizePositiveInt(
+            party?.autoCrowdMomentWyrSec,
+            PARTY_AUTO_MOMENT_DEFAULTS.autoCrowdMomentWyrSec,
+            8,
+            45
         ),
         autoCrowdMomentPreferredTypes: preferredTypes.length
             ? preferredTypes
@@ -254,6 +275,24 @@ const buildAutoMomentDescriptor = (type = '', durationSec = 0) => {
             activityLog: 'launched Auto Party Volley Orb between singers'
         };
     }
+    if (type === 'trivia') {
+        return {
+            type,
+            durationSec,
+            title: 'Auto Party: Trivia',
+            detail: 'A full-screen music trivia question is live.',
+            activityLog: 'launched a full-screen trivia moment between singers'
+        };
+    }
+    if (type === 'would_you_rather') {
+        return {
+            type,
+            durationSec,
+            title: 'Auto Party: Would You Rather',
+            detail: 'A full-screen room choice is live.',
+            activityLog: 'launched a full-screen Would You Rather moment between singers'
+        };
+    }
     return {
         type: 'ready_check',
         durationSec,
@@ -285,6 +324,10 @@ export const recommendAutoCrowdMoment = ({
     if (String(currentLightMode || '').trim().toLowerCase() === 'volley') {
         return { allowed: false, reason: 'already_live' };
     }
+    const normalizedFlowState = normalizePartyFlowState(flowState);
+    if (normalizedFlowState.songsSinceLastGroupMoment < normalizedParty.autoCrowdMomentEverySongs) {
+        return { allowed: false, reason: 'cadence' };
+    }
 
     const preferredTypes = normalizedParty.autoCrowdMomentPreferredTypes;
     let lastGuard = null;
@@ -302,7 +345,11 @@ export const recommendAutoCrowdMoment = ({
 
         const durationSec = type === 'volley'
             ? normalizedParty.autoCrowdMomentVolleySec
-            : normalizedParty.autoCrowdMomentReadyCheckSec;
+            : type === 'trivia'
+                ? normalizedParty.autoCrowdMomentTriviaSec
+                : type === 'would_you_rather'
+                    ? normalizedParty.autoCrowdMomentWyrSec
+                    : normalizedParty.autoCrowdMomentReadyCheckSec;
         const guard = shouldAllowGroupMoment({
             policy: normalizedParty,
             flowState,

@@ -178,6 +178,20 @@ async function run() {
   assert.deepEqual((await userRef.get()).get('unlockedEmojis'), ['fox']);
   await assertOperationAndLedger({ clientOperationId: avatarOperationId, type: 'avatar_unlock_spend', amount: 60 });
 
+  await resetAccount({ points: 300 });
+  const slotOperationId = 'reaction_slot_unlock:slot-5';
+  const slotResult = await spendAudienceRoomCredits.run(spendRequest({
+    kind: 'reaction_slot_unlock',
+    clientOperationId: slotOperationId,
+    payload: { slotCount: 5 },
+  }));
+  assert.equal(slotResult.outcome, 'accepted');
+  assert.equal(slotResult.chargedAmount, 250);
+  assert.equal(slotResult.balanceAfter, 50);
+  assert.equal(slotResult.reactionSlotCount, 5);
+  assert.equal((await roomUserRef.get()).get('reactionSlot5Unlocked'), true);
+  await assertOperationAndLedger({ clientOperationId: slotOperationId, type: 'reaction_slot_unlock_spend', amount: 250 });
+
   await resetAccount({ points: 600, nameEmojiChangeCount: 1 });
   const profileOperationId = 'profile_change:paid-1';
   const profileResult = await spendAudienceRoomCredits.run(spendRequest({
@@ -192,6 +206,20 @@ async function run() {
   assert.equal((await userRef.get()).get('name'), 'After');
   assert.equal((await userRef.get()).get('nameEmojiChangeCount'), 2);
   await assertOperationAndLedger({ clientOperationId: profileOperationId, type: 'profile_change_spend', amount: 500 });
+
+  await resetAccount({ points: 100, nameEmojiChangeCount: 4 });
+  const accountProfileResult = await spendAudienceRoomCredits.run({
+    ...spendRequest({
+      kind: 'profile_change',
+      clientOperationId: 'profile_change:account-free',
+      payload: { name: 'Account Name', avatar: 'ðŸŽ¤' },
+    }),
+    auth: { uid: USER_UID, token: { firebase: { sign_in_provider: 'password' } } },
+  });
+  assert.equal(accountProfileResult.outcome, 'accepted');
+  assert.equal(accountProfileResult.chargedAmount, 0);
+  assert.equal((await roomUserRef.get()).get('points'), 100);
+  assert.equal((await userRef.get()).get('nameEmojiChangeCount'), 4);
 
   console.log('PASS spendAudienceRoomCredits callable');
 }

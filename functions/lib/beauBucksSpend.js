@@ -2,10 +2,12 @@ const crypto = require('node:crypto');
 
 const SPEND_OPERATIONS_COLLECTION = 'beaurocks_spend_operations';
 const SPEND_OPERATION_SCHEMA_VERSION = 1;
+const REACTION_SLOT_5_POINTS_COST = 250;
 const SPEND_KINDS = Object.freeze({
   reaction: 'reaction',
   profileChange: 'profile_change',
   avatarUnlock: 'avatar_unlock',
+  reactionSlotUnlock: 'reaction_slot_unlock',
 });
 
 const token = (value = '') => String(value || '').trim();
@@ -64,6 +66,7 @@ module.exports = {
   SPEND_KINDS,
   SPEND_OPERATIONS_COLLECTION,
   SPEND_OPERATION_SCHEMA_VERSION,
+  REACTION_SLOT_5_POINTS_COST,
   buildSpendOperationDocumentId,
   normalizeClientOperationId,
   normalizeSpendKind,

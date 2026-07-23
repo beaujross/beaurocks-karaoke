@@ -296,7 +296,7 @@ const StageNowPlayingPanel = ({
                                     title="Mark this track as a bad fit so it sinks in future picks"
                                 >
                                     <i className="fa-solid fa-thumbs-down"></i>
-                                    Bad Track
+                                    Avoid Auto-Picks
                                 </button>
                             </div>
                         ) : (currentHasYoutubeBacking && typeof onRateBacking === 'function') ? (
@@ -315,10 +315,10 @@ const StageNowPlayingPanel = ({
                                     type="button"
                                     onClick={() => onRateBacking(current, 'down')}
                                     className={`${feedbackChipClass} border-rose-300/35 bg-rose-500/12 text-rose-100`}
-                                    title="Mark this as a backing you would avoid next time"
+                                    title="Avoid this backing for future automatic picks. You can still find and select it again from Catalog."
                                 >
                                     <i className="fa-solid fa-thumbs-down"></i>
-                                    Skip
+                                    Avoid Later
                                 </button>
                             </div>
                         ) : null}
@@ -540,7 +540,7 @@ const StageNowPlayingPanel = ({
                                     className={`${feedbackChipClass} border-rose-300/35 bg-rose-500/12 text-rose-100`}
                                 >
                                     <i className="fa-solid fa-thumbs-down"></i>
-                                    Bad Track
+                                    Avoid Auto-Picks
                                 </button>
                                 <button
                                     type="button"
@@ -556,7 +556,7 @@ const StageNowPlayingPanel = ({
                                     className={`${feedbackChipClass} border-white/10 bg-black/20 text-zinc-200`}
                                 >
                                     <i className="fa-solid fa-forward"></i>
-                                    Skip
+                                    Dismiss
                                 </button>
                             </div>
                         </div>

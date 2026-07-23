@@ -244,7 +244,16 @@ const QueueSongCard = ({
                         <i className={`fa-solid ${lockedInLineup ? 'fa-lock' : 'fa-grip-lines'} text-xs`}></i>
                     </span>
                     ) : null}
-                    {song.albumArtUrl && (!compactViewport || selectedExpanded) ? <img src={song.albumArtUrl} className="h-7 w-7 rounded-lg shadow-sm"/> : null}
+                    {(song.albumArtUrl || song.emoji) && (!compactViewport || selectedExpanded) ? (
+                        <span className="relative h-8 w-8 shrink-0">
+                            {song.albumArtUrl ? <img src={song.albumArtUrl} alt="" className="h-8 w-8 rounded-lg object-cover shadow-sm" /> : (
+                                <span className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-black/25 text-base">{song.emoji}</span>
+                            )}
+                            {song.albumArtUrl && song.emoji ? (
+                                <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full border border-zinc-950 bg-zinc-900 text-[11px] shadow-md" aria-label={`Singer emoji ${song.emoji}`}>{song.emoji}</span>
+                            ) : null}
+                        </span>
+                    ) : null}
                     <div className="min-w-0">
                         <div className={`font-bold text-white truncate ${compactViewport ? 'text-[13px] leading-tight' : 'text-[13px] leading-tight'}`}>{song.songTitle}</div>
                         <div className={`text-zinc-400 truncate ${compactViewport ? 'text-[11px] leading-tight' : 'text-[11px] leading-tight'}`}>{song.singerName}</div>

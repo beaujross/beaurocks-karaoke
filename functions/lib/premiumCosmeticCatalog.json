@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "currency": "beaubucks",
   "defaultReactionSlots": 4,
-  "accountReactionSlots": 5,
+  "accountReactionSlots": 4,
   "maxReactionSlots": 6,
   "products": {
     "profile_disco_ball": {

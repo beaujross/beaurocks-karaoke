@@ -170,6 +170,7 @@ const {
   SPEND_KINDS,
   SPEND_OPERATIONS_COLLECTION,
   SPEND_OPERATION_SCHEMA_VERSION,
+  REACTION_SLOT_5_POINTS_COST,
   buildSpendOperationDocumentId,
   normalizeClientOperationId,
   normalizeSpendKind,
@@ -20916,7 +20917,7 @@ exports.updateAudienceIdentity = onCall({ cors: true }, async (request) => {
       leaderboardAccountUpdatedAt: serverNow,
       updatedAt: serverNow,
     };
-    if (identityChanged) {
+    if (identityChanged && !leaderboardAccountEligible) {
       userPatch.nameEmojiChangeCount = admin.firestore.FieldValue.increment(1);
     }
     const vipProfilePatch = vipLevel > 0 ? buildAudienceVipProfilePatch(vipProfileInput, userData.vipProfile || {}) : null;
@@ -21015,6 +21016,7 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
         cooldownUntilMs: Math.max(0, Number(prior.cooldownUntilMs || 0) || 0),
         performanceId: String(prior.performanceId || ""),
         performanceScoreAdded: Math.max(0, Number(prior.performanceScoreAdded || 0) || 0),
+        reactionSlotCount: Math.max(4, Number(prior.reactionSlotCount || 0) || 0),
       };
     }
     if (!currentRoomSnap.exists) throw new HttpsError("not-found", "Room code not found.");
@@ -21041,6 +21043,7 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
     let reactionCooldownMs = 0;
     let reactionCooldownUntilMs = 0;
     let performanceScoreAdded = 0;
+    let reactionSlot5Unlocked = roomUserData.reactionSlot5Unlocked === true;
     const operationNowMs = Date.now();
 
     if (kind === SPEND_KINDS.reaction) {
@@ -21085,11 +21088,11 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
       const previousAvatar = String(userData.avatar || roomUserData.avatar || DEFAULT_AUDIENCE_AVATAR).trim() || DEFAULT_AUDIENCE_AVATAR;
       const identityChanged = safeName !== previousName || resolvedAvatar !== previousAvatar;
       resolvedName = safeName;
-      cost = identityChanged ? resolveProfileChangeSpendCost(userData.nameEmojiChangeCount || 0) : 0;
+      cost = identityChanged && !requestHasNonAnonymousAccount(request) ? resolveProfileChangeSpendCost(userData.nameEmojiChangeCount || 0) : 0;
       spendType = "profile_change_spend";
       sourceId = "audience_identity";
       identityPatch = { uid: callerUid, name: safeName, avatar: resolvedAvatar };
-      if (identityChanged) identityPatch.nameEmojiChangeCount = admin.firestore.FieldValue.increment(1);
+      if (identityChanged && !requestHasNonAnonymousAccount(request)) identityPatch.nameEmojiChangeCount = admin.firestore.FieldValue.increment(1);
       const vipProfilePatch = vipLevel > 0 ? buildAudienceVipProfilePatch(vipProfileInput, userData.vipProfile || {}) : null;
       if (vipProfilePatch) identityPatch.vipProfile = vipProfilePatch;
       roomIdentityPatch = {
@@ -21113,6 +21116,11 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
       spendType = "avatar_unlock_spend";
       sourceId = avatarUnlockId;
       resolvedAvatar = avatarUnlock.record.emoji;
+    } else if (kind === SPEND_KINDS.reactionSlotUnlock) {
+      cost = reactionSlot5Unlocked ? 0 : REACTION_SLOT_5_POINTS_COST;
+      spendType = "reaction_slot_unlock_spend";
+      sourceId = "reaction_slot_5";
+      reactionSlot5Unlocked = true;
     }
 
     const balanceAfter = Math.max(0, balanceBefore - cost);
@@ -21144,6 +21152,7 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
       cooldownUntilMs: nextReactionCooldownUntilMs,
       performanceId: reactionPerformanceId,
       performanceScoreAdded: outcome === "accepted" ? performanceScoreAdded : 0,
+      reactionSlotCount: outcome === "accepted" && reactionSlot5Unlocked ? 5 : (roomUserData.reactionSlot5Unlocked === true ? 5 : 4),
       replayCount: 0,
       createdAt: serverNow,
       updatedAt: serverNow,
@@ -21188,6 +21197,7 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
         },
       } : {}),
       ...(roomIdentityPatch || {}),
+      ...(kind === SPEND_KINDS.reactionSlotUnlock ? { reactionSlot5Unlocked } : {}),
     }, { merge: true });
     if (reactionPerformanceRef && performanceScoreAdded > 0) {
       tx.set(reactionPerformanceRef, {
@@ -21246,6 +21256,7 @@ exports.spendAudienceRoomCredits = onCall({ cors: true }, async (request) => {
       cooldownUntilMs: nextReactionCooldownUntilMs,
       performanceId: reactionPerformanceId,
       performanceScoreAdded,
+      reactionSlotCount: reactionSlot5Unlocked ? 5 : 4,
     };
   });
 
@@ -21317,7 +21328,10 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
       : !accountEligible ? "beaurocks_account_required" : "",
     accountStatus: String(accountData.status || "active"),
     entitlementIds,
-    reactionSlotCount: getReactionSlotCount({ accountEligible, entitlementIds }),
+    reactionSlotCount: Math.max(
+      roomUserSnap.get("reactionSlot5Unlocked") === true ? 5 : 4,
+      getReactionSlotCount({ accountEligible, entitlementIds })
+    ),
     premiumCatalog: listPublicPremiumProducts(),
     allowedSpendKinds: authorityEnabled
       ? [...(experienceEnabled ? [SPEND_KINDS.reaction] : []), "durable_cosmetic_unlock"]
@@ -21377,8 +21391,10 @@ exports.purchaseBeauBucksEntitlement = onCall({ cors: true }, async (request) =>
     const accountStatus = String(accountData.status || "active");
     const previousEntitlementIds = normalizeEntitlementIds(accountData.entitlementIds);
     const alreadyOwned = entitlementSnap.exists || previousEntitlementIds.includes(product.id);
+    const missingSlotPrerequisite = product.id === "reaction_slot_6" && roomUserSnap.get("reactionSlot5Unlocked") !== true;
     const outcome = alreadyOwned ? "already_owned"
       : accountStatus === "restricted" ? "account_restricted"
+        : missingSlotPrerequisite ? "missing_prerequisite"
         : product.cost > balanceBefore ? "insufficient_balance" : "accepted";
     const chargedAmount = outcome === "accepted" ? product.cost : 0;
     const balanceAfter = balanceBefore - chargedAmount;

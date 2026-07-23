@@ -36,7 +36,13 @@ const MissionSetupAutopilotPreview = ({
     flowRuleLabel = 'Balanced Flow',
     spotlightLabel = 'Karaoke Flow',
     queueSummary = 'Round robin',
-    deadAirSongs = []
+    deadAirSongs = [],
+    intermissionEnabled = false,
+    intermissionEverySongs = 1,
+    intermissionTypes = [],
+    onToggleIntermission = () => {},
+    onSetIntermissionEverySongs = () => {},
+    onToggleIntermissionType = () => {}
 }) => {
     const activeMeta = ASSIST_MODE_META[selectedAssistLevel] || ASSIST_MODE_META.smart_assist;
     const visibleAssistLevels = assistLevels.length > 0
@@ -107,6 +113,39 @@ const MissionSetupAutopilotPreview = ({
                 </div>
 
                 <div className="space-y-3">
+                    <div className="rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/[0.07] p-3" data-feature-id="setup-intermission-program">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-fuchsia-200">Between performances</div>
+                                <div className="mt-1 text-sm font-black text-white">Full-screen activity plan</div>
+                            </div>
+                            <button type="button" onClick={onToggleIntermission} className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${intermissionEnabled ? 'border-fuchsia-300/40 bg-fuchsia-500/20 text-fuchsia-50' : 'border-white/10 bg-black/25 text-zinc-400'}`}>
+                                {intermissionEnabled ? 'On' : 'Off'}
+                            </button>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-1.5">
+                            {[
+                                ['trivia', 'Trivia', 'fa-lightbulb'],
+                                ['would_you_rather', 'Would You Rather', 'fa-shuffle'],
+                                ['ready_check', 'Ready Check', 'fa-circle-check'],
+                                ['volley', 'Volley Orb', 'fa-circle-nodes'],
+                            ].map(([id, label, icon]) => {
+                                const selected = intermissionTypes.includes(id);
+                                return (
+                                    <button key={id} type="button" disabled={!intermissionEnabled} onClick={() => onToggleIntermissionType(id)} className={`min-h-[48px] rounded-xl border px-2 py-2 text-left text-[11px] font-bold transition disabled:opacity-45 ${selected ? 'border-fuchsia-300/35 bg-fuchsia-500/15 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}>
+                                        <i className={`fa-solid ${icon} mr-1.5`}></i>{label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <label className="mt-3 block text-[11px] text-zinc-300">
+                            Cadence
+                            <select value={intermissionEverySongs} disabled={!intermissionEnabled} onChange={(event) => onSetIntermissionEverySongs(Number(event.target.value || 1))} className="mt-1 min-h-[44px] w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white disabled:opacity-45">
+                                {[1, 2, 3, 4, 5].map((count) => <option key={count} value={count}>After every {count} performance{count === 1 ? '' : 's'}</option>)}
+                            </select>
+                        </label>
+                    </div>
+
                     <div>
                         <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Host Control</div>
                         <div className="mt-2 grid grid-cols-1 gap-2">
@@ -134,7 +173,7 @@ const MissionSetupAutopilotPreview = ({
                                 <div key={`${song.title}-${song.artist}`} className="flex items-center justify-between gap-3 text-xs">
                                     <div className="min-w-0">
                                         <div className="truncate font-bold text-white">{song.title}</div>
-                                        <div className="truncate text-zinc-400">{song.artist}</div>
+                                        <div className="truncate text-zinc-400">{song.artist || 'Unknown artist'} · {song.sourceLabel || 'BeauRocks catalog'}</div>
                                     </div>
                                     <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${song.hasApprovedBacking ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100' : 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'}`}>
                                         {song.hasApprovedBacking ? 'Ready' : 'Known'}

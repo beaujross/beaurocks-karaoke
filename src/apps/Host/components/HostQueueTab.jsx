@@ -4222,6 +4222,26 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             ? deferredTrackChecks[0]
             : null;
     }, [deferredTrackChecks, postPerformanceBackingPrompt]);
+    const queueCollaborationInboxItem = useMemo(() => {
+        if (activeReleaseWindow?.active || queueFaceOffCandidates.length < 2) return null;
+        const first = queueFaceOffCandidates[0];
+        const second = queueFaceOffCandidates[1];
+        return {
+            id: `queue-collaboration-${first?.id || 'first'}-${second?.id || 'second'}`,
+            type: 'queue_collaboration',
+            source: 'Optional',
+            title: 'Ask the room what should go next',
+            body: 'Compare the next two ready performances with co-hosts or the audience. The host still confirms the result.',
+            context: `${buildQueueFaceOffSongLabel(first)} or ${buildQueueFaceOffSongLabel(second)}`,
+            ageLabel: 'When useful',
+            onApprove: () => void openQueueFaceOffVote('cohost_vote'),
+            onReject: () => void openQueueFaceOffVote('crowd_vote')
+        };
+    }, [activeReleaseWindow?.active, openQueueFaceOffVote, queueFaceOffCandidates]);
+    const systemInboxItems = useMemo(
+        () => [...deferredTrackCheckInboxItems, ...(queueCollaborationInboxItem ? [queueCollaborationInboxItem] : [])],
+        [deferredTrackCheckInboxItems, queueCollaborationInboxItem]
+    );
     const queueWorkspaceToneMap = {
         queue: {
             activeToneClass: 'border-cyan-300/30 bg-[linear-gradient(180deg,rgba(13,35,46,0.98),rgba(8,18,28,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.14)]',
@@ -4307,7 +4327,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 moderationActions={moderationActions}
                 moderationBusyAction={moderationBusyAction}
                 moderationNeedsAttention={moderationNeedsAttention}
-                systemInboxItems={deferredTrackCheckInboxItems}
+                systemInboxItems={systemInboxItems}
                 chatUnread={chatUnread}
                 dmUnread={dmUnread}
                 users={users}
@@ -4448,16 +4468,39 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </div>
     ) : null;
     const plannerWorkspaceSection = runOfShowQueueHudSection || (
-        <div className="flex min-h-0 flex-1 items-center justify-center p-4">
-            <div className="w-full max-w-xl rounded-2xl border border-emerald-300/16 bg-emerald-500/8 px-5 py-6 text-center">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
+            <div className="mx-auto w-full max-w-3xl rounded-2xl border border-emerald-300/16 bg-emerald-500/8 px-5 py-6">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-300/22 bg-emerald-500/12 text-emerald-100">
                     <i className="fa-solid fa-clapperboard"></i>
                 </div>
-                <div className="mt-4 text-lg font-black text-white">Planner</div>
-                <div className="mt-2 text-sm leading-6 text-zinc-400">Build planned moments here, then move them into the live queue when the room is ready.</div>
-                <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-4 px-4 py-2 text-[11px]`}>
-                    Open Planner
-                </button>
+                <div className="mt-4 text-center text-lg font-black text-white">Build tonight&apos;s sequence</div>
+                <div className="mt-2 text-center text-sm leading-6 text-zinc-400">
+                    Planner is for intentional, one-time moments in a specific order. Use Auto Party for activities that repeat every few performances.
+                </div>
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                    {[
+                        ['trivia_break', 'Add Trivia', 'One full-screen question', 'fa-circle-question'],
+                        ['would_you_rather', 'Add Would You Rather', 'A fast room vote', 'fa-scale-balanced'],
+                        ['host_update', 'Add Host Update', 'A planned announcement', 'fa-bullhorn'],
+                        ['leaderboard_flash', 'Add Leaderboard', 'A quick room status beat', 'fa-ranking-star']
+                    ].map(([id, label, detail, icon]) => (
+                        <button
+                            key={id}
+                            type="button"
+                            disabled={typeof onAddQuickRunOfShowMoment !== 'function'}
+                            onClick={() => onAddQuickRunOfShowMoment?.(id)}
+                            className="min-h-[72px] rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-left transition hover:border-emerald-300/35 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <div className="font-black text-white"><i className={`fa-solid ${icon} mr-2 text-emerald-200`}></i>{label}</div>
+                            <div className="mt-1 text-xs text-zinc-400">{detail}</div>
+                        </button>
+                    ))}
+                </div>
+                <div className="mt-4 flex justify-center">
+                    <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4 py-2 text-[11px]`}>
+                        Open Full Planner
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -5665,7 +5708,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             </div>
                         ) : null}
                     </div>
-                ) : queueFaceOffCandidates.length >= 2 ? (
+                ) : queueFaceOffCandidates.length >= 2 && desktopQueueSurfaceTab === 'inbox' ? (
                     <div className="space-y-3">
                         {slotFillTarget?.id && slotFillCandidates.length >= 2 ? (
                             <div className="rounded-2xl border border-amber-300/18 bg-[linear-gradient(145deg,rgba(68,33,12,0.56),rgba(10,16,30,0.96))] p-3 shadow-[0_16px_36px_rgba(0,0,0,0.18)]">

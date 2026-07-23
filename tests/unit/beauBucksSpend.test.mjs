@@ -5,6 +5,7 @@ import { test } from 'vitest';
 const require = createRequire(import.meta.url);
 const {
   SPEND_KINDS,
+  REACTION_SLOT_5_POINTS_COST,
   buildSpendOperationDocumentId,
   normalizeClientOperationId,
   normalizeSpendKind,
@@ -28,6 +29,8 @@ test('spend operation IDs are strict and deterministic per room, user, and clien
 test('spend kinds reject unknown client input', () => {
   assert.equal(normalizeSpendKind('REACTION'), SPEND_KINDS.reaction);
   assert.equal(normalizeSpendKind('profile_change'), SPEND_KINDS.profileChange);
+  assert.equal(normalizeSpendKind('reaction_slot_unlock'), SPEND_KINDS.reactionSlotUnlock);
+  assert.equal(REACTION_SLOT_5_POINTS_COST, 250);
   assert.equal(normalizeSpendKind('refund'), '');
 });
 

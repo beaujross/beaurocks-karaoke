@@ -170,11 +170,9 @@ const buildRunOfShowObject = (item = {}, {
 const buildAttentionItems = ({
     queueNeedsAttention = 0,
     inboxTotalCount = 0,
-    deferredTrackCheckCount = 0,
     moderationPendingCount = 0,
     runOfShowNeedsAttentionCount = 0,
     activeReleaseWindow = null,
-    postPerformanceBackingPrompt = null,
 } = {}) => {
     const items = [];
     if (queueNeedsAttention > 0) {
@@ -193,15 +191,6 @@ const buildAttentionItems = ({
             title: `${inboxTotalCount} inbox item${inboxTotalCount === 1 ? '' : 's'}`,
             subtitle: 'DMs, co-host notes, or moderation',
             tone: 'info',
-        });
-    }
-    if (deferredTrackCheckCount > 0 || postPerformanceBackingPrompt) {
-        items.push({
-            id: 'attention-track-check',
-            objectType: 'attention',
-            title: postPerformanceBackingPrompt ? 'Track check pending now' : `${deferredTrackCheckCount} deferred track check${deferredTrackCheckCount === 1 ? '' : 's'}`,
-            subtitle: 'Backing feedback still needs review',
-            tone: 'warning',
         });
     }
     if (moderationPendingCount > 0) {

@@ -13,7 +13,7 @@ const MissionSetupShell = ({
             <div className="w-full overflow-hidden rounded-3xl border border-white/15 bg-zinc-950/94 shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
                 {header}
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-                    <div className="max-h-[68vh] space-y-4 overflow-y-auto px-4 py-4 custom-scrollbar md:px-6 md:py-5">
+                    <div className="space-y-4 px-4 py-4 md:px-6 md:py-5">
                         {primaryContent}
                     </div>
                     <aside className="border-t border-white/10 bg-zinc-950/75 px-4 py-4 md:px-5 md:py-5 lg:border-l lg:border-t-0">

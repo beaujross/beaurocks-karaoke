@@ -121,6 +121,36 @@ test("partyOrchestrator.test", () => {
     assert.equal(autoVolley.allowed, true);
     assert.equal(autoVolley.type, 'volley');
 
+    const cadenceGuard = recommendAutoCrowdMoment({
+        party: {
+            ...defaults,
+            autoCrowdMomentsEnabled: true,
+            autoCrowdMomentEverySongs: 3,
+            autoCrowdMomentPreferredTypes: ['trivia']
+        },
+        flowState: { ...withSinging, songsSinceLastGroupMoment: 2 },
+        queueDepth: 1,
+        activeMode: 'karaoke'
+    });
+    assert.equal(cadenceGuard.allowed, false);
+    assert.equal(cadenceGuard.reason, 'cadence');
+
+    const autoTrivia = recommendAutoCrowdMoment({
+        party: {
+            ...defaults,
+            autoCrowdMomentsEnabled: true,
+            autoCrowdMomentEverySongs: 3,
+            autoCrowdMomentTriviaSec: 18,
+            autoCrowdMomentPreferredTypes: ['trivia', 'would_you_rather']
+        },
+        flowState: { ...withSinging, songsSinceLastGroupMoment: 3 },
+        queueDepth: 1,
+        activeMode: 'karaoke'
+    });
+    assert.equal(autoTrivia.allowed, true);
+    assert.equal(autoTrivia.type, 'trivia');
+    assert.equal(autoTrivia.breakDurationSec, 18);
+
     const disabledAuto = recommendAutoCrowdMoment({
         party: defaults,
         flowState: withSinging,

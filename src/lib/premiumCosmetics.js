@@ -36,12 +36,13 @@ export const getOwnedPremiumEntitlementIds = (wallet = null) => new Set(
     (Array.isArray(wallet?.entitlementIds) ? wallet.entitlementIds : []).map(normalizeToken).filter(Boolean)
 );
 
-export const getAudienceReactionSlotCount = ({ signedIn = false, wallet = null } = {}) => {
-    if (!signedIn) return Number(premiumCosmeticCatalog.defaultReactionSlots || 4);
+export const getAudienceReactionSlotCount = ({ signedIn = false, wallet = null, roomUser = null } = {}) => {
+    const pointsSlotCount = roomUser?.reactionSlot5Unlocked === true ? 5 : Number(premiumCosmeticCatalog.defaultReactionSlots || 4);
+    if (!signedIn) return pointsSlotCount;
     const reported = Number(wallet?.reactionSlotCount || 0);
     return Math.min(
         Number(premiumCosmeticCatalog.maxReactionSlots || 6),
-        Math.max(Number(premiumCosmeticCatalog.accountReactionSlots || 5), Number.isFinite(reported) ? reported : 0),
+        Math.max(pointsSlotCount, Number(premiumCosmeticCatalog.accountReactionSlots || 4), Number.isFinite(reported) ? reported : 0),
     );
 };
 

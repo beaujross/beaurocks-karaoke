@@ -22,6 +22,7 @@ const LEDGER_LABELS = Object.freeze({
   reaction_spend: 'Reaction',
   profile_change_spend: 'Profile update',
   avatar_unlock_spend: 'Avatar unlock',
+  reaction_slot_unlock_spend: 'Reaction slot 5',
 });
 
 const token = (value = '') => String(value || '').trim();

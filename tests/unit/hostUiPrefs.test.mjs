@@ -13,7 +13,7 @@ import {
 
 test('hostUiPrefs resolves grouped values first and falls back to legacy room fields', () => {
   assert.deepEqual(getHostUiPrefs({}), {});
-  assert.equal(isPostPerformanceBackingPromptEnabled({}), true);
+  assert.equal(isPostPerformanceBackingPromptEnabled({}), false);
   assert.equal(isPostPerformanceBackingPromptEnabled({ postPerformanceBackingPromptEnabled: false }), false);
   assert.equal(
     isPostPerformanceBackingPromptEnabled({

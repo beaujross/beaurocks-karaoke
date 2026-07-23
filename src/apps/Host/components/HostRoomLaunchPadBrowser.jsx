@@ -51,6 +51,21 @@ const ROOM_SETUP_TABS = Object.freeze([
         badgeToneClass: 'border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100',
     },
 ]);
+const LAUNCH_MEDIA_SOURCE_OPTIONS = Object.freeze([
+    { id: 'local', label: 'Local Library', icon: 'fa-hard-drive', helper: 'Host uploads and local room media.' },
+    { id: 'youtube', label: 'YouTube', icon: 'fa-brands fa-youtube', helper: 'Search embeddable karaoke videos.' },
+    { id: 'itunes', label: 'Apple Music', icon: 'fa-brands fa-apple', helper: 'Match songs now; connect playback after creation.' },
+    { id: 'spotify', label: 'Spotify', icon: 'fa-brands fa-spotify', helper: 'Planned source — not available yet.', disabled: true },
+]);
+const normalizeLaunchMediaSources = (value = {}) => ({
+    local: value?.local !== false,
+    youtube: value?.youtube !== false,
+    itunes: value?.itunes !== false,
+});
+const getLaunchMediaSourceLabels = (sources = {}) => LAUNCH_MEDIA_SOURCE_OPTIONS
+    .filter((option) => !option.disabled && sources?.[option.id] !== false)
+    .map((option) => option.label);
+
 const LAUNCH_ECONOMY_OPTIONS = Object.freeze([
     {
         id: 'standard',
@@ -319,11 +334,18 @@ const HostRoomLaunchPadBrowser = ({
     ) ? recoveredExperienceDraft.nightType : 'open_karaoke';
     const [launchOperatingModel, setLaunchOperatingModel] = useState(recoveredOperatingModel);
     const [launchNightType, setLaunchNightType] = useState(recoveredNightType);
+    const [launchMediaSources, setLaunchMediaSources] = useState(() => normalizeLaunchMediaSources(
+        recoveredExperienceDraft?.mediaSources
+        || selectedLaunchPreset?.searchSources
+    ));
     const [showAdvancedSetup, setShowAdvancedSetup] = useState(false);
     useEffect(() => {
         const experienceIsDefault = launchJoinAccessMode === AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed
             && launchOperatingModel === 'host_led'
-            && launchNightType === 'open_karaoke';
+            && launchNightType === 'open_karaoke'
+            && launchMediaSources.local
+            && launchMediaSources.youtube
+            && launchMediaSources.itunes;
         if (experienceIsDefault) {
             clearHostLaunchDraftPart(launchExperienceDraftKey);
             return;
@@ -332,12 +354,25 @@ const HostRoomLaunchPadBrowser = ({
             joinAccessMode: launchJoinAccessMode,
             operatingModel: launchOperatingModel,
             nightType: launchNightType,
+            mediaSources: launchMediaSources,
         });
-    }, [launchExperienceDraftKey, launchJoinAccessMode, launchNightType, launchOperatingModel]);
+    }, [launchExperienceDraftKey, launchJoinAccessMode, launchMediaSources, launchNightType, launchOperatingModel]);
+    const toggleLaunchMediaSource = (sourceId = '') => {
+        if (!['local', 'youtube', 'itunes'].includes(sourceId)) return;
+        setLaunchMediaSources((current) => {
+            const next = normalizeLaunchMediaSources({
+                ...current,
+                [sourceId]: current?.[sourceId] === false,
+            });
+            if (!next.local && !next.youtube && !next.itunes) return current;
+            return next;
+        });
+    };
     const selectedOperatingModelOption = LAUNCH_OPERATING_MODEL_OPTIONS.find((option) => option.id === launchOperatingModel) || LAUNCH_OPERATING_MODEL_OPTIONS[0];
     const selectedNightType = LAUNCH_NIGHT_TYPE_OPTIONS.find((option) => option.id === launchNightType) || LAUNCH_NIGHT_TYPE_OPTIONS[0];
     const buildLaunchPresetPayload = () => buildHostNightPresetConfig({
         ...(selectedLaunchPreset || {}),
+        searchSources: launchMediaSources,
         settings: {
             ...(selectedLaunchPreset?.settings || {}),
             ...buildLaunchOperatingModelSettings(launchOperatingModel),
@@ -375,6 +410,7 @@ const HostRoomLaunchPadBrowser = ({
     const launchSummaryItems = [
         launchRoomSummaryName,
         selectedOperatingModelOption?.label,
+        `${getLaunchMediaSourceLabels(launchMediaSources).join(' + ')} search`,
         hasRequestedLaunchRoomCode ? `Code ${requestedLaunchRoomCodeCandidate}` : 'Auto room code',
         discoveryListingEnabled ? 'Discoverable' : 'Private link',
         hasLaunchStartTime ? `Starts ${launchStartSummary}` : 'Starts now',
@@ -1081,10 +1117,21 @@ const HostRoomLaunchPadBrowser = ({
                                 </details>
                                 <div className="mt-5 rounded-2xl border border-cyan-300/18 bg-cyan-500/[0.07] px-4 py-3" data-launch-media-readiness="true">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/74"><i className="fa-solid fa-music" /> Backing media plan</span>
-                                        <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.15em] text-cyan-50">Choose per request</span>
+                                        <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/74"><i className="fa-solid fa-music" /> Searchable media</span>
+                                        <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.15em] text-cyan-50">{getLaunchMediaSourceLabels(launchMediaSources).length} enabled</span>
                                     </div>
-                                    <div className="mt-2 text-xs leading-5 text-cyan-50/66">BeauRocks runs the Room without locking you into one catalog. Before calling a singer, confirm playable backing from Room search, a direct link, or Host uploads.</div>
+                                    <div className="mt-2 text-xs leading-5 text-cyan-50/66">Choose where Host and Audience searches may look. This sets guardrails, not a catalog lock; every performance still needs playable backing.</div>
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                        {LAUNCH_MEDIA_SOURCE_OPTIONS.map((option) => {
+                                            const selected = !option.disabled && launchMediaSources?.[option.id] !== false;
+                                            return (
+                                                <button key={option.id} type="button" disabled={option.disabled} aria-pressed={selected} onClick={() => toggleLaunchMediaSource(option.id)} className={`min-h-[58px] rounded-xl border px-3 py-2 text-left transition ${option.disabled ? 'cursor-not-allowed border-white/6 bg-black/15 text-zinc-500' : selected ? 'border-cyan-300/40 bg-cyan-400/12 text-white' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/25'}`}>
+                                                    <span className="flex items-center justify-between gap-2"><span className="inline-flex items-center gap-2 text-sm font-black"><i className={`${option.icon.startsWith('fa-brands') ? '' : 'fa-solid '}${option.icon}`} />{option.label}</span><span className="text-[9px] font-black uppercase tracking-[0.14em]">{option.disabled ? 'Coming soon' : selected ? 'Included' : 'Off'}</span></span>
+                                                    <span className="mt-1 block text-[11px] leading-4 opacity-65">{option.helper}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                                 <button type="button" data-host-create-room-primary="true" aria-busy={creatingRoom} onClick={() => handleStartLauncherRoom({ openNightSetup: true, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`group/launch mt-5 flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(100deg,#db2777_0%,#ec4899_35%,#14b8a6_78%,#22d3ee_100%)] px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_14px_34px_rgba(236,72,153,0.18),0_0_28px_rgba(34,211,238,0.1)] transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(236,72,153,0.24),0_0_34px_rgba(34,211,238,0.16)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:brightness-100 ${roomLaunchDisabled ? 'cursor-not-allowed opacity-45' : ''}`}>
                                     {creatingRoom ? <i className="fa-solid fa-circle-notch animate-spin" /> : <i className="fa-solid fa-wand-magic-sparkles" />}

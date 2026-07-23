@@ -234,7 +234,7 @@ const InboxItemCard = ({
                         disabled={!!item.busy || typeof item.onReject !== 'function'}
                         className={`${styles?.btnStd || ''} text-[10px] px-3 py-1.5 border border-rose-300/35 bg-rose-500/12 text-rose-100 ${item.busy || typeof item.onReject !== 'function' ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
-                        Bad Track
+                        Avoid Auto-Picks
                     </button>
                     <button
                         type="button"
@@ -242,7 +242,28 @@ const InboxItemCard = ({
                         disabled={!!item.busy || typeof item.onDismiss !== 'function'}
                         className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} text-[10px] px-3 py-1.5 ${item.busy || typeof item.onDismiss !== 'function' ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
-                        Skip
+                        Dismiss
+                    </button>
+                </div>
+            ) : null}
+
+            {item.type === 'queue_collaboration' ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => item.onApprove?.()}
+                        disabled={typeof item.onApprove !== 'function'}
+                        className={`${styles?.btnStd || ''} ${styles?.btnHighlight || ''} px-3 py-1.5 text-[10px] ${typeof item.onApprove !== 'function' ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                        Ask Co-Hosts
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => item.onReject?.()}
+                        disabled={typeof item.onReject !== 'function'}
+                        className={`${styles?.btnStd || ''} ${styles?.btnSecondary || ''} px-3 py-1.5 text-[10px] ${typeof item.onReject !== 'function' ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                        Ask Audience
                     </button>
                 </div>
             ) : null}

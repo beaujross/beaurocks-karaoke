@@ -111,7 +111,7 @@ import {
 import { createUsageContext } from '../../lib/usageOperationId';
 import { getUsageDegradationMessageForError } from '../../lib/usageDegradation';
 import { useToast } from '../../context/ToastContext';
-import { SOUNDS } from '../../lib/gameDataConstants';
+import { SOUNDS, TRIVIA_BANK, WYR_BANK } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
 import { POINTS_PACKS } from '../../billing/catalog';
@@ -1726,6 +1726,9 @@ const MISSION_CONTROL_VERSION = 1;
 const MISSION_DEFAULT_ASSIST_LEVEL = 'smart_assist';
 const MISSION_FLOW_RULE_OPTIONS = Object.freeze(Object.values(MISSION_FLOW_RULES));
 const AUTO_CROWD_ORDER_PRESETS = Object.freeze({
+    variety_mix: ['trivia', 'would_you_rather', 'ready_check', 'volley'],
+    trivia_first: ['trivia', 'would_you_rather', 'ready_check'],
+    choice_first: ['would_you_rather', 'trivia', 'ready_check'],
     volley_first: ['volley', 'ready_check'],
     ready_first: ['ready_check', 'volley'],
     ready_only: ['ready_check'],
@@ -6569,6 +6572,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [readyCheckDurationSec, setReadyCheckDurationSec] = useState(10);
     const [readyCheckRewardPoints, setReadyCheckRewardPoints] = useState(100);
     const [autoCrowdMomentsEnabled, setAutoCrowdMomentsEnabled] = useState(false);
+    const [autoCrowdMomentEverySongs, setAutoCrowdMomentEverySongs] = useState(1);
     const [autoCrowdMomentOrderPreset, setAutoCrowdMomentOrderPreset] = useState('volley_first');
     const [autoCrowdMomentReadyCheckSec, setAutoCrowdMomentReadyCheckSec] = useState(6);
     const [autoCrowdMomentVolleySec, setAutoCrowdMomentVolleySec] = useState(12);
@@ -11094,6 +11098,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         const roomPartyConfig = buildMissionPartyFromRoom(room);
         setAutoCrowdMomentsEnabled(!!roomPartyConfig.autoCrowdMomentsEnabled);
+        setAutoCrowdMomentEverySongs(roomPartyConfig.autoCrowdMomentEverySongs);
         setAutoCrowdMomentOrderPreset(getAutoCrowdOrderPreset(roomPartyConfig.autoCrowdMomentPreferredTypes));
         setAutoCrowdMomentReadyCheckSec(roomPartyConfig.autoCrowdMomentReadyCheckSec);
         setAutoCrowdMomentVolleySec(roomPartyConfig.autoCrowdMomentVolleySec);
@@ -12355,7 +12360,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return mergePayloadWithOverrides(withAssist, overridesInput);
     }, [applyAssistLevelToPayload, capabilities, hostNightPresets, missionAdvancedOverrides, missionDraft]);
 
-    const missionDeadAirFillerSongs = useMemo(() => buildDeadAirFillerSongPlan(), []);
+    const missionDeadAirFillerSongs = useMemo(
+        () => buildDeadAirFillerSongPlan({ sourceSongs: localLibrary }),
+        [localLibrary]
+    );
 
     const applyMissionDraftToNightSetupState = useCallback((draftInput = missionDraft, overridesInput = missionAdvancedOverrides) => {
         const merged = compileMissionPayloadWithAssist(draftInput, overridesInput);
@@ -13854,6 +13862,82 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const momentKey = String(moment?.key || `${type || 'auto'}_${nowMs()}`).trim();
         const title = String(moment?.title || '').trim();
         const detail = String(moment?.detail || '').trim();
+        if (type === 'trivia' || type === 'would_you_rather') {
+            if (autoCrowdMomentTimerRef.current) {
+                clearTimeout(autoCrowdMomentTimerRef.current);
+                autoCrowdMomentTimerRef.current = null;
+            }
+            const startedAt = nowMs();
+            const questionDurationSec = Math.max(5, durationSec - 5);
+            const hash = Array.from(momentKey).reduce((total, char) => total + char.charCodeAt(0), 0);
+            const roomPatch = {
+                missionControl: {
+                    ...(isPlainObject(room?.missionControl) ? room.missionControl : {}),
+                    autoMoment: {
+                        key: momentKey,
+                        source: 'autopilot',
+                        type,
+                        status: 'live',
+                        title,
+                        detail,
+                        startedAt,
+                        durationSec
+                    }
+                }
+            };
+            if (type === 'trivia') {
+                const bank = Array.isArray(TRIVIA_BANK) ? TRIVIA_BANK : [];
+                const entry = bank.length ? bank[hash % bank.length] : null;
+                const rawOptions = entry ? [entry.correct, entry.w1, entry.w2, entry.w3].filter(Boolean) : ['Option A', 'Option B'];
+                const rotation = rawOptions.length ? hash % rawOptions.length : 0;
+                const options = [...rawOptions.slice(rotation), ...rawOptions.slice(0, rotation)];
+                roomPatch.activeMode = 'trivia_pop';
+                roomPatch.triviaQuestion = {
+                    id: momentKey,
+                    q: entry?.q || 'Which song gets the room singing fastest?',
+                    options,
+                    correct: Math.max(0, options.indexOf(entry?.correct)),
+                    status: 'asking',
+                    startedAt,
+                    durationSec: questionDurationSec,
+                    autoReveal: true,
+                    revealAt: startedAt + (questionDurationSec * 1000)
+                };
+                roomPatch.wyrData = null;
+            } else {
+                const bank = Array.isArray(WYR_BANK) ? WYR_BANK : [];
+                const entry = bank.length ? bank[hash % bank.length] : null;
+                roomPatch.activeMode = 'wyr';
+                roomPatch.wyrData = {
+                    id: momentKey,
+                    question: entry?.q || 'Would you rather sing solo or bring a duet partner?',
+                    optionA: entry?.a || 'Solo',
+                    optionB: entry?.b || 'Duet',
+                    status: 'live',
+                    startedAt,
+                    durationSec: questionDurationSec,
+                    autoReveal: true,
+                    revealAt: startedAt + (questionDurationSec * 1000)
+                };
+                roomPatch.triviaQuestion = null;
+            }
+            await updateRoom(roomPatch);
+            autoCrowdMomentTimerRef.current = setTimeout(() => {
+                const activeAutoMoment = roomRef.current?.missionControl?.autoMoment;
+                if (String(activeAutoMoment?.key || '').trim() !== momentKey) return;
+                updateRoom({
+                    activeMode: 'karaoke',
+                    triviaQuestion: null,
+                    wyrData: null,
+                    missionControl: {
+                        ...(isPlainObject(roomRef.current?.missionControl) ? roomRef.current.missionControl : {}),
+                        autoMoment: { ...activeAutoMoment, status: 'completed', endedAt: nowMs() }
+                    }
+                }).catch((error) => hostLogger.debug('Failed to clear auto question moment', error));
+                autoCrowdMomentTimerRef.current = null;
+            }, durationSec * 1000);
+            return;
+        }
         if (type === 'volley') {
             if (autoCrowdMomentTimerRef.current) {
                 clearTimeout(autoCrowdMomentTimerRef.current);
@@ -19664,6 +19748,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 spotlightLabel={missionMode.label}
                                 queueSummary={previewQueueSummary}
                                 deadAirSongs={missionDeadAirFillerSongs}
+                                intermissionEnabled={missionPartyPreview.autoCrowdMomentsEnabled}
+                                intermissionEverySongs={missionPartyPreview.autoCrowdMomentEverySongs}
+                                intermissionTypes={missionPartyPreview.autoCrowdMomentPreferredTypes}
+                                onToggleIntermission={() => setMissionPartyDraft((previous) => buildMissionPartyPayload({
+                                    ...(previous || {}),
+                                    autoCrowdMomentsEnabled: previous?.autoCrowdMomentsEnabled !== true
+                                }))}
+                                onSetIntermissionEverySongs={(nextValue) => setMissionPartyDraft((previous) => buildMissionPartyPayload({
+                                    ...(previous || {}),
+                                    autoCrowdMomentEverySongs: nextValue
+                                }))}
+                                onToggleIntermissionType={(type) => setMissionPartyDraft((previous) => {
+                                    const currentTypes = Array.isArray(previous?.autoCrowdMomentPreferredTypes) ? previous.autoCrowdMomentPreferredTypes : [];
+                                    const hasType = currentTypes.includes(type);
+                                    const nextTypes = hasType ? currentTypes.filter((item) => item !== type) : [...currentTypes, type];
+                                    return buildMissionPartyPayload({
+                                        ...(previous || {}),
+                                        autoCrowdMomentPreferredTypes: nextTypes.length ? nextTypes : [type]
+                                    });
+                                })}
                             />
                             <MissionSetupPrimaryPicks
                                 missionPickCount={missionPickCount}
@@ -22620,7 +22724,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             <div
                 data-host-main-scroll="true"
-                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : (tab === 'run_of_show' || tab === 'games') ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
+                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : (tab === 'run_of_show' || tab === 'games' || tab === 'browse') ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
                 {((room?.activeMode && room.activeMode !== 'karaoke') || room?.gameData?.recap) && (
                     <HostGameControlPad
@@ -25609,10 +25713,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 }}
                                                 className={`${STYLES.input} mt-1`}
                                             >
+                                                <option value="variety_mix">Trivia + choices + games</option>
+                                                <option value="trivia_first">Trivia first</option>
+                                                <option value="choice_first">Would You Rather first</option>
                                                 <option value="volley_first">Volley first</option>
                                                 <option value="ready_first">Ready check first</option>
                                                 <option value="ready_only">Ready check only</option>
                                                 <option value="volley_only">Volley only</option>
+                                            </select>
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Cadence
+                                            <select
+                                                value={autoCrowdMomentEverySongs}
+                                                onChange={async (event) => {
+                                                    const next = Math.max(1, Math.min(5, Number(event.target.value || 1)));
+                                                    setAutoCrowdMomentEverySongs(next);
+                                                    await updateAutoPartyConfig({ autoCrowdMomentEverySongs: next });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            >
+                                                {[1, 2, 3, 4, 5].map((count) => (
+                                                    <option key={count} value={count}>
+                                                        Every {count} performance{count === 1 ? '' : 's'}
+                                                    </option>
+                                                ))}
                                             </select>
                                         </label>
                                         <label className="text-sm text-zinc-300">
@@ -25965,10 +26090,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 }}
                                                 className={`${STYLES.input} mt-1`}
                                             >
+                                                <option value="variety_mix">Trivia + choices + games</option>
+                                                <option value="trivia_first">Trivia first</option>
+                                                <option value="choice_first">Would You Rather first</option>
                                                 <option value="volley_first">Volley first</option>
                                                 <option value="ready_first">Ready check first</option>
                                                 <option value="ready_only">Ready check only</option>
                                                 <option value="volley_only">Volley only</option>
+                                            </select>
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Cadence
+                                            <select
+                                                value={autoCrowdMomentEverySongs}
+                                                onChange={async (event) => {
+                                                    const next = Math.max(1, Math.min(5, Number(event.target.value || 1)));
+                                                    setAutoCrowdMomentEverySongs(next);
+                                                    await updateAutoPartyConfig({ autoCrowdMomentEverySongs: next });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            >
+                                                {[1, 2, 3, 4, 5].map((count) => (
+                                                    <option key={count} value={count}>
+                                                        Every {count} performance{count === 1 ? '' : 's'}
+                                                    </option>
+                                                ))}
                                             </select>
                                         </label>
                                         <label className="text-sm text-zinc-300">
@@ -25999,7 +26145,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </label>
                                     </div>
                                     <div className="host-form-helper mt-3">
-                                        Auto Party currently works best with Auto-DJ on. It will auto-pick between Ready Check and Volley Orb between singers.
+                                        Auto Party works with Auto-DJ to launch the selected full-screen activity between performances, then returns the TV to karaoke automatically.
                                     </div>
                                 </div>
                             </div>
