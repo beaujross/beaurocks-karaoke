@@ -1,7 +1,7 @@
 "use strict";
 
 const commercialContract = require("./hostCommercialContract.json");
-const reactionPointCosts = require("./reactionPointCosts.json");
+const { buildPremiumCostEnvelope } = require("./premiumCostEnvelope");
 
 const nonEmpty = (value) => String(value || "").trim();
 const wholeNumber = (value) => {
@@ -56,7 +56,7 @@ const buildProductPolicyGate = (policyDecision = {}, contract = commercialContra
   const allowedSpendKinds = Array.isArray(policy.allowedSpendKinds) ? policy.allowedSpendKinds : [];
   if (nonEmpty(policyDecision.approvalStatus) !== "approved") blockers.push("Owner approval of the account-level BeauBucks product policy is required.");
   if (nonEmpty(policy.balanceScope) !== "account" || nonEmpty(policyDecision.balanceScope) !== "account") blockers.push("BeauBucks must persist with the signed-in BeauRocks account across Rooms.");
-  if (allowedSpendKinds.length !== 1 || allowedSpendKinds[0] !== "reaction") blockers.push("The canary contract must allow BeauBucks for paid reactions only.");
+  if (allowedSpendKinds.length !== 1 || allowedSpendKinds[0] !== "durable_cosmetic_unlock") blockers.push("The canary contract must limit BeauBucks spending to durable cosmetic unlocks.");
   if (policyDecision.noCashValue !== true) blockers.push("Approve the no-cash-value promise.");
   if (policyDecision.transferable !== false) blockers.push("Approve non-transferable balances for the canary.");
   if (nonEmpty(policy.competitiveIntegrity) !== "no_scoring_win_or_queue_priority") blockers.push("Preserve the rule that BeauBucks cannot buy scores, wins, or queue priority.");
@@ -106,25 +106,18 @@ const buildPackGate = (packDecision = {}, contract = commercialContract) => {
   if (wholeNumber(registeredPurchaseLimit.reservationMinutes) !== 35) blockers.push("Keep the initial checkout reservation at the server-enforced 35-minute window.");
   if (!nonEmpty(packDecision.decisionRef)) blockers.push("Record the pack-economics decision reference.");
 
-  const positiveCosts = Object.values(reactionPointCosts).map(wholeNumber).filter((value) => value && value > 0);
-  const minimumSpendCost = positiveCosts.length ? Math.min(...positiveCosts) : null;
-  const maximumSpendOperations = minimumSpendCost && wholeNumber(pack?.beauBucks)
-    ? Math.floor(wholeNumber(pack.beauBucks) / minimumSpendCost)
-    : null;
-  const minimumAuthorityWrites = maximumSpendOperations === null ? null : maximumSpendOperations * 3;
-  const approvedMaximumSpendOperations = wholeNumber(packDecision.costEnvelope?.maximumSpendOperationsPerPack);
-  const approvedMinimumAuthorityWrites = wholeNumber(packDecision.costEnvelope?.minimumAuthorityWritesPerPack);
+  const costEnvelope = buildPremiumCostEnvelope({ packBalance: wholeNumber(pack?.beauBucks) || 0 });
+  const approvedMaximumEntitlementPurchases = wholeNumber(packDecision.costEnvelope?.maximumEntitlementPurchasesPerPack);
+  const approvedMaximumAuthorityWrites = wholeNumber(packDecision.costEnvelope?.maximumAuthorityWritesPerPack);
   if (packDecision.costEnvelope?.approvalStatus !== "approved") blockers.push("Approve the conservative per-pack database-operation envelope.");
-  if (maximumSpendOperations !== null && approvedMaximumSpendOperations !== maximumSpendOperations) blockers.push("The approved spend-operation ceiling must match the current lowest reaction cost.");
-  if (minimumAuthorityWrites !== null && approvedMinimumAuthorityWrites !== minimumAuthorityWrites) blockers.push("The approved authority-write floor must cover operation, account, and ledger writes for every spend.");
+  if (approvedMaximumEntitlementPurchases !== costEnvelope.maximumEntitlementPurchasesPerPack) blockers.push("The approved purchase ceiling must match the current durable-entitlement catalog.");
+  if (approvedMaximumAuthorityWrites !== costEnvelope.maximumAuthorityWritesPerPack) blockers.push("The approved authority-write ceiling must cover the current durable-entitlement catalog.");
   if (!nonEmpty(packDecision.costEnvelope?.decisionRef)) blockers.push("Record the cost-envelope decision reference.");
 
   return makeGate("starter_pack", "Starter pack and cost envelope", blockers, {
     packId,
     registeredPack: pack,
-    minimumSpendCost,
-    maximumSpendOperationsPerPack: maximumSpendOperations,
-    minimumAuthorityWritesPerPack: minimumAuthorityWrites,
+    ...costEnvelope,
     registeredPurchaseLimit,
   });
 };
@@ -135,7 +128,7 @@ const buildCustomerPromiseGate = (terms = {}) => {
   if (terms.accountPersistentDisclosure !== true) blockers.push("Disclose that BeauBucks stay with the signed-in BeauRocks account across Rooms.");
   if (terms.noCashValueDisclosure !== true) blockers.push("Disclose that BeauBucks have no cash value and cannot be cashed out.");
   if (terms.nonTransferableDisclosure !== true) blockers.push("Disclose that BeauBucks cannot be transferred to another person or cashed out.");
-  if (terms.reactionsOnlyDisclosure !== true) blockers.push("Disclose that the current eligible use is paid reactions.");
+  if (terms.durableCosmeticsDisclosure !== true) blockers.push("Disclose that BeauBucks currently unlock permanent cosmetic account items.");
   if (nonEmpty(terms.expirationPolicy) !== "no_expiration_during_canary") blockers.push("Approve no expiration during the controlled canary.");
   if (nonEmpty(terms.refundPolicy) !== "contact_support_proportionate_unspent_reversal") blockers.push("Approve the refund promise for proportionate unspent BeauBucks reversal.");
   if (!/^https:\/\//i.test(nonEmpty(terms.termsUrl))) blockers.push("Record the public HTTPS Terms URL.");
@@ -181,6 +174,7 @@ const buildCohortGate = (cohort = {}) => {
   if (maxGrossSalesCents === null || maxGrossSalesCents <= 0 || maxGrossSalesCents > 5000) blockers.push("Set a positive gross-sales ceiling no greater than $50 for the first canary.");
   if (durationDays === null || durationDays <= 0 || durationDays > 14) blockers.push("Limit the first canary window to 14 days or less.");
   if (cohort.manualRosterRequired !== true) blockers.push("Require a named internal tester roster in addition to the server-enforced purchase cap.");
+  if (cohort.serverBuyerAllowlistRequired !== true) blockers.push("Require the server-enforced buyer UID allowlist for the paid canary.");
   if (!nonEmpty(cohort.rollbackOwner)) blockers.push("Name the person who can stop checkout and support paid testers.");
   if (!nonEmpty(cohort.decisionRef)) blockers.push("Record the cohort decision reference.");
   return makeGate("controlled_cohort", "Controlled cohort", blockers, {
@@ -189,6 +183,7 @@ const buildCohortGate = (cohort = {}) => {
     maxGrossSalesCents,
     durationDays,
     manualRosterRequired: cohort.manualRosterRequired === true,
+    serverBuyerAllowlistRequired: cohort.serverBuyerAllowlistRequired === true,
   });
 };
 

@@ -252,7 +252,7 @@
     "grantTrigger": "verified_stripe_webhook_only",
     "ledgerAuthority": "append_only_account_projection",
     "allowedSpendKinds": [
-      "reaction"
+      "durable_cosmetic_unlock"
     ],
     "competitiveIntegrity": "no_scoring_win_or_queue_priority",
     "expirationPolicy": "no_expiration_during_canary_owner_review_required_for_general_release",
@@ -264,8 +264,9 @@
       "android": "play_billing_server_verification_planned"
     },
     "plannedPremiumUnlockKinds": [
-      "reaction_unlock",
+      "profile_emoji",
       "reaction_loadout_slot",
+      "reaction_unlock",
       "room_boost"
     ],
     "purchaseLimit": {

@@ -184,6 +184,10 @@ const {
   listPublicPremiumProducts,
   normalizeEntitlementIds,
 } = require("./lib/beauBucksEntitlements");
+const {
+  buildBeauBucksCanaryBuyerPolicy,
+  isBeauBucksCanaryBuyerAllowed,
+} = require("./lib/beauBucksCanary");
 const { buildPublicVibeIndexProjection } = require("./lib/publicVibeIndex");
 const {
   buildPublicVibeEvidenceRecord,
@@ -2803,6 +2807,7 @@ const BEAUBUCKS_AUTHORITY_HOST_UIDS = new Set(
     .map(normalizeUidToken)
     .filter(Boolean)
 );
+const BEAUBUCKS_CANARY_BUYER_POLICY = buildBeauBucksCanaryBuyerPolicy(process.env);
 const isBeauBucksSpendCanaryRoom = ({ roomCode = "", roomData = {} } = {}) => {
   const safeRoomCode = normalizeRoomCode(roomCode);
   if (BEAUBUCKS_SPEND_ROOM_CODES.has(safeRoomCode)) return true;
@@ -21047,7 +21052,11 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
   const authorityEnabled = isRoomBeauBucksAuthorityEnabled({ roomCode, roomData });
   const hostEnabledTonight = roomData?.eventCredits?.beauBucksEnabledTonight === true;
   const experienceEnabled = isRoomBeauBucksExperienceEnabled({ roomCode, roomData });
-  const checkoutEnabled = accountEligible && experienceEnabled && isBeauBucksCheckoutEnabled();
+  const canaryBuyerAllowed = isBeauBucksCanaryBuyerAllowed({
+    uid: callerUid,
+    policy: BEAUBUCKS_CANARY_BUYER_POLICY,
+  });
+  const checkoutEnabled = accountEligible && canaryBuyerAllowed && experienceEnabled && isBeauBucksCheckoutEnabled();
   const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
   const entitlementIds = normalizeEntitlementIds(accountData.entitlementIds);
   const starterPackCandidate = checkoutEnabled ? getBeauBucksPack("beaubucks_starter_1200") : null;
@@ -21070,6 +21079,7 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
     hostEnabledTonight,
     experienceEnabled,
     accountEligible,
+    canaryBuyerAllowed,
     unavailableReason: !authorityEnabled
       ? "rollout_not_available"
       : !roomData?.eventCredits?.enabled
@@ -29700,6 +29710,9 @@ exports.createBeauBucksCheckout = onCall(
     }
     if (!isBeauBucksCheckoutEnabled()) {
       throw new HttpsError("failed-precondition", "BeauBucks purchases are not available yet.");
+    }
+    if (!isBeauBucksCanaryBuyerAllowed({ uid: callerUid, policy: BEAUBUCKS_CANARY_BUYER_POLICY })) {
+      throw new HttpsError("permission-denied", "This BeauBucks preview is limited to invited production testers.");
     }
     const roomCode = normalizeRoomCode(request.data?.roomCode || "");
     const packId = String(request.data?.packId || "").trim();

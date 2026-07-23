@@ -79,16 +79,16 @@ This view is proof of server-recorded activity, not a declaration that the shado
 - `spendAudienceBeauBucks` currently allows only server-priced reactions as a closed technical scaffold. It creates one stable spend operation, one authoritative `reaction_spend` debit, and one exact account projection update in a transaction. It cannot change queue priority, scoring, winners, identity, avatars, or Points.
 - Refunds create immutable `refund_reversal` debits for proportionate unspent value. Chargebacks create `chargeback_reversal` debits, restrict the account, and preserve unrecovered shortfall evidence rather than allowing a negative balance.
 - The private Audience activity projection can render an authoritative purchase with USD amount and a hashed BeauRocks confirmation code. It also returns the separate ledger balance, but no Audience storefront or new Host control is routed to this rail yet.
-- BeauBucks do not expire during this canary. Account portability is now fixed; durable reaction unlocks, support, tax/accounting, and refund language still require owner review.
+- BeauBucks do not expire during this canary. Account portability and durable cosmetic entitlements are implemented; support, tax/accounting, and refund promises still require owner approval.
 
 Signed refunds and chargebacks that arrive before purchase completion now enter a hashed, server-only pending inbox. Each unique event is immutable and each payment aggregate is cumulative; fulfillment reads that aggregate in the same transaction as the grant and immediately posts the compensating debit, leaving no spendable window. A transaction-level payment-reference recheck closes the concurrent-arrival race. Pending records carry a 90-day `expiresAt` field and use dedicated collection groups so production TTL policies can bound storage without affecting other event data.
 
-Activation remains a no-go until the pack/refund terms are approved, the durable reaction-bank purchase model is implemented, and the Audience purchase/spend surface is explicitly routed away from Points.
+Activation remains a no-go until pack/refund terms and commercial ownership are approved, exactly one Room and no more than 10 buyer UIDs are allowlisted, and the real-money purchase/refund/reconciliation pass succeeds.
 
 ## Server-Authoritative Canary Spend Contract (Implemented 2026-07-13)
 
 - `spendAudienceRoomCredits` accepts `roomCode`, `kind`, `clientOperationId`, and a kind-specific payload from an authenticated room member.
-- Canary eligibility is server-owned through room/host allowlists. `joinRoomAudience` gives the client a routing hint, but the callable repeats the gate before every mutation.
+- Canary eligibility is server-owned through Room/Host authority allowlists plus a dedicated buyer-UID roster for checkout. The runtime fails closed with no buyer roster or more than 10 entries, and every callable repeats its authority gate.
 - Non-canary or rolled-back rooms receive `legacy_fallback` with no spend-operation, balance, profile, avatar, or ledger write.
 - The operation document ID hashes room, user, and client operation ID. A repeated operation returns the stored accepted or insufficient result, increments replay telemetry, and never mutates economic fields, balances, identity/avatar state, or the ledger again.
 - Ambiguous client failures retain the operation ID in session. Only accepted, insufficient-balance, or explicit legacy-fallback outcomes clear it.

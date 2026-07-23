@@ -28,8 +28,8 @@
     "decisionRef": "",
     "costEnvelope": {
       "approvalStatus": "not_approved",
-      "maximumSpendOperationsPerPack": 600,
-      "minimumAuthorityWritesPerPack": 1800,
+      "maximumEntitlementPurchasesPerPack": 6,
+      "maximumAuthorityWritesPerPack": 30,
       "decisionRef": ""
     }
   },
@@ -38,7 +38,7 @@
     "accountPersistentDisclosure": true,
     "noCashValueDisclosure": true,
     "nonTransferableDisclosure": true,
-    "reactionsOnlyDisclosure": true,
+    "durableCosmeticsDisclosure": true,
     "expirationPolicy": "no_expiration_during_canary",
     "refundPolicy": "contact_support_proportionate_unspent_reversal",
     "termsUrl": "https://beaurocks.app/karaoke/terms",
@@ -62,6 +62,7 @@
     "maxGrossSalesCents": 5000,
     "durationDays": 14,
     "manualRosterRequired": true,
+    "serverBuyerAllowlistRequired": true,
     "rollbackOwner": "",
     "decisionRef": ""
   },
@@ -74,7 +75,7 @@
     "Recommended values are proposals, not evidence of owner approval.",
     "Updating this file does not enable checkout, publish a pack, allowlist a Room, or change production.",
     "The first canary remains internal and rostered in addition to the server-enforced one-pack-per-BeauRocks-account limit.",
-    "The 1,200 BeauBucks pack permits at most 600 two-BB spends, requiring at least 1,800 authority writes across operation, account, and ledger records. Existing reaction delivery may add separate Room activity.",
+    "The 1,200 BeauBucks pack can currently buy at most six unique durable cosmetic entitlements, with a conservative ceiling of 30 authority writes across operations, entitlements, accounts, profiles, and ledger entries.",
     "Legal, tax, and accounting judgments remain owner responsibilities; use professional review where appropriate."
   ]
 }

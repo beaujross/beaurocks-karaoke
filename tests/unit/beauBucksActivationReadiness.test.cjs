@@ -17,11 +17,11 @@ const approvedInputs = {
     approvalStatus: 'approved', packId: 'beaubucks_starter_1200', publicLabel: 'Starter 1,200 BeauBucks',
     amountCents: 500, currency: 'usd', beauBucks: 1200, scope: 'account', maxPurchasesPerAccount: 1,
     decisionRef: 'decision-pack-1',
-    costEnvelope: { approvalStatus: 'approved', maximumSpendOperationsPerPack: 600, minimumAuthorityWritesPerPack: 1800, decisionRef: 'decision-cost-1' },
+    costEnvelope: { approvalStatus: 'approved', maximumEntitlementPurchasesPerPack: 6, maximumAuthorityWritesPerPack: 30, decisionRef: 'decision-cost-1' },
   },
   customerPromises: {
     approvalStatus: 'approved', accountPersistentDisclosure: true, noCashValueDisclosure: true,
-    nonTransferableDisclosure: true, reactionsOnlyDisclosure: true,
+    nonTransferableDisclosure: true, durableCosmeticsDisclosure: true,
     expirationPolicy: 'no_expiration_during_canary',
     refundPolicy: 'contact_support_proportionate_unspent_reversal',
     termsUrl: 'https://beaurocks.app/karaoke/terms', supportEmail: 'hello@beaurocks.app',
@@ -34,7 +34,7 @@ const approvedInputs = {
   },
   cohort: {
     approved: true, roomCodes: ['ROOMBB'], maxParticipants: 10, maxGrossSalesCents: 5000,
-    durationDays: 14, manualRosterRequired: true, rollbackOwner: 'Owner', decisionRef: 'decision-cohort-1',
+    durationDays: 14, manualRosterRequired: true, serverBuyerAllowlistRequired: true, rollbackOwner: 'Owner', decisionRef: 'decision-cohort-1',
   },
   activation: { approved: true, approvedBy: 'Owner', decisionRef: 'decision-activation-1' },
 };
@@ -59,24 +59,25 @@ test('all explicit decisions can ready a separate bounded activation without mut
   assert.match(packet.recommendedNextAction, /separate bounded production activation change/);
 });
 
-test('pack approval must match the server catalog and current reaction cost envelope', () => {
+test('pack approval must match the server catalog and durable entitlement cost envelope', () => {
   const packet = buildBeauBucksActivationReadiness({
     decisionInputs: {
       ...approvedInputs,
       starterPack: {
         ...approvedInputs.starterPack,
         amountCents: 499,
-        costEnvelope: { ...approvedInputs.starterPack.costEnvelope, maximumSpendOperationsPerPack: 599 },
+        costEnvelope: { ...approvedInputs.starterPack.costEnvelope, maximumEntitlementPurchasesPerPack: 5 },
       },
     },
   });
   const gate = packet.gates.find((candidate) => candidate.id === 'starter_pack');
   assert.equal(gate.passed, false);
-  assert.equal(gate.details.minimumSpendCost, 2);
-  assert.equal(gate.details.maximumSpendOperationsPerPack, 600);
-  assert.equal(gate.details.minimumAuthorityWritesPerPack, 1800);
+  assert.equal(gate.details.minimumUnlockCost, 120);
+  assert.equal(gate.details.publicEntitlementCount, 7);
+  assert.equal(gate.details.maximumEntitlementPurchasesPerPack, 6);
+  assert.equal(gate.details.maximumAuthorityWritesPerPack, 30);
   assert.ok(gate.blockers.some((blocker) => blocker.includes('amountCents')));
-  assert.ok(gate.blockers.some((blocker) => blocker.includes('spend-operation ceiling')));
+  assert.ok(gate.blockers.some((blocker) => blocker.includes('purchase ceiling')));
 });
 
 test('the first paid cohort stays one-room, small, capped, and manually rostered', () => {
@@ -86,13 +87,13 @@ test('the first paid cohort stays one-room, small, capped, and manually rostered
       cohort: {
         ...approvedInputs.cohort,
         roomCodes: ['ROOM1', 'ROOM2'], maxParticipants: 11, maxGrossSalesCents: 5001,
-        durationDays: 15, manualRosterRequired: false,
+        durationDays: 15, manualRosterRequired: false, serverBuyerAllowlistRequired: false,
       },
     },
   });
   const gate = packet.gates.find((candidate) => candidate.id === 'controlled_cohort');
   assert.equal(gate.passed, false);
-  assert.equal(gate.blockers.length, 5);
+  assert.equal(gate.blockers.length, 6);
 });
 
 test('public pricing or an already active contract fails the pre-activation packet closed', () => {

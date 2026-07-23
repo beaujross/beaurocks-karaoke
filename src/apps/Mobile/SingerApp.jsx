@@ -3855,15 +3855,19 @@ const SingerApp = ({ roomCode, uid }) => {
                                 <button type="button" onClick={() => loadBeauBucksWallet({ force: true })} className="min-h-[40px] rounded-xl bg-white/10 px-3 text-xs font-black text-white">Retry</button>
                             </div>
                         ) : visibleBeauBucksWalletState.wallet?.canPurchase && visibleBeauBucksWalletState.wallet?.pack ? (
-                            <button
-                                type="button"
-                                onClick={() => startBeauBucksCheckout(visibleBeauBucksWalletState.wallet.pack)}
-                                disabled={pointsCheckoutPendingKey === 'beaubucks'}
-                                className="mt-3 flex min-h-[48px] w-full items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-fuchsia-400 to-pink-400 px-4 font-black text-black disabled:opacity-60"
-                            >
-                                <span>{pointsCheckoutPendingKey === 'beaubucks' ? 'Opening checkout...' : visibleBeauBucksWalletState.wallet.pack.publicLabel}</span>
-                                <span>${(Number(visibleBeauBucksWalletState.wallet.pack.amountCents || 0) / 100).toFixed(2)}</span>
-                            </button>
+                            <div className="mt-3 rounded-2xl border border-fuchsia-300/20 bg-black/20 p-3">
+                                <button
+                                    type="button"
+                                    onClick={() => startBeauBucksCheckout(visibleBeauBucksWalletState.wallet.pack)}
+                                    disabled={pointsCheckoutPendingKey === 'beaubucks'}
+                                    className="flex min-h-[48px] w-full items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-fuchsia-400 to-pink-400 px-4 font-black text-black disabled:opacity-60"
+                                >
+                                    <span>{pointsCheckoutPendingKey === 'beaubucks' ? 'Opening checkout...' : visibleBeauBucksWalletState.wallet.pack.publicLabel}</span>
+                                    <span>${(Number(visibleBeauBucksWalletState.wallet.pack.amountCents || 0) / 100).toFixed(2)}</span>
+                                </button>
+                                <p className="mt-2 text-[11px] leading-4 text-fuchsia-100/70">One-time purchase for this account. BeauBucks unlock permanent cosmetics, have no cash value, and cannot be transferred.</p>
+                                <button type="button" onClick={() => window.open(`${window.location.origin}${import.meta.env.BASE_URL || '/'}karaoke/terms`, '_blank')} className="mt-1 text-[11px] font-black text-fuchsia-200 underline underline-offset-4">Purchase terms and refund help</button>
+                            </div>
                         ) : (
                             <div className="mt-3 rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-xs text-zinc-400">
                                 {visibleBeauBucksWalletState.wallet?.accountEligible === false
