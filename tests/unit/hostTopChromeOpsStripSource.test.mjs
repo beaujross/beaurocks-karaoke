@@ -20,7 +20,7 @@ test('host top chrome keeps the vibe meter but drops the redundant ops strip', (
   assert.match(source, /const crowdPulseLabel = crowdPulseMeta\?\.alignmentLabel/);
   assert.match(source, /const crowdPulseSummary = crowdPulseMeta\?\.alignmentSummary/);
   assert.match(source, /<div className="hidden xl:flex items-center gap-2">[\s\S]*\[\s*\{ key: 'stage', label: 'Queue' \},[\s\S]*\{ key: 'lobby', label: 'Audience' \}\s*\]\.map/);
-  assert.match(source, /\[\s*\{ key: 'stage', label: 'Queue' \},[\s\S]*\{ key: 'admin', label: 'Admin' \}\s*\]\.map/);
+  assert.match(source, /\[\s*\{ key: 'stage', label: 'Queue', description: 'Run singers and song order', icon: 'fa-list-ol' \},[\s\S]*\{ key: 'admin', label: 'Admin', description: 'Room setup and controls', icon: 'fa-sliders' \}\s*\]\.map/);
   assert.match(source, /title="Open Admin"/);
   assert.match(source, /fa-solid fa-gear text-base lg:text-lg/);
   assert.doesNotMatch(source, /OpsStatusPill/);

@@ -78,6 +78,23 @@ test('deadAirAutopilot maps assist levels to persisted filler payload modes', ()
     sourceLabel: 'BeauRocks catalog',
   });
 
+  const applePayload = buildDeadAirFillerPayload({
+    assistLevel: 'smart_assist',
+    songs: [{
+      title: 'Apple Party Track',
+      artist: 'Apple Artist',
+      backing: {
+        mediaUrl: 'https://music.apple.com/song/apple-track',
+        appleMusicId: 'apple-track',
+        trackSource: 'apple',
+        approved: true,
+        playable: true,
+      },
+    }],
+  });
+  assert.equal(applePayload.source, 'connected_media_and_catalog');
+  assert.equal(applePayload.songs[0].backing.trackSource, 'apple');
+
   const manual = buildDeadAirFillerPayload({ assistLevel: 'manual_first', delaySec: 1 });
   assert.equal(manual.enabled, false);
   assert.equal(manual.mode, 'off');

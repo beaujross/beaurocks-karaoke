@@ -401,7 +401,10 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   assert.match(source, /getAudienceReactionSlotCount/);
   assert.match(source, /const reactionLoadout = buildReactionLoadout\(\{/);
   assert.match(source, /const reactionSlotCount = baseReactionSlotCount/);
-  assert.match(source, /data-feature-id="unlock-reaction-slot-6"/);
+  assert.match(
+    readFileSync(path.resolve(__dirname, "../../src/apps/Mobile/components/AudienceReactionSlotGrid.jsx"), "utf8"),
+    /data-feature-id="locked-reaction-slot-6"/,
+  );
   assert.match(
     source,
     /grid w-full gap-2 \$\{isStreamlinedAudienceShell \? 'grid-cols-2' : 'grid-cols-3'\}/,
@@ -1069,11 +1072,12 @@ test("SingerApp lets locked emoji become the active preview and includes new the
 
 test("SingerApp presents the premium blossom reaction with themed icon motion", () => {
   const source = readFileSync(singerAppPath, "utf8");
+  const reactionSlotSource = readFileSync(path.resolve(__dirname, "../../src/apps/Mobile/components/AudienceReactionSlotGrid.jsx"), "utf8");
 
   assert.match(
-    source,
-    /getReactionDefinition\(t\)\?\.label \|\| t/,
-    "SingerApp should source reaction labels such as Bloom from the shared catalog.",
+    reactionSlotSource,
+    /getReactionDefinition\(reactionType\)\?\.label \|\| reactionType/,
+    "Audience reaction slots should source labels such as Bloom from the shared catalog.",
   );
   assert.match(
     source,

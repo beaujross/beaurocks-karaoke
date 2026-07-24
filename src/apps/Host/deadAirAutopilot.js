@@ -118,7 +118,11 @@ export const buildDeadAirFillerPayload = ({
     return {
         enabled: mode !== 'off',
         mode,
-        source: normalizedSongs.some((song) => song?.backing?.trackSource === 'local') ? 'connected_media_and_catalog' : 'browse_catalog_known_good',
+        source: normalizedSongs.some((song) => (
+            ['local', 'apple', 'apple_music'].includes(String(song?.backing?.trackSource || '').trim().toLowerCase())
+        ))
+            ? 'connected_media_and_catalog'
+            : 'browse_catalog_known_good',
         delaySec: safeDelaySec,
         songs: normalizedSongs,
     };

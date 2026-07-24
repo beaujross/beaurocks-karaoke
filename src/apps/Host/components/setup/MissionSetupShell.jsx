@@ -8,7 +8,7 @@ const MissionSetupShell = ({
     sideContent = null,
     footer = null
 }) => (
-    <div className="fixed inset-0 z-[92] overflow-y-auto overscroll-y-contain p-2 pt-[calc(env(safe-area-inset-top)+0.35rem)] pb-[calc(env(safe-area-inset-bottom)+6rem)] md:p-3" style={{ background: OVERLAY_BG }}>
+    <div className="fixed inset-0 z-[240] overflow-y-auto overscroll-y-contain p-2 pt-[calc(env(safe-area-inset-top)+0.35rem)] pb-[calc(env(safe-area-inset-bottom)+6rem)] md:p-3" style={{ background: OVERLAY_BG }}>
         <div className="mx-auto flex min-h-full w-full max-w-7xl items-start pb-24">
             <div className="w-full overflow-hidden rounded-3xl border border-white/15 bg-zinc-950/94 shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
                 {header}

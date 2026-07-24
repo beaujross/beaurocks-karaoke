@@ -12,12 +12,22 @@ const MissionSetupPrimaryPicks = ({
     selectedSpotlightMode = 'karaoke',
     onApplyRecipe = () => {},
     onSaveRecipe = () => {},
+    recipeStorageLabel = 'this Host browser',
+    recipeSyncStatus = 'browser',
 }) => {
     const recipes = useMemo(
         () => buildRoomSetupRecipeCards({ presets }),
         [presets],
     );
     const savedRecipeCount = recipes.filter((recipe) => recipe.isSaved).length;
+    const recipeSyncSuffix = ['loading', 'ready', 'syncing'].includes(recipeSyncStatus)
+        ? ' · syncing'
+        : recipeSyncStatus === 'error'
+            ? ' · saved here, sync retrying'
+            : '';
+    const savedRecipeSummary = savedRecipeCount > 0
+        ? `${savedRecipeCount} saved to ${recipeStorageLabel}${recipeSyncSuffix}`
+        : `Save one setup to ${recipeStorageLabel} and reuse it next time${recipeSyncSuffix}.`;
     const selection = {
         archetype: selectedArchetype,
         flowRule: selectedFlowRule,
@@ -98,7 +108,7 @@ const MissionSetupPrimaryPicks = ({
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/8 pt-3 text-xs text-zinc-500">
                 <span>Fine-tune any recipe in Advanced. Your changes stay visible as an adjusted recipe.</span>
-                <span>{savedRecipeCount > 0 ? `${savedRecipeCount} saved recipe${savedRecipeCount === 1 ? '' : 's'}` : 'Save one setup on this Host browser and reuse it next time.'}</span>
+                <span>{savedRecipeSummary}</span>
             </div>
         </section>
     );

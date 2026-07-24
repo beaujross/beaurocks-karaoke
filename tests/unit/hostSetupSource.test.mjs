@@ -540,7 +540,7 @@ test('room setup shells stay top-aligned and scrollable on short viewports', () 
   );
   assert.match(
     missionSetupShellSource,
-    /fixed inset-0 z-\[92\] overflow-y-auto overscroll-y-contain[\s\S]*?pt-\[calc\(env\(safe-area-inset-top\)\+0\.35rem\)\]/,
+    /fixed inset-0 z-\[240\] overflow-y-auto overscroll-y-contain[\s\S]*?pt-\[calc\(env\(safe-area-inset-top\)\+0\.35rem\)\]/,
     'Guided setup shell should keep compact safe-area padding and remain scrollable.',
   );
   assert.match(
@@ -683,7 +683,7 @@ test('tight 15 catalog sanitation tolerates null entries', () => {
 test('host game control pad submissions remain scrollable above the launchpad', () => {
   assert.match(
     hostAppSource,
-    /\(tab === 'run_of_show' \|\| tab === 'games'\) \? 'md:overflow-y-auto' : 'md:overflow-hidden'/,
+    /\(tab === 'run_of_show' \|\| tab === 'games' \|\| tab === 'browse'\) \? 'md:overflow-y-auto' : 'md:overflow-hidden'/,
     'The Games tab main column should scroll because the live game control pad renders above the launchpad.',
   );
   assert.match(

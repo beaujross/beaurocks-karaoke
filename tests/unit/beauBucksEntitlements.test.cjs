@@ -15,9 +15,9 @@ test('premium catalog exposes durable BeauBucks cosmetics and one sixth-slot unl
   assert.ok(products.every((product) => product.cost > 0));
 });
 
-test('reaction capacity progresses from guest four to account five to paid six', () => {
+test('reaction capacity stays at four until room Points or a paid sixth-slot entitlement expands it', () => {
   assert.equal(getReactionSlotCount({ accountEligible: false }), 4);
-  assert.equal(getReactionSlotCount({ accountEligible: true }), 5);
+  assert.equal(getReactionSlotCount({ accountEligible: true }), 4);
   assert.equal(getReactionSlotCount({ accountEligible: true, entitlementIds: ['reaction_slot_6'] }), 6);
 });
 

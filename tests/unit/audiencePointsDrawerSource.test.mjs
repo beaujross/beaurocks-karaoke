@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 
 import { test } from 'vitest';
 
-const source = readFileSync('src/apps/Mobile/SingerApp.jsx', 'utf8');
+const source = [
+  readFileSync('src/apps/Mobile/SingerApp.jsx', 'utf8'),
+  readFileSync('src/apps/Mobile/components/AudienceReactionSlotGrid.jsx', 'utf8'),
+].join('\n');
 
 test('audience points sheet keeps a top close action for high zoom mobile users', () => {
   assert.match(

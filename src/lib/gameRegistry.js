@@ -1,11 +1,13 @@
-import FlappyGame from '../games/FlappyBird/Game';
-import BingoGame from '../games/Bingo/Game';
-import PromptVoteGame from '../games/PromptVote/Game';
-import VocalChallengeGame from '../games/VocalChallenge/Game';
-import RidingScalesGame from '../games/RidingScales/Game';
-import KaraokeBracketGame from '../games/KaraokeBracket/Game';
-import TeamPongGame from '../games/TeamPong/Game';
-import MusicalMomentsGame from '../games/MusicalMoments/Game';
+import { lazy } from 'react';
+
+const FlappyGame = lazy(() => import('../games/FlappyBird/Game'));
+const BingoGame = lazy(() => import('../games/Bingo/Game'));
+const PromptVoteGame = lazy(() => import('../games/PromptVote/Game'));
+const VocalChallengeGame = lazy(() => import('../games/VocalChallenge/Game'));
+const RidingScalesGame = lazy(() => import('../games/RidingScales/Game'));
+const KaraokeBracketGame = lazy(() => import('../games/KaraokeBracket/Game'));
+const TeamPongGame = lazy(() => import('../games/TeamPong/Game'));
+const MusicalMomentsGame = lazy(() => import('../games/MusicalMoments/Game'));
 
 export const GAME_REGISTRY = {
     'flappy_bird': FlappyGame, 

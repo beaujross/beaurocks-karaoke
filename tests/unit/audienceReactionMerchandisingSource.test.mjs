@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs";
 
 import { test } from "vitest";
 
-const source = readFileSync("src/apps/Mobile/SingerApp.jsx", "utf8");
+const source = [
+  readFileSync("src/apps/Mobile/SingerApp.jsx", "utf8"),
+  readFileSync("src/apps/Mobile/components/AudienceReactionSlotGrid.jsx", "utf8"),
+  readFileSync("src/apps/Mobile/components/AudienceReactionCollection.jsx", "utf8"),
+  readFileSync("src/apps/Mobile/lib/audienceReactionUnlockFlow.js", "utf8"),
+].join("\n");
 
 test("locked reaction slots keep the live reaction-card footprint and show bright prices", () => {
   assert.match(source, /data-feature-id="audience-reaction-slot-grid"/);
@@ -36,6 +41,12 @@ test("locked slots route insufficient balances into currency-specific conversion
   );
 });
 
+test("premium library items remain actionable so account and balance funnels can resolve the tap", () => {
+  assert.match(source, /onPurchasePremium\(premiumProduct\.id\)/);
+  assert.doesNotMatch(source, /\|\| !walletReady/);
+  assert.match(source, /result\?\.outcome === 'insufficient_balance'[\s\S]*setCurrencyFunnelTarget\('beaubucks'\)/);
+});
+
 test("live reactions expose an obvious path to browse and buy from the library", () => {
   assert.match(source, /data-feature-id="browse-reaction-emoji-library"/);
   assert.match(source, /Reaction Emoji Library/);
@@ -45,4 +56,10 @@ test("live reactions expose an obvious path to browse and buy from the library",
     /const openReactionLibrary = \(\) => openAudienceCurrencyFunnel\('reactions'\)/,
   );
   assert.match(source, /data-feature-id="reaction-emoji-library-toggle"/);
+});
+
+test("the noncritical reaction collection loads behind a visible lazy boundary", () => {
+  assert.match(source, /const AudienceReactionCollection = React\.lazy\(\(\) => import\('\.\/components\/AudienceReactionCollection'\)\);/);
+  assert.match(source, /data-feature-id="audience-reaction-collection-loading"/);
+  assert.match(source, /<React\.Suspense fallback=\{<section[\s\S]*<AudienceReactionCollection/);
 });

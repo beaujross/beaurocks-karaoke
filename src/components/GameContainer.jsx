@@ -1,7 +1,20 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { Suspense, useEffect, useState, useRef } from 'react';
 import { GAME_REGISTRY } from '../lib/gameRegistry';
 
 const TV_VOICE_MIC_READY_KEY = 'beaurocks_tv_voice_mic_ready';
+
+const GameCartridgeFallback = ({ title = 'Loading game', view = '' }) => (
+    <div
+        className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.16),transparent_30%),#020617] p-6 text-white"
+        data-feature-id="game-cartridge-loading"
+        role="status"
+    >
+        <div className="rounded-3xl border border-cyan-300/25 bg-black/55 px-8 py-7 text-center shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+            <div className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-200">{view === 'tv' ? 'Loading for the room' : 'Getting the game ready'}</div>
+            <div className="mt-3 text-3xl font-black">{title}</div>
+        </div>
+    </div>
+);
 
 const GAME_RULES = {
     flappy_bird: {
@@ -258,7 +271,9 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
                     </div>
                 </div>
             ) : (
-                <GameComponent activeMode={activeMode} view={view} {...props} />
+                <Suspense fallback={<GameCartridgeFallback title={rulesConfig?.title || 'Loading game'} view={view} />}>
+                    <GameComponent activeMode={activeMode} view={view} {...props} />
+                </Suspense>
             )}
         </div>
     );

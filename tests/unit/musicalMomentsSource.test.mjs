@@ -11,7 +11,7 @@ const launchSupportSource = readFileSync('src/lib/gameLaunchSupport.js', 'utf8')
 const vocalProgressSource = readFileSync('docs/game-design/VOCAL_GAMES_PROGRESS.md', 'utf8');
 
 test('Musical Moments is registered as a voice game cartridge and progress-ledger mode', () => {
-  assert.match(registrySource, /import MusicalMomentsGame from '\.\.\/games\/MusicalMoments\/Game';/);
+  assert.match(registrySource, /const MusicalMomentsGame = lazy\(\(\) => import\('\.\.\/games\/MusicalMoments\/Game'\)\);/);
   assert.match(registrySource, /'musical_moments': MusicalMomentsGame/);
   assert.match(registrySource, /id: 'musical_moments'[\s\S]*name: 'Musical Moments'[\s\S]*needsVoice: true/);
   assert.match(gameContainerSource, /musical_moments: \{[\s\S]*title: 'Musical Moments'[\s\S]*Audience phones tap the hit/);

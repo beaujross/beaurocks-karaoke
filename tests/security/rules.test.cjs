@@ -256,6 +256,46 @@ async function run() {
       );
     }],
 
+    ["firestore: account owner can persist private Host Night Setup recipes", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      const ref = db.doc(`private_user_settings/${HOST_UID}`);
+      await assertSucceeds(
+        ref.set({
+          uid: HOST_UID,
+          hostNightRecipes: {
+            schemaVersion: 1,
+            presets: [{
+              id: "movie_night",
+              label: "Movie Night",
+              basePresetId: "casual",
+              updatedAtMs: 100,
+            }],
+            deletedAtById: {},
+          },
+        }, { merge: true })
+      );
+      await assertSucceeds(ref.get());
+    }],
+
+    ["firestore: Host Night Setup recipes remain private to their account", async () => {
+      const ownerRef = testEnv.authenticatedContext(HOST_UID)
+        .firestore()
+        .doc(`private_user_settings/${HOST_UID}`);
+      const otherRef = testEnv.authenticatedContext(OTHER_UID)
+        .firestore()
+        .doc(`private_user_settings/${HOST_UID}`);
+      const publicRef = testEnv.unauthenticatedContext()
+        .firestore()
+        .doc(`private_user_settings/${HOST_UID}`);
+
+      await assertSucceeds(ownerRef.get());
+      await assertFails(otherRef.get());
+      await assertFails(publicRef.get());
+      await assertFails(otherRef.set({
+        hostNightRecipes: { schemaVersion: 1, presets: [], deletedAtById: {} },
+      }, { merge: true }));
+    }],
+
     ["firestore: host can update safe fields but cannot inject a public Vibe Index", async () => {
       const db = testEnv.authenticatedContext(HOST_UID).firestore();
       await assertSucceeds(

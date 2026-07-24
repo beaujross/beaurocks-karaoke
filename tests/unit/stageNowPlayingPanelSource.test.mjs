@@ -18,7 +18,7 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
   );
   assert.match(
     source,
-    /(Last )?Track Check[\s\S]*Use Again[\s\S]*Bad Track[\s\S]*Inbox[\s\S]*Skip/s,
+    /(Last )?Track Check[\s\S]*Use Again[\s\S]*Avoid Auto-Picks[\s\S]*Inbox[\s\S]*Dismiss/s,
     "The last-track review card should allow deferring into inbox or skipping entirely",
   );
   assert.match(

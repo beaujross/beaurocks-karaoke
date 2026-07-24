@@ -1,11 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import UnifiedGameLauncher from '../../components/UnifiedGameLauncher';
 import { GAMES_META } from '../../lib/gameRegistry';
 import { getRoomGameLaunchPreflight, getRunOfShowGameMode } from '../../lib/gameLaunchCompatibility';
-import HostChatPanel from './components/HostChatPanel';
 import HostTopChrome from './components/HostTopChrome';
 import HostQueueHorizon from './components/HostQueueHorizon';
-import SelfServeModeLauncher from './components/SelfServeModeLauncher';
 import { buildQaHostFixture } from './qaHostFixtures';
 import MissionSetupShell from './components/setup/MissionSetupShell';
 import MissionSetupHeader from './components/setup/MissionSetupHeader';
@@ -26,6 +23,7 @@ import useHostLaunchSession from './hooks/useHostLaunchSession';
 import useHostNightSetupFlow from './hooks/useHostNightSetupFlow';
 import useHostRoomManager from './hooks/useHostRoomManager';
 import useHostWorkspaceNavigation from './hooks/useHostWorkspaceNavigation';
+import useAccountHostNightRecipes from './hooks/useAccountHostNightRecipes';
 import useHostWorkspaceState from './hooks/useHostWorkspaceState';
 import { usePitch } from '../../hooks/usePitch';
 import { getCrowdPulseSnapshot } from './crowdPulse';
@@ -195,6 +193,7 @@ import {
     getDeadAirAutoFillIntent,
 } from './deadAirAutopilot';
 import { buildCachedYouTubeDeadAirSongs } from './deadAirYouTubeCatalog';
+import { buildConnectedDeadAirSongs } from './deadAirMediaCatalog';
 import {
     isYouTubeEmbeddable,
     normalizeYouTubePlaybackState,
@@ -208,6 +207,7 @@ import {
     createAppleMusicAutomaticRetryError,
     isAppleMusicAutomaticRetryCoolingDown,
     isAppleMusicAutomaticRetryError,
+    isAppleMusicLibraryPlaylistId,
     parseAppleMusicPlaylistId,
 } from '../../lib/appleMusicPlaylistPlayback';
 import { createLogger } from '../../lib/logger';
@@ -392,11 +392,14 @@ import {
     buildAudienceThemeFromPreset,
     buildHostNightPresetConfig,
     listHostNightPresets,
-    loadCustomHostNightPresets,
     mergeHostNightPresets,
     normalizeHostNightPresetRecord,
-    persistCustomHostNightPresets,
 } from './hostNightPresets';
+import {
+    deleteHostNightRecipe,
+    loadHostNightRecipeSyncState,
+    upsertHostNightRecipe,
+} from './hostNightRecipeSync';
 import {
     buildPurchaseCelebrationReplay,
     MONEYBAGS_BADGE_LABEL,
@@ -513,6 +516,9 @@ const HostQaDebugPanel = lazyHostSurface(() => import('./components/HostQaDebugP
 const RunOfShowDirectorPanel = lazyHostSurface(() => import('./components/RunOfShowDirectorPanel'), 'Show conveyor updated');
 const HostRoomLaunchPad = lazyHostSurface(() => import('./components/HostRoomLaunchPad'), 'Room manager updated');
 const EventCreditsConfigPanel = lazyHostSurface(() => import('./components/EventCreditsConfigPanel'), 'Audience store settings updated');
+const UnifiedGameLauncher = lazyHostSurface(() => import('../../components/UnifiedGameLauncher'), 'Game launcher updated');
+const HostChatPanel = lazyHostSurface(() => import('./components/HostChatPanel'), 'Host chat updated');
+const SelfServeModeLauncher = lazyHostSurface(() => import('./components/SelfServeModeLauncher'), 'Room format tools updated');
 
 const DeferredHostSurfaceFallback = ({ label = 'Loading host tools...' }) => (
     <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-400">
@@ -5682,6 +5688,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [appleMusicPickerItems, setAppleMusicPickerItems] = useState([]);
     const [appleMusicPickerLoading, setAppleMusicPickerLoading] = useState(false);
     const [appleMusicPickerError, setAppleMusicPickerError] = useState('');
+    const [appleMusicDeadAirTracks, setAppleMusicDeadAirTracks] = useState([]);
+    const appleMusicDeadAirPlaylistKeyRef = useRef('');
     const [appleMusicBgPendingId, setAppleMusicBgPendingId] = useState('');
     const [ytPlaylistStatus, setYtPlaylistStatus] = useState('');
     const [ytAddTitle, setYtAddTitle] = useState('');
@@ -5765,6 +5773,43 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     }, [appleMusicPickerMode, appleMusicPickerQuery, ensureAppleMusic, reportAppleMusicDiagnostic]);
 
+    const loadAppleMusicDeadAirTracks = useCallback(async (choice = {}) => {
+        const playlistId = parseAppleMusicPlaylistId(choice.id || choice.playbackId || '');
+        if (!playlistId) return [];
+        const sourceType = String(choice.sourceType || '').trim();
+        const loadKey = `${sourceType}:${playlistId}`;
+        if (appleMusicDeadAirPlaylistKeyRef.current === loadKey) return [];
+        appleMusicDeadAirPlaylistKeyRef.current = loadKey;
+        try {
+            const instance = await ensureAppleMusic();
+            if (!instance.isAuthorized) {
+                await authorizeAppleMusicInstance(instance);
+                setAppleMusicAuthorized(true);
+            }
+            const storefront = instance.storefrontId || 'us';
+            const encodedPlaylistId = encodeURIComponent(playlistId);
+            const libraryPlaylist = isAppleMusicLibraryPlaylistId(playlistId, sourceType);
+            const apiPath = libraryPlaylist
+                ? `v1/me/library/playlists/${encodedPlaylistId}/tracks?limit=25`
+                : `v1/catalog/${storefront}/playlists/${encodedPlaylistId}/tracks?limit=25`;
+            const response = await callAppleMusicApi(instance, apiPath, {
+                developerToken: appleMusicDeveloperTokenRef.current,
+            });
+            const tracks = readAppleMusicResponseItems(response)
+                .filter((item) => String(item?.type || '').toLowerCase().includes('song'));
+            if (appleMusicDeadAirPlaylistKeyRef.current !== loadKey) return [];
+            setAppleMusicDeadAirTracks(tracks);
+            return tracks;
+        } catch (error) {
+            if (appleMusicDeadAirPlaylistKeyRef.current === loadKey) {
+                appleMusicDeadAirPlaylistKeyRef.current = '';
+                setAppleMusicDeadAirTracks([]);
+            }
+            hostLogger.debug('Could not load Apple Music dead-air candidates', error);
+            return [];
+        }
+    }, [ensureAppleMusic]);
+
     const applyAppleMusicPlaylistForBg = useCallback(async (choice = {}) => {
         if (appleMusicBgPendingId) return;
         const playlistId = parseAppleMusicPlaylistId(choice.id || '');
@@ -5796,6 +5841,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setPlayingBg(false);
         playingBgRef.current = false;
         bgPlaybackOperationRef.current += 1;
+        void loadAppleMusicDeadAirTracks(choice);
         try {
             clearMediaElementSource(bgAudio.current);
             setAutoBgMusic(true);
@@ -5842,7 +5888,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } finally {
             setAppleMusicBgPendingId('');
         }
-    }, [appleMusicBgPendingId, playAppleMusicPlaylist, reportAppleMusicDiagnostic, updateRoom]);
+    }, [appleMusicBgPendingId, loadAppleMusicDeadAirTracks, playAppleMusicPlaylist, reportAppleMusicDiagnostic, updateRoom]);
+    useEffect(() => {
+        if (!appleMusicAuthorized || !appleMusicAutoPlaylistId) return;
+        void loadAppleMusicDeadAirTracks({
+            id: appleMusicAutoPlaylistId,
+            playbackId: appleMusicAutoPlaylistId,
+            sourceType: isAppleMusicLibraryPlaylistId(appleMusicAutoPlaylistId)
+                ? 'library_playlist'
+                : 'catalog_playlist',
+        });
+    }, [appleMusicAuthorized, appleMusicAutoPlaylistId, loadAppleMusicDeadAirTracks]);
     const [pendingLocalFile, setPendingLocalFile] = useState(null);
     const [uploadingLocal, setUploadingLocal] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -6411,7 +6467,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [runOfShowTemplateMeta, setRunOfShowTemplateMeta] = useState(() => normalizeRunOfShowTemplateMeta({}));
     const [runOfShowTemplates, setRunOfShowTemplates] = useState([]);
     const [hostNightPreset, setHostNightPreset] = useState('custom');
-    const [customHostPresets, setCustomHostPresets] = useState(() => loadCustomHostNightPresets());
+    const [customHostPresetState, setCustomHostPresetState] = useState(() => loadHostNightRecipeSyncState());
+    const customHostPresets = customHostPresetState.presets;
+    const hostNightRecipeStorage = useAccountHostNightRecipes({
+        uid,
+        recipeState: customHostPresetState,
+        setRecipeState: setCustomHostPresetState,
+        logger: hostLogger,
+    });
     const [audienceBingoReopenEnabled, setAudienceBingoReopenEnabled] = useState(true);
     const [autoLyricsOnQueue, setAutoLyricsOnQueue] = useState(false);
     const [popTriviaEnabled, setPopTriviaEnabled] = useState(false);
@@ -6453,9 +6516,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return true;
         }
     });
-    useEffect(() => {
-        persistCustomHostNightPresets(customHostPresets);
-    }, [customHostPresets]);
     useEffect(() => {
         setAllowSingerTrackSelect(requestMode === REQUEST_MODES.guestBackingOptional);
         setAudienceBackingMode(deriveAudienceBackingMode({
@@ -6828,6 +6888,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (fixture.view) setView(fixture.view);
         else setView('workspace');
         if (fixture.tab) setTab(fixture.tab);
+        if (fixture.openNightSetupWizard === true) setShowSettings(false);
         if (fixture.settingsTab) setSettingsTab(fixture.settingsTab);
         if (fixture.lobbyTab) setLobbyTab(fixture.lobbyTab);
         const fixtureWorkspaceView = String(fixture.activeWorkspaceView || fixtureParams.get('view') || '').trim();
@@ -12349,7 +12410,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return mergePayloadWithOverrides(withAssist, overridesInput);
     }, [applyAssistLevelToPayload, capabilities, hostNightPresets, missionAdvancedOverrides, missionDraft]);
 
-    const missionDeadAirSourceSongs = useMemo(
+    const missionCachedYouTubeDeadAirSongs = useMemo(
         () => buildCachedYouTubeDeadAirSongs({
             roomIndex: ytIndex,
             accountIndex: accountYtIndex,
@@ -12357,6 +12418,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             curatedIndex: curatedYouTubeEventIndex,
         }),
         [accountYtIndex, curatedYouTubeEventIndex, globalYtIndex, ytIndex]
+    );
+    const missionDeadAirSearchSources = hostNightPresets[missionDraft?.archetype]?.searchSources || searchSources;
+    const missionDeadAirSourceSongs = useMemo(
+        () => buildConnectedDeadAirSongs({
+            localItems: roomUploadLibraryItems,
+            appleMusicTracks: appleMusicDeadAirTracks,
+            cachedYouTubeSongs: missionCachedYouTubeDeadAirSongs,
+            includeLocal: missionDeadAirSearchSources?.local !== false,
+            includeAppleMusic: missionDeadAirSearchSources?.itunes !== false && appleMusicAuthorized,
+            includeYouTube: missionDeadAirSearchSources?.youtube !== false,
+        }),
+        [
+            appleMusicAuthorized,
+            appleMusicDeadAirTracks,
+            missionCachedYouTubeDeadAirSongs,
+            missionDeadAirSearchSources,
+            roomUploadLibraryItems,
+        ]
     );
     const missionDeadAirFillerSongs = useMemo(
         () => buildDeadAirFillerSongPlan({ sourceSongs: missionDeadAirSourceSongs }),
@@ -12789,6 +12868,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         toast,
         trackEvent,
     });
+
+    const qaNightSetupFixtureOpenedRef = useRef(false);
+    useEffect(() => {
+        if (!isMarketingDemoFixture || demoFixture?.openNightSetupWizard !== true) return;
+        if (qaNightSetupFixtureOpenedRef.current) return;
+        qaNightSetupFixtureOpenedRef.current = true;
+        openNightSetupWizard(demoFixture?.room?.hostNightPreset || 'casual');
+    }, [demoFixture, isMarketingDemoFixture, openNightSetupWizard]);
 
     const updateMissionDraftPick = useCallback((patch = {}, reason = 'manual') => {
         setMissionDraft((prev) => {
@@ -16676,22 +16763,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const fallbackPreset = hostNightPresets[hostNightPreset] || BUILTIN_HOST_NIGHT_PRESETS.casual;
         const normalized = normalizeHostNightPresetRecord(presetInput, fallbackPreset);
         if (!normalized || normalized.isBuiltIn) return null;
-        setCustomHostPresets((prev) => ({
-            ...prev,
-            [normalized.id]: normalized,
-        }));
+        setCustomHostPresetState((previous) => upsertHostNightRecipe(previous, normalized));
         setHostNightPreset(normalized.id);
         return normalized;
     }, [hostNightPreset, hostNightPresets]);
     const deleteCustomHostPreset = useCallback((presetId, fallbackPresetId = 'casual') => {
         const safePresetId = String(presetId || '').trim();
         if (!safePresetId || BUILTIN_HOST_NIGHT_PRESETS[safePresetId]) return;
-        setCustomHostPresets((prev) => {
-            if (!prev?.[safePresetId]) return prev;
-            const next = { ...prev };
-            delete next[safePresetId];
-            return next;
-        });
+        setCustomHostPresetState((previous) => deleteHostNightRecipe(previous, safePresetId, nowMs()));
         if (hostNightPreset === safePresetId) {
             setHostNightPreset(hostNightPresets[fallbackPresetId] ? fallbackPresetId : 'casual');
         }
@@ -19626,13 +19705,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             { key: 'readiness', label: 'Readiness', value: readinessLabel }
         ];
         const roomFormatLauncher = roomCode ? (
-            <SelfServeModeLauncher
-                room={room}
-                roomCode={roomCode}
-                updateRoom={updateRoom}
-                toast={toast}
-                context="setup"
-            />
+            <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading room format tools..." />}>
+                <SelfServeModeLauncher
+                    room={room}
+                    roomCode={roomCode}
+                    updateRoom={updateRoom}
+                    toast={toast}
+                    context="setup"
+                />
+            </React.Suspense>
         ) : null;
 
         if (missionControlEnabled) {
@@ -19742,6 +19823,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 selectedFlowRule={missionDraft?.flowRule}
                                 selectedAssistLevel={missionDraft?.assistLevel}
                                 selectedSpotlightMode={missionDraft?.spotlightMode || 'karaoke'}
+                                recipeStorageLabel={hostNightRecipeStorage.storageLabel}
+                                recipeSyncStatus={hostNightRecipeStorage.syncStatus}
                                 onApplyRecipe={(recipe) => {
                                     const nextOverrides = recipe?.overrides && typeof recipe.overrides === 'object'
                                         ? { ...recipe.overrides }
@@ -22354,6 +22437,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 )}
                 <div className={`${STYLES.panel} p-4 md:p-6 max-w-5xl mx-auto`}>
+                    <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading host chat..." />}>
                     <HostChatPanel
                         chatOpen={true}
                         chatUnread={chatUnread}
@@ -22389,6 +22473,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         showSettingsButton={false}
                         showPopoutButton={false}
                     />
+                    </React.Suspense>
                 </div>
             </div>
         );
@@ -22938,6 +23023,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         )}
                         <div className={`${hostHasLiveGameModeForDrawer && !liveGameLauncherDrawerOpen ? 'hidden' : 'min-h-0 custom-scrollbar pr-1'}`} data-host-game-launcher-drawer={hostHasLiveGameModeForDrawer ? 'content' : 'standard'}>
+                            <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading game launcher..." />}>
                             <UnifiedGameLauncher
                                 compactLiveSwitcher={hostHasLiveGameModeForDrawer}
                                 room={room}
@@ -22974,8 +23060,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 onToggleBracketCrowdVoting={toggleBracketCrowdVoting}
                                 onForfeitBracketContestant={forfeitBracketContestant}
                                 onAddQuickRunOfShowMoment={addQuickRunOfShowMoment}
-                            hostVoiceMicControl={hostVoiceMicControl}
+                                hostVoiceMicControl={hostVoiceMicControl}
                             />
+                            </React.Suspense>
                         </div>
                     </div>
                 )}
