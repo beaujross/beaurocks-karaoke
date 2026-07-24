@@ -4384,20 +4384,22 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [current?.id, handleEndPerformance, nextQueueSong, updateStatus]);
 
     const addToQueueSection = (
-        <div className={`border-b border-white/10 relative ${addToQueueWorkspaceActive && !queueSurface.isCompactQueueSurface ? 'flex min-h-0 flex-1 flex-col p-3 overflow-hidden' : 'p-3'} ${addToQueueWorkspaceActive ? 'bg-fuchsia-500/[0.04]' : 'bg-black/20'}`}>
-            <SectionHeader
-                label="Build a Moment"
-                open={addToQueueSectionOpen}
-                onToggle={() => {
-                    if (addToQueueWorkspaceActive) {
-                        setShowAddForm(true);
-                        return;
-                    }
-                    setShowAddForm(v => !v);
-                }}
-                toneClass={`text-base font-black ${addToQueueWorkspaceActive ? activeQueueWorkspaceTone.sectionToneClass : 'text-[#00C4D9]'}`}
-                featureId="panel-add-to-queue"
-            />
+        <div className={`border-b border-white/10 relative ${addToQueueWorkspaceActive ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3' : 'p-3'} ${addToQueueWorkspaceActive ? 'bg-fuchsia-500/[0.04]' : 'bg-black/20'}`}>
+            {!addToQueueWorkspaceActive ? (
+                <SectionHeader
+                    label="Build a Moment"
+                    open={addToQueueSectionOpen}
+                    onToggle={() => {
+                        if (addToQueueWorkspaceActive) {
+                            setShowAddForm(true);
+                            return;
+                        }
+                        setShowAddForm(v => !v);
+                    }}
+                    toneClass={`text-base font-black ${addToQueueWorkspaceActive ? activeQueueWorkspaceTone.sectionToneClass : 'text-[#00C4D9]'}`}
+                    featureId="panel-add-to-queue"
+                />
+            ) : null}
             {addToQueueSectionOpen && (
                 <AddToQueueFormBody
                     searchQ={searchQ}
@@ -4430,7 +4432,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     openYtSearch={openYtSearch}
                     addSong={addSong}
                     appleMusicAuthorized={appleMusicAuthorized}
-                    dockResults={addToQueueWorkspaceActive && !queueSurface.isCompactQueueSurface}
+                    dockResults={addToQueueWorkspaceActive}
                     onOpenTvLibrary={() => setSceneLibraryOpen(true)}
                     scenePresets={scenePresets}
                     onQueueScenePreset={onQueueScenePreset}
@@ -6278,7 +6280,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             ) : queueSurface.activeCompactTab === 'show' ? (
                 <div className="flex-1 min-h-0 overflow-hidden bg-emerald-500/[0.03]">{plannerWorkspaceSection}</div>
             ) : queueSurface.activeCompactTab === 'add' ? (
-                <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar bg-fuchsia-500/[0.03]">
+                <div className="min-h-0 flex-1 overflow-hidden bg-fuchsia-500/[0.03]">
                     {addToQueueSection}
                 </div>
             ) : queueListSection}

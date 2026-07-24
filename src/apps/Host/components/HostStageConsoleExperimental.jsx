@@ -251,6 +251,23 @@ export default function HostStageConsoleExperimental({
     const currentAudienceSelectedUnverified = isAudienceSelectedUnverifiedResolution(currentPerformance?.raw?.resolutionStatus);
     const attentionItems = runtimeModel?.attentionItems || [];
     const [supportView, setSupportView] = useState('collapsed');
+    const workspaceFocusActive = supportView === 'workspace' && !!workspacePanel;
+    const openQueueWorkspace = () => {
+        onOpenQueue?.();
+        setSupportView('workspace');
+    };
+    const openAddWorkspace = () => {
+        onOpenAdd?.();
+        setSupportView('workspace');
+    };
+    const openInboxWorkspace = () => {
+        onOpenInbox?.();
+        setSupportView('workspace');
+    };
+    const openPlannerWorkspace = () => {
+        onOpenPlanner?.();
+        setSupportView('workspace');
+    };
     const visibleRotationItems = (runtimeModel?.queuePreview || runtimeModel?.rotationFlow || []).slice(0, 3);
     const visibleShowBeatItems = (runtimeModel?.showBeatFlow || []).slice(0, 3);
     const primaryColor = String(brandTheme?.primaryColor || '#00C4D9').trim() || '#00C4D9';
@@ -371,25 +388,25 @@ export default function HostStageConsoleExperimental({
             id: 'queue',
             label: 'Queue',
             icon: 'fa-list-check',
-            onClick: () => onOpenQueue?.(),
+            onClick: openQueueWorkspace,
         },
         {
             id: 'add',
             label: 'Add',
             icon: 'fa-plus',
-            onClick: () => onOpenAdd?.(),
+            onClick: openAddWorkspace,
         },
         {
             id: 'inbox',
             label: 'Inbox',
             icon: 'fa-inbox',
-            onClick: () => onOpenInbox?.(),
+            onClick: openInboxWorkspace,
         },
         {
             id: 'planner',
             label: 'Planner',
             icon: 'fa-clapperboard',
-            onClick: () => onOpenPlanner?.(),
+            onClick: openPlannerWorkspace,
         },
         {
             id: 'scenes',
@@ -409,7 +426,7 @@ export default function HostStageConsoleExperimental({
                 data-host-runtime-brand-accent={brandTheme.accentColor}
             >
                 <section
-                    className="relative min-h-0 overflow-hidden rounded-[32px] border"
+                    className={`${workspaceFocusActive ? 'hidden' : 'relative min-h-0 overflow-hidden rounded-[32px] border'}`}
                     style={shellFrameStyle}
                 >
                     <div
@@ -486,9 +503,9 @@ export default function HostStageConsoleExperimental({
                                             <FlowRail
                                                 queueItems={visibleRotationItems}
                                                 beatItems={visibleShowBeatItems}
-                                                onOpenQueue={onOpenQueue}
-                                                onOpenAdd={onOpenAdd}
-                                                onOpenPlanner={onOpenPlanner}
+                                                onOpenQueue={openQueueWorkspace}
+                                                onOpenAdd={openAddWorkspace}
+                                                onOpenPlanner={openPlannerWorkspace}
                                                 onOpenSceneLibrary={onOpenSceneLibrary}
                                                 compact
                                             />
@@ -574,7 +591,7 @@ export default function HostStageConsoleExperimental({
                                                         <button
                                                             key={item.id}
                                                             type="button"
-                                                            onClick={onOpenInbox}
+                                                            onClick={openInboxWorkspace}
                                                             className={`w-full rounded-2xl border px-3 py-3 text-left transition ${toneClassByAttention[item.tone] || 'border-white/10 bg-black/20 text-white'}`}
                                                         >
                                                             <div className="text-sm font-semibold text-white">{item.title}</div>
@@ -678,15 +695,15 @@ export default function HostStageConsoleExperimental({
                                                     </>
                                                 ) : (
                                                     <div className="mt-3 grid gap-2">
-                                                        <button type="button" onClick={onOpenQueue} className={`${deckButtonClass} bg-black/25 text-zinc-100`} style={{ borderColor: withAudienceBrandAlpha(primaryColor, 0.2) }}>
+                                                        <button type="button" onClick={openQueueWorkspace} className={`${deckButtonClass} bg-black/25 text-zinc-100`} style={{ borderColor: withAudienceBrandAlpha(primaryColor, 0.2) }}>
                                                             <i className="fa-solid fa-list-check"></i>
                                                             Queue
                                                         </button>
-                                                        <button type="button" onClick={onOpenAdd} className={`${deckButtonClass} bg-black/25 text-zinc-100`} style={{ borderColor: withAudienceBrandAlpha(secondaryColor, 0.2) }}>
+                                                        <button type="button" onClick={openAddWorkspace} className={`${deckButtonClass} bg-black/25 text-zinc-100`} style={{ borderColor: withAudienceBrandAlpha(secondaryColor, 0.2) }}>
                                                             <i className="fa-solid fa-plus"></i>
                                                             Add Singer
                                                         </button>
-                                                        <button type="button" onClick={onOpenInbox} className={`${deckButtonClass} bg-black/25 text-zinc-100`} style={{ borderColor: withAudienceBrandAlpha(accentColor, 0.2) }}>
+                                                        <button type="button" onClick={openInboxWorkspace} className={`${deckButtonClass} bg-black/25 text-zinc-100`} style={{ borderColor: withAudienceBrandAlpha(accentColor, 0.2) }}>
                                                             <i className="fa-solid fa-inbox"></i>
                                                             Review Inbox
                                                         </button>
@@ -704,7 +721,7 @@ export default function HostStageConsoleExperimental({
                 </section>
 
                 <section
-                    className="min-h-0 overflow-hidden rounded-[22px] border"
+                    className={`${workspaceFocusActive ? 'flex flex-1 flex-col' : ''} min-h-0 overflow-hidden rounded-[22px] border`}
                     style={{
                         ...runtimeTheme.panelStyle,
                         backgroundImage: `linear-gradient(180deg, ${withAudienceBrandAlpha(primaryColor, 0.04)}, rgba(4,7,12,0.76))`,
@@ -712,7 +729,7 @@ export default function HostStageConsoleExperimental({
                     }}
                 >
                     <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
-                        <div className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: primaryColor }}>Support Lane</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.22em]" style={{ color: primaryColor }}>{workspaceFocusActive ? 'Host Workspace' : 'Support Lane'}</div>
                         <div className="flex flex-wrap gap-2">
                             <button
                                 type="button"
@@ -757,7 +774,7 @@ export default function HostStageConsoleExperimental({
                             Deeper queue, planner, inbox, and tools stay collapsed until you call for them.
                         </div>
                     ) : (
-                    <div className="min-h-0 overflow-hidden p-2.5">
+                    <div className={`${workspaceFocusActive ? 'flex min-h-0 flex-1 flex-col p-1.5' : 'min-h-0 overflow-hidden p-2.5'}`}>
                         {supportView === 'summary' ? (
                             <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1.18fr)_minmax(300px,0.82fr)]">
                                 <div
@@ -770,16 +787,16 @@ export default function HostStageConsoleExperimental({
                                     <div className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: primaryColor }}>Room Deck</div>
                                     <div className="mt-1 text-[12px] text-zinc-300">Use the deeper workspaces only when you need to leave the live lane.</div>
                                     <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                                        <button type="button" onClick={onOpenQueue} className={`${styles?.btnStd || ''} ${styles?.btnSecondary || ''} px-3 py-2 text-[11px]`}>
+                                        <button type="button" onClick={openQueueWorkspace} className={`${styles?.btnStd || ''} ${styles?.btnSecondary || ''} px-3 py-2 text-[11px]`}>
                                             Queue
                                         </button>
-                                        <button type="button" onClick={onOpenAdd} className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} px-3 py-2 text-[11px]`}>
+                                        <button type="button" onClick={openAddWorkspace} className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} px-3 py-2 text-[11px]`}>
                                             Add
                                         </button>
-                                        <button type="button" onClick={onOpenInbox} className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} px-3 py-2 text-[11px]`}>
+                                        <button type="button" onClick={openInboxWorkspace} className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} px-3 py-2 text-[11px]`}>
                                             Inbox
                                         </button>
-                                        <button type="button" onClick={onOpenPlanner} className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} px-3 py-2 text-[11px]`}>
+                                        <button type="button" onClick={openPlannerWorkspace} className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} px-3 py-2 text-[11px]`}>
                                             Planner
                                         </button>
                                     </div>
@@ -814,12 +831,8 @@ export default function HostStageConsoleExperimental({
                                 <HostCandidatePool items={runtimeModel?.candidatePool || []} groups={candidateGroups} brandTheme={brandTheme} />
                             </div>
                         ) : supportView === 'workspace' && workspacePanel ? (
-                            <div className="max-h-[46vh] min-h-0 overflow-hidden rounded-[22px] bg-black/18 p-2">
-                                <div className="mb-3 rounded-[20px] border px-4 py-3" style={{ borderColor: withAudienceBrandAlpha(primaryColor, 0.16) }}>
-                                    <div className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: primaryColor }}>Workspace</div>
-                                    <div className="mt-1 text-sm text-zinc-300">Deep queue, inbox, add, and planner surfaces stay here when you intentionally need them.</div>
-                                </div>
-                                <div className="h-full min-h-0 overflow-hidden rounded-[20px]">
+                            <div data-host-workspace-focus="true" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] bg-black/18">
+                                <div className="h-full min-h-0 flex-1 overflow-hidden rounded-[20px]">
                                     {workspacePanel}
                                 </div>
                             </div>

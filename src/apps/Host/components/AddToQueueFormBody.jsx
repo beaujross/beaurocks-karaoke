@@ -66,6 +66,14 @@ const ResultList = ({
                     usesAppleBacking: r.source === 'itunes',
                     variant: 'compact'
                 });
+                const activateResult = () => {
+                    if (isAdding) return;
+                    if (performanceActionsEnabled) {
+                        onQueueOnly?.(r);
+                        return;
+                    }
+                    handleResultClick(r, idx);
+                };
                 const thumbnailSourceLabel = r.source === 'itunes'
                     ? 'Apple'
                     : r.source === 'youtube'
@@ -76,24 +84,26 @@ const ResultList = ({
                     <div
                         key={rowKey}
                         data-feature-id="performance-result-row"
-                        onClick={() => {
-                            if (isAdding) return;
-                            if (performanceActionsEnabled) {
-                                onQueueOnly?.(r);
-                                return;
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${isAdding ? 'Adding' : performanceActionsEnabled ? 'Add' : 'Select'} ${r.catalogDisplayTitle || r.trackName || 'result'}`}
+                        onClick={activateResult}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                activateResult();
                             }
-                            handleResultClick(r, idx);
                         }}
-                        className={`host-autocomplete-result-row group ${compactRows ? 'mb-1.5 rounded-xl p-2' : 'mb-2 rounded-[1.15rem] p-2.5'} ${isAdding ? 'cursor-wait opacity-70' : 'cursor-pointer'} border border-white/10 bg-[linear-gradient(180deg,rgba(25,16,44,0.98),rgba(16,10,34,0.95))] shadow-[0_10px_24px_rgba(0,0,0,0.2)] transition hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(35,22,58,0.98),rgba(18,12,38,0.98))]`}
+                        className={`host-autocomplete-result-row group ${compactRows ? 'mb-1 rounded-lg px-2 py-1.5' : 'mb-2 rounded-[1.15rem] p-2.5'} ${isAdding ? 'cursor-wait opacity-70' : 'cursor-pointer'} border border-white/10 bg-[linear-gradient(180deg,rgba(25,16,44,0.98),rgba(16,10,34,0.95))] shadow-[0_10px_24px_rgba(0,0,0,0.2)] transition hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(35,22,58,0.98),rgba(18,12,38,0.98))] focus-visible:border-cyan-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/25`}
                     >
-                        <div className={`grid gap-2 ${compactRows ? 'grid-cols-[56px_minmax(0,1fr)] md:grid-cols-[64px_minmax(0,1fr)]' : 'grid-cols-[64px_minmax(0,1fr)] md:grid-cols-[76px_minmax(0,1fr)]'}`}>
+                        <div className={`grid gap-2 ${compactRows ? 'grid-cols-[48px_minmax(0,1fr)]' : 'grid-cols-[64px_minmax(0,1fr)] md:grid-cols-[76px_minmax(0,1fr)]'}`}>
                             <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/40">
                                 {r.source === 'local' ? (
-                                    <div className={`${compactRows ? 'h-14 md:h-16' : 'h-16 md:h-[76px]'} flex w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.28),transparent_55%),linear-gradient(180deg,rgba(12,17,31,1),rgba(8,12,24,1))]`}>
+                                    <div className={`${compactRows ? 'h-12' : 'h-16 md:h-[76px]'} flex w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.28),transparent_55%),linear-gradient(180deg,rgba(12,17,31,1),rgba(8,12,24,1))]`}>
                                         <i className="fa-solid fa-hard-drive text-xl text-[#00C4D9]"></i>
                                     </div>
                                 ) : (
-                                    <img src={r.catalogArtworkUrl || r.artworkUrl100} className={`${compactRows ? 'h-14 md:h-16' : 'h-16 md:h-[76px]'} w-full object-cover`} alt="" />
+                                    <img src={r.catalogArtworkUrl || r.artworkUrl100} className={`${compactRows ? 'h-12' : 'h-16 md:h-[76px]'} w-full object-cover`} alt="" />
                                 )}
                                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent px-1.5 py-1.5">
                                     <div className="flex items-center justify-between gap-1 text-[8px] font-black uppercase tracking-[0.14em] text-white">
@@ -112,7 +122,7 @@ const ResultList = ({
                                         {isAdding ? 'Adding...' : performanceActionsEnabled ? 'Add' : 'Select'}
                                     </div>
                                 </div>
-                                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                <div className={`${compactRows ? 'mt-1 flex max-h-[18px] flex-nowrap gap-1 overflow-hidden' : 'mt-1.5 flex flex-wrap gap-1.5'}`}>
                                     {r.catalogCapabilityLabel ? (
                                         <span title={r.catalogCapabilityDetail || ''} className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${r.catalogCapabilityTone === 'ready' ? 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100' : r.catalogCapabilityTone === 'apple' ? 'border-pink-300/40 bg-pink-500/10 text-pink-100' : r.catalogCapabilityTone === 'external' ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : r.catalogCapabilityTone === 'local' ? 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100' : 'border-violet-300/30 bg-violet-500/10 text-violet-100'}`}>
                                             {r.catalogCapabilityLabel}
@@ -448,6 +458,8 @@ const AddToQueueFormBody = ({
     const [performerPickerOpen, setPerformerPickerOpen] = React.useState(false);
     const [gameAssignmentModes, setGameAssignmentModes] = React.useState({});
     const [gameSelectedPerformerByPack, setGameSelectedPerformerByPack] = React.useState({});
+    const [searchOptionsOpen, setSearchOptionsOpen] = React.useState(false);
+    const [momentTypeMenuOpen, setMomentTypeMenuOpen] = React.useState(false);
 
     React.useEffect(() => {
         if (!dockResults) {
@@ -667,7 +679,7 @@ const AddToQueueFormBody = ({
                 role="tablist"
                 aria-label="Build a Moment types"
                 data-feature-id="host-moment-type-tabs"
-                className="mb-2 flex min-h-[46px] shrink-0 items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/22 p-1 custom-scrollbar"
+                className={`${dockResults && performanceMode && !momentTypeMenuOpen ? 'hidden' : 'mb-2 flex'} min-h-[46px] shrink-0 items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/22 p-1 custom-scrollbar`}
             >
                 {momentTypes.map((entry) => {
                     const active = entry.id === activeMomentType;
@@ -677,7 +689,12 @@ const AddToQueueFormBody = ({
                             type="button"
                             role="tab"
                             aria-selected={active}
-                            onClick={() => setActiveMomentType(entry.id)}
+                            onClick={() => {
+                                setActiveMomentType(entry.id);
+                                if (dockResults && entry.id === 'performance') {
+                                    setMomentTypeMenuOpen(false);
+                                }
+                            }}
                             className={`inline-flex min-h-[38px] min-w-max items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] transition ${
                                 active
                                     ? 'bg-cyan-400 text-zinc-950 shadow-[0_10px_24px_rgba(34,211,238,0.22)]'
@@ -800,7 +817,7 @@ const AddToQueueFormBody = ({
             ) : (
                 <div className={`host-autocomplete-shell relative z-30 w-full min-w-0 ${dockResults ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
                     <div className={`host-autocomplete-field-wrap w-full min-w-0 rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 ${dockResults ? 'sticky top-0 z-20 shrink-0 py-1.5' : 'py-2'}`}>
-                        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.62fr)]">
+                        <div className={`grid gap-2 ${dockResults ? 'md:grid-cols-[minmax(0,1fr)_minmax(11rem,0.52fr)_auto]' : 'md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.62fr)]'}`}>
                             <div className="relative">
                                 <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
                                 <input
@@ -813,7 +830,33 @@ const AddToQueueFormBody = ({
                             <div className="min-w-0">
                                 {performerSelect}
                             </div>
-                            <div className="md:col-span-2">
+                            {dockResults ? (
+                                <div className="flex min-w-max items-center justify-end gap-1.5">
+                                    <button
+                                        type="button"
+                                        data-feature-id="host-performance-search-tools"
+                                        aria-expanded={searchOptionsOpen}
+                                        onClick={() => setSearchOptionsOpen((value) => !value)}
+                                        className="inline-flex min-h-[38px] items-center justify-center gap-1.5 rounded-xl border border-white/12 bg-white/6 px-2.5 text-[10px] font-black uppercase tracking-[0.1em] text-zinc-200 transition hover:border-cyan-300/30 hover:text-cyan-100"
+                                        title="Source, filters, full search, and manual entry"
+                                    >
+                                        <i className="fa-solid fa-sliders"></i>
+                                        {autocompleteProvider === 'youtube' ? 'YouTube' : 'Apple'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-feature-id="host-add-other-moment"
+                                        aria-expanded={momentTypeMenuOpen}
+                                        onClick={() => setMomentTypeMenuOpen((value) => !value)}
+                                        className="inline-flex min-h-[38px] items-center justify-center gap-1.5 rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-2.5 text-[10px] font-black uppercase tracking-[0.1em] text-fuchsia-100 transition hover:border-fuchsia-300/35"
+                                        title="Add a game, TV scene, announcement, or sponsor moment"
+                                    >
+                                        <i className="fa-solid fa-shapes"></i>
+                                        Other
+                                    </button>
+                                </div>
+                            ) : null}
+                            <div className={`${dockResults ? (searchOptionsOpen ? 'md:col-span-3' : 'hidden') : 'md:col-span-2'}`}>
                                 <div className="grid min-w-0 gap-2 rounded-xl border border-white/10 bg-black/25 p-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-end">
                                     <div className="min-w-0">
                                         <div className="mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Backing source</div>
@@ -888,11 +931,11 @@ const AddToQueueFormBody = ({
                             </div>
                         </div>
                         {queueSearchSourceNote ? (
-                            <div className="mt-2 rounded px-2 py-1 text-[11px] text-cyan-200 border border-cyan-400/25 bg-cyan-500/10">
+                            <div className={`${dockResults && !searchOptionsOpen ? 'hidden' : 'mt-2'} rounded border border-cyan-400/25 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-200`}>
                                 {queueSearchSourceNote}
                             </div>
                         ) : null}
-                        <div className="mt-2 flex justify-end">
+                        <div className={`${dockResults && !searchOptionsOpen ? 'hidden' : 'mt-2 flex'} justify-end`}>
                             <button
                                 type="button"
                                 onClick={() => setManualEntryOpen((value) => !value)}
@@ -901,7 +944,7 @@ const AddToQueueFormBody = ({
                                 {manualEntryOpen ? 'Hide Manual Entry' : 'Manual Entry'}
                             </button>
                         </div>
-                        {manualEntryOpen ? (
+                        {manualEntryOpen && (!dockResults || searchOptionsOpen) ? (
                             <div className="mt-2 border-t border-white/10 pt-2">
                                 <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">Manual</div>
                                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
