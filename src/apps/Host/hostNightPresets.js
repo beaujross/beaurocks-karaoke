@@ -56,6 +56,22 @@ const normalizeGameDefaults = (value = {}, fallback = {}) => ({
     bingoAutoApprovePct: clampNumber(value?.bingoAutoApprovePct ?? fallback?.bingoAutoApprovePct ?? 50, 10, 100, 50),
 });
 
+const normalizePresetRecipe = (value = {}, fallback = {}) => {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : fallback;
+    if (!source || typeof source !== 'object' || Array.isArray(source) || Object.keys(source).length === 0) return null;
+    return {
+        flowRule: String(source.flowRule || 'balanced').trim() || 'balanced',
+        assistLevel: String(source.assistLevel || 'smart_assist').trim() || 'smart_assist',
+        spotlightMode: String(source.spotlightMode || 'karaoke').trim() || 'karaoke',
+        overrides: source.overrides && typeof source.overrides === 'object' && !Array.isArray(source.overrides)
+            ? { ...source.overrides }
+            : {},
+        party: source.party && typeof source.party === 'object' && !Array.isArray(source.party)
+            ? { ...source.party }
+            : {},
+    };
+};
+
 const normalizeAudienceShellVariant = (value = '', fallback = '') => {
     const token = String(value || fallback || '').trim().toLowerCase();
     return token === 'classic' ? 'classic' : 'streamlined';
@@ -382,6 +398,7 @@ export const normalizeHostNightPresetRecord = (input = {}, fallbackPreset = BUIL
         brandingOrbSkinUrl: String(input?.brandingOrbSkinUrl || seed?.brandingOrbSkinUrl || '').trim() || '',
         searchSources: normalizeSearchSources(input?.searchSources || {}, seed?.searchSources || {}),
         settings: normalizePresetSettings(input?.settings || {}, seed?.settings || {}),
+        recipe: normalizePresetRecipe(input?.recipe || {}, seed?.recipe || {}),
         autoStartApplePlaylist: input?.autoStartApplePlaylist !== undefined
             ? !!input.autoStartApplePlaylist
             : !!seed?.autoStartApplePlaylist,
@@ -398,6 +415,7 @@ export const createHostNightPresetDraft = (presetInput = BUILTIN_HOST_NIGHT_PRES
         basePresetId: preset.basePresetId || preset.id || 'casual',
         isBuiltIn: !!preset.isBuiltIn,
         searchSources: { ...(preset.searchSources || {}) },
+        recipe: preset.recipe ? normalizePresetRecipe(preset.recipe) : null,
         settings: {
             ...(preset.settings || {}),
             audienceFeatureAccess: normalizeAudienceFeatureAccess(preset?.settings?.audienceFeatureAccess || {}),
@@ -419,6 +437,7 @@ export const buildHostNightPresetConfig = (presetInput = BUILTIN_HOST_NIGHT_PRES
         isBuiltIn: !!preset.isBuiltIn,
         searchSources: normalizeSearchSources(preset.searchSources || {}, preset.searchSources || {}),
         settings: normalizePresetSettings(preset.settings || {}, preset.settings || {}),
+        recipe: preset.recipe ? normalizePresetRecipe(preset.recipe) : null,
         audienceBrandTheme: buildAudienceThemeFromPreset(preset),
         brandingLogoUrl: String(preset?.brandingLogoUrl || '').trim() || null,
         brandingOrbSkinUrl: String(preset?.brandingOrbSkinUrl || '').trim() || null,

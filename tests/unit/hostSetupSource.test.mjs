@@ -31,14 +31,16 @@ test('mission setup keeps preset selection compact and applies full preset packa
 
   assert.match(
     primaryPicksSource,
-    /Selected room package/,
-    'Night setup should show one selected room package instead of a full wall of presets',
+    /Night recipes/,
+    'Night setup should present one consolidated recipe decision',
   );
   assert.match(
     primaryPicksSource,
-    /Change room package/,
-    'Night setup should tuck alternate room packages behind a disclosure',
+    /data-room-recipe-card=\{recipe\.id\}/,
+    'Night setup should show recipe cards with the affected settings at a glance',
   );
+  assert.match(primaryPicksSource, /Save current recipe/);
+  assert.doesNotMatch(primaryPicksSource, /Event Shortcut|Pick the queue pace|Change room package/);
   assert.match(
     nightSetupFlowSource,
     /hostNightPresetConfig: selectedPresetConfig/,
@@ -63,7 +65,7 @@ test('mission setup exposes an autopilot plan instead of a third stacked assist 
   const headerSource = readFileSync(missionSetupHeaderPath, 'utf8');
 
   assert.match(headerSource, /Room Readiness/);
-  assert.match(headerSource, /Then Launch Room\./);
+  assert.match(headerSource, /Pick a starting plan, review what changes, then launch\./);
 
   assert.match(
     autopilotPreviewSource,
@@ -72,7 +74,7 @@ test('mission setup exposes an autopilot plan instead of a third stacked assist 
   );
   assert.match(
     autopilotPreviewSource,
-    /Dead-Air Picks/,
+    /If the queue runs dry/,
     'Guided setup should preview known-good dead-air filler songs',
   );
   assert.match(
@@ -538,13 +540,13 @@ test('room setup shells stay top-aligned and scrollable on short viewports', () 
   );
   assert.match(
     missionSetupShellSource,
-    /fixed inset-0 z-\[92\] overflow-y-auto overscroll-y-contain[\s\S]*?pt-\[calc\(env\(safe-area-inset-top\)\+0\.75rem\)\]/,
-    'Guided setup shell should reserve safe-area top padding and remain scrollable.',
+    /fixed inset-0 z-\[92\] overflow-y-auto overscroll-y-contain[\s\S]*?pt-\[calc\(env\(safe-area-inset-top\)\+0\.35rem\)\]/,
+    'Guided setup shell should keep compact safe-area padding and remain scrollable.',
   );
   assert.match(
     missionSetupShellSource,
-    /mx-auto flex min-h-full w-full max-w-6xl items-start/,
-    'Guided setup shell should top-align its panel on short screens.',
+    /mx-auto flex min-h-full w-full max-w-7xl items-start/,
+    'Guided setup shell should top-align its wider recipe panel on short screens.',
   );
 });
 

@@ -7,15 +7,15 @@ const MissionSetupHeader = ({
     onSkip = () => {},
     applying = false
 }) => (
-    <div className="px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-                <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Room Readiness</div>
-                <div className="text-2xl md:text-3xl font-black text-white mt-1">Set up tonight&apos;s room</div>
-                <div className="text-sm text-zinc-400 mt-1">Review room control, guest entry, queue, and automation. Then Launch Room.</div>
+    <div className="border-b border-white/10 px-4 py-3 md:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200/70">Room Readiness</div>
+                <div className="mt-0.5 text-xl font-black text-white md:text-2xl">Choose tonight&apos;s recipe</div>
+                <div className="mt-0.5 text-xs text-zinc-400">Pick a starting plan, review what changes, then launch.</div>
             </div>
             <div className="flex items-center gap-2">
-                <span className={`text-[10px] uppercase tracking-[0.24em] px-2 py-1 rounded-full border ${statusClass}`}>
+                <span className={`rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.2em] ${statusClass}`}>
                     {statusLabel}
                 </span>
                 <button

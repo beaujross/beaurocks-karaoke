@@ -8,15 +8,15 @@ const MissionSetupShell = ({
     sideContent = null,
     footer = null
 }) => (
-    <div className="fixed inset-0 z-[92] overflow-y-auto overscroll-y-contain p-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-[calc(env(safe-area-inset-bottom)+6.5rem)] md:p-6" style={{ background: OVERLAY_BG }}>
-        <div className="mx-auto flex min-h-full w-full max-w-6xl items-start pb-28">
+    <div className="fixed inset-0 z-[92] overflow-y-auto overscroll-y-contain p-2 pt-[calc(env(safe-area-inset-top)+0.35rem)] pb-[calc(env(safe-area-inset-bottom)+6rem)] md:p-3" style={{ background: OVERLAY_BG }}>
+        <div className="mx-auto flex min-h-full w-full max-w-7xl items-start pb-24">
             <div className="w-full overflow-hidden rounded-3xl border border-white/15 bg-zinc-950/94 shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
                 {header}
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-                    <div className="space-y-4 px-4 py-4 md:px-6 md:py-5">
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.25fr)_minmax(280px,0.75fr)]">
+                    <div className="space-y-3 px-3 py-3 md:px-4 md:py-4">
                         {primaryContent}
                     </div>
-                    <aside className="border-t border-white/10 bg-zinc-950/75 px-4 py-4 md:px-5 md:py-5 lg:border-l lg:border-t-0">
+                    <aside className="border-t border-white/10 bg-zinc-950/75 px-3 py-3 md:px-4 md:py-4 xl:border-l xl:border-t-0">
                         {sideContent}
                     </aside>
                 </div>

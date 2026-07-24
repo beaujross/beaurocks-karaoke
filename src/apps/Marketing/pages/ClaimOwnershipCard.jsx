@@ -89,11 +89,11 @@ const ClaimOwnershipCard = ({
   if (!canSubmit) {
     return (
       <aside className="mk3-actions-card">
-        <h4>{isModernized ? "Claim This Listing" : "Claim + Upgrade This Listing"}</h4>
+        <h4>Claim This Listing</h4>
         <p>
           {isModernized
-            ? "Create your BeauRocks account to submit ownership claims and unlock publish privileges."
-            : "Create your BeauRocks account to claim this listing and add live join, audience interaction, and recap-powered proof."}
+            ? "Create a BeauRocks account to request access to this listing."
+            : "Create a BeauRocks account to update this listing and connect a live karaoke room."}
         </p>
         <button
           type="button"
@@ -115,16 +115,16 @@ const ClaimOwnershipCard = ({
 
   return (
     <aside className="mk3-actions-card">
-      <h4>{isModernized ? "Claim This Listing" : "Claim + Upgrade This Listing"}</h4>
+      <h4>Claim This Listing</h4>
       <p>
         {isModernized
-          ? "Verified owners and hosts can update listing details faster."
-          : "Claim this listing to modernize the night with live join, audience app moments, smoother host flow, and recap-ready proof."}
+          ? "Verified owners and hosts can update the venue and schedule."
+          : "Claim this listing to update its details and connect a live BeauRocks room."}
       </p>
       {!isModernized && (
         <div className="mk3-status">
-          <strong>Upgrade with BeauRocks</strong>
-          <span>Show guests a more modern karaoke experience directly inside discovery.</span>
+          <strong>Connect a Live Room</strong>
+          <span>Let guests join from the listing when karaoke is live.</span>
         </div>
       )}
       <label>
@@ -144,7 +144,7 @@ const ClaimOwnershipCard = ({
         />
       </label>
       <button type="button" disabled={busy} onClick={submitClaim}>
-        {busy ? "Submitting..." : isModernized ? "Submit Claim Request" : "Submit Claim + Upgrade Request"}
+        {busy ? "Submitting..." : "Submit Claim Request"}
       </button>
       {status && <div className="mk3-status">{status}</div>}
       {!!nextStep && (

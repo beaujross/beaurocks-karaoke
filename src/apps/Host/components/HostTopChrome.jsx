@@ -1466,50 +1466,56 @@ const HostTopChrome = ({
                         <i className="fa-solid fa-bars"></i>
                     </button>
                     {showNavMenu && (
-                        <div className="absolute right-0 top-full mt-2 w-44 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-[100]">
-                            {typeof onOpenHostDashboard === 'function' && (
-                                <button
-                                    onClick={() => {
-                                        closeAllTopMenus();
-                                        onOpenHostDashboard();
-                                    }}
-                                    type="button"
-                                    className="w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest text-zinc-300 hover:bg-zinc-900 rounded-t-xl"
-                                >
-                                    Room Manager
-                                </button>
-                            )}
-                            {[
-                                { key: 'stage', label: 'Queue' },
-                                { key: 'run_of_show', label: 'Show' },
-                                { key: 'games', label: 'Games' },
-                                { key: 'lobby', label: 'Audience' },
-                                { key: 'admin', label: 'Admin' }
-                            ].map(t => (
-                                <button
-                                    key={t.key}
-                                    type="button"
-                                    data-host-tab={t.key}
-                                    onClick={() => {
-                                        closeAllTopMenus();
-                                        if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
-                                            openAdminWorkspace('ops.room_setup');
-                                            return;
-                                        }
-                                        setTab(t.key);
-                                    }}
-                                    className={`w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest ${tab === t.key ? 'text-[#00C4D9]' : 'text-zinc-300'} hover:bg-zinc-900 ${
-                                        t.key === 'stage' && typeof onOpenHostDashboard !== 'function' ? 'rounded-t-xl' : ''
-                                    } ${t.key === 'admin' ? 'rounded-b-xl' : ''}`}
-                                >
-                                    <span>{t.label}</span>
-                                    {t.key === 'stage' && queueAttentionVisible ? (
-                                        <span className={`ml-2 inline-flex min-w-[20px] items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-black tracking-normal ${queueAttentionBadgeClass}`}>
-                                            {normalizedQueueAttentionCount}
-                                        </span>
-                                    ) : null}
-                                </button>
-                            ))}
+                        <div className="absolute right-0 top-full z-[100] mt-2 w-[min(20rem,calc(100vw-1rem))] rounded-2xl border border-zinc-700 bg-zinc-950 p-2 shadow-2xl" data-feature-id="host-quick-nav-menu">
+                            <div className="px-2 pb-2 pt-1">
+                                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">Quick navigation</div>
+                                <div className="mt-0.5 text-[11px] leading-4 text-zinc-500">Primary destinations for running the Room.</div>
+                            </div>
+                            <div className="grid gap-1">
+                                {typeof onOpenHostDashboard === 'function' && (
+                                    <button
+                                        onClick={() => {
+                                            closeAllTopMenus();
+                                            onOpenHostDashboard();
+                                        }}
+                                        type="button"
+                                        className="flex min-h-[58px] w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-zinc-200 transition hover:bg-zinc-900 hover:text-white"
+                                    >
+                                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-400"><i className="fa-solid fa-table-columns" aria-hidden="true"></i></span>
+                                        <span><span className="block text-[15px] font-black leading-5">Room Manager</span><span className="block text-[11px] font-medium leading-4 text-zinc-500">Switch or create Rooms</span></span>
+                                    </button>
+                                )}
+                                {[
+                                    { key: 'stage', label: 'Queue', description: 'Run singers and song order', icon: 'fa-list-ol' },
+                                    { key: 'run_of_show', label: 'Show', description: 'Plan moments between songs', icon: 'fa-clapperboard' },
+                                    { key: 'games', label: 'Games', description: 'Launch crowd activities', icon: 'fa-gamepad' },
+                                    { key: 'lobby', label: 'Audience', description: 'See and manage the crowd', icon: 'fa-users' },
+                                    { key: 'admin', label: 'Admin', description: 'Room setup and controls', icon: 'fa-sliders' }
+                                ].map((t) => (
+                                    <button
+                                        key={t.key}
+                                        type="button"
+                                        data-host-tab={t.key}
+                                        onClick={() => {
+                                            closeAllTopMenus();
+                                            if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
+                                                openAdminWorkspace('ops.room_setup');
+                                                return;
+                                            }
+                                            setTab(t.key);
+                                        }}
+                                        className={`flex min-h-[58px] w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-zinc-900 ${tab === t.key ? 'bg-cyan-500/10 text-cyan-100' : 'text-zinc-200 hover:text-white'}`}
+                                    >
+                                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${tab === t.key ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-200' : 'border-zinc-700 bg-zinc-900 text-zinc-500'}`}><i className={`fa-solid ${t.icon}`} aria-hidden="true"></i></span>
+                                        <span className="min-w-0 flex-1"><span className="block text-[15px] font-black leading-5">{t.label}</span><span className="block text-[11px] font-medium leading-4 text-zinc-500">{t.description}</span></span>
+                                        {t.key === 'stage' && queueAttentionVisible ? (
+                                            <span className={`inline-flex min-w-[24px] items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-black tracking-normal ${queueAttentionBadgeClass}`}>
+                                                {normalizedQueueAttentionCount}
+                                            </span>
+                                        ) : null}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>

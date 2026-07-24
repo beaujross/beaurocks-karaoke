@@ -260,7 +260,7 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
             <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <div className="text-2xl font-semibold text-white">This room has a finished recap</div>
-                <div className="mt-1 max-w-2xl text-sm text-zinc-300">Share the event summary, review the room energy, and use the public recap as proof of how the night actually played.</div>
+                <div className="mt-1 max-w-2xl text-sm text-zinc-300">See what happened, who performed, and how the room scored the night.</div>
               </div>
               {recapUrl ? (
                 <a
@@ -356,7 +356,7 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
               <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <div className="text-2xl font-semibold text-white">Apply For A Slot</div>
-                  <div className="mt-1 max-w-2xl text-sm text-zinc-300">Submit the song you want considered for an open block. Nothing is booked instantly in v1. The host reviews and approves performers into the timeline.</div>
+                  <div className="mt-1 max-w-2xl text-sm text-zinc-300">Send a song for an open performance slot. The host reviews every request before adding it to the schedule.</div>
                 </div>
                 <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-zinc-200">
                   {openSubmissionItems.length} accepting submissions

@@ -126,11 +126,14 @@ export const buildMissionDraftFromRoom = (room = {}, options = {}) => {
     }
 
     const preset = String(room?.hostNightPreset || DEFAULT_ARCHETYPE).trim() || DEFAULT_ARCHETYPE;
+    const savedRecipe = room?.hostNightPresetConfig?.recipe && typeof room.hostNightPresetConfig.recipe === 'object'
+        ? room.hostNightPresetConfig.recipe
+        : {};
     return {
         archetype: preset,
-        flowRule: inferFlowRuleFromQueue(room?.queueSettings, flowRules),
-        spotlightMode: resolveSpotlightMode(room, options?.primaryModes),
-        assistLevel: DEFAULT_ASSIST_LEVEL
+        flowRule: String(savedRecipe.flowRule || inferFlowRuleFromQueue(room?.queueSettings, flowRules)).trim() || 'balanced',
+        spotlightMode: String(savedRecipe.spotlightMode || resolveSpotlightMode(room, options?.primaryModes)).trim() || 'karaoke',
+        assistLevel: String(savedRecipe.assistLevel || DEFAULT_ASSIST_LEVEL).trim() || DEFAULT_ASSIST_LEVEL
     };
 };
 
@@ -276,7 +279,11 @@ export const getRecommendedHostAction = ({
 };
 
 export const buildMissionPartyFromRoom = (room = {}) =>
-    normalizeMissionParty(room?.missionControl?.party || {});
+    normalizeMissionParty(
+        room?.missionControl?.party
+        || room?.hostNightPresetConfig?.recipe?.party
+        || {}
+    );
 
 export const buildMissionPartyPayload = (party = {}) =>
     normalizeMissionParty(party || {});

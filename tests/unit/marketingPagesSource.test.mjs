@@ -17,11 +17,26 @@ describe("marketing page source", () => {
     expect(source).not.toContain('trackPersonaCta("hero_waitlist")');
   });
 
-  it("reduces repeated reviewed-access framing on the host waitlist hero", () => {
+  it("keeps the host waitlist hero direct and party-focused", () => {
     const source = readSource("src/apps/Marketing/pages/ForHostsPage.jsx");
-    expect(source).toContain("Apply once, then come back to the same");
-    expect(source).toContain("<span>Apply once</span>");
-    expect(source).toContain("<b>Same account opens the dashboard</b>");
+    expect(source).toContain("Host karaoke your way.");
+    expect(source).toContain("Run the queue, TV, and guest phones");
+    expect(source).toContain("<b>Join the waitlist</b>");
+  });
+
+  it("keeps public persona copy free of internal strategy language", () => {
+    const sources = [
+      "src/apps/Marketing/pages/ForFansPage.jsx",
+      "src/apps/Marketing/pages/ForHostsPage.jsx",
+      "src/apps/Marketing/pages/ForPerformersPage.jsx",
+      "src/apps/Marketing/pages/ForVenuesPage.jsx",
+      "src/apps/Marketing/emptyStateOrchestrator.js",
+      "src/apps/Marketing/lib/directoryExperience.js",
+      "src/apps/Marketing/components/DemoProductShells.jsx",
+    ].map(readSource).join("\n");
+    expect(sources).not.toMatch(
+      /operating surface|shared-night system|qualified performances|room signal|persona pages|persona paths|conversion-friendly|recap(?:-powered)? proof|product-faithful walkthrough|signals a more modern|which surface runs/i
+    );
   });
 
   it("documents both BeauRocks-hosted and independent map listing paths", () => {
@@ -29,8 +44,8 @@ describe("marketing page source", () => {
     const discoverSource = readSource("src/apps/Marketing/pages/DiscoverPage.jsx");
     const submissionSource = readSource("src/apps/Marketing/pages/ListingSubmissionPage.jsx");
     expect(venueSource).toContain("Two ways to get on the map");
-    expect(venueSource).toContain("Publish the room from Host setup");
-    expect(venueSource).toContain("Submit a venue or recurring night");
+    expect(venueSource).toContain("Publish a public room");
+    expect(venueSource).toContain("List an existing night");
     expect(discoverSource).toContain("List Your Karaoke Night");
     expect(submissionSource).toContain("Add a venue or recurring night to the public map");
     expect(submissionSource).toContain("Venue Timezone");

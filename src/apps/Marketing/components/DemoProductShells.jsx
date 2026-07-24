@@ -486,7 +486,7 @@ const AudienceTriviaCard = ({ activeScene, activeActionIndex }) => (
       <div className="text-[11px] uppercase tracking-[0.3em] text-cyan-200">Pop-up Trivia</div>
       <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">Vote live</div>
     </div>
-    <div className="mt-3 text-lg font-black text-white">Which surface runs the night best?</div>
+    <div className="mt-3 text-lg font-black text-white">Which screen keeps the night moving?</div>
     <div className="mt-3 space-y-2">
       {activeScene.audience.actions.map((option, index) => (
         <div

@@ -1,140 +1,106 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import {
+    buildRoomSetupRecipeCards,
+    isRoomSetupRecipeSelected,
+} from '../../roomSetupRecipes';
 
 const MissionSetupPrimaryPicks = ({
-    eventProfiles = [],
-    activeEventProfileId = '',
-    onApplyEventProfile = () => {},
     presets = [],
-    presetMeta = {},
     selectedArchetype = '',
-    onSelectArchetype = () => {},
-    flowRules = [],
     selectedFlowRule = '',
-    onSelectFlowRule = () => {}
+    selectedAssistLevel = '',
+    selectedSpotlightMode = 'karaoke',
+    onApplyRecipe = () => {},
+    onSaveRecipe = () => {},
 }) => {
-    const selectedPreset = presets.find((preset) => preset.id === selectedArchetype) || presets[0] || null;
-    const otherPresets = presets.filter((preset) => preset.id !== selectedPreset?.id);
-    const selectedPresetMeta = presetMeta[selectedPreset?.id] || presetMeta.casual || { icon: 'fa-star', accent: 'from-cyan-500/30 via-sky-500/10 to-transparent' };
+    const recipes = useMemo(
+        () => buildRoomSetupRecipeCards({ presets }),
+        [presets],
+    );
+    const savedRecipeCount = recipes.filter((recipe) => recipe.isSaved).length;
+    const selection = {
+        archetype: selectedArchetype,
+        flowRule: selectedFlowRule,
+        assistLevel: selectedAssistLevel,
+        spotlightMode: selectedSpotlightMode,
+    };
 
     return (
-    <>
-        {eventProfiles.length > 0 && (
-            <div className="rounded-2xl border border-fuchsia-500/25 bg-fuchsia-500/8 p-4">
-                <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-200">Event Shortcut</div>
-                <div className="text-xl font-bold text-white mt-1">Load a named room package</div>
-                <div className="text-sm text-zinc-200 mt-1">Use this when the room already has a known format and branding stack.</div>
-                <div className="grid grid-cols-1 gap-3 mt-3">
-                    {eventProfiles.map((profile) => {
-                        const active = activeEventProfileId === profile.id;
-                        const highlights = Array.isArray(profile.setupHighlights)
-                            ? profile.setupHighlights.filter(Boolean).slice(0, 3)
-                            : [];
-                        return (
-                            <button
-                                key={`mission-event-profile-${profile.id}`}
-                                onClick={() => onApplyEventProfile(profile.id)}
-                                className={`text-left rounded-2xl border px-4 py-4 transition-all ${active ? 'border-fuchsia-300/60 bg-fuchsia-500/15 shadow-[0_0_0_1px_rgba(232,121,249,0.35)]' : 'border-zinc-700 bg-zinc-950/60 hover:border-fuchsia-400/40'}`}
-                            >
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                    <div>
-                                        <div className="text-lg font-bold text-white">{profile.label}</div>
-                                        <div className="text-sm text-zinc-300 mt-1">{profile.description}</div>
-                                    </div>
-                                    <span className={`text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border ${active ? 'border-fuchsia-300/40 bg-fuchsia-500/20 text-fuchsia-100' : 'border-zinc-600 bg-zinc-900/70 text-zinc-300'}`}>
-                                        {active ? 'Applied' : 'Apply'}
-                                    </span>
-                                </div>
-                                {highlights.length > 0 && (
-                                    <div className="flex flex-wrap gap-2 mt-3">
-                                        {highlights.map((highlight) => (
-                                            <span
-                                                key={`${profile.id}-${highlight}`}
-                                                className="rounded-full border border-fuchsia-300/20 bg-fuchsia-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-fuchsia-100"
-                                            >
-                                                {highlight}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                            </button>
-                        );
-                    })}
+        <section
+            className="rounded-2xl border border-cyan-300/25 bg-zinc-950/80 p-3 md:p-4"
+            data-room-setup-recipes="true"
+        >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Night recipes</div>
+                    <div className="mt-1 text-xl font-black text-white">Pick the night you want</div>
+                    <div className="mt-1 text-sm text-zinc-400">Each card sets the queue, host help, scoring, media, and between-song plan together.</div>
                 </div>
+                <button
+                    type="button"
+                    onClick={onSaveRecipe}
+                    className="inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-50 transition hover:border-fuchsia-200/50 hover:bg-fuchsia-500/16"
+                >
+                    <i className="fa-solid fa-bookmark" />
+                    Save current recipe
+                </button>
             </div>
-        )}
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Step 1</div>
-            <div className="text-xl font-bold text-white mt-1">Pick the kind of night</div>
-            <div className="text-sm text-zinc-400 mt-1">Use the selected package, or change it only when this room needs a different format.</div>
-            {selectedPreset && (
-                <div className="relative mt-3 overflow-hidden rounded-2xl border border-[#00C4D9]/60 bg-zinc-950/70 shadow-[0_0_0_1px_rgba(0,196,217,0.35)]">
-                    <div className={`absolute inset-0 bg-gradient-to-br ${selectedPresetMeta.accent}`}></div>
-                    <div className="relative px-4 py-4">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/80">Selected room package</div>
-                                <div className="mt-1 text-xl font-black text-white">{selectedPreset.label}</div>
-                                <div className="mt-1 text-sm text-zinc-200">{selectedPreset.description}</div>
-                            </div>
-                            <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-300/30 bg-cyan-500/15 text-cyan-100">
-                                <i className={`fa-solid ${selectedPresetMeta.icon}`}></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {otherPresets.length > 0 && (
-                <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 px-4 py-3">
-                    <summary className="cursor-pointer list-none text-sm font-bold text-cyan-100">
-                        Change room package
-                    </summary>
-                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-                        {otherPresets.map((preset) => {
-                            const meta = presetMeta[preset.id] || presetMeta.casual || { icon: 'fa-star', accent: 'from-cyan-500/30 via-sky-500/10 to-transparent' };
-                            return (
-                                <button
-                                    key={`mission-archetype-${preset.id}`}
-                                    onClick={() => onSelectArchetype(preset.id)}
-                                    className="relative overflow-hidden text-left rounded-xl border border-zinc-700 transition-all hover:border-zinc-500"
-                                >
-                                    <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent}`}></div>
-                                    <div className="relative px-3 py-3">
-                                        <div className="flex items-center gap-2 text-cyan-100">
-                                            <i className={`fa-solid ${meta.icon}`}></i>
-                                            <span className="font-bold text-white">{preset.label}</span>
-                                        </div>
-                                        <div className="mt-1 text-xs text-zinc-300">{preset.description}</div>
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
-                </details>
-            )}
-        </div>
-
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Step 2</div>
-            <div className="text-xl font-bold text-white mt-1">Pick the queue pace</div>
-            <div className="text-sm text-zinc-400 mt-1">Choose how strict or loose you want turns to feel.</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-                {flowRules.map((rule) => {
-                    const active = selectedFlowRule === rule.id;
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {recipes.map((recipe) => {
+                    const selected = isRoomSetupRecipeSelected(recipe, selection);
+                    const sameBase = !selected && selectedArchetype === recipe.presetId;
                     return (
                         <button
-                            key={`mission-flow-${rule.id}`}
-                            onClick={() => onSelectFlowRule(rule.id)}
-                            className={`text-left rounded-2xl border px-3 py-3 transition-all ${active ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                            key={recipe.id}
+                            type="button"
+                            data-room-recipe-card={recipe.id}
+                            aria-pressed={selected}
+                            onClick={() => onApplyRecipe(recipe)}
+                            className={`relative overflow-hidden rounded-2xl border p-3 text-left transition-all ${selected
+                                ? 'border-cyan-300/60 bg-cyan-500/14 shadow-[0_0_0_1px_rgba(34,211,238,0.22),0_16px_34px_rgba(0,0,0,0.22)]'
+                                : 'border-white/10 bg-black/24 hover:border-cyan-300/28 hover:bg-white/[0.045]'}`}
                         >
-                            <div className="font-bold text-white">{rule.label}</div>
-                            <div className="text-xs text-zinc-400 mt-2">{rule.description}</div>
+                            <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${recipe.accent}`} />
+                            <div className="relative">
+                                <div className="flex items-start justify-between gap-3">
+                                    <span className="flex min-w-0 items-start gap-3">
+                                        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${selected ? 'border-cyan-200/40 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/[0.06] text-cyan-100'}`}>
+                                            <i className={`fa-solid ${recipe.icon}`} />
+                                        </span>
+                                        <span className="min-w-0">
+                                            <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-cyan-100/58">{recipe.eyebrow}</span>
+                                            <span className="mt-0.5 block text-base font-black text-white">{recipe.label}</span>
+                                        </span>
+                                    </span>
+                                    <span className={`shrink-0 rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${selected
+                                        ? 'border-cyan-200/35 bg-cyan-300/14 text-cyan-50'
+                                        : sameBase
+                                            ? 'border-amber-300/30 bg-amber-500/10 text-amber-100'
+                                            : 'border-white/10 bg-black/20 text-zinc-400'}`}>
+                                        {selected ? 'Selected' : sameBase ? 'Adjusted' : 'Choose'}
+                                    </span>
+                                </div>
+                                <span className="mt-2 block text-xs leading-5 text-zinc-300">{recipe.description}</span>
+                                <span className="mt-3 grid grid-cols-2 gap-1.5">
+                                    {recipe.facts.map((fact) => (
+                                        <span key={fact.label} className="rounded-lg border border-white/8 bg-black/20 px-2 py-1.5">
+                                            <span className="block text-[8px] font-black uppercase tracking-[0.14em] text-zinc-500">{fact.label}</span>
+                                            <span className="mt-0.5 block truncate text-[11px] font-semibold text-zinc-100">{fact.value}</span>
+                                        </span>
+                                    ))}
+                                </span>
+                            </div>
                         </button>
                     );
                 })}
             </div>
-        </div>
-    </>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/8 pt-3 text-xs text-zinc-500">
+                <span>Fine-tune any recipe in Advanced. Your changes stay visible as an adjusted recipe.</span>
+                <span>{savedRecipeCount > 0 ? `${savedRecipeCount} saved recipe${savedRecipeCount === 1 ? '' : 's'}` : 'Save one setup on this Host browser and reuse it next time.'}</span>
+            </div>
+        </section>
     );
 };
 

@@ -48,7 +48,7 @@ const PAGE_TITLE_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.hostAccess]: "Host Access | BeauRocks Karaoke",
   [MARKETING_ROUTE_PAGES.forHosts]: "Host Karaoke at Home and Private Parties | BeauRocks",
   [MARKETING_ROUTE_PAGES.forVenues]: "Karaoke Venue Listings and Activity | BeauRocks",
-  [MARKETING_ROUTE_PAGES.forPerformers]: "Karaoke Song Crowns and Singer Momentum | BeauRocks",
+  [MARKETING_ROUTE_PAGES.forPerformers]: "Find Karaoke and Track Singer Scores | BeauRocks",
   [MARKETING_ROUTE_PAGES.forFans]: "Host Karaoke at Home or Find a Live Night | BeauRocks",
   [MARKETING_ROUTE_PAGES.submit]: "Submit Listing | BeauRocks Karaoke",
   [MARKETING_ROUTE_PAGES.profile]: "Profile Dashboard | BeauRocks Karaoke",
@@ -59,15 +59,15 @@ const PAGE_TITLE_MAP = Object.freeze({
 const PAGE_DESCRIPTION_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.discover]: "Find karaoke nights by city, host, venue, and time window with BeauRocks Setlist Finder.",
   [MARKETING_ROUTE_PAGES.charts]: "Explore karaoke high scores, Song Crowns, Singer Momentum, and the most active public karaoke nights on BeauRocks.",
-  [MARKETING_ROUTE_PAGES.demo]: "Understand how BeauRocks keeps the host, TV, audience, and singer surfaces in sync across one room moment.",
-  [MARKETING_ROUTE_PAGES.demoAuto]: "See BeauRocks in action through a product-faithful walkthrough of the host, TV, and audience room experience.",
+  [MARKETING_ROUTE_PAGES.demo]: "See how the Host Dashboard, TV, and guest phones work together during a karaoke night.",
+  [MARKETING_ROUTE_PAGES.demoAuto]: "Watch a BeauRocks karaoke night move from Host Dashboard to TV to guest phones.",
   [MARKETING_ROUTE_PAGES.changelog]: "Release updates and product changes across host, audience, and public TV experiences.",
   [MARKETING_ROUTE_PAGES.hostAccess]: "Approved hosts sign in here to open Host Dashboard. New host partners can request early access.",
-  [MARKETING_ROUTE_PAGES.forHosts]: "Host karaoke at home or at a private event with one dashboard for the queue, Public TV, Audience App, reactions, and pacing.",
-  [MARKETING_ROUTE_PAGES.forVenues]: "Claim a karaoke venue listing, publish the real schedule, connect active BeauRocks Rooms, and help guests return.",
-  [MARKETING_ROUTE_PAGES.forPerformers]: "Find active karaoke Rooms, compare schedules, chase Song Crowns, and build Singer Momentum from qualified performances.",
+  [MARKETING_ROUTE_PAGES.forHosts]: "Host karaoke at home or at a private event. Run the queue, TV, guest phones, and games from one dashboard.",
+  [MARKETING_ROUTE_PAGES.forVenues]: "Publish a karaoke venue and schedule so singers can find the night and join when it is live.",
+  [MARKETING_ROUTE_PAGES.forPerformers]: "Find karaoke nights, join from your phone, save eligible scores, and compete for Song Crowns.",
   [MARKETING_ROUTE_PAGES.forFans]: "Run self-hosted karaoke at home or at a private party, or discover live karaoke nights near you with BeauRocks.",
-  [MARKETING_ROUTE_PAGES.submit]: "Submit a venue, event, or room session to the BeauRocks directory moderation queue.",
+  [MARKETING_ROUTE_PAGES.submit]: "Add a venue, recurring karaoke night, or event to BeauRocks.",
   [MARKETING_ROUTE_PAGES.profile]: "Manage your BeauRocks profile, follows, RSVPs, check-ins, and performance history.",
   [MARKETING_ROUTE_PAGES.admin]: "Directory moderation controls for claims, submissions, and ingestion review.",
   [MARKETING_ROUTE_PAGES.join]: "Enter a private room code to join a non-indexed karaoke session.",
@@ -267,7 +267,7 @@ const buildTitle = (route = {}, entity = null) => {
     return `${buildEntityName(route, entity)} | Host Profile | BeauRocks`;
   }
   if (page === MARKETING_ROUTE_PAGES.performer) {
-    return `${buildEntityName(route, entity)} | Performer Profile | BeauRocks`;
+    return `${buildEntityName(route, entity)} | Singer Profile | BeauRocks`;
   }
   if (page === MARKETING_ROUTE_PAGES.session) {
     return `${buildEntityName(route, entity)} | Room Session | BeauRocks`;
@@ -292,7 +292,7 @@ const buildDescription = (route = {}, entity = null) => {
     const description = buildEntityDescription(route, entity);
     if (description) return description;
   }
-  return PAGE_DESCRIPTION_MAP[page] || "Premium karaoke technology for hosts who want unforgettable rooms and stronger real-world connection.";
+  return PAGE_DESCRIPTION_MAP[page] || "Host a karaoke party, find a live night, or join a BeauRocks room.";
 };
 
 const buildBreadcrumbs = (route = {}, entity = null, baseUrl = MARKETING_SITE_ORIGIN) => {

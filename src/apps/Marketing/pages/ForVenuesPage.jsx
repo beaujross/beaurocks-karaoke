@@ -2,23 +2,6 @@ import React from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
 import { PersonaPageFrame, PersonaSurfaceMock } from "./PersonaMarketingBlocks";
 
-const VENUE_SIGNAL_CARDS = [
-  {
-    label: "Ownership",
-    title: "Claim your listing",
-    copy: "Update the venue page and the basic details.",
-  },
-  {
-    label: "Schedule",
-    title: "Post the real schedule",
-    copy: "People should know when karaoke is actually happening.",
-  },
-  {
-    label: "Trust",
-    title: "Make the listing trustworthy",
-    copy: "The host, venue, and schedule should match at a glance.",
-  },
-];
 
 const ForVenuesPage = ({ navigate, session, authFlow, onHostLogin }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
@@ -50,8 +33,8 @@ const ForVenuesPage = ({ navigate, session, authFlow, onHostLogin }) => {
       <article className="mk3-persona-simple-hero mk3-persona-simple-hero-center">
         <div className="mk3-persona-simple-copy is-center">
           <div className="mk3-rebuild-kicker">For venues</div>
-          <h1>Turn karaoke activity into repeat traffic.</h1>
-          <p>Publish a trustworthy schedule, connect approved BeauRocks Rooms, and give guests a place to find the night, follow its activity, and come back.</p>
+          <h1>Fill the room on karaoke night.</h1>
+          <p>Publish the venue, schedule, and host so singers know where to go.</p>
           <div className="mk3-rebuild-action-row is-centered">
             <button
               type="button"
@@ -61,14 +44,14 @@ const ForVenuesPage = ({ navigate, session, authFlow, onHostLogin }) => {
                 onHostLogin?.();
               }}
             >
-              Use BeauRocks To Run It
+              Run It With BeauRocks
             </button>
             <button
               type="button"
               className="mk3-rebuild-button is-secondary"
               onClick={() => openIndependentListing("event", "hero")}
             >
-              List An Independent Night
+              List a Karaoke Night
             </button>
             <button
               type="button"
@@ -87,8 +70,8 @@ const ForVenuesPage = ({ navigate, session, authFlow, onHostLogin }) => {
           <PersonaSurfaceMock
             type="schedule"
             label="Venue schedule"
-            title="The listing should tell people what the night is."
-            copy="Clear details beat vague hype."
+            title="Show people when and where."
+            copy="Venue. Schedule. Host."
             className="mk3-persona-simple-surface-main"
           />
         </div>
@@ -98,49 +81,19 @@ const ForVenuesPage = ({ navigate, session, authFlow, onHostLogin }) => {
         <div className="mk3-rebuild-kicker">Two ways to get on the map</div>
         <div className="mk3-persona-simple-card-grid">
           <article className="mk3-persona-simple-card">
-            <span>BeauRocks-hosted</span>
-            <strong>Publish the room from Host setup</strong>
-            <p>Choose Public discovery, add the venue and start time, and BeauRocks keeps the live room code tied to the listing. Private rooms stay off the map.</p>
+            <span>Run with BeauRocks</span>
+            <strong>Publish a public room</strong>
+            <p>Add the venue and start time in Host setup. Private rooms stay private.</p>
           </article>
           <article className="mk3-persona-simple-card">
-            <span>Independent karaoke</span>
-            <strong>Submit a venue or recurring night</strong>
-            <p>No BeauRocks runtime is required. Create a free account, send the real location and schedule, and the listing goes live after moderation.</p>
+            <span>Already hosting karaoke</span>
+            <strong>List an existing night</strong>
+            <p>Add the venue and recurring schedule. We review it before it goes live.</p>
           </article>
         </div>
       </section>
 
-      <section className="mk3-persona-simple-band">
-        <div className="mk3-rebuild-kicker">What good listings do</div>
-        <div className="mk3-persona-simple-card-grid is-three">
-          {VENUE_SIGNAL_CARDS.map((item) => (
-            <article key={item.title} className="mk3-persona-simple-card">
-              <span>{item.label}</span>
-              <strong>{item.title}</strong>
-              <p>{item.copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
 
-      <section className="mk3-persona-simple-band mk3-persona-simple-band-tight">
-        <div className="mk3-rebuild-kicker">Next step</div>
-        <div className="mk3-persona-simple-cta-row">
-          <button type="button" className="mk3-rebuild-button is-primary" onClick={() => openIndependentListing("venue", "closing")}>
-            Add Or Claim A Venue
-          </button>
-          <button
-            type="button"
-            className="mk3-rebuild-button is-secondary"
-            onClick={() => {
-              trackPersonaCta("closing_overview");
-              navigate("for_fans");
-            }}
-          >
-            Open Overview
-          </button>
-        </div>
-      </section>
     </PersonaPageFrame>
   );
 };

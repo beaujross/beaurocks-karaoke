@@ -212,7 +212,7 @@ export const deriveDirectoryExperience = (entry = {}) => {
     pushUnique(whyThisNightWorks, "Guests can join faster and stay engaged between turns.");
     pushUnique(whyThisNightWorks, "BeauRocks turns the listing into a live room, not just a flyer.");
   } else {
-    pushUnique(whyThisNightWorks, "A richer BeauRocks setup could add live join, audience play, and recap proof.");
+    pushUnique(whyThisNightWorks, "With BeauRocks, guests could join live, play along, and see a recap afterward.");
   }
 
   const discoveryBoost = (
@@ -224,8 +224,8 @@ export const deriveDirectoryExperience = (entry = {}) => {
   );
 
   const upgradePitch = isBeauRocksPowered
-    ? "This room already signals a more modern karaoke experience."
-    : "Claim this listing to add live join, audience interaction, modern queue flow, and recap-powered proof.";
+    ? "This room already uses BeauRocks for a more interactive karaoke night."
+    : "Claim this listing to add live joining, audience games, a smoother queue, and post-show recaps.";
 
   return {
     isBeauRocksPowered,

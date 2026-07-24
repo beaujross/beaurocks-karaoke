@@ -100,15 +100,19 @@ const MissionSetupAdvancedDrawer = ({
                         <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Limit Mode</div>
-                                <select
-                                    value={queueLimitMode}
-                                    onChange={(event) => onSetQueueLimitMode(event.target.value)}
-                                    className={styles.input}
-                                >
+                                <div className="grid grid-cols-2 gap-1.5">
                                     {queueLimitOptions.map((option) => (
-                                        <option key={`advanced-limit-${option.id}`} value={option.id}>{option.label}</option>
+                                        <button
+                                            key={`advanced-limit-${option.id}`}
+                                            type="button"
+                                            aria-pressed={queueLimitMode === option.id}
+                                            onClick={() => onSetQueueLimitMode(option.id)}
+                                            className={`min-h-[42px] rounded-lg border px-2 py-2 text-xs font-bold transition ${queueLimitMode === option.id ? 'border-cyan-300/45 bg-cyan-500/15 text-white' : 'border-white/10 bg-black/20 text-zinc-400 hover:border-cyan-300/25'}`}
+                                        >
+                                            {option.label}
+                                        </button>
                                     ))}
-                                </select>
+                                </div>
                             </div>
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Limit Count</div>
@@ -121,15 +125,19 @@ const MissionSetupAdvancedDrawer = ({
                             </div>
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Rotation</div>
-                                <select
-                                    value={queueRotation}
-                                    onChange={(event) => onSetQueueRotation(event.target.value)}
-                                    className={styles.input}
-                                >
+                                <div className="grid grid-cols-2 gap-1.5">
                                     {queueRotationOptions.map((option) => (
-                                        <option key={`advanced-rotation-${option.id}`} value={option.id}>{option.label}</option>
+                                        <button
+                                            key={`advanced-rotation-${option.id}`}
+                                            type="button"
+                                            aria-pressed={queueRotation === option.id}
+                                            onClick={() => onSetQueueRotation(option.id)}
+                                            className={`min-h-[42px] rounded-lg border px-2 py-2 text-xs font-bold transition ${queueRotation === option.id ? 'border-cyan-300/45 bg-cyan-500/15 text-white' : 'border-white/10 bg-black/20 text-zinc-400 hover:border-cyan-300/25'}`}
+                                        >
+                                            {option.label}
+                                        </button>
                                     ))}
-                                </select>
+                                </div>
                             </div>
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">First-Time Boost</div>

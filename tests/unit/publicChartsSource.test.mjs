@@ -30,16 +30,16 @@ test("server projections separate member, canonical song, and approved public ni
 });
 
 test("charts stay low-friction and reportable", () => {
-  assert.match(chartsSource, /No account, enjoy the room|Guests still appear in their live room/);
+  assert.match(chartsSource, /Sign in before you sing to appear on public charts/);
   assert.match(chartsSource, /mailto:hello@beaurocks\.app/);
   assert.match(chartsSource, /One song, one leaderboard/);
-  assert.match(chartsSource, /Take the crown/);
+  assert.match(chartsSource, /take the crown/i);
   assert.match(chartsSource, /Song Crowns/);
   assert.match(chartsSource, /Singer Momentum/);
   assert.match(chartsSource, /Active Nights/);
-  assert.match(chartsSource, /For private-party hosts/);
-  assert.match(chartsSource, /For singers and party guests/);
-  assert.match(chartsSource, /For venues and recurring nights/);
+  assert.match(chartsSource, /Host your own night/);
+  assert.match(chartsSource, /Ready to sing\?/);
+  assert.match(chartsSource, /Run a karaoke night\?/);
   assert.match(chartsSource, /Top performances for/);
   assert.doesNotMatch(chartsSource, /canonical song/i);
   assert.match(discoverSource, /PublicChartsTeaser/);
@@ -52,6 +52,6 @@ test("song charts launch with transparent low opening scores from the browse cat
   assert.match(chartModelSource, /isOpeningScore: true/);
   assert.match(chartModelSource, /ItemList/);
   assert.match(chartsSource, /application\/ld\+json/);
-  assert.match(chartsSource, /not singer performances/);
-  assert.match(chartsSource, /first qualified score on a song replaces its opening score/);
+  assert.match(chartsSource, /Opening scores are placeholders/);
+  assert.match(chartsSource, /first eligible singer score replaces them/);
 });

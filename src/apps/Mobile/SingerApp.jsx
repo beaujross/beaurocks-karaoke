@@ -1799,6 +1799,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [showPoints, setShowPoints] = useState(false);
     const [creditActivityOpen, setCreditActivityOpen] = useState(false);
     const [reactionDeckOpen, setReactionDeckOpen] = useState(false);
+    const [currencyFunnelTarget, setCurrencyFunnelTarget] = useState('');
     const [equippedBonusReactionTypes, setEquippedBonusReactionTypes] = useState(() => {
         try {
             const parsed = JSON.parse(window.localStorage.getItem('beaurocks_reaction_loadout') || '[]');
@@ -3334,6 +3335,8 @@ const SingerApp = ({ roomCode, uid }) => {
             });
             if (result?.outcome === 'insufficient_balance') {
                 toast('Not enough BeauBucks yet.');
+                setCurrencyFunnelTarget('beaubucks');
+                setReactionDeckOpen(true);
                 setShowPoints(true);
                 return result;
             }
@@ -3826,10 +3829,39 @@ const SingerApp = ({ roomCode, uid }) => {
     };
     const sixthReactionSlotProduct = REACTION_SLOT_PRODUCTS.find((product) => Number(product.slotCount || 0) === 6) || null;
     const fifthReactionSlotPointsCost = 250;
+    const openAudienceCurrencyFunnel = (target = '') => {
+        setCurrencyFunnelTarget(String(target || '').trim().toLowerCase());
+        if (target === 'reactions' || target === 'points' || target === 'beaubucks') {
+            setReactionDeckOpen(true);
+        }
+        setShowPoints(true);
+    };
+    const openReactionLibrary = () => openAudienceCurrencyFunnel('reactions');
+    const unlockSixthReactionSlot = async () => {
+        if (!sixthReactionSlotProduct || reactionSlotCount >= 6) return;
+        if (!signedInBeauRocksAccount) {
+            openAudienceCurrencyFunnel('beaubucks');
+            return;
+        }
+        const walletReady = visibleBeauBucksWalletState.status === 'ready';
+        const beauBucksBalance = Math.max(0, Number(visibleBeauBucksWalletState.wallet?.balance || 0) || 0);
+        if (!walletReady || beauBucksBalance < Number(sixthReactionSlotProduct.cost || 0)) {
+            openAudienceCurrencyFunnel('beaubucks');
+            if (!walletReady) void loadBeauBucksWallet({ force: true });
+            return;
+        }
+        if (reactionSlotCount < 5) {
+            toast('Unlock reaction slot 5 first.');
+            openAudienceCurrencyFunnel('points');
+            return;
+        }
+        await purchasePremiumEntitlement(sixthReactionSlotProduct.id);
+    };
     const unlockFifthReactionSlot = async () => {
         if (reactionSlotCount >= 5) return;
         if (!canAffordRoomCost(fifthReactionSlotPointsCost)) {
             toast(`Need ${fifthReactionSlotPointsCost} ${roomCurrencyPresentation.shortLabel} for reaction slot 5.`);
+            openAudienceCurrencyFunnel('points');
             return;
         }
         try {
@@ -3840,6 +3872,7 @@ const SingerApp = ({ roomCode, uid }) => {
             });
             if (result?.outcome === 'insufficient_balance') {
                 toast(`Need ${fifthReactionSlotPointsCost} ${roomCurrencyPresentation.shortLabel} for reaction slot 5.`);
+                openAudienceCurrencyFunnel('points');
                 return;
             }
             if (result?.outcome === 'legacy_fallback') {
@@ -3890,6 +3923,113 @@ const SingerApp = ({ roomCode, uid }) => {
                         ) : null}
                     </div>
                 </section>
+
+                {currencyFunnelTarget === 'points' ? (
+                    <section className="rounded-[1.25rem] border-2 border-cyan-300/45 bg-[linear-gradient(145deg,rgba(34,211,238,0.18),rgba(8,15,28,0.98))] p-4 shadow-[0_0_30px_rgba(34,211,238,0.14)]" data-feature-id="audience-points-conversion-funnel">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/75">Unlock reaction slot 5</div>
+                                <div className="mt-1 text-xl font-black text-white">
+                                    {Math.max(0, fifthReactionSlotPointsCost - getEffectivePoints()) > 0
+                                        ? `Get ${Math.max(0, fifthReactionSlotPointsCost - getEffectivePoints())} more Points`
+                                        : 'You have enough Points'}
+                                </div>
+                            </div>
+                            <CurrencyAmount currency="points" amount={fifthReactionSlotPointsCost} size="sm" />
+                        </div>
+                        <div className="mt-4 grid gap-2">
+                            {!signedInBeauRocksAccount ? (
+                                <button
+                                    type="button"
+                                    data-feature-id="audience-account-5000-points-offer"
+                                    onClick={() => {
+                                        setShowPoints(false);
+                                        openVipUpgrade('email');
+                                    }}
+                                    className="flex min-h-[64px] w-full items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-cyan-300 to-sky-400 px-4 text-left text-slate-950 shadow-[0_0_22px_rgba(34,211,238,0.22)]"
+                                >
+                                    <span><span className="block text-base font-black">Create a BeauRocks account</span><span className="block text-[11px] font-bold">Verify once. Keep your progress.</span></span>
+                                    <span className="shrink-0 rounded-full bg-slate-950/12 px-3 py-1.5 text-sm font-black">+5,000 PTS</span>
+                                </button>
+                            ) : (
+                                <div className="flex min-h-[58px] items-center justify-between gap-3 rounded-2xl border border-cyan-300/18 bg-cyan-400/8 px-4">
+                                    <span><span className="block text-sm font-black text-white">BeauRocks account connected</span><span className="block text-[11px] text-cyan-100/65">Your one-time 5,000-Point reward is protected from repeat claims.</span></span>
+                                    <i className="fa-solid fa-circle-check text-cyan-300" aria-hidden="true"></i>
+                                </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                                    <i className="fa-solid fa-bolt text-amber-200" aria-hidden="true"></i>
+                                    <div className="mt-2 text-sm font-black text-white">Play + participate</div>
+                                    <div className="mt-1 text-[11px] leading-4 text-zinc-400">Claim room rewards, games, and Host bonus drops.</div>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                                    <i className="fa-solid fa-clock text-cyan-200" aria-hidden="true"></i>
+                                    <div className="mt-2 text-sm font-black text-white">{activeEventCredits.timedLobbyEnabled ? timedLobbyIntervalLabel : 'Room rewards'}</div>
+                                    <div className="mt-1 text-[11px] leading-4 text-zinc-400">{activeEventCredits.timedLobbyEnabled ? `+${formatEarnedPointsLabel(activeEventCredits.timedLobbyPoints)} while active` : 'Your Host controls which earning moments are live.'}</div>
+                                </div>
+                            </div>
+                            {visiblePersonalShopOffers.length > 0 ? (
+                                <div className="rounded-2xl border border-pink-300/20 bg-pink-400/8 px-4 py-3 text-sm font-black text-pink-50">
+                                    Need them now? Point packs are available below.
+                                </div>
+                            ) : null}
+                        </div>
+                    </section>
+                ) : currencyFunnelTarget === 'beaubucks' ? (
+                    <section className="rounded-[1.25rem] border-2 border-fuchsia-300/45 bg-[linear-gradient(145deg,rgba(217,70,239,0.2),rgba(8,15,28,0.98))] p-4 shadow-[0_0_32px_rgba(217,70,239,0.16)]" data-feature-id="audience-beaubucks-conversion-funnel">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100/75">Permanent account unlocks</div>
+                                <div className="mt-1 text-xl font-black text-white">Get more BeauBucks</div>
+                                <div className="mt-1 text-xs leading-5 text-fuchsia-100/70">BeauBucks buy cosmetics only. Points and Fame come from play.</div>
+                            </div>
+                            <CurrencyIcon currency="beaubucks" size="lg" />
+                        </div>
+                        <div className="mt-4 grid gap-2">
+                            {!signedInBeauRocksAccount ? (
+                                <button
+                                    type="button"
+                                    data-feature-id="audience-beaubucks-account-entry"
+                                    onClick={() => {
+                                        setShowPoints(false);
+                                        openVipUpgrade('email');
+                                    }}
+                                    className="flex min-h-[64px] w-full items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 px-4 text-left text-slate-950"
+                                >
+                                    <span><span className="block text-base font-black">Create a BeauRocks account</span><span className="block text-[11px] font-bold">Required to own and carry BeauBucks.</span></span>
+                                    <span className="shrink-0 rounded-full bg-slate-950/12 px-3 py-1.5 text-sm font-black">+5,000 PTS</span>
+                                </button>
+                            ) : visibleBeauBucksWalletState.wallet?.canPurchase && visibleBeauBucksWalletState.wallet?.pack ? (
+                                <button
+                                    type="button"
+                                    onClick={() => startBeauBucksCheckout(visibleBeauBucksWalletState.wallet.pack)}
+                                    disabled={pointsCheckoutPendingKey === 'beaubucks'}
+                                    className="flex min-h-[60px] w-full items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 px-4 text-left font-black text-slate-950 disabled:opacity-60"
+                                >
+                                    <span>{pointsCheckoutPendingKey === 'beaubucks' ? 'Opening checkout...' : visibleBeauBucksWalletState.wallet.pack.publicLabel}</span>
+                                    <span>${(Number(visibleBeauBucksWalletState.wallet.pack.amountCents || 0) / 100).toFixed(2)}</span>
+                                </button>
+                            ) : (
+                                <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-300">
+                                    Purchases are not open in this Room right now. Your balance and unlocked reactions stay with your account.
+                                </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                                    <CurrencyIcon currency="points" size="sm" />
+                                    <div className="mt-2 text-sm font-black text-white">Points</div>
+                                    <div className="mt-1 text-[11px] leading-4 text-zinc-400">Earned here. Spend on live reactions and room unlocks.</div>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                                    <CurrencyIcon currency="fame" size="sm" />
+                                    <div className="mt-2 text-sm font-black text-white">Fame</div>
+                                    <div className="mt-1 text-[11px] leading-4 text-zinc-400">Earned through your account. Unlocks progression reactions.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                ) : null}
 
                 {beauBucksRoomCandidate ? (
                     <section className="rounded-[1.25rem] border border-fuchsia-300/22 bg-[linear-gradient(145deg,rgba(192,38,211,0.14),rgba(12,18,32,0.96))] p-4" data-feature-id="audience-beaubucks-wallet">
@@ -3966,7 +4106,7 @@ const SingerApp = ({ roomCode, uid }) => {
                 ) : null}
 
                 <section className="overflow-hidden rounded-[1.25rem] border border-violet-300/18 bg-[linear-gradient(145deg,rgba(91,33,182,0.12),rgba(12,18,32,0.96))]" data-feature-id="audience-reaction-collection">
-                    <button type="button" onClick={() => setReactionDeckOpen((open) => !open)} className="flex min-h-[72px] w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={reactionDeckOpen}>
+                    <button type="button" data-feature-id="reaction-emoji-library-toggle" onClick={() => setReactionDeckOpen((open) => !open)} className="flex min-h-[72px] w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={reactionDeckOpen}>
                         <span><span className="block text-[10px] font-black uppercase tracking-[0.2em] text-violet-200/70">Reaction collection</span><span className="mt-1 block text-base font-black text-white">Compare power. Pick your show.</span><span className="mt-1 block text-xs text-zinc-400">1 Point spent = +1 performance point</span></span>
                         <span className="flex items-center gap-2"><span className="rounded-full bg-white/8 px-2 py-1 text-[10px] font-black text-zinc-300">{reactionSlotCount}/6 slots</span><i className={`fa-solid fa-chevron-${reactionDeckOpen ? 'up' : 'down'} text-zinc-400`} aria-hidden="true"></i></span>
                     </button>
@@ -4245,7 +4385,7 @@ const SingerApp = ({ roomCode, uid }) => {
                         {allowsDonationAccess ? 'Save progress with email' : 'Link Email'}
                     </button>
                 )}
-                <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }} className="min-h-[48px] rounded-[1rem] bg-white/10 px-4 py-3 text-base font-black text-zinc-100">Close</button>
+                <button onClick={() => { setSupportEmbedOpen(false); setCurrencyFunnelTarget(''); setShowPoints(false); }} className="min-h-[48px] rounded-[1rem] bg-white/10 px-4 py-3 text-base font-black text-zinc-100">Close</button>
             </div>
         </>
     );
@@ -12189,13 +12329,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     if (showPoints) return (
         <div className="fixed inset-0 z-[110] overflow-y-auto overscroll-contain touch-scroll-y bg-[#070a12] font-saira text-white" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}>
             <div className="mx-auto flex min-h-full w-full max-w-md flex-col px-4 py-3 text-left">
-                <div className="mb-5 flex items-center justify-between gap-4">
+                <div className="sticky top-0 z-20 -mx-1 mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-[#070a12]/94 px-1 py-2 backdrop-blur">
                     <div className="min-w-0">
                         <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/70">{beauBucksRoomCandidate ? 'Points + BeauBucks' : (allowsDonationAccess ? 'Support + Points' : 'Points')}</div>
-                        <h2 className="mt-1 text-4xl font-black leading-none text-white">Fuel the show</h2>
+                        <h2 className="mt-1 text-4xl font-black leading-none text-white">{currencyFunnelTarget === 'reactions' ? 'Reaction Emoji Library' : currencyFunnelTarget === 'beaubucks' ? 'Get BeauBucks' : currencyFunnelTarget === 'points' ? 'Get More Points' : 'Fuel the show'}</h2>
                     </div>
                     <button
-                        onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }}
+                        onClick={() => { setSupportEmbedOpen(false); setCurrencyFunnelTarget(''); setShowPoints(false); }}
                         className="grid min-h-[48px] min-w-[48px] place-items-center rounded-full bg-white/10 text-zinc-100 active:scale-95"
                         aria-label="Close points sheet"
                     >
@@ -14958,35 +15098,70 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                  {coHostReactionPolicyLabel}
                                              </div>
                                          ) : null}
-                                         {bonusReactionTypes.length ? <div className="grid grid-cols-2 gap-4">{bonusReactionTypes.map(t => {
-                                             const accent = {
-                                                 rocket: 'border-pink-400/80 text-pink-200 bg-pink-500/10 shadow-[0_0_24px_rgba(236,72,153,0.45)]',
-                                                 diamond: 'border-cyan-300/80 text-cyan-200 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.45)]',
-                                                 money: 'border-rose-300/80 text-rose-100 bg-rose-500/10 shadow-[0_0_26px_rgba(251,113,133,0.45)]',
-                                                 crown: 'border-[#00C4D9]/60 text-cyan-100 bg-[#00C4D9]/10 shadow-[0_0_26px_rgba(0,196,217,0.4)]'
-                                             }[t];
-                                             const cost = REACTION_COSTS[t];
-                                             return (
-                                             <button key={t} disabled={isReactionCoolingDown(t)} onClick={()=>react(t, cost)} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent} ${isReactionCoolingDown(t) ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
-                                                    {renderReactionCooldownFill(t, 'bg-cyan-300/18', 'border-white/15 bg-black/55 text-cyan-50')}
-                                                    <span className={`${getReactionOptionIconClass(t)} mb-2`}>{getEmojiChar(t)}</span>
-                                                    <span className="font-bold text-base uppercase">{getReactionDefinition(t)?.label || t}</span>
-                                                    <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
-                                                         {reactionCostLabel(cost)}
-                                                     </div>
+                                         <div className="grid grid-cols-2 gap-4" data-feature-id="audience-reaction-slot-grid">
+                                             {bonusReactionTypes.map((t) => {
+                                                 const accent = {
+                                                     rocket: 'border-pink-400/80 text-pink-200 bg-pink-500/10 shadow-[0_0_24px_rgba(236,72,153,0.45)]',
+                                                     diamond: 'border-cyan-300/80 text-cyan-200 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.45)]',
+                                                     money: 'border-rose-300/80 text-rose-100 bg-rose-500/10 shadow-[0_0_26px_rgba(251,113,133,0.45)]',
+                                                     crown: 'border-[#00C4D9]/60 text-cyan-100 bg-[#00C4D9]/10 shadow-[0_0_26px_rgba(0,196,217,0.4)]'
+                                                 }[t];
+                                                 const cost = REACTION_COSTS[t];
+                                                 return (
+                                                     <button key={t} disabled={isReactionCoolingDown(t)} onClick={() => react(t, cost)} className={`relative min-h-[148px] overflow-hidden p-3 rounded-2xl flex flex-col items-center justify-center border transition-all bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent} ${isReactionCoolingDown(t) ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
+                                                         {renderReactionCooldownFill(t, 'bg-cyan-300/18', 'border-white/15 bg-black/55 text-cyan-50')}
+                                                         <span className={`${getReactionOptionIconClass(t)} mb-2`}>{getEmojiChar(t)}</span>
+                                                         <span className="font-bold text-base uppercase">{getReactionDefinition(t)?.label || t}</span>
+                                                         <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>{reactionCostLabel(cost)}</div>
+                                                     </button>
+                                                 );
+                                             })}
+                                             {Array.from({ length: Math.max(0, bonusReactionCapacity - bonusReactionTypes.length) }).map((_, index) => {
+                                                 const slotNumber = CORE_REACTION_TYPES.length + bonusReactionTypes.length + index + 1;
+                                                 return (
+                                                     <button key={`empty-reaction-slot-${slotNumber}`} type="button" onClick={openReactionLibrary} className="relative min-h-[148px] overflow-hidden rounded-2xl border-2 border-dashed border-violet-300/35 bg-gradient-to-b from-violet-500/12 via-zinc-900/55 to-black/70 p-3 text-center active:scale-95">
+                                                         <span className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-violet-200/25 bg-violet-400/12 text-xl text-violet-100"><i className="fa-solid fa-plus" aria-hidden="true"></i></span>
+                                                         <span className="mt-2 block text-sm font-black text-white">Choose reaction</span>
+                                                         <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.14em] text-violet-200/70">Slot {slotNumber}</span>
+                                                     </button>
+                                                 );
+                                             })}
+                                             {reactionSlotCount < 5 ? (
+                                                 <button
+                                                     type="button"
+                                                     data-feature-id="locked-reaction-slot-5"
+                                                     onClick={() => void unlockFifthReactionSlot()}
+                                                     className="relative min-h-[148px] overflow-hidden rounded-2xl border-2 border-zinc-500/65 bg-gradient-to-b from-zinc-500/14 via-zinc-900/70 to-black/80 p-3 text-center shadow-[0_10px_24px_rgba(0,0,0,0.42)] active:scale-95"
+                                                 >
+                                                     <span className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-zinc-500/50 bg-zinc-800/90 text-2xl text-zinc-500 grayscale"><i className="fa-solid fa-lock" aria-hidden="true"></i></span>
+                                                     <span className="mt-2 block text-sm font-black text-zinc-300">Reaction slot 5</span>
+                                                     <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Unlock for this party</span>
+                                                     <span className="mt-2 inline-flex rounded-full border border-cyan-200/45 bg-cyan-300/18 px-3 py-1 shadow-[0_0_18px_rgba(34,211,238,0.24)]"><CurrencyAmount currency="points" amount={fifthReactionSlotPointsCost} size="sm" /></span>
                                                  </button>
-                                             );
-                                         })}</div> : null}
-                                         {reactionSlotCount === 4 ? (
-                                             <button onClick={() => void unlockFifthReactionSlot()} className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 text-left shadow-[0_0_22px_rgba(34,211,238,0.12)]">
-                                                 <span><span className="block font-black text-white">Unlock reaction slot 5</span><span className="block text-xs text-cyan-100/65">For this party</span></span><CurrencyAmount currency="points" amount={fifthReactionSlotPointsCost} size="sm" />
-                                             </button>
-                                         ) : null}
-                                         {reactionSlotCount < 6 && sixthReactionSlotProduct ? (
-                                             <button onClick={() => { setShowPoints(true); }} className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-4 text-left shadow-[0_0_22px_rgba(217,70,239,0.14)]">
-                                                 <span><span className="block font-black text-white">Unlock reaction slot 6</span><span className="block text-xs text-fuchsia-100/65">{reactionSlotCount < 5 ? 'Slot 5 required · Royal included' : 'Permanent · Royal included'}</span></span><CurrencyAmount currency="beaubucks" amount={sixthReactionSlotProduct.cost} size="sm" />
-                                             </button>
-                                         ) : null}
+                                             ) : null}
+                                             {reactionSlotCount < 6 && sixthReactionSlotProduct ? (
+                                                 <button
+                                                     type="button"
+                                                     data-feature-id="locked-reaction-slot-6"
+                                                     onClick={() => void unlockSixthReactionSlot()}
+                                                     className="relative min-h-[148px] overflow-hidden rounded-2xl border-2 border-zinc-500/65 bg-gradient-to-b from-zinc-500/14 via-zinc-900/70 to-black/80 p-3 text-center shadow-[0_10px_24px_rgba(0,0,0,0.42)] active:scale-95"
+                                                 >
+                                                     <span className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-zinc-500/50 bg-zinc-800/90 text-2xl text-zinc-500 grayscale"><i className="fa-solid fa-lock" aria-hidden="true"></i></span>
+                                                     <span className="mt-2 block text-sm font-black text-zinc-300">Reaction slot 6</span>
+                                                     <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">{reactionSlotCount < 5 ? 'Slot 5 required' : 'Permanent + Royal'}</span>
+                                                     <span className="mt-2 inline-flex rounded-full border border-fuchsia-200/50 bg-fuchsia-400/20 px-3 py-1 shadow-[0_0_20px_rgba(217,70,239,0.3)]"><CurrencyAmount currency="beaubucks" amount={sixthReactionSlotProduct.cost} size="sm" /></span>
+                                                 </button>
+                                             ) : null}
+                                         </div>
+                                         <button
+                                             type="button"
+                                             data-feature-id="browse-reaction-emoji-library"
+                                             onClick={openReactionLibrary}
+                                             className="flex min-h-[68px] w-full items-center justify-between gap-3 rounded-2xl border-2 border-violet-300/35 bg-gradient-to-r from-violet-500/20 via-fuchsia-500/14 to-cyan-500/14 px-4 text-left shadow-[0_0_26px_rgba(139,92,246,0.14)] active:scale-[0.99]"
+                                         >
+                                             <span className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-violet-300/16 text-2xl"><i className="fa-solid fa-icons" aria-hidden="true"></i></span><span><span className="block text-base font-black text-white">Reaction Emoji Library</span><span className="block text-[11px] font-bold text-violet-100/70">Browse, compare, unlock, and equip reactions</span></span></span>
+                                             <i className="fa-solid fa-chevron-right text-violet-200" aria-hidden="true"></i>
+                                         </button>
                                      </>
                                  )}
                              </>

@@ -1,54 +1,53 @@
 import React from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
-import { formatDateTime } from "./shared";
 import { PersonaPageFrame } from "./PersonaMarketingBlocks";
 
 const HERO_SIGNAL_PILLS = [
-  "TV-led room",
-  "Join by code",
-  "Hosts join by waitlist",
+  "Queue on TV",
+  "Songs on phones",
+  "Games between singers",
 ];
 
 const ROOM_FLOW_STEPS = [
   {
-    label: "1. One screen leads",
-    title: "The whole room follows the same moment.",
-    copy: "Lyrics, prompts, games, and crowd cues stay big enough to read from across the bar.",
+    label: "1. TV",
+    title: "Everyone sees what is next.",
+    copy: "Lyrics, the queue, and games stay on the big screen.",
   },
   {
-    label: "2. Phones join in",
-    title: "Guests add energy without hijacking the room.",
-    copy: "People join by code, send requests, react, and play along from their phones while the night stays coherent.",
+    label: "2. Phones",
+    title: "Guests join from their phones.",
+    copy: "Add songs, react, vote, and play.",
   },
   {
-    label: "3. The host keeps it moving",
-    title: "Technology backs up the party instead of interrupting it.",
-    copy: "Queue control, pacing, and surprise moments stay ready when the room needs a push.",
+    label: "3. Host",
+    title: "You run the night.",
+    copy: "Control the order or let Assisted Host help.",
   },
 ];
 
 const PERSONA_PATHS = [
   {
     label: "For hosts",
-    title: "Run the room from one deck.",
-    copy: "Queue, pacing, audience moments, and TV cues stay in one operating surface.",
-    cta: "See host access",
+    title: "Host a karaoke party",
+    copy: "Run the queue, TV, and guest phones.",
+    cta: "For Hosts",
     route: "for_hosts",
     ctaId: "persona_hosts",
   },
   {
-    label: "For performers",
-    title: "Find rooms that already feel alive.",
-    copy: "Look for strong rooms, clear schedules, and nights worth returning to.",
-    cta: "See performer view",
+    label: "For singers",
+    title: "Find a karaoke night",
+    copy: "See tonight's venues, times, and hosts.",
+    cta: "For Singers",
     route: "for_performers",
     ctaId: "persona_performers",
   },
   {
     label: "For venues",
-    title: "Make the night easy to trust.",
-    copy: "Claim the listing, post the real schedule, and help the room show up clearly online.",
-    cta: "See venue view",
+    title: "List your karaoke night",
+    copy: "Publish the venue and schedule.",
+    cta: "For Venues",
     route: "for_venues",
     ctaId: "persona_venues",
   },
@@ -66,9 +65,7 @@ const FansHeroTvStage = () => (
         <i>Room code active</i>
       </div>
       <strong>THE ROOM PLAYS TOGETHER.</strong>
-      <p>
-        The TV carries the moment, phones feed the energy, and the host deck keeps the night from stalling.
-      </p>
+      <p>Lyrics, the queue, and party games stay on the big screen.</p>
       <div className="mk3-fans-hero-tv-pill-row">
         <span>Queue</span>
         <span>Lyrics</span>
@@ -82,18 +79,18 @@ const FansRoomFlowVisual = () => (
   <div className="mk3-fans-room-flow-visual" aria-hidden="true">
     <article className="mk3-fans-room-flow-surface is-tv">
       <span>TV</span>
-      <strong>The room sees the same thing</strong>
-      <p>Lyrics, countdowns, and crowd prompts stay public.</p>
+      <strong>See what is next</strong>
+      <p>Lyrics, queue, and games.</p>
     </article>
     <article className="mk3-fans-room-flow-surface is-audience">
       <span>Phone</span>
-      <strong>Guests join the action fast</strong>
-      <p>Name, emoji, request, react.</p>
+      <strong>Join and add a song</strong>
+      <p>Name, emoji, song, reaction.</p>
     </article>
     <article className="mk3-fans-room-flow-surface is-host">
       <span>Host</span>
-      <strong>The night stays under control</strong>
-      <p>Search, pacing, moments, recovery.</p>
+      <strong>Run the party</strong>
+      <p>Order, pacing, and activities.</p>
     </article>
   </div>
 );
@@ -110,41 +107,20 @@ const ForFansPage = ({ navigate, heroStats, pendingHostApplicationsCount = 0, on
   const discoverSnapshot = heroStats?.total
     ? `${heroStats.total.toLocaleString()} live listings`
     : "Live karaoke directory";
-  const discoverUpdatedLabel = heroStats?.generatedAtMs
-    ? `Updated ${formatDateTime(heroStats.generatedAtMs)}`
-    : "Live rooms refresh through the day.";
   const queueLabel = pendingHostApplicationsCount > 0
     ? `${pendingHostApplicationsCount} host applications in review`
-    : "Host access opens in reviewed batches";
+    : "Host waitlist open";
 
-  const proofCards = [
-    {
-      label: "Party signal",
-      title: "One room, one shared moment",
-      copy: "The big screen keeps the room readable so crowd energy goes up instead of sideways.",
-    },
-    {
-      label: "Guest flow",
-      title: "Phones add to the night",
-      copy: "Requests, reactions, and audience prompts stay lightweight enough to feel social instead of technical.",
-    },
-    {
-      label: "Host access",
-      title: "Hosts come in through a waitlist",
-      copy: "New host access opens in waves so live rooms launch with a real operator behind them.",
-    },
-  ];
 
   return (
     <PersonaPageFrame theme="fan">
       <section className="mk3-fans-home-minimal">
         <section className="mk3-fans-hero-simplified">
           <div className="mk3-fans-hero-simplified-copy">
-            <div className="mk3-rebuild-kicker">Self-hosted karaoke for home and private parties</div>
-            <h1>Run the karaoke night you imagined.</h1>
+            <div className="mk3-rebuild-kicker">Karaoke for home and private parties</div>
+            <h1>Your karaoke night, all in one room.</h1>
             <p>
-              BeauRocks puts the queue, Public TV, Audience App, reactions, and pacing in one Room.
-              Take control yourself or let Assisted Host keep the party moving.
+              Run the queue on TV, let guests add songs from their phones, and keep the party moving with games and reactions.
             </p>
             <div className="mk3-rebuild-action-row mk3-fans-home-hero-actions">
               <button
@@ -189,26 +165,11 @@ const ForFansPage = ({ navigate, heroStats, pendingHostApplicationsCount = 0, on
           </div>
         </section>
 
-        <section className="mk3-persona-simple-band mk3-fans-home-proof-band">
-                <div className="mk3-persona-simple-card-grid is-three">
-            {proofCards.map((item) => (
-              <article key={item.label} className="mk3-persona-simple-card">
-                <span>{item.label}</span>
-                <strong>{item.title}</strong>
-                <p>{item.copy}</p>
-              </article>
-            ))}
-          </div>
-        </section>
 
         <section className="mk3-fans-room-flow-band">
           <div className="mk3-fans-room-flow-head">
-            <div className="mk3-rebuild-kicker">How the room works</div>
-            <h2>Technology should connect the room, not split it up.</h2>
-            <p>
-              BeauRocks works best when the public screen does the heavy lifting,
-              phones stay quick, and the host deck only surfaces what the night needs next.
-            </p>
+            <div className="mk3-rebuild-kicker">How it works</div>
+            <h2>TV for the room. Phones for the guests.</h2>
           </div>
           <div className="mk3-fans-room-flow-grid">
             <FansRoomFlowVisual />
@@ -226,12 +187,8 @@ const ForFansPage = ({ navigate, heroStats, pendingHostApplicationsCount = 0, on
 
         <section className="mk3-fans-persona-band">
           <div className="mk3-fans-room-flow-head">
-            <div className="mk3-rebuild-kicker">Go deeper</div>
-            <h2>Start with the room, then choose your role.</h2>
-            <p>
-              Hosts, performers, and venues all plug into the same shared-night system.
-              The persona pages stay available when someone wants the details.
-            </p>
+            <div className="mk3-rebuild-kicker">Start here</div>
+            <h2>What are you here to do?</h2>
           </div>
           <div className="mk3-fans-persona-grid">
             {PERSONA_PATHS.map((item) => (
@@ -258,17 +215,13 @@ const ForFansPage = ({ navigate, heroStats, pendingHostApplicationsCount = 0, on
 
         <section className="mk3-fans-home-cta-band">
           <div className="mk3-fans-home-cta-copy">
-            <div className="mk3-rebuild-kicker">Waitlist</div>
-            <h2>The next host release starts with the line.</h2>
-            <p>
-              If you want to run nights with BeauRocks, join the waitlist now.
-              Everyone else can still explore what is live tonight or enter by room code.
-            </p>
+            <div className="mk3-rebuild-kicker">Host access</div>
+            <h2>Want to host your own night?</h2>
+            <p>Join the waitlist for Host access.</p>
           </div>
           <div className="mk3-fans-home-cta-meta" aria-label="Live status">
             <span>{queueLabel}</span>
             <span>{discoverSnapshot}</span>
-            <span>{discoverUpdatedLabel}</span>
           </div>
           <div className="mk3-rebuild-action-row mk3-fans-home-hero-actions">
             <button

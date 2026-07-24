@@ -194,6 +194,7 @@ import {
     buildDeadAirFillerSongPlan,
     getDeadAirAutoFillIntent,
 } from './deadAirAutopilot';
+import { buildCachedYouTubeDeadAirSongs } from './deadAirYouTubeCatalog';
 import {
     isYouTubeEmbeddable,
     normalizeYouTubePlaybackState,
@@ -12307,23 +12308,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [logoUrl, showOnboardingWizard, syncOnboardingLogoUrl]);
 
     useEffect(() => {
-        let nextCohort = 'legacy';
-        if (missionQueryOverride === true) {
-            nextCohort = 'mission';
-        } else if (missionQueryOverride === false) {
-            nextCohort = 'legacy';
-        } else {
-            try {
-                const stored = String(localStorage.getItem(MISSION_COHORT_STORAGE_KEY) || '').trim();
-                if (stored === 'mission' || stored === 'legacy') {
-                    nextCohort = stored;
-                } else {
-                    nextCohort = Math.random() < 0.5 ? 'mission' : 'legacy';
-                    localStorage.setItem(MISSION_COHORT_STORAGE_KEY, nextCohort);
-                }
-            } catch (_err) {
-                nextCohort = 'legacy';
-            }
+        const nextCohort = missionQueryOverride === false ? 'legacy' : 'mission';
+        try {
+            localStorage.setItem(MISSION_COHORT_STORAGE_KEY, nextCohort);
+        } catch (_err) {
+            // Room recipes remain the default even when local storage is unavailable.
         }
         setMissionControlCohort(nextCohort);
         setMissionControlEnabled(nextCohort === 'mission');
@@ -12360,9 +12349,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return mergePayloadWithOverrides(withAssist, overridesInput);
     }, [applyAssistLevelToPayload, capabilities, hostNightPresets, missionAdvancedOverrides, missionDraft]);
 
+    const missionDeadAirSourceSongs = useMemo(
+        () => buildCachedYouTubeDeadAirSongs({
+            roomIndex: ytIndex,
+            accountIndex: accountYtIndex,
+            globalIndex: globalYtIndex,
+            curatedIndex: curatedYouTubeEventIndex,
+        }),
+        [accountYtIndex, curatedYouTubeEventIndex, globalYtIndex, ytIndex]
+    );
     const missionDeadAirFillerSongs = useMemo(
-        () => buildDeadAirFillerSongPlan({ sourceSongs: localLibrary }),
-        [localLibrary]
+        () => buildDeadAirFillerSongPlan({ sourceSongs: missionDeadAirSourceSongs }),
+        [missionDeadAirSourceSongs]
     );
 
     const applyMissionDraftToNightSetupState = useCallback((draftInput = missionDraft, overridesInput = missionAdvancedOverrides) => {
@@ -19647,7 +19645,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 : missionStatusLabel === 'Live'
                     ? 'text-cyan-100 border-cyan-400/35 bg-cyan-500/15'
                     : 'text-amber-100 border-amber-400/35 bg-amber-500/15';
-            const missionPickCount = [missionDraft?.archetype, missionDraft?.flowRule, missionDraft?.assistLevel].filter(Boolean).length;
             const missionPartyBaseline = buildMissionPartyFromRoom(room);
             const missionPartyPreview = buildMissionPartyPayload(missionPartyDraft);
             const missionPartyOverrideCount = [
@@ -19739,6 +19736,66 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     )}
                     primaryContent={(
                         <>
+                            <MissionSetupPrimaryPicks
+                                presets={hostNightPresetList}
+                                selectedArchetype={missionDraft?.archetype}
+                                selectedFlowRule={missionDraft?.flowRule}
+                                selectedAssistLevel={missionDraft?.assistLevel}
+                                selectedSpotlightMode={missionDraft?.spotlightMode || 'karaoke'}
+                                onApplyRecipe={(recipe) => {
+                                    const nextOverrides = recipe?.overrides && typeof recipe.overrides === 'object'
+                                        ? { ...recipe.overrides }
+                                        : {};
+                                    const nextDraft = {
+                                        ...(missionDraft || {}),
+                                        archetype: recipe?.presetId || 'casual',
+                                        flowRule: recipe?.flowRule || 'balanced',
+                                        assistLevel: recipe?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL,
+                                        spotlightMode: recipe?.spotlightMode || 'karaoke',
+                                    };
+                                    setMissionAdvancedOverrides(nextOverrides);
+                                    setMissionPartyDraft((previous) => buildMissionPartyPayload({
+                                        ...(previous || {}),
+                                        ...(recipe?.party || {}),
+                                    }));
+                                    setMissionDraft(nextDraft);
+                                    applyMissionDraftToNightSetupState(nextDraft, nextOverrides);
+                                    trackEvent('host_room_recipe_selected', {
+                                        room_code: roomCode || '',
+                                        recipe_id: recipe?.id || '',
+                                        preset_id: nextDraft.archetype,
+                                        timestamp: nowMs(),
+                                    });
+                                }}
+                                onSaveRecipe={() => {
+                                    if (typeof window === 'undefined') return;
+                                    const suggestedName = `My ${missionPreset.label || 'Karaoke Night'}`;
+                                    const label = String(window.prompt('Name this room recipe', suggestedName) || '').trim().slice(0, 64);
+                                    if (!label) return;
+                                    const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'night';
+                                    const saved = saveCustomHostPreset({
+                                        id: `recipe_${slug}_${nowMs().toString(36)}`,
+                                        label,
+                                        description: 'Saved from Room Readiness.',
+                                        basePresetId: missionPreset.basePresetId || missionPreset.id || 'casual',
+                                        searchSources: { ...(missionPreset.searchSources || {}) },
+                                        settings: {
+                                            ...(missionPreset.settings || {}),
+                                            ...(missionPayloadPreview || {}),
+                                            queueSettings: { ...(missionPayloadPreview?.queueSettings || {}) },
+                                        },
+                                        recipe: {
+                                            flowRule: missionDraft?.flowRule || 'balanced',
+                                            assistLevel: missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL,
+                                            spotlightMode: missionDraft?.spotlightMode || 'karaoke',
+                                            overrides: { ...(missionAdvancedOverrides || {}) },
+                                            party: { ...(missionPartyPreview || {}) },
+                                        },
+                                        autoStartApplePlaylist: !!missionPreset.autoStartApplePlaylist,
+                                    });
+                                    if (saved) toast(`${saved.label} saved as a room recipe.`);
+                                }}
+                            />
                             <MissionSetupAutopilotPreview
                                 assistLevels={MISSION_ASSIST_LEVELS}
                                 selectedAssistLevel={missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL}
@@ -19768,24 +19825,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         autoCrowdMomentPreferredTypes: nextTypes.length ? nextTypes : [type]
                                     });
                                 })}
-                            />
-                            <MissionSetupPrimaryPicks
-                                missionPickCount={missionPickCount}
-                                eventProfiles={ROOM_EVENT_PROFILE_OPTIONS}
-                                activeEventProfileId={room?.eventProfileId || ''}
-                                onApplyEventProfile={(profileId) => {
-                                    void applyCurrentRoomEventProfile(profileId);
-                                }}
-                                presets={hostNightPresetList}
-                                presetMeta={NIGHT_SETUP_PRESET_META}
-                                selectedArchetype={missionDraft?.archetype}
-                                onSelectArchetype={(archetypeId) => updateMissionDraftPick({ archetype: archetypeId }, 'archetype')}
-                                flowRules={MISSION_FLOW_RULE_OPTIONS}
-                                selectedFlowRule={missionDraft?.flowRule}
-                                onSelectFlowRule={(flowRuleId) => updateMissionDraftPick({ flowRule: flowRuleId }, 'flow_rule')}
-                                assistLevels={MISSION_ASSIST_LEVELS}
-                                selectedAssistLevel={missionDraft?.assistLevel}
-                                onSelectAssistLevel={(assistLevelId) => updateMissionDraftPick({ assistLevel: assistLevelId }, 'assist_level')}
                             />
                             <MissionSetupAdvancedDrawer
                                 styles={STYLES}

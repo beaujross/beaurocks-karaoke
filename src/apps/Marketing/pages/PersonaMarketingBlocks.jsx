@@ -223,7 +223,7 @@ export const PersonaHeroScaffold = ({
       <div className={`mk3-rebuild-proof-strip ${proofClassName}`.trim()}>
         {proofItems.map((item) => (
           <article key={item.title} className="mk3-rebuild-proof-card">
-            <span>{item.eyebrow || "Proof"}</span>
+            <span>{item.eyebrow || "Why it works"}</span>
             <strong>{item.title}</strong>
             <p>{item.copy}</p>
           </article>

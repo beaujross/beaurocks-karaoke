@@ -125,7 +125,7 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
   assert.match(browserSource, /More room actions/);
   assert.match(browserSource, /activeRoomSetupTab\.helper/);
   assert.doesNotMatch(browserSource, /Pick a task/);
-  assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\('create'\)\}/);
+  assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\(tab\.id\)\}/);
 
   assert.match(browserSource, /ROOM_SETUP_TABS = Object\.freeze\(\[/);
   assert.match(browserSource, /id: 'manage'/);
@@ -141,7 +141,7 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
 
   assert.match(source, /data-launch-core-setup="true"/);
   assert.match(source, /data-room-create-premium="true"/);
-  assert.match(source, /Name it, keep it private or list it, choose who can join, and decide how hands-on you want to be\./);
+  assert.match(source, /Name it, choose a recipe, and decide who can join\./);
   assert.match(source, /data-launch-room-control="true"/);
   assert.match(source, /data-launch-guest-access="true"/);
   assert.match(source, /data-launch-room-privacy="true"/);
@@ -152,8 +152,8 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /Launch Room to open Public TV and copy the Audience App link/);
   assert.match(source, /Custom room code/);
   assert.match(source, /data-launch-configuration-contract="true"/);
-  assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Open Karaoke[\s\S]*Hosted Showcase[\s\S]*Crowd-Led Party[\s\S]*Fundraiser Night/);
-  assert.match(source, /data-launch-night-type-card=\{option\.id\}/);
+  assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Party Karaoke[\s\S]*Crowd Sing-Along[\s\S]*Score Challenge[\s\S]*Karaoke \+ Trivia/);
+  assert.match(source, /data-launch-room-recipe=\{option\.id\}/);
   assert.match(
     source,
     /const applyLaunchNightType =[\s\S]*setLaunchOperatingModel\(option\.operatingModel\);[\s\S]*applyLaunchEconomy\(option\.economyMode\);[\s\S]*setHostNightPreset\(option\.presetId\)/,

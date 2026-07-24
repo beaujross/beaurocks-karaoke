@@ -40,7 +40,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
       title: "No public listings in this area yet.",
       description: "Open Discover or submit a listing to get this area moving.",
       actions: [
-        { id: "discover", label: "Open discover", intent: "discover" },
+        { id: "discover", label: "Find karaoke", intent: "discover" },
         canUseRestrictedActions
           ? { id: "submit_listing", label: "Submit listing", intent: "submit_listing" }
           : { id: "auth", label: "Sign in to submit", intent: "auth" },
@@ -105,7 +105,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   }
   return {
     title: "Nothing here yet.",
-    description: "Start from Discover or one of the persona paths.",
+    description: "Browse karaoke nights or choose what you want to do.",
     actions: [
       { id: "discover", label: "Open discover", intent: "discover" },
       { id: "for_fans", label: "For fans", intent: "for_fans" },

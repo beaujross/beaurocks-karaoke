@@ -138,17 +138,32 @@ const MissionSetupAutopilotPreview = ({
                                 );
                             })}
                         </div>
-                        <label className="mt-3 block text-[11px] text-zinc-300">
-                            Cadence
-                            <select value={intermissionEverySongs} disabled={!intermissionEnabled} onChange={(event) => onSetIntermissionEverySongs(Number(event.target.value || 1))} className="mt-1 min-h-[44px] w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white disabled:opacity-45">
-                                {[1, 2, 3, 4, 5].map((count) => <option key={count} value={count}>After every {count} performance{count === 1 ? '' : 's'}</option>)}
-                            </select>
-                        </label>
+                        <div className="mt-3">
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">How often</div>
+                            <div className="mt-1.5 grid grid-cols-5 gap-1" role="group" aria-label="Between-performance cadence">
+                                {[1, 2, 3, 4, 5].map((count) => {
+                                    const selected = Number(intermissionEverySongs) === count;
+                                    return (
+                                        <button
+                                            key={count}
+                                            type="button"
+                                            disabled={!intermissionEnabled}
+                                            aria-pressed={selected}
+                                            onClick={() => onSetIntermissionEverySongs(count)}
+                                            className={`min-h-[40px] rounded-lg border text-xs font-black transition disabled:opacity-40 ${selected ? 'border-fuchsia-300/45 bg-fuchsia-500/20 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}
+                                        >
+                                            {count}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="mt-1 text-[10px] text-zinc-500">After this many singers</div>
+                        </div>
                     </div>
 
                     <div>
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Host Control</div>
-                        <div className="mt-2 grid grid-cols-1 gap-2">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Adjust host help</div>
+                        <div className="mt-2 grid grid-cols-3 gap-1.5">
                             {visibleAssistLevels.map((assist) => {
                                 const active = selectedAssistLevel === assist.id;
                                 return (
@@ -156,10 +171,9 @@ const MissionSetupAutopilotPreview = ({
                                         key={`autopilot-assist-${assist.id}`}
                                         type="button"
                                         onClick={() => onSelectAssistLevel(assist.id)}
-                                        className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left transition-all ${active ? 'border-emerald-300/55 bg-emerald-500/12 text-white' : 'border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:border-zinc-500'}`}
+                                        className={`min-h-[48px] rounded-xl border px-2 py-2 text-center text-[11px] transition-all ${active ? 'border-emerald-300/55 bg-emerald-500/12 text-white' : 'border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:border-zinc-500'}`}
                                     >
-                                        <span className="font-bold">{assist.label}</span>
-                                        <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">{active ? 'Active' : 'Choose'}</span>
+                                        <span className="font-bold">{assist.label.replace(' First', '')}</span>
                                     </button>
                                 );
                             })}
@@ -167,13 +181,13 @@ const MissionSetupAutopilotPreview = ({
                     </div>
 
                     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Dead-Air Picks</div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">If the queue runs dry</div>
                         <div className="mt-2 space-y-2">
                             {visibleSongs.map((song) => (
                                 <div key={`${song.title}-${song.artist}`} className="flex items-center justify-between gap-3 text-xs">
                                     <div className="min-w-0">
                                         <div className="truncate font-bold text-white">{song.title}</div>
-                                        <div className="truncate text-zinc-400">{song.artist || 'Unknown artist'} · {song.sourceLabel || 'BeauRocks catalog'}</div>
+                                        <div className="truncate text-zinc-400">{song.artist || 'Unknown artist'} · {song.sourceLabel || 'Cached YouTube catalog'}</div>
                                     </div>
                                     <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${song.hasApprovedBacking ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100' : 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'}`}>
                                         {song.hasApprovedBacking ? 'Ready' : 'Known'}
@@ -181,7 +195,7 @@ const MissionSetupAutopilotPreview = ({
                                 </div>
                             ))}
                             {visibleSongs.length === 0 && (
-                                <div className="text-xs text-zinc-400">Browse catalog picks will appear here when the song list is available.</div>
+                                <div className="text-xs text-zinc-400">Cached YouTube karaoke picks will appear here when the catalog is ready.</div>
                             )}
                         </div>
                     </div>

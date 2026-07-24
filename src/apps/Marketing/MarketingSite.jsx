@@ -181,73 +181,73 @@ const MARKETING_RELEASE_VERSION = APP_VERSION ? `v${APP_VERSION}` : "v0.0.0";
 const MARKETING_RELEASE_LABEL = APP_BUILD ? `${MARKETING_RELEASE_VERSION}+${APP_BUILD}` : MARKETING_RELEASE_VERSION;
 const MARKETING_PUBLIC_CHANGELOG = [
   {
-    title: "Host Review + Event Ops Hardening",
+    title: "Host Requests and Playback",
     date: "March 27, 2026",
-    tag: "Host Ops",
+    tag: "Host",
     bullets: [
-      "Unresolved audience requests now have a clearer host-review path with direct YouTube host search and request editing.",
-      "Auto end on finish now prefers the backing duration captured at performance start instead of relying on stale request timing.",
-      "Credits & Funds, promo campaigns, and Givebutter-linked attendee matching continue replacing fragile shared-code event flows.",
+      "Hosts can review guest song requests, edit them, or search YouTube for a better track.",
+      "Auto-finish now uses the track length captured when a performance starts.",
+      "Event credits, promo codes, and Givebutter attendee matching are more reliable.",
     ],
   },
   {
-    title: "Show Workspace Studio Pass",
+    title: "Run of Show Updates",
     date: "March 27, 2026",
-    tag: "Run Of Show",
+    tag: "Run of Show",
     bullets: [
-      "The Show workspace now keeps moving toward a studio-style sequence builder with clearer Build, Run, and Review modes.",
-      "Hosts can see more of the room plan directly in the main operating surfaces instead of digging through admin-only settings.",
-      "The timeline direction remains focused on feeling more like a visual sequence tool than a traditional web form.",
+      "Build, Run, and Review are clearer when planning a karaoke night.",
+      "More of the room plan stays visible while hosting.",
+      "The timeline is faster to scan and edit.",
     ],
   },
   {
-    title: "Audience Email-Link Recovery",
+    title: "Audience Sign-In Fixes",
     date: "March 25, 2026",
     tag: "Audience",
     bullets: [
-      "Expired or already-spent sign-in links now fail cleanly instead of getting stuck in a retry loop.",
-      "Audience email-link verification now runs once per link URL and clears dead auth params after terminal errors.",
-      "Sign-in emails were refreshed with higher-contrast copy and a clearer fallback link block.",
+      "Expired sign-in links now show a clear error instead of retrying.",
+      "Each email sign-in link is checked once and cleared after it expires.",
+      "Sign-in emails are easier to read and include a clearer backup link.",
     ],
   },
   {
-    title: "Homepage + Demo Cleanup",
+    title: "Homepage and Demo",
     date: "March 25, 2026",
     tag: "Marketing",
     bullets: [
-      "The fan homepage hero now falls back to a stable static layout on many mobile and touch devices.",
-      "Competing call-to-action clusters were reduced so the homepage reads like a clearer single journey.",
-      "The demo walkthrough now uses lighter controls, cleaner scene navigation, and smaller surface framing for easier scanning.",
+      "The homepage is more stable on mobile and touch devices.",
+      "Fewer competing buttons make the next step clearer.",
+      "The demo is easier to navigate and scan.",
     ],
   },
   {
-    title: "Launch Access + Routing",
+    title: "Links and Host Access",
     date: "February 27, 2026",
     tag: "Release",
     bullets: [
-      "Root domain now prioritizes launch-intent capture and tester fast-lane actions.",
-      "Primary host panel calls-to-action now route directly to host.beaurocks.app.",
-      "Cross-surface links for audience, host, and TV were revalidated for production.",
+      "The homepage now focuses on finding a night, joining a room, or hosting.",
+      "Host buttons now open Host Dashboard directly.",
+      "Audience, Host, and TV links were checked across production.",
     ],
   },
   {
-    title: "Host Setup Reliability",
+    title: "Host Setup",
     date: "February 27, 2026",
     tag: "Host Ops",
     bullets: [
-      "Host landing now exposes an always-visible create-room path with fewer hidden dependencies.",
-      "Share-and-launch actions for audience join and TV open were streamlined on setup flows.",
-      "Setup smoke tests were updated to track current split-domain production behavior.",
+      "Create Room is now always visible.",
+      "Join and TV links are easier to share.",
+      "Setup works more reliably across BeauRocks web addresses.",
     ],
   },
   {
-    title: "Quality + Safeguards",
+    title: "More Reliable Nights",
     date: "February 27, 2026",
-    tag: "QA",
+    tag: "Reliability",
     bullets: [
-      "Marketing golden-loop tests were aligned to current labels, routing, and auth intents.",
-      "Persona/admin test coverage now reflects modern host setup and fallback UI behavior.",
-      "Release gate checks continue to include host join, users profile, and app-check smoke paths.",
+      "Host setup, room joining, and profiles received another reliability pass.",
+      "Fallback screens are clearer when live data is slow or unavailable.",
+      "Security and release checks continue to run in the background.",
     ],
   },
 ];
@@ -1370,7 +1370,7 @@ const MarketingSite = () => {
                 <img src={MARKETING_BRAND_NEON_URL} alt="BeauRocks Karaoke logo" loading="lazy" />
                 <div>
                   <strong>{PRODUCT_BRAND.name}</strong>
-                  <span>Live rooms, real hosts, and one shared room signal.</span>
+                  <span>Host karaoke. Find a night. Join the room.</span>
                 </div>
               </div>
               <div className="mk3-site-footer-links">

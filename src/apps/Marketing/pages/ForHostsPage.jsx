@@ -35,19 +35,19 @@ const ForHostsPage = ({
   const queueCount = Math.max(0, Number(pendingHostApplicationsCount || 0));
   const heroSignals = [
     {
-      label: "Private parties",
-      title: "Your Room, your pace",
-      copy: "Host-Led and Assisted Host controls make at-home karaoke and private events easy to run without a professional operator.",
+      label: "At home",
+      title: "Run it yourself",
+      copy: "Manage the queue, TV, and guest phones from one place.",
     },
     {
-      label: "Approved hosts",
-      title: "One dashboard runs the whole room",
-      copy: "Queue, TV, and join flow stay in one operating surface once access is approved.",
+      label: "Private events",
+      title: "Keep the party moving",
+      copy: "Turn on Assisted Host when you want help with pacing and what comes next.",
     },
     {
-      label: "Reviewed access",
-      title: queueCount > 0 ? `${queueCount} applications already in review` : "Applications are reviewed in batches",
-      copy: liveListingsCount > 0 ? `${liveListingsCount.toLocaleString()} public listings are already helping guests find karaoke while Host access expands carefully.` : "Host access expands in reviewed batches while BeauRocks protects Room reliability and support quality.",
+      label: "Host access",
+      title: queueCount > 0 ? `${queueCount} requests in line` : "Join the waitlist",
+      copy: liveListingsCount > 0 ? `${liveListingsCount.toLocaleString()} karaoke listings are already live.` : "We will email you when your account is approved.",
     },
   ];
 
@@ -205,17 +205,15 @@ const ForHostsPage = ({
     <PersonaPageFrame theme="host">
       <article className="mk3-persona-simple-hero mk3-persona-simple-hero-host">
         <div className="mk3-persona-simple-copy">
-          <div className="mk3-rebuild-kicker">For at-home and private-party hosts</div>
-          <h1>Put the karaoke night in your hands.</h1>
+          <div className="mk3-rebuild-kicker">Karaoke for home and private parties</div>
+          <h1>Host karaoke your way.</h1>
           <p>
-            Run the queue, Public TV, guest phones, and room energy from Host Dashboard—or use
-            Assisted Host when you want the party to keep moving. Access opens in reviewed batches.
-            Apply once, then come back to the same account when BeauRocks approves it.
+            Run the queue, TV, and guest phones yourself, or turn on Assisted Host for help keeping the party moving.
           </p>
           <div className="mk3-demand-pill-row" aria-label="Host access signals">
-            <span>Approved hosts only</span>
-            <span>Reviewed access</span>
-            <span>{queueCount > 0 ? `${queueCount} in review now` : "Batch review queue"}</span>
+            <span>Home parties</span>
+            <span>Private events</span>
+            <span>One Host Dashboard</span>
           </div>
           <div className="mk3-rebuild-action-row">
             <button
@@ -226,7 +224,7 @@ const ForHostsPage = ({
                 scrollToIntake();
               }}
             >
-              Join Host Waitlist
+              Join the Host Waitlist
             </button>
             <button
               type="button"
@@ -236,28 +234,28 @@ const ForHostsPage = ({
                 openHostLogin();
               }}
             >
-              Already Approved? Sign In
+              Host Sign In
             </button>
           </div>
         </div>
 
         <article ref={intakeFormRef} className="mk3-persona-simple-form-card">
           <div className="mk3-persona-simple-form-topline">
-            <span>Apply once</span>
-            <b>Same account opens the dashboard</b>
+            <span>Host access</span>
+            <b>Join the waitlist</b>
           </div>
 
           {hostApplicationStatus === "pending" && (
             <div className="mk3-status">
-              <strong>You are already in line.</strong>
-              <span>We already have your request. If approved, this same account will open the host dashboard.</span>
+              <strong>Your request is in.</strong>
+              <span>We will email you if your account is approved.</span>
             </div>
           )}
 
           {session?.hasHostWorkspaceAccess ? (
             <div className="mk3-status">
-              <strong>You already have host access.</strong>
-              <span>Open the host dashboard and keep going.</span>
+              <strong>Your Host access is ready.</strong>
+              <span>Open the dashboard to set up a room.</span>
             </div>
           ) : (
             <form className="mk3-auth-state mk3-host-application-form" onSubmit={requestEarlyHostAccess}>
@@ -279,11 +277,10 @@ const ForHostsPage = ({
                 <div className="mk3-auth-hint">Signed in as {session.email}</div>
               )}
               <div className="mk3-auth-hint">
-                BeauRocks reviews each request before approving access. If approved,
-                this same account signs in on `host.beaurocks.app`.
+                Use the email you want tied to your Host account.
               </div>
               <button className="mk3-rebuild-button is-primary" type="submit" disabled={requestBusy}>
-                {requestBusy ? "Joining..." : "Join Host Waitlist"}
+                {requestBusy ? "Joining..." : "Join the Waitlist"}
               </button>
               {!!requestNotice && <div className="mk3-status">{requestNotice}</div>}
               <button
@@ -306,7 +303,7 @@ const ForHostsPage = ({
       </article>
 
       <section className="mk3-persona-simple-band">
-        <div className="mk3-rebuild-kicker">Why there is a waitlist</div>
+        <div className="mk3-rebuild-kicker">What you can run</div>
         <div className="mk3-persona-simple-card-grid is-three">
           {heroSignals.map((item) => (
             <article key={item.label} className="mk3-persona-simple-card">

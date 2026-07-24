@@ -142,7 +142,7 @@ const EntityActionsCard = ({
   if (!canAct) {
     return (
       <aside className="mk3-actions-card">
-        <h4>Social Actions</h4>
+        <h4>Follow This Night</h4>
         <p>Sign in to unlock follow, RSVP, check-ins, reviews, and reminders.</p>
         <button
           type="button"
@@ -330,7 +330,7 @@ const EntityActionsCard = ({
   return (
     <aside className="mk3-actions-card">
       <h4>Social Actions</h4>
-      <p>Private by default check-ins, public karaoke reviews, and conversion-friendly follow/RSVP flows.</p>
+      <p>Save it, RSVP, or leave a karaoke review.</p>
       <button type="button" disabled={busy} onClick={toggleFollow}>
         {following ? "Unfollow" : "Follow"}
       </button>

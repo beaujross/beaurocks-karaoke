@@ -78,7 +78,7 @@ export const buildPublicSongItemListJsonLd = (publicSongs = []) => {
     "@context": "https://schema.org",
     "@type": "ItemList",
     name: "BeauRocks karaoke Song Crown leaders",
-    description: "Evidence-backed top karaoke song performances from qualified BeauRocks Host nights.",
+    description: "Top karaoke song performances from public BeauRocks nights.",
     itemListOrder: "https://schema.org/ItemListOrderDescending",
     numberOfItems: realSongs.length,
     itemListElement: realSongs.map((song, index) => ({

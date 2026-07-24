@@ -4,19 +4,19 @@ import { PersonaPageFrame, PersonaSurfaceMock } from "./PersonaMarketingBlocks";
 
 const PERFORMER_SIGNALS = [
   {
-    label: "Discovery",
-    title: "See which rooms are worth trying",
-    copy: "The host, schedule, and room style should be easy to read.",
+    label: "Find a night",
+    title: "Know before you go",
+    copy: "Check the venue, time, and host.",
   },
   {
-    label: "Planning",
-    title: "Build a weekly routine",
-    copy: "Good rooms should be easy to find again.",
+    label: "Join the room",
+    title: "Add your song",
+    copy: "Scan the code, choose your emoji, and get in the queue.",
   },
   {
-    label: "Join flow",
-    title: "Join quickly when you get there",
-    copy: "Phone join should be simple and current.",
+    label: "Make the chart",
+    title: "Keep your scores",
+    copy: "Sign in before you sing to save eligible results to your profile.",
   },
 ];
 
@@ -33,9 +33,9 @@ const ForPerformersPage = ({ navigate }) => {
     <PersonaPageFrame theme="performer">
       <article className="mk3-persona-simple-hero mk3-persona-simple-hero-center">
         <div className="mk3-persona-simple-copy is-center">
-          <div className="mk3-rebuild-kicker">For performers</div>
-          <h1>Find the Room, sing the song, chase the crown.</h1>
-          <p>Compare real schedules and active nights, then build Singer Momentum from qualified performances at approved BeauRocks Host nights.</p>
+          <div className="mk3-rebuild-kicker">For singers</div>
+          <h1>Find a night. Pick a song. Sing.</h1>
+          <p>See what is happening nearby, then join the room from your phone when you arrive.</p>
           <div className="mk3-rebuild-action-row is-centered">
             <button
               type="button"
@@ -45,17 +45,17 @@ const ForPerformersPage = ({ navigate }) => {
                 navigate("discover");
               }}
             >
-              Open Discover Map
+              Find Karaoke
             </button>
             <button
               type="button"
               className="mk3-rebuild-button is-secondary"
               onClick={() => {
                 trackPersonaCta("hero_overview");
-                navigate("for_fans");
+                navigate("charts");
               }}
             >
-              Open Overview
+              See the Charts
             </button>
           </div>
         </div>
@@ -63,16 +63,16 @@ const ForPerformersPage = ({ navigate }) => {
         <div className="mk3-persona-simple-surface is-centered">
           <PersonaSurfaceMock
             type="radar"
-            label="Live radar"
-            title="Start with discovery that feels current."
-            copy="Good rooms should not be hard to find."
+            label="Karaoke near you"
+            title="See what is on tonight."
+            copy="Venue, time, and host details in one place."
             className="mk3-persona-simple-surface-main"
           />
         </div>
       </article>
 
       <section className="mk3-persona-simple-band">
-        <div className="mk3-rebuild-kicker">What matters</div>
+        <div className="mk3-rebuild-kicker">From search to stage</div>
         <div className="mk3-persona-simple-card-grid is-three">
           {PERFORMER_SIGNALS.map((item) => (
             <article key={item.title} className="mk3-persona-simple-card">
@@ -84,31 +84,6 @@ const ForPerformersPage = ({ navigate }) => {
         </div>
       </section>
 
-      <section className="mk3-persona-simple-band mk3-persona-simple-band-tight">
-        <div className="mk3-rebuild-kicker">Next step</div>
-        <div className="mk3-persona-simple-cta-row">
-          <button
-            type="button"
-            className="mk3-rebuild-button is-primary"
-            onClick={() => {
-              trackPersonaCta("closing_discover");
-              navigate("discover");
-            }}
-          >
-            Open Discover
-          </button>
-          <button
-            type="button"
-            className="mk3-rebuild-button is-secondary"
-            onClick={() => {
-              trackPersonaCta("closing_for_fans");
-              navigate("for_fans");
-            }}
-          >
-            Open Overview
-          </button>
-        </div>
-      </section>
     </PersonaPageFrame>
   );
 };

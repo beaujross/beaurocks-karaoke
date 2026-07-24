@@ -12,32 +12,32 @@ const TABS = Object.freeze([
 
 const CHART_STORIES = Object.freeze({
   songs: {
-    eyebrow: "Highest single performance",
-    title: "Which songs are waiting for a new champion?",
-    copy: "Song Crowns rank the highest qualified performance for each song. Different backing versions still compete for the same crown.",
-    ctaKicker: "For private-party hosts",
-    ctaTitle: "Put a karaoke night in your own hands.",
-    ctaCopy: "Run the queue, TV, guest phones, reactions, and song challenges from one Room—at home or at a private event.",
+    eyebrow: "Best score for each song",
+    title: "Who holds the Song Crown?",
+    copy: "The highest eligible score leads. Every backing version counts toward the same song.",
+    ctaKicker: "Host your own night",
+    ctaTitle: "Bring BeauRocks to your party.",
+    ctaCopy: "Run the queue, TV, guest phones, and games.",
     ctaLabel: "Apply to Host",
     ctaPage: "for_hosts",
   },
   members: {
-    eyebrow: "Qualified points over time",
-    title: "Who keeps showing up and moving the room?",
-    copy: "Singer Momentum adds qualified performance points across public BeauRocks nights. It rewards participation and performance, not one vocal score.",
-    ctaKicker: "For singers and party guests",
-    ctaTitle: "Find a Room and make your run.",
-    ctaCopy: "Join with a BeauRocks account, perform at an approved Host night, and your qualified results can build momentum here.",
+    eyebrow: "Points across every performance",
+    title: "Who is climbing the singer chart?",
+    copy: "Singer Momentum adds up the points from your eligible BeauRocks performances.",
+    ctaKicker: "Ready to sing?",
+    ctaTitle: "Find karaoke near you.",
+    ctaCopy: "Sign in before you sing to keep eligible scores on your profile.",
     ctaLabel: "Find Karaoke",
     ctaPage: "discover",
   },
   nights: {
-    eyebrow: "Total qualified Room activity",
-    title: "Where is the most karaoke activity happening?",
-    copy: "Active Nights rank approved public Rooms by the total qualified performance points created there. Bigger, busier nights naturally build more activity.",
-    ctaKicker: "For venues and recurring nights",
-    ctaTitle: "Turn real activity into a discoverable story.",
-    ctaCopy: "Claim a venue, publish the schedule, and connect approved BeauRocks Rooms so guests can find the night and see what happened.",
+    eyebrow: "Most points earned in one room",
+    title: "Where is karaoke busiest?",
+    copy: "Active Nights ranks public rooms by total performance points.",
+    ctaKicker: "Run a karaoke night?",
+    ctaTitle: "Put it on the map.",
+    ctaCopy: "Publish the venue, schedule, and host.",
     ctaLabel: "Get on the Map",
     ctaPage: "for_venues",
   },
@@ -86,9 +86,9 @@ const getChartItemView = (item = {}, tab = "members") => {
     subtitle: `${formatScore(item.performanceCount)} performances · best ${formatScore(item.bestScore)}`,
     context: item.latestSongTitle
       ? `Latest: ${item.latestSongTitle}${item.latestArtist ? ` · ${item.latestArtist}` : ""}`
-      : "Qualified BeauRocks performances",
+      : "BeauRocks performances",
     score: item.rankScore,
-    scoreLabel: "momentum pts",
+    scoreLabel: "points",
   };
 };
 
@@ -142,7 +142,7 @@ const FeaturedSongLadder = ({ song = {} }) => {
         {leaders.map((leader, index) => (
           <li key={leader.resultId}>
             <b>#{index + 1}</b>
-            <div><strong>{leader.displayName || "BeauRocks Singer"}</strong><span>{leader.qualifiedNightLabel || "Approved BeauRocks night"}</span></div>
+            <div><strong>{leader.displayName || "BeauRocks Singer"}</strong><span>{leader.qualifiedNightLabel || "BeauRocks night"}</span></div>
             <em>{formatScore(leader.score)}</em>
             <a href={buildReportResultHref(leader.resultId)}>Report</a>
           </li>
@@ -230,9 +230,9 @@ const ChartsPage = ({ navigate }) => {
           <h2 id="mk3-chart-story-title">Different versions. One record.</h2>
         </div>
         <ol>
-          <li><b>01</b><div><strong>Pick the song</strong><span>Every backing version rolls up to the same song leaderboard.</span></div></li>
-          <li><b>02</b><div><strong>Move the room</strong><span>Hype, applause, and host bonus become your performance score.</span></div></li>
-          <li><b>03</b><div><strong>Take the crown</strong><span>The top qualified score holds the song until somebody beats it.</span></div></li>
+          <li><b>01</b><div><strong>Choose a song</strong><span>Every version shares one leaderboard.</span></div></li>
+          <li><b>02</b><div><strong>Earn a score</strong><span>Reactions, applause, and host awards add to your total.</span></div></li>
+          <li><b>03</b><div><strong>Beat the leader</strong><span>The highest eligible score holds the crown.</span></div></li>
         </ol>
       </section>
 
@@ -268,8 +268,8 @@ const ChartsPage = ({ navigate }) => {
         <>
           {hasOpeningScores && (
             <div className="mk3-chart-opening-note">
-              <strong>Opening scores start the chase.</strong>
-              <span>These deliberately low catalog marks are not singer performances. The first qualified score on a song replaces its opening score.</span>
+              <strong>Every song starts with a score to beat.</strong>
+              <span>Opening scores are placeholders. The first eligible singer score replaces them.</span>
             </div>
           )}
           <ChartPodium items={activeItems} activeTab={activeTab} navigate={navigate} />
@@ -286,7 +286,7 @@ const ChartsPage = ({ navigate }) => {
                         <strong>{item.displayName || "BeauRocks Singer"}</strong>
                         <span>{formatScore(item.performanceCount)} performances · best {formatScore(item.bestScore)}</span>
                       </div>
-                      <div className="mk3-chart-score"><strong>{formatScore(item.rankScore)}</strong><span>momentum pts</span></div>
+                      <div className="mk3-chart-score"><strong>{formatScore(item.rankScore)}</strong><span>points</span></div>
                       {!!item.latestResultId && (
                         <a className="mk3-chart-report" href={buildReportResultHref(item.latestResultId)}>Report</a>
                       )}
@@ -346,7 +346,7 @@ const ChartsPage = ({ navigate }) => {
       </section>
 
       <footer className="mk3-charts-footnote">
-        Guests still appear in their live room. Public crowns require a BeauRocks account and an approved BeauRocks host night.
+        Sign in before you sing to appear on public charts. Scores must come from a public BeauRocks night.
       </footer>
     </section>
   );

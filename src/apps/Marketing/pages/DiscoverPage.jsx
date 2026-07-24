@@ -1899,11 +1899,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
       <section className="mk3-discover-radar-hero mk3-zone">
         <div className="mk3-discover-radar-copy">
           <div className="mk3-rebuild-kicker">Discover</div>
-          <h1>Find karaoke rooms, recurring nights, and venues you can trust.</h1>
-          <p>
-            Use Now or Tonight for time-sensitive plans, browse the full directory for recurring venues,
-            or open a public BeauRocks room and see its entry requirements before joining.
-          </p>
+          <h1>Find karaoke near you.</h1>
+          <p>See what is on now, what starts tonight, and where to sing every week.</p>
           <div className="mk3-discover-radar-meta">
             <span>{activeRegionLabel}</span>
             <span>{directoryUpdatedLabel}</span>
@@ -1952,19 +1949,19 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
 
         <div className="mk3-discover-radar-panel">
           <article className="mk3-discover-radar-panel-card is-brand">
-            <span>Live directory</span>
+            <span>Karaoke listings</span>
             <strong>{liveDirectoryLabel > 0 ? liveDirectoryLabel.toLocaleString() : "Live now"}</strong>
-            <p>Rooms, events, and venues stay in one live directory instead of scattered links.</p>
+            <p>Rooms, events, and venues.</p>
           </article>
           <article className="mk3-discover-radar-panel-card">
-            <span>Approved hosts</span>
+            <span>Official listings</span>
             <strong>{officialBeauRocksListingCount + officialBeauRocksRoomCount}</strong>
-            <p>Reviewed BeauRocks rooms and official nights are surfaced first when you want the strongest signal.</p>
+            <p>Verified BeauRocks rooms and nights.</p>
           </article>
           <article className="mk3-discover-radar-panel-card">
-            <span>Fast entry</span>
+            <span>Join now</span>
             <strong>{joinableRoomCount > 0 ? `${joinableRoomCount} rooms ready for entry` : "Open a live room to see how to enter"}</strong>
-            <p>Open rooms use the room code; gated rooms clearly ask for an account or separate guest passcode.</p>
+            <p>Open a room to see its join code or sign-in requirements.</p>
           </article>
         </div>
       </section>
@@ -1975,9 +1972,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
         <section className="mk3-discover-live-rail mk3-zone">
           <div className="mk3-discover-live-rail-head">
             <div>
-              <span>Right now</span>
-              <strong>Start with the strongest room signal.</strong>
-              <p>These are the official nights and joinable rooms worth opening first.</p>
+              <span>Happening now</span>
+              <strong>Open a live karaoke room.</strong>
+              <p>Official nights and rooms you can join now.</p>
             </div>
           </div>
           <div className="mk3-discover-live-rail-grid">
