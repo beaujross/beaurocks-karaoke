@@ -16,6 +16,13 @@ import {
     getRunOfShowItemLabel,
     normalizeRunOfShowDirector
 } from '../../../lib/runOfShowDirector';
+import {
+    LIVE_STAGE_CAMERA_CORNERS,
+    LIVE_STAGE_CAMERA_MODES,
+    getLiveStageCameraModeLabel,
+    normalizeLiveStageCameraCorner,
+    normalizeLiveStageCameraMode,
+} from '../../../lib/liveStageCamera';
 
 import {
     buildProvisionEventCreditsPayload,
@@ -27,6 +34,13 @@ const TOP_SCENE_TEMPLATE_QUICK_PADS = Object.freeze([
     { id: 'how_to_join', label: 'How To Join', icon: 'fa-qrcode', group: 'audience' },
     { id: 'sponsor_spotlight', label: 'Sponsor', icon: 'fa-hand-holding-heart', group: 'support' },
     { id: 'trivia_break', label: 'Trivia', icon: 'fa-circle-question', group: 'game' },
+]);
+const LIVE_STAGE_CAMERA_CORNER_OPTIONS = Object.freeze([
+    { id: LIVE_STAGE_CAMERA_CORNERS.auto, label: 'Auto' },
+    { id: LIVE_STAGE_CAMERA_CORNERS.topLeft, label: 'Top L' },
+    { id: LIVE_STAGE_CAMERA_CORNERS.topRight, label: 'Top R' },
+    { id: LIVE_STAGE_CAMERA_CORNERS.bottomLeft, label: 'Bottom L' },
+    { id: LIVE_STAGE_CAMERA_CORNERS.bottomRight, label: 'Bottom R' },
 ]);
 const QUICK_REWARD_REFILL_PRESETS = Object.freeze([
     { id: 'off', label: 'Off', timedLobbyEnabled: false, timedLobbyPoints: 0, timedLobbyIntervalMin: 10, timedLobbyMaxPerGuest: 0 },
@@ -314,6 +328,9 @@ const HostTopChrome = ({
             : tvDisplayMode === 'visualizer'
                 ? 'Visualizer'
                 : 'Video';
+    const liveStageCameraMode = normalizeLiveStageCameraMode(room?.liveStageCameraMode);
+    const liveStageCameraCorner = normalizeLiveStageCameraCorner(room?.liveStageCameraCorner);
+    const liveStageCameraLabel = getLiveStageCameraModeLabel(liveStageCameraMode);
     const audienceDisplayMode = String(quickRoomControls?.audienceDisplay?.mode || 'off').trim().toLowerCase() || 'off';
     const audienceDisplaySelectedCount = Math.max(0, Number(quickRoomControls?.audienceDisplaySelectedCount || 0) || 0);
     const audienceDisplayLabel = audienceDisplayMode === 'commentator_row'
@@ -1037,6 +1054,10 @@ const HostTopChrome = ({
         }
     };
     const applyTvDisplayMode = async (mode) => {
+        const wantsLyrics = mode === 'lyrics' || mode === 'lyrics_viz';
+        if (wantsLyrics && quickAutomationControls?.autoLyricsOnQueue !== true) {
+            await quickAutomationControls?.onToggleAutoLyricsOnQueue?.();
+        }
         if (mode === 'lyrics') {
             await updateRoom({ showLyricsTv: true, showVisualizerTv: false, lyricsMode: room?.lyricsMode || 'auto' });
         } else if (mode === 'visualizer') {
@@ -1063,6 +1084,17 @@ const HostTopChrome = ({
     const applyTvPresentationProfile = async (profile) => {
         const nextProfile = profile === 'simple' || profile === 'cinema' ? profile : 'room';
         await updateRoom({ tvPresentationProfile: nextProfile });
+    };
+    const applyLiveStageCameraMode = async (mode) => {
+        const nextMode = normalizeLiveStageCameraMode(mode);
+        await updateRoom({
+            liveStageCameraMode: nextMode,
+            liveStageCameraCorner: liveStageCameraCorner,
+            liveStageCameraMirror: room?.liveStageCameraMirror !== false,
+        });
+    };
+    const applyLiveStageCameraCorner = async (corner) => {
+        await updateRoom({ liveStageCameraCorner: normalizeLiveStageCameraCorner(corner) });
     };
     const toggleOverlayScreen = async (screenId) => {
         const nextScreen = room?.activeScreen === screenId ? 'stage' : screenId;
@@ -2611,7 +2643,75 @@ const HostTopChrome = ({
                                 </button>
                             </div>
                             <div className="mt-2.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
-                                Tip: Lyrics and visualizer can run together.
+                                Lyrics turns on automatic lookup for new requests. Lyrics and visualizer can run together.
+                            </div>
+                            <div className={`${quickMenuCardClass} mt-2.5`} data-feature-id="deck-tv-live-stage-camera">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                                            <i className="fa-solid fa-camera text-pink-300" aria-hidden="true"></i>
+                                            Live Stage Cam
+                                        </div>
+                                        <div className="mt-1 text-[11px] leading-4 text-zinc-400">
+                                            Camera-free layouts stay complete. Add the local TV camera as the stage or a safe corner.
+                                        </div>
+                                    </div>
+                                    <span className={`${quickMenuBadgeClass} ${
+                                        liveStageCameraMode === LIVE_STAGE_CAMERA_MODES.off
+                                            ? 'border-white/10 bg-white/5 text-zinc-300'
+                                            : 'border-pink-300/30 bg-pink-500/10 text-pink-100'
+                                    }`}>
+                                        {liveStageCameraLabel}
+                                    </span>
+                                </div>
+                                <div className="mt-3 grid grid-cols-3 gap-2">
+                                    {[
+                                        [LIVE_STAGE_CAMERA_MODES.off, 'Off'],
+                                        [LIVE_STAGE_CAMERA_MODES.full, 'Full Stage'],
+                                        [LIVE_STAGE_CAMERA_MODES.corner, 'Corner'],
+                                    ].map(([mode, label]) => (
+                                        <button
+                                            key={`live-stage-camera-${mode}`}
+                                            type="button"
+                                            onClick={() => applyLiveStageCameraMode(mode)}
+                                            className={`${styles.btnStd} ${liveStageCameraMode === mode ? styles.btnHighlight : styles.btnNeutral} h-10 px-2 py-2 text-xs normal-case tracking-[0.03em]`}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {liveStageCameraMode === LIVE_STAGE_CAMERA_MODES.corner ? (
+                                    <div className="mt-3 border-t border-white/10 pt-3">
+                                        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">Safe Corner</div>
+                                        <div className="grid grid-cols-5 gap-1.5">
+                                            {LIVE_STAGE_CAMERA_CORNER_OPTIONS.map((option) => (
+                                                <button
+                                                    key={`live-stage-camera-corner-${option.id}`}
+                                                    type="button"
+                                                    onClick={() => applyLiveStageCameraCorner(option.id)}
+                                                    className={`${styles.btnStd} ${liveStageCameraCorner === option.id ? styles.btnHighlight : styles.btnNeutral} min-h-9 px-1.5 py-1.5 text-[10px] normal-case tracking-[0.01em]`}
+                                                    title={`${option.label} camera placement`}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : null}
+                                {liveStageCameraMode !== LIVE_STAGE_CAMERA_MODES.off ? (
+                                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                                        <span className="text-[10px] leading-4 text-zinc-500">
+                                            On Public TV, press C to choose a local camera or capture card.
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => updateRoom({ liveStageCameraMirror: room?.liveStageCameraMirror === false })}
+                                            className={`${styles.btnStd} ${room?.liveStageCameraMirror === false ? styles.btnNeutral : styles.btnHighlight} h-9 shrink-0 px-3 py-1.5 text-xs normal-case tracking-[0.03em]`}
+                                        >
+                                            Mirror {room?.liveStageCameraMirror === false ? 'Off' : 'On'}
+                                        </button>
+                                    </div>
+                                ) : null}
                             </div>
                             <div className="mt-2.5 rounded-lg border border-white/10 bg-black/25 p-2.5">
                                 <div className="flex items-center justify-between gap-2">

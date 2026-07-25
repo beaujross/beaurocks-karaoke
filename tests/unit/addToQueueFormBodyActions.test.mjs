@@ -138,19 +138,18 @@ afterEach(() => {
 });
 
 test('AddToQueueFormBody exposes one append-only performance result action', async () => {
-  const { props, tree } = await renderAddToQueueFormBody();
+  const { tree } = await renderAddToQueueFormBody();
   const addNext = findByFeatureId(tree, 'performance-result-add-next');
   const addLater = findByFeatureId(tree, 'performance-result-add-later');
   const queueOnly = findByFeatureId(tree, 'performance-result-queue-only');
+  const resultRow = findByFeatureId(tree, 'performance-result-row');
 
   assert.equal(addNext, null);
   assert.equal(addLater, null);
-  assert.ok(queueOnly);
-
-  queueOnly.props.onClick({ stopPropagation: noop });
-
-  assert.equal(props.onQueuePerformanceResult.mock.calls.length, 1);
-  assert.equal(props.onQueuePerformanceResult.mock.calls[0].length, 1);
+  assert.equal(queueOnly, null);
+  assert.ok(resultRow);
+  assert.equal(resultRow.props.role, 'button');
+  assert.match(resultRow.props['aria-label'], /^Add to queue /);
 });
 
 test('AddToQueueFormBody queues a performance when the host taps its result card', async () => {

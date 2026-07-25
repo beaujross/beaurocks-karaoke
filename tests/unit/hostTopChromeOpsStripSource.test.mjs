@@ -58,7 +58,7 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
   );
   assert.match(
     source,
-    /denseChrome \? 'h-9 px-2\.5 text-\[12px\]' : 'h-9 px-2\.5 text-sm'[\s\S]*inline-flex shrink-0 items-center/,
+    /denseChrome \? 'h-9 px-2\.5 text-\[12px\]' : 'h-9 px-2\.5 text-sm'[\s\S]*host-brand-tab shrink-0/,
     'HostTopChrome primary nav tabs should use a consistent compact height including the active Show tab',
   );
   assert.match(
@@ -110,8 +110,8 @@ test('host flow dropdown exposes One-Minute Mic live pacing controls', () => {
   assert.match(source, /data-feature-id="deck-automation-menu"[\s\S]*data-feature-id=\{`deck-automation-\$\{item\.key\}`\}/);
   assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*Flow & Automation[\s\S]*data-host-one-minute-mic-controls/);
   assert.doesNotMatch(source, /data-feature-id="deck-queue-menu-toggle"[\s\S]*data-host-one-minute-mic-controls/);
-  assert.match(source, /Song length[\s\S]*One-Minute Mic[\s\S]*Full Songs/);
-  assert.match(source, /ONE_MINUTE_MIC_OPENING_PRESETS = Object\.freeze\(\[45, 60, 90\]\)/);
+  assert.match(source, /Song length[\s\S]*Full Songs[\s\S]*Mic Checkpoint/);
+  assert.match(source, /ONE_MINUTE_MIC_OPENING_PRESETS = Object\.freeze\(\[45, 60, 90, 120\]\)/);
   assert.match(source, /ONE_MINUTE_MIC_VOTE_WINDOW_PRESETS = Object\.freeze\(\[8, 12, 15, 20\]\)/);
   assert.match(source, /quickRoomControls\.onSetOneMinuteMic\?\.\(true\)/);
   assert.match(source, /quickRoomControls\.onSetOneMinuteMicTiming\?\.\(\{ openingWindowSec: event\.target\.value \}\)/);
@@ -125,7 +125,7 @@ test('host flow dropdown exposes One-Minute Mic live pacing controls', () => {
   assert.match(hostAppSource, /oneMinuteMicEnabledQuick = room\?\.oneMinuteMicEnabled === true \|\| String\(room\?\.performanceProgressionMode \|\| ''\)\.trim\(\)\.toLowerCase\(\) === 'one_minute_mic'/);
   assert.match(hostAppSource, /const oneMinuteMicLiveStatus = \(\(\) => \{/);
   assert.match(hostAppSource, /Crowd rescue vote is live/);
-  assert.match(hostAppSource, /One-Minute Mic vote is live/);
+  assert.match(hostAppSource, /Mic Checkpoint vote is live/);
   assert.match(hostAppSource, /Tie — singer stays/);
   assert.match(hostAppSource, /The backing track is fading before applause starts/);
   assert.match(hostAppSource, /Rotation won, but the transition has not started/);

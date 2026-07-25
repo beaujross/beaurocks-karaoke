@@ -52,6 +52,7 @@ const AppleLyricsRenderer = ({
         if (Array.isArray(timedLyrics) && timedLyrics.length) return timedLyrics;
         return parsedTimedLyrics;
     }, [timedLyrics, parsedTimedLyrics]);
+    const hasProviderTiming = effectiveTimedLyrics.length > 0;
     const lines = useMemo(() => {
         if (Array.isArray(effectiveTimedLyrics) && effectiveTimedLyrics.length) {
             return effectiveTimedLyrics.map(l => l.text).filter(l => l.trim());
@@ -135,6 +136,7 @@ const AppleLyricsRenderer = ({
 
     return (
         <div
+            data-lyrics-timing-quality={hasProviderTiming ? 'timed' : 'estimated'}
             className={`absolute inset-0 z-50 overflow-hidden flex items-center justify-center font-bebas animate-in fade-in ${overlayMode ? 'bg-gradient-to-b from-black/35 via-black/10 to-black/50' : 'bg-black'}`}
             onTouchStart={handleInteraction}
             onWheel={handleInteraction}
@@ -174,8 +176,8 @@ const AppleLyricsRenderer = ({
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                             <div className={`inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-500/10 ${overlayMode ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px] md:text-xs'} font-bold uppercase tracking-[0.18em] text-cyan-100`}>
-                                <span className={`inline-block rounded-full ${isPlaying ? 'bg-emerald-400' : 'bg-amber-300'} ${overlayMode ? 'w-2 h-2' : 'w-2.5 h-2.5'}`}></span>
-                                {isPlaying ? 'Synced' : 'Paused'}
+                                <span className={`inline-block rounded-full ${isPlaying ? (hasProviderTiming ? 'bg-emerald-400' : 'bg-amber-300') : 'bg-red-400'} ${overlayMode ? 'w-2 h-2' : 'w-2.5 h-2.5'}`}></span>
+                                {isPlaying ? (hasProviderTiming ? 'Synced' : 'Following') : 'Paused'}
                             </div>
                             {!!roomCode && (
                                 <div className={`inline-flex rounded-full border border-white/15 bg-black/40 ${overlayMode ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px] md:text-xs'} font-bold uppercase tracking-[0.18em] text-white`}>
@@ -235,9 +237,9 @@ const AppleLyricsRenderer = ({
             </div>
 
             <div className="absolute top-6 right-6 z-30 flex flex-col gap-2 items-end">
-                <div className={`px-4 py-1 rounded-full border border-white/20 text-xs font-bold text-white flex items-center gap-2 backdrop-blur-md ${isPlaying ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-                    <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></span>
-                    {isPlaying ? 'SYNCED' : 'PAUSED'}
+                <div className={`px-4 py-1 rounded-full border border-white/20 text-xs font-bold text-white flex items-center gap-2 backdrop-blur-md ${isPlaying ? (hasProviderTiming ? 'bg-green-500/20' : 'bg-amber-500/20') : 'bg-red-500/20'}`}>
+                    <span className={`w-2 h-2 rounded-full ${isPlaying ? (hasProviderTiming ? 'bg-green-400 animate-pulse' : 'bg-amber-300') : 'bg-red-400'}`}></span>
+                    {isPlaying ? (hasProviderTiming ? 'SYNCED' : 'ESTIMATED') : 'PAUSED'}
                 </div>
                 <div className="text-[10px] text-zinc-300 uppercase tracking-[0.3em]">{showAll ? 'Full View' : manualScroll ? 'Manual Scroll' : 'Auto Scroll'}</div>
             </div>

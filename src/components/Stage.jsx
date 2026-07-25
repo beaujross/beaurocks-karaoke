@@ -59,6 +59,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     const showVisualizerTv = !!room?.showVisualizerTv;
     const hideVideoVisuals = showVisualizerTv;
     const hasLyrics = !!(current?.lyrics && String(current.lyrics).trim()) || (Array.isArray(current?.lyricsTimed) && current.lyricsTimed.length > 0);
+    const lyricsVisible = !!room?.showLyricsTv && hasLyrics;
     
     const isAudioOnly = !!(current?.audioOnly) || (mediaUrl && /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(mediaUrl));
     // Detect Native Video (mp4, webm, ogg)
@@ -533,7 +534,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             </div>
 
             {/* LAYER 2: LYRICS OVERLAY (Z-Index 40 - Above Video, Below HUD) */}
-            {room?.showLyricsTv && hasLyrics && (
+            {lyricsVisible && (
                 <div className="absolute inset-0 z-40">
                     <AppleLyricsRenderer 
                         lyrics={current.lyrics} 
@@ -556,7 +557,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             )}
             
             {/* LAYER 3: HUD / INFO (Z-Index 50+) */}
-            {!room?.hideOverlay && current && layout !== 'cinema' && !room?.showLyricsTv && !showVisualizerTv && ( 
+            {!room?.hideOverlay && current && layout !== 'cinema' && !lyricsVisible && !showVisualizerTv && (
                 <div className="absolute inset-0 pointer-events-none flex flex-col justify-center items-center z-10 p-4 sm:p-6 md:p-8 lg:p-10">
                     {!minimalUI && <div className={`${fitToWindow ? 'bg-pink-600 text-white px-4 py-2 md:px-5 rounded-full font-bold tracking-[0.18em] text-xs md:text-sm inline-block mb-5 md:mb-7 shadow-lg' : 'bg-pink-600 text-white px-6 py-2 rounded-full font-bold tracking-widest inline-block mb-8 shadow-lg'}`}>NOW PERFORMING</div>}
                     <div className={`flex flex-col items-center gap-3 md:gap-4 ${heroWrapClass} mx-auto w-full`}>
@@ -585,7 +586,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             )}
             
             {/* CORNER INFO */}
-            {!room?.hideCornerOverlay && current && !layout.includes('cinema') && !room?.showLyricsTv && (
+            {!room?.hideCornerOverlay && current && !layout.includes('cinema') && !lyricsVisible && (
                 <div className={cornerWrapClass}>
                     {current.albumArtUrl && <img src={current.albumArtUrl} className={cornerArtClass} alt="Corner Art"/>}
                     <div className="min-w-0">
@@ -598,9 +599,9 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                             )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 mb-2">
-                            {room?.showLyricsTv && (
-                                <div className="text-sm text-cyan-200 bg-black/60 border border-cyan-400/30 inline-flex px-2.5 py-1 rounded-full">
-                                    Lyrics Live
+                            {room?.showLyricsTv && !hasLyrics && (
+                                <div className="inline-flex rounded-full border border-amber-300/35 bg-amber-500/12 px-2.5 py-1 text-sm font-bold text-amber-100">
+                                    Lyrics unavailable
                                 </div>
                             )}
                             {nowPlayingLabel && (

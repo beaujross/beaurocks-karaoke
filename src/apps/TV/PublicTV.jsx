@@ -13,6 +13,7 @@ import { playVoiceGameCue } from '../../lib/voiceGameSoundSystem';
 import CrowdMicInputVisualizer from '../../games/shared/CrowdMicInputVisualizer';
 import AudioVisualizer from '../../components/AudioVisualizer';
 import Stage from '../../components/Stage';
+import LiveStageCamera from '../../components/LiveStageCamera';
 import GameContainer from '../../components/GameContainer';
 import GameLifecycleStatusCard from '../../components/GameLifecycleStatusCard';
 import { getGameLifecyclePresentation } from '../../lib/gameLifecyclePresentation';
@@ -21,6 +22,11 @@ import { emoji, EMOJI, getReactionEmoji } from '../../lib/emoji';
 import { HOW_TO_PLAY } from '../../lib/howToPlay';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
 import { getAppleMusicPlaybackDisplay, normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
+import {
+    LIVE_STAGE_CAMERA_MODES,
+    normalizeLiveStageCameraCorner,
+    normalizeLiveStageCameraMode,
+} from '../../lib/liveStageCamera';
 import { resolveRoomUserUid } from '../../lib/gameLaunchSupport';
 import { createLogger } from '../../lib/logger';
 import groupChatMessages from '../../lib/chatGrouping';
@@ -8158,6 +8164,19 @@ const PublicTV = ({ roomCode }) => {
             : 'top-8 md:top-10 2xl:top-12';
     const performanceScorePositionClass = `right-3 ${performanceScoreTopClass} max-w-[calc(100%-2rem)] text-right md:right-4 md:max-w-[min(34rem,calc(100%-3rem))] 2xl:right-6`;
     const showVisualizerTv = !!room?.showVisualizerTv;
+    const currentHasLyrics = !!(current?.lyrics && String(current.lyrics).trim())
+        || (Array.isArray(current?.lyricsTimed) && current.lyricsTimed.length > 0);
+    const lyricsVisible = !!room?.showLyricsTv && currentHasLyrics;
+    const liveStageCameraMode = normalizeLiveStageCameraMode(room?.liveStageCameraMode);
+    const liveStageCameraCorner = normalizeLiveStageCameraCorner(room?.liveStageCameraCorner);
+    const liveStageCameraFullActive = liveStageCameraMode === LIVE_STAGE_CAMERA_MODES.full;
+    const liveStageCameraProfile = isCinema ? 'cinema' : isSimpleTvProfile ? 'simple' : 'room';
+    const liveStageCameraStageInfoVisible = !!(
+        current
+        && !room?.hideCornerOverlay
+        && !isCinema
+        && !lyricsVisible
+    );
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
     const visualizerDynamicModeEnabled = room?.visualizerDynamicMode !== false;
     const visualizerMode = visualizerDynamicModeEnabled
@@ -9217,13 +9236,13 @@ const PublicTV = ({ roomCode }) => {
                                     </div>
                                 )}
                                 {showVisualizerTv && (
-                                    <div className="absolute inset-0 z-30 bg-black">
+                                    <div className={`absolute inset-0 z-30 ${liveStageCameraFullActive ? 'bg-black/15 mix-blend-screen' : 'bg-black'}`}>
                                         <AudioVisualizer
                                             isActive={visualizerActive}
                                             externalCtx={audioCtx}
                                             onVolume={handleVolume}
                                             mode={visualizerMode}
-                                            className="w-full h-full opacity-95"
+                                            className={`w-full h-full ${liveStageCameraFullActive ? 'opacity-[0.68]' : 'opacity-95'}`}
                                             inputMode={visualizerInputMode}
                                             mediaElement={visualizerSourceElement}
                                             simulatedLevel={bgVisualizerSimulatedLevel}
@@ -9248,6 +9267,17 @@ const PublicTV = ({ roomCode }) => {
                                     showVideo
                                     runOfShowHud={runOfShowHud}
                                     onPlaybackEvent={reportPerformanceSessionPlayback}
+                                />
+                                <LiveStageCamera
+                                    mode={liveStageCameraMode}
+                                    requestedCorner={liveStageCameraCorner}
+                                    presentationProfile={liveStageCameraProfile}
+                                    mirrored={room?.liveStageCameraMirror !== false}
+                                    lyricsVisible={lyricsVisible}
+                                    topHudVisible={showTopHypeMeter}
+                                    scoreVisible={!!current && showScoring}
+                                    checkpointVisible={micCheckpointCountdownVisible}
+                                    stageInfoVisible={liveStageCameraStageInfoVisible}
                                 />
                                 {micCheckpointCountdownVisible ? (
                                     <div data-feature-id="tv-mic-checkpoint-countdown" className="pointer-events-none absolute bottom-4 left-1/2 z-[88] w-[min(92%,760px)] -translate-x-1/2 overflow-hidden rounded-[1.4rem] border border-cyan-200/35 bg-black/76 px-4 py-3 text-white shadow-[0_22px_60px_rgba(34,211,238,0.22)] backdrop-blur-lg md:bottom-6 md:px-5 md:py-4">

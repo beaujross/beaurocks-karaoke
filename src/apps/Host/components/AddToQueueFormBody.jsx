@@ -16,6 +16,36 @@ import { getBackingSourceLabel } from '../../../lib/playbackSource';
 
 const baseResultsCardClass = 'rounded-2xl border border-cyan-400/25 bg-zinc-950/98';
 
+const resultMetaChipBaseClass = 'inline-flex h-5 items-center rounded-full border px-2 text-[9px] font-black uppercase tracking-[0.12em]';
+
+const resultMetaChipToneClasses = Object.freeze({
+    neutral: 'border-white/10 bg-white/5 text-zinc-200',
+    ready: 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100',
+    apple: 'border-pink-300/35 bg-pink-500/10 text-pink-100',
+    external: 'border-orange-300/40 bg-orange-500/10 text-orange-100',
+    local: 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100',
+    youtube: 'border-red-300/35 bg-red-500/10 text-red-100',
+    violet: 'border-violet-300/30 bg-violet-500/10 text-violet-100',
+});
+
+const getResultMetaChipClass = (tone = 'neutral') => (
+    `${resultMetaChipBaseClass} ${resultMetaChipToneClasses[tone] || resultMetaChipToneClasses.neutral}`
+);
+
+const getCatalogCapabilityChipTone = (tone = '') => {
+    if (tone === 'ready') return 'ready';
+    if (tone === 'apple') return 'apple';
+    if (tone === 'external') return 'external';
+    if (tone === 'local') return 'local';
+    return 'violet';
+};
+
+const getSourceChipTone = (source = '') => {
+    if (source === 'itunes') return 'apple';
+    if (source === 'youtube') return 'youtube';
+    return 'local';
+};
+
 const getResultDurationSec = (result = {}) => {
     const rawMs = Number(result?.trackTimeMillis || result?.durationMs || 0);
     if (Number.isFinite(rawMs) && rawMs > 0) return Math.max(1, Math.round(rawMs / 1000));
@@ -86,7 +116,7 @@ const ResultList = ({
                         data-feature-id="performance-result-row"
                         role="button"
                         tabIndex={0}
-                        aria-label={`${isAdding ? 'Adding' : performanceActionsEnabled ? 'Add' : 'Select'} ${r.catalogDisplayTitle || r.trackName || 'result'}`}
+                        aria-label={`${isAdding ? 'Adding' : performanceActionsEnabled ? 'Add to queue' : 'Select'} ${r.catalogDisplayTitle || r.trackName || 'result'}`}
                         onClick={activateResult}
                         onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
@@ -118,38 +148,34 @@ const ResultList = ({
                                         <div className={`${compactRows ? 'text-sm' : 'text-[15px]'} line-clamp-1 font-black leading-tight text-white`}>{r.catalogDisplayTitle || r.trackName}</div>
                                         <div className="mt-0.5 truncate text-xs text-zinc-300">{r.catalogDisplayArtist || r.artistName}</div>
                                     </div>
-                                    <div className="whitespace-nowrap rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.13em] text-cyan-100">
-                                        {isAdding ? 'Adding...' : performanceActionsEnabled ? 'Add' : 'Select'}
+                                    <div className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full border border-cyan-300/35 bg-cyan-500/15 px-2.5 text-[9px] font-black uppercase tracking-[0.13em] text-cyan-50">
+                                        {isAdding ? 'Adding...' : performanceActionsEnabled ? 'Add to Queue' : 'Select'}
                                     </div>
                                 </div>
                                 <div className={`${compactRows ? 'mt-1 flex max-h-[18px] flex-nowrap gap-1 overflow-hidden' : 'mt-1.5 flex flex-wrap gap-1.5'}`}>
                                     {r.catalogCapabilityLabel ? (
-                                        <span title={r.catalogCapabilityDetail || ''} className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${r.catalogCapabilityTone === 'ready' ? 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100' : r.catalogCapabilityTone === 'apple' ? 'border-pink-300/40 bg-pink-500/10 text-pink-100' : r.catalogCapabilityTone === 'external' ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : r.catalogCapabilityTone === 'local' ? 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100' : 'border-violet-300/30 bg-violet-500/10 text-violet-100'}`}>
+                                        <span title={r.catalogCapabilityDetail || ''} className={getResultMetaChipClass(getCatalogCapabilityChipTone(r.catalogCapabilityTone))}>
                                             {r.catalogCapabilityLabel}
                                         </span>
                                     ) : null}
-                                    <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${
-                                        r.source === 'itunes'
-                                            ? 'border-pink-300/40 bg-pink-500/10 text-pink-100'
-                                            : r.source === 'youtube'
-                                                ? 'border-red-300/40 bg-red-500/10 text-red-100'
-                                                : 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100'
-                                    }`}>
+                                    <span className={getResultMetaChipClass(getSourceChipTone(r.source))}>
                                         Via {sourceLabel}
                                     </span>
                                     {Number(r.catalogVersionCount || 0) > 1 ? (
-                                        <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-violet-100">
+                                        <span className={getResultMetaChipClass('violet')}>
                                             {r.catalogVersionCount} versions
                                         </span>
                                     ) : null}
-                                    {r.catalogRecommendedTvReady ? <span className="rounded-full border border-emerald-300/35 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-100">Recommended</span> : null}
-                                    {r.source === 'youtube' && !r.catalogCapabilityLabel ? (
-                                        <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
-                                            {playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'External' : 'TV'}
+                                    {r.catalogRecommendedTvReady ? <span className={getResultMetaChipClass('ready')}>Recommended</span> : null}
+                                    {r.source === 'youtube'
+                                        && !r.catalogCapabilityLabel
+                                        && playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? (
+                                        <span className={getResultMetaChipClass('external')}>
+                                            External playback
                                         </span>
                                     ) : null}
                                     {durationLabel ? (
-                                        <span className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-200">
+                                        <span className={getResultMetaChipClass('neutral')}>
                                             {durationLabel}
                                         </span>
                                     ) : null}
@@ -178,30 +204,13 @@ const ResultList = ({
                                                         <span className="block truncate text-[10px] text-zinc-400">{alternative.artistName || alternative.artist || alternative.sourceDetail || 'Alternate backing'}</span>
                                                     </span>
                                                     <span className="shrink-0 text-right">
-                                                        <span className="block rounded-full border border-violet-300/25 bg-violet-500/10 px-2 py-0.5 text-[9px] font-black uppercase text-violet-100">{alternative.catalogCapabilityLabel || 'Review Needed'}</span>
+                                                        <span className={getResultMetaChipClass(getCatalogCapabilityChipTone(alternative.catalogCapabilityTone))}>{alternative.catalogCapabilityLabel || 'Review Needed'}</span>
                                                         <span className="mt-1 block text-[8px] font-bold uppercase tracking-[0.12em] text-zinc-500">via {alternative.source || 'known'}</span>
                                                     </span>
                                                 </button>
                                             ))}
                                         </div>
                                     </details>
-                                ) : null}
-                                {performanceActionsEnabled ? (
-                                    <div className={`${compactRows ? 'mt-2' : 'mt-2.5'} flex justify-end`}>
-                                        <button
-                                            data-feature-id="performance-result-queue-only"
-                                            type="button"
-                                            disabled={isAdding}
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                if (isAdding) return;
-                                                onQueueOnly?.(r);
-                                            }}
-                                            className={`rounded-full border border-cyan-300/30 bg-cyan-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100 ${isAdding ? 'cursor-wait opacity-60' : ''}`}
-                                        >
-                                            {isAdding ? 'Adding...' : 'Add to Queue'}
-                                        </button>
-                                    </div>
                                 ) : null}
                             </div>
                         </div>

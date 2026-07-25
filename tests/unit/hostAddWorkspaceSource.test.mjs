@@ -113,8 +113,10 @@ test("host add workspace uses one YouTube expansion action and consistent segmen
 test("host performance results queue directly while manual requests keep a local action", () => {
   assert.match(addWorkspaceSource, /data-feature-id="performance-result-row"/);
   assert.match(addWorkspaceSource, /if \(performanceActionsEnabled\) \{\s*onQueueOnly\?\.\(r\);\s*return;/);
-  assert.match(addWorkspaceSource, /data-feature-id="performance-result-queue-only"/);
-  assert.match(addWorkspaceSource, /\{isAdding \? 'Adding\.\.\.' : 'Add to Queue'\}/);
+  assert.doesNotMatch(addWorkspaceSource, /data-feature-id="performance-result-queue-only"/);
+  assert.match(addWorkspaceSource, /performanceActionsEnabled \? 'Add to Queue' : 'Select'/);
+  assert.match(addWorkspaceSource, /External playback/);
+  assert.doesNotMatch(addWorkspaceSource, /\? 'External' : 'TV'/);
   assert.match(addWorkspaceSource, /data-feature-id="host-manual-queue-submit"/);
   assert.match(addWorkspaceSource, /'Add Manual Request' : 'Enter a Song Title'/);
   assert.doesNotMatch(addWorkspaceSource, /\{performanceMode \? \(\s*<div className="mb-2 mt-2 flex justify-end">/);

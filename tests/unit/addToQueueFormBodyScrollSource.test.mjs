@@ -69,7 +69,10 @@ test('AddToQueueFormBody autocomplete rows stay dense and metadata-forward', () 
   assert.match(source, /max-h-\[18px\] flex-nowrap gap-1 overflow-hidden/);
   assert.match(source, /line-clamp-1 font-black/);
   assert.match(source, /durationLabel \? \([\s\S]*\{durationLabel\}/);
-  assert.match(source, /playbackState\?\.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES\.notEmbeddable \? 'External' : 'TV'/);
+  assert.match(source, /const resultMetaChipBaseClass = /);
+  assert.match(source, /className=\{getResultMetaChipClass\(getSourceChipTone\(r\.source\)\)\}/);
+  assert.match(source, /playbackState\?\.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES\.notEmbeddable/);
+  assert.doesNotMatch(source, /\? 'External' : 'TV'/);
   assert.doesNotMatch(source, /r\.sourceDetail/);
 });
 
