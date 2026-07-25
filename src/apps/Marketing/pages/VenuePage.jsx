@@ -13,6 +13,7 @@ import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
 import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import DirectoryExperienceSpotlight from "./DirectoryExperienceSpotlight";
+import DirectoryOwnerPathway from "./DirectoryOwnerPathway";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
   MARKETING_BRAND_BADGE_URL,
@@ -160,6 +161,10 @@ const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
     || (Array.isArray(venueExperienceSource?.beauRocksCapabilities) && venueExperienceSource.beauRocksCapabilities.length > 0);
   const venueBadgeLabel = getBeauRocksBadgeLabel({ ...venueExperienceSource, listingType: "venue" });
   const venueIsBeauRocksPowered = isBeauRocksPoweredListing(venueExperienceSource);
+  const venueCanManage = venue.canManage === true || (!!session?.uid && (
+    session.uid === venue.ownerUid
+    || session.uid === venue.hostUid
+  ));
 
   return (
     <section className="mk3-page mk3-two-col">
@@ -308,6 +313,12 @@ const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
         </div>
       </article>
       <div className="mk3-side-stack">
+        <DirectoryOwnerPathway
+          navigate={navigate}
+          source="venue_page"
+          compact
+          venue={venue}
+        />
         <ClaimOwnershipCard
           listingType="venue"
           listingId={venue.id}
@@ -315,6 +326,7 @@ const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
           navigate={navigate}
           authFlow={authFlow}
           isModernized={venueModernized}
+          canManage={venueCanManage}
         />
         <CadenceUpdateCard
           listingType="venue"

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from "vitest";
 import {
+    PLAYBACK_CONTENT_KINDS,
+    getQueueEntryPerformanceReadiness,
     normalizeBackingChoice,
     resolveStageMediaUrl,
     resolveQueuePlayback,
@@ -118,6 +120,49 @@ test("playbackSource.test", () => {
     assert.equal(getBackingSourceLabel({ source: 'itunes', variant: 'compact' }), 'Apple full song');
     assert.equal(getBackingSourceLabel({ source: 'youtube', variant: 'compact' }), 'YouTube backing');
     assert.equal(getBackingSourceLabel({ source: 'local', variant: 'compact' }), 'Known backing');
+});
+
+test("format-aware playback requires an original recording only for Sing-Along and Lip Sync", () => {
+    const youtubeSong = {
+        mediaUrl: 'https://youtube.com/watch?v=unknown123',
+        playbackReady: true,
+        selectedPlaybackProvider: 'youtube',
+    };
+    assert.equal(
+        getQueueEntryPerformanceReadiness(youtubeSong, { performanceMode: 'karaoke' }).autopilotReady,
+        true
+    );
+
+    const singAlongReview = getQueueEntryPerformanceReadiness(youtubeSong, {
+        performanceMode: 'sing_along',
+    });
+    assert.equal(singAlongReview.autopilotReady, false);
+    assert.equal(singAlongReview.manuallyPlayable, true);
+    assert.equal(singAlongReview.status, 'review');
+
+    const karaokeBacking = getQueueEntryPerformanceReadiness({
+        ...youtubeSong,
+        playbackContentKind: PLAYBACK_CONTENT_KINDS.karaokeBacking,
+    }, { performanceMode: 'lip_sync' });
+    assert.equal(karaokeBacking.status, 'incompatible');
+
+    const confirmedLocalOriginal = getQueueEntryPerformanceReadiness({
+        mediaUrl: 'https://example.com/original.mp3',
+        playbackReady: true,
+        selectedPlaybackProvider: 'local',
+        playbackContentKind: PLAYBACK_CONTENT_KINDS.originalRecording,
+    }, { performanceMode: 'lip_sync' });
+    assert.equal(confirmedLocalOriginal.autopilotReady, true);
+
+    const appleOriginal = getQueueEntryPerformanceReadiness({
+        appleMusicId: 'apple_original_1',
+        playbackReady: true,
+    }, {
+        performanceMode: 'sing_along',
+        appleMusicEnabled: true,
+    });
+    assert.equal(appleOriginal.autopilotReady, true);
+    assert.equal(appleOriginal.contentKind, PLAYBACK_CONTENT_KINDS.originalRecording);
 });
 
 test("playbackSource Apple Music display model", () => {

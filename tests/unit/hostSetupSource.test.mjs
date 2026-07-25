@@ -31,13 +31,18 @@ test('mission setup keeps preset selection compact and applies full preset packa
 
   assert.match(
     primaryPicksSource,
-    /Night recipes/,
+    /1 · Pick a vibe/,
     'Night setup should present one consolidated recipe decision',
   );
   assert.match(
     primaryPicksSource,
     /data-room-recipe-card=\{recipe\.id\}/,
     'Night setup should show recipe cards with the affected settings at a glance',
+  );
+  assert.match(
+    primaryPicksSource,
+    /snap-x snap-mandatory[\s\S]*?overflow-x-auto/,
+    'Recipe choices should stay compact and horizontally browsable instead of stacking into a long setup form',
   );
   assert.match(primaryPicksSource, /Save current recipe/);
   assert.doesNotMatch(primaryPicksSource, /Event Shortcut|Pick the queue pace|Change room package/);
@@ -58,29 +63,35 @@ test('mission setup keeps preset selection compact and applies full preset packa
   );
 });
 
-test('mission setup exposes an autopilot plan instead of a third stacked assist step', () => {
+test('mission setup presents three plain-language decisions while preserving automation controls', () => {
   const primaryPicksSource = readFileSync(primaryPicksPath, 'utf8');
   const autopilotPreviewSource = readFileSync(autopilotPreviewPath, 'utf8');
   const footerSource = readFileSync(footerPath, 'utf8');
   const headerSource = readFileSync(missionSetupHeaderPath, 'utf8');
 
-  assert.match(headerSource, /Room Readiness/);
-  assert.match(headerSource, /Pick a starting plan, review what changes, then launch\./);
+  assert.match(headerSource, /Step 2 of 2 · Set the night/);
+  assert.match(headerSource, /Pick a vibe, choose what happens between performances, then launch\./);
+  assert.match(headerSource, /Room created/);
 
   assert.match(
     autopilotPreviewSource,
-    /Tonight&apos;s Autopilot/,
-    'Guided setup should lead with the generated autopilot plan',
+    /data-feature-id="setup-intermission-program"/,
+    'Guided setup should keep the direct between-performance controls',
   );
   assert.match(
     autopilotPreviewSource,
-    /If the queue runs dry/,
-    'Guided setup should preview known-good dead-air filler songs',
+    /2 · Between performances/,
+    'Guided setup should present between-performance beats as the second clear decision',
   );
   assert.match(
     autopilotPreviewSource,
-    /Autopilot First/,
-    'Guided setup should expose the autopilot automation level',
+    /3 · Host help/,
+    'Guided setup should present host help as the third clear decision',
+  );
+  assert.match(
+    autopilotPreviewSource,
+    /className="hidden border-b[\s\S]*?aria-hidden="true"/,
+    'The old generated-autopilot explainer should not compete in the default presentation',
   );
   assert.doesNotMatch(
     primaryPicksSource,
@@ -545,7 +556,7 @@ test('room setup shells stay top-aligned and scrollable on short viewports', () 
   );
   assert.match(
     missionSetupShellSource,
-    /mx-auto flex min-h-full w-full max-w-7xl items-start/,
+    /mx-auto flex min-h-full w-full max-w-6xl items-start/,
     'Guided setup shell should top-align its wider recipe panel on short screens.',
   );
 });

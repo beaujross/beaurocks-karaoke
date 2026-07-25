@@ -12,9 +12,9 @@ const MissionSetupPlanPreview = ({
     effectiveBehaviorDomains = []
 }) => (
     <>
-        <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Setup Summary</div>
-        <div className="mt-2 rounded-2xl border border-cyan-500/30 bg-zinc-900/80 p-3">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">Your plan</div>
+        <div className="text-xs font-black uppercase tracking-[0.3em] text-cyan-100/70">Tonight at a glance</div>
+        <div className="mt-2 rounded-2xl border border-cyan-200/35 bg-[linear-gradient(145deg,rgba(34,211,238,0.2),rgba(31,46,75,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+            <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-200">Ready when you are</div>
             <div className="text-sm text-zinc-200 mt-2"><span className="text-zinc-500">Night feel:</span> {missionPresetLabel}</div>
             <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Queue:</span> {flowRuleLabel}</div>
             <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Host help:</span> {assistLabel}</div>
@@ -26,8 +26,12 @@ const MissionSetupPlanPreview = ({
             )}
         </div>
 
-        <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">What happens tonight</div>
+        <details className="group mt-2 rounded-2xl border border-fuchsia-200/20 bg-fuchsia-950/20 p-3">
+            <summary className="flex min-h-[40px] cursor-pointer list-none items-center justify-between gap-3 text-xs font-black text-zinc-200">
+                Review exact settings
+                <i className="fa-solid fa-chevron-down text-[10px] text-cyan-200 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-1 text-[10px] leading-4 text-zinc-500">See the queue, screens, scoring, and source rules this setup will use.</div>
             {effectiveBehaviorDomains.length > 0 ? (
                 <div className="mt-2 space-y-2" data-room-setup-effective-behavior="true">
                     {effectiveBehaviorDomains.map((domain) => (
@@ -69,9 +73,9 @@ const MissionSetupPlanPreview = ({
                     ))}
                 </div>
             )}
-        </div>
+        </details>
 
-        <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
+        <div className="hidden mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3" aria-hidden="true">
             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Before You Save</div>
             <div className="text-white font-bold mt-1">{readinessScore}%</div>
             <div className="h-2 rounded-full bg-zinc-800 overflow-hidden mt-2">

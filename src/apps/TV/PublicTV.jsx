@@ -506,7 +506,7 @@ const RunOfShowReleaseWindowOverlay = ({
                                 : isSlotFill
                                     ? (isCoHostVote ? 'Co-Host Slot Fill' : 'Audience Slot Fill')
                                     : isOneMinuteMicDecision
-                                        ? 'One-Minute Mic'
+                                        ? 'Mic Checkpoint'
                                         : isSkipPerformanceDecision
                                             ? 'Crowd Rescue Vote'
                                             : (isCoHostVote ? 'Co-Host Decision' : 'Room Vote')}
@@ -5597,7 +5597,6 @@ const PublicTV = ({ roomCode }) => {
         });
     }, [current, popTriviaNow, popTriviaQuestionRevealSec, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
     const popTriviaQuestion = popTriviaState?.question || null;
-    const popTriviaLifecyclePresentation = getGameLifecyclePresentation({ ...(room || {}), activeMode: 'pop_trivia_companion', gameData: { status: popTriviaQuestion ? 'asking' : 'reveal', autoReveal: true } });
     const popTriviaQuestionId = popTriviaQuestion?.id || '';
     const popTriviaRevealQuestionFromState = popTriviaState?.status === 'reveal'
         ? (popTriviaState?.revealQuestion || null)
@@ -7012,11 +7011,39 @@ const PublicTV = ({ roomCode }) => {
         && String(activeAudienceDecision?.type || '').trim().toLowerCase() === 'continue_or_rotate'
         && String(activeAudienceDecision?.status || '').trim().toLowerCase() === 'open'
     );
+    const micCheckpointOpeningWindowSec = Math.max(15, Math.min(180, Math.round(Number(room?.oneMinuteMicOpeningWindowSec || 60) || 60)));
+    const micCheckpointPerformanceStartedAtMs = current ? Math.max(
+        String(room?.currentPerformanceSession?.songId || '').trim() === String(current?.id || '').trim()
+            ? Number(room?.currentPerformanceSession?.startedAtMs || 0) || 0
+            : 0,
+        String(room?.currentPerformanceMeta?.songId || '').trim() === String(current?.id || '').trim()
+            ? Number(room?.currentPerformanceMeta?.startedAtMs || 0) || 0
+            : 0,
+        getTimestampMs(current?.performingStartedAt),
+        getTimestampMs(current?.timestamp)
+    ) : 0;
+    const micCheckpointOpensAtMs = micCheckpointPerformanceStartedAtMs > 0
+        ? micCheckpointPerformanceStartedAtMs + (micCheckpointOpeningWindowSec * 1000)
+        : 0;
+    const micCheckpointRemainingSec = micCheckpointOpensAtMs > 0
+        ? Math.max(0, Math.ceil((micCheckpointOpensAtMs - takeoverNowMs) / 1000))
+        : 0;
+    const micCheckpointProgressPct = micCheckpointPerformanceStartedAtMs > 0
+        ? Math.max(0, Math.min(100, ((takeoverNowMs - micCheckpointPerformanceStartedAtMs) / Math.max(1000, micCheckpointOpeningWindowSec * 1000)) * 100))
+        : 0;
+    const micCheckpointCountdownLabel = `${Math.floor(micCheckpointRemainingSec / 60)}:${String(micCheckpointRemainingSec % 60).padStart(2, '0')}`;
+    const micCheckpointCountdownVisible = !!(
+        oneMinuteMicRoomModeActive
+        && current
+        && micCheckpointRemainingSec > 0
+        && !oneMinuteMicVoteLive
+        && !oneMinuteMicRotateFadeActive
+    );
     const oneMinuteMicModeStatusLabel = oneMinuteMicVoteLive
         ? 'Vote Live Now'
         : oneMinuteMicRotateFadeActive
             ? 'Wrapping With Crowd'
-            : 'Crowd Decides At 1:00';
+            : `Vote At ${Math.floor(micCheckpointOpeningWindowSec / 60)}:${String(micCheckpointOpeningWindowSec % 60).padStart(2, '0')}`;
 
     useEffect(() => {
         if (isMarketingDemoFixture || !roomCode) return undefined;
@@ -8835,7 +8862,7 @@ const PublicTV = ({ roomCode }) => {
             
             {multiplier >= 4 && <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,#000_120%)] opacity-50 mix-blend-overlay pointer-events-none"></div>}
 
-            {room?.popTriviaEnabled === true && hasActivePopTriviaPanel && (
+            {room?.popTriviaEnabled === true && hasActivePopTriviaPanel && isCinema && (
                 <div data-feature-id="tv-pop-trivia-active-beacon" className="absolute top-3 right-3 md:top-5 md:right-5 z-[128] pointer-events-none">
                     <div className={`rounded-full border px-4 py-2 md:px-5 md:py-2.5 shadow-[0_14px_38px_rgba(0,0,0,0.34)] backdrop-blur-xl ${popTriviaQuestion ? 'border-cyan-200/55 bg-cyan-500/18 text-cyan-50' : 'border-emerald-200/50 bg-emerald-500/18 text-emerald-50'}`}>
                         <div className="flex items-center gap-2 text-[11px] md:text-[13px] font-black uppercase tracking-[0.2em]">
@@ -8856,20 +8883,17 @@ const PublicTV = ({ roomCode }) => {
                                 : 'border-emerald-300/35 bg-gradient-to-br from-[#07141a]/96 via-[#08151f]/96 to-[#102115]/96'
                         }`}
                     >
-                        <GameLifecycleStatusCard presentation={popTriviaLifecyclePresentation} surface="tv" />
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.22),transparent_36%),radial-gradient(circle_at_bottom_left,rgba(236,72,153,0.18),transparent_34%)] pointer-events-none"></div>
                         <div className={`relative h-full flex flex-col ${popTriviaQuestionFlashVisible ? 'animate-pulse' : ''}`}>
                             <div className={`px-5 py-4 md:px-7 md:py-6 border-b text-[11px] md:text-xs uppercase tracking-[0.22em] flex items-start justify-between gap-4 ${
                                 popTriviaQuestion ? 'border-cyan-300/15' : 'border-emerald-300/15'
                             }`}>
                                 <div className="min-w-0">
-                                    <div className={`text-[12px] md:text-[14px] ${popTriviaQuestion ? 'text-cyan-200' : 'text-emerald-200'}`}>
+                                    <div className={`text-[13px] md:text-base font-black ${popTriviaQuestion ? 'text-cyan-200' : 'text-emerald-200'}`}>
                                         {popTriviaQuestion ? 'Pop-up Trivia' : 'Answer Revealed'}
                                     </div>
-                                    <div className="mt-2 text-[11px] md:text-[13px] text-zinc-300 tracking-[0.18em]">
-                                        {popTriviaQuestion
-                                            ? `Question ${Number(popTriviaState?.index || 0) + 1} of ${popTriviaState?.total || 0}`
-                                            : `Question ${Number(popTriviaState?.index || 0) + 1} results`}
+                                    <div className="mt-1 text-base md:text-xl font-bold normal-case tracking-normal text-white/80">
+                                        {`Question ${Number(popTriviaState?.index || 0) + 1} of ${popTriviaState?.total || 0}`}
                                     </div>
                                 </div>
                                 <div className="shrink-0 text-right">
@@ -8914,52 +8938,28 @@ const PublicTV = ({ roomCode }) => {
                                         <div className="text-[2rem] md:text-[3.25rem] 2xl:text-[4rem] font-black text-white leading-[0.98]">
                                             {popTriviaQuestion.q}
                                         </div>
-                                        <div className="mt-3 flex items-center justify-between gap-4 text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/90">
-                                            <span>{popTriviaCorrectPoints > 0 ? `Correct answers earn +${popTriviaCorrectPoints} pts` : 'Correct answers earn a TV shoutout'}</span>
-                                            <span>{popTriviaTotalVotes} answers locked</span>
-                                        </div>
-                                        <div className="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto pr-1">
+                                        <div className="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1">
                                             {popTriviaQuestion.options?.map((option, idx) => {
-                                                const optionVotes = popTriviaVoteCounts[idx] || 0;
-                                                const optionPct = popTriviaTotalVotes > 0
-                                                    ? Math.max(6, Math.round((optionVotes / popTriviaTotalVotes) * 100))
-                                                    : 0;
                                                 return (
                                                     <div
                                                         key={`${popTriviaQuestion.id}_${idx}`}
-                                                        className="relative rounded-[1.6rem] border border-white/12 bg-black/38 px-5 py-5 md:px-6 md:py-6 overflow-hidden"
+                                                        className="relative rounded-[1.45rem] border border-white/14 bg-black/38 px-5 py-4 md:px-6 md:py-5 overflow-hidden"
                                                     >
-                                                        <div
-                                                            className="absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-300/22 via-cyan-200/12 to-transparent transition-all duration-500"
-                                                            style={{ width: `${optionPct}%` }}
-                                                        ></div>
-                                                        <div className="relative flex items-start justify-between gap-4">
-                                                            <div className="flex items-start gap-3 min-w-0">
-                                                                <span className="shrink-0 text-cyan-300 font-black text-[1.8rem] md:text-[2.6rem] tracking-[0.16em] leading-none">
-                                                                    {String.fromCharCode(65 + idx)}
-                                                                </span>
-                                                                <span className="min-w-0 flex-1 text-[1.55rem] md:text-[2.1rem] 2xl:text-[2.45rem] font-bold leading-[1.04] text-white">
-                                                                    {option}
-                                                                </span>
-                                                            </div>
-                                                            <div className="shrink-0 text-right">
-                                                                <div className="text-[1.8rem] md:text-[2.6rem] font-black font-mono text-white leading-none">
-                                                                    {optionVotes}
-                                                                </div>
-                                                                <div className="mt-1 text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-zinc-300">
-                                                                    {popTriviaTotalVotes > 0 ? `${optionPct}%` : 'No votes'}
-                                                                </div>
-                                                            </div>
+                                                        <div className="relative flex items-center gap-4">
+                                                            <span className="shrink-0 text-cyan-300 font-black text-[1.8rem] md:text-[2.6rem] tracking-[0.16em] leading-none">
+                                                                {String.fromCharCode(65 + idx)}
+                                                            </span>
+                                                            <span className="min-w-0 flex-1 text-[1.6rem] md:text-[2.2rem] 2xl:text-[2.55rem] font-bold leading-[1.04] text-white">
+                                                                {option}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 );
                                             })}
                                         </div>
-                                        <div className="mt-4 flex items-center justify-between gap-4 text-[11px] md:text-sm uppercase tracking-[0.18em] text-zinc-200">
-                                            <span>{popTriviaCorrectPoints > 0 ? `Correct responders bank +${popTriviaCorrectPoints} pts` : 'Correct responders get the spotlight next'}</span>
-                                            <span className={popTriviaUrgent ? 'text-yellow-200' : 'text-cyan-100'}>
-                                                {popTriviaUrgent ? 'Question closing' : 'Vote in Party app'}
-                                            </span>
+                                        <div className="mt-4 flex items-center justify-between gap-4 text-sm md:text-lg font-black uppercase tracking-[0.12em] text-zinc-100">
+                                            <span>{popTriviaTotalVotes} answered</span>
+                                            <span className={popTriviaUrgent ? 'text-yellow-200' : 'text-cyan-100'}>{popTriviaUrgent ? 'Answer now' : 'Vote on your phone'}</span>
                                         </div>
                                     </div>
                                 </>
@@ -9249,6 +9249,25 @@ const PublicTV = ({ roomCode }) => {
                                     runOfShowHud={runOfShowHud}
                                     onPlaybackEvent={reportPerformanceSessionPlayback}
                                 />
+                                {micCheckpointCountdownVisible ? (
+                                    <div data-feature-id="tv-mic-checkpoint-countdown" className="pointer-events-none absolute bottom-4 left-1/2 z-[88] w-[min(92%,760px)] -translate-x-1/2 overflow-hidden rounded-[1.4rem] border border-cyan-200/35 bg-black/76 px-4 py-3 text-white shadow-[0_22px_60px_rgba(34,211,238,0.22)] backdrop-blur-lg md:bottom-6 md:px-5 md:py-4">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <div className="flex min-w-0 items-center gap-3">
+                                                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-cyan-200/35 bg-cyan-300/12 text-cyan-100 md:h-14 md:w-14">
+                                                    <i className="fa-solid fa-microphone-lines text-xl md:text-2xl" aria-hidden="true"></i>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="text-[11px] md:text-sm font-black uppercase tracking-[0.2em] text-cyan-200">Mic Checkpoint</div>
+                                                    <div className="mt-0.5 truncate text-sm md:text-lg font-bold text-white/80">Crowd vote when the timer reaches zero</div>
+                                                </div>
+                                            </div>
+                                            <div className="shrink-0 font-mono text-4xl md:text-6xl font-black leading-none text-white">{micCheckpointCountdownLabel}</div>
+                                        </div>
+                                        <div className="mt-3 h-2.5 overflow-hidden rounded-full border border-white/10 bg-white/10">
+                                            <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-fuchsia-400 to-pink-400 transition-[width] duration-700" style={{ width: `${micCheckpointProgressPct}%` }}></div>
+                                        </div>
+                                    </div>
+                                ) : null}
                                 {oneMinuteMicContinueCueVisible ? (
                                     <div className="pointer-events-none fixed inset-0 z-[193] flex items-start justify-center px-6 pt-10 text-white">
                                         <div className="rounded-full border border-cyan-200/35 bg-black/65 px-7 py-4 text-center shadow-[0_24px_80px_rgba(34,211,238,0.28)] backdrop-blur-md animate-in fade-in zoom-in duration-300">
@@ -9261,7 +9280,7 @@ const PublicTV = ({ roomCode }) => {
                                     <div className="pointer-events-none fixed inset-0 z-[193] flex items-center justify-center bg-black/35 px-6 text-center text-white backdrop-blur-[1px] animate-in fade-in duration-300">
                                         <div className="max-w-4xl rounded-[2rem] border border-pink-200/30 bg-black/68 px-8 py-6 shadow-[0_28px_90px_rgba(236,72,153,0.25)]">
                                             <div className="text-sm font-black uppercase tracking-[0.32em] text-pink-200">Crowd Picked Next Singer</div>
-                                            <div className="mt-2 font-bebas text-[clamp(2.8rem,7vw,7rem)] leading-none text-white">Wrapping The Minute</div>
+                                            <div className="mt-2 font-bebas text-[clamp(2.8rem,7vw,7rem)] leading-none text-white">Wrapping This Turn</div>
                                         </div>
                                     </div>
                                 ) : null}
@@ -9289,7 +9308,7 @@ const PublicTV = ({ roomCode }) => {
                          {oneMinuteMicRoomModeActive && (
                             <div className={`px-3 py-2 rounded-2xl bg-black/72 border ${oneMinuteMicVoteLive ? 'border-emerald-300/45 text-emerald-100 shadow-[0_0_28px_rgba(16,185,129,0.22)]' : 'border-cyan-300/35 text-cyan-100'} text-sm md:text-base font-bold tracking-[0.14em] uppercase flex items-center justify-center gap-2`}>
                                 <i className="fa-solid fa-microphone-lines"></i>
-                                One-Minute Mic: {oneMinuteMicModeStatusLabel}
+                                Mic Checkpoint: {oneMinuteMicModeStatusLabel}
                             </div>
                          )}
                          {room?.bouncerMode && (

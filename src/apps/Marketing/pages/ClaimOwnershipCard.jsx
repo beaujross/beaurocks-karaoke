@@ -19,6 +19,7 @@ const ClaimOwnershipCard = ({
   authFlow,
   navigate,
   isModernized = false,
+  canManage = false,
 }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const [role, setRole] = useState(listingType === "host" ? "host" : "owner");
@@ -86,6 +87,26 @@ const ClaimOwnershipCard = ({
 
   if (!marketingFlags.claimFlowEnabled) return null;
 
+  if (canManage) {
+    return (
+      <aside className="mk3-actions-card" data-feature-id="managed-directory-listing">
+        <h4>You Manage This Listing</h4>
+        <p>Schedule changes publish from the update controls below. Your account dashboard keeps every claimed or submitted listing together.</p>
+        <div className="mk3-actions-inline">
+          <button
+            type="button"
+            onClick={() => navigate?.("profile", "", { intent: "manage_listings" })}
+          >
+            Open My Listings
+          </button>
+          <button type="button" onClick={() => navigate?.("for_hosts")}>
+            Run It With BeauRocks
+          </button>
+        </div>
+      </aside>
+    );
+  }
+
   if (!canSubmit) {
     return (
       <aside className="mk3-actions-card">
@@ -131,7 +152,7 @@ const ClaimOwnershipCard = ({
         Your Role
         <select value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="owner">Owner</option>
-          <option value="host">Host / KJ</option>
+          <option value="host">Karaoke host</option>
           <option value="manager">Manager</option>
         </select>
       </label>

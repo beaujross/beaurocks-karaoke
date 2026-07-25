@@ -679,7 +679,7 @@ const AddToQueueFormBody = ({
                 role="tablist"
                 aria-label="Build a Moment types"
                 data-feature-id="host-moment-type-tabs"
-                className={`${dockResults && performanceMode && !momentTypeMenuOpen ? 'hidden' : 'mb-2 flex'} min-h-[46px] shrink-0 items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/22 p-1 custom-scrollbar`}
+                className={`${dockResults && performanceMode && !momentTypeMenuOpen ? 'hidden' : 'mb-2 flex'} host-brand-tabs host-brand-tabs--workspace min-h-[46px] shrink-0 custom-scrollbar`}
             >
                 {momentTypes.map((entry) => {
                     const active = entry.id === activeMomentType;
@@ -695,11 +695,7 @@ const AddToQueueFormBody = ({
                                     setMomentTypeMenuOpen(false);
                                 }
                             }}
-                            className={`inline-flex min-h-[38px] min-w-max items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] transition ${
-                                active
-                                    ? 'bg-cyan-400 text-zinc-950 shadow-[0_10px_24px_rgba(34,211,238,0.22)]'
-                                    : 'text-zinc-300 hover:bg-white/8 hover:text-white'
-                            }`}
+                            className={`host-brand-tab inline-flex min-h-[38px] min-w-max items-center gap-2 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] ${active ? 'is-active' : ''}`}
                         >
                             <i className={`fa-solid ${entry.icon}`}></i>
                             {entry.label}

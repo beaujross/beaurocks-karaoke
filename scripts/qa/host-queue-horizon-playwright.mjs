@@ -171,13 +171,13 @@ const main = async () => {
 
     await runCheck(checks, "horizon_automation_toggle_is_direct", async () => {
       const automation = page.locator(
-        '[data-feature-id="host-queue-horizon"] button[aria-label^="Turn Auto-DJ"]',
+        '[data-feature-id="host-queue-horizon"] button[aria-label^="Auto-DJ is"]',
       ).first();
       await automation.waitFor({ state: "visible", timeout: timeoutMs });
       const before = await automation.getAttribute("aria-label");
       await automation.click({ force: true });
       await page.waitForFunction((previousLabel) => {
-        const control = document.querySelector('[data-feature-id="host-queue-horizon"] button[aria-label^="Turn Auto-DJ"]');
+        const control = document.querySelector('[data-feature-id="host-queue-horizon"] button[aria-label^="Auto-DJ is"]');
         return control && control.getAttribute("aria-label") !== previousLabel;
       }, before, { timeout: timeoutMs });
       const after = await automation.getAttribute("aria-label");

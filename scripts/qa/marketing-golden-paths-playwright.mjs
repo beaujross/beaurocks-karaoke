@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const DEFAULT_BASE_URL = "https://beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 70000;
-const DISCOVER_TEXT_PATTERN = /find karaoke rooms, recurring nights, and venues you can trust/i;
+const DISCOVER_TEXT_PATTERN = /find karaoke near you/i;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -167,7 +167,7 @@ const run = async () => {
       if (pathname !== "/" && pathname !== "/for-fans") {
         throw new Error(`Expected fan route to resolve to "/" or "/for-fans", got "${parsed.pathname}${parsed.search}".`);
       }
-      await page.getByRole("heading", { name: /run the karaoke night you imagined/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByRole("heading", { name: /your karaoke night, all in one room/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
       return page.url();
     });
 
@@ -190,8 +190,8 @@ const run = async () => {
       );
       await delay(450);
       const createAccountHost = [
-        page.getByRole("button", { name: /Already Approved\? Sign In/i }).first(),
-        page.getByRole("link", { name: /Already Approved\? Sign In/i }).first(),
+        page.getByRole("button", { name: /Host Sign In|Already Approved\? Sign In/i }).first(),
+        page.getByRole("link", { name: /Host Sign In|Already Approved\? Sign In/i }).first(),
       ];
       const visibleCta = await waitForAnyVisible(createAccountHost, 5000).catch(() => null);
       if (visibleCta) {

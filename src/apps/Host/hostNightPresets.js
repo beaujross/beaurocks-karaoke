@@ -63,6 +63,12 @@ const normalizePresetRecipe = (value = {}, fallback = {}) => {
         flowRule: String(source.flowRule || 'balanced').trim() || 'balanced',
         assistLevel: String(source.assistLevel || 'smart_assist').trim() || 'smart_assist',
         spotlightMode: String(source.spotlightMode || 'karaoke').trim() || 'karaoke',
+        performanceMode: ['karaoke', 'sing_along', 'lip_sync'].includes(String(source.performanceMode || '').trim().toLowerCase())
+            ? String(source.performanceMode).trim().toLowerCase()
+            : 'karaoke',
+        requirements: source.requirements && typeof source.requirements === 'object' && !Array.isArray(source.requirements)
+            ? { ...source.requirements }
+            : {},
         overrides: source.overrides && typeof source.overrides === 'object' && !Array.isArray(source.overrides)
             ? { ...source.overrides }
             : {},

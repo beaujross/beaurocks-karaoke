@@ -2,7 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://beaurocks.app/discover</loc>
-    <lastmod>2026-07-23T18:22:51.444Z</lastmod>
+    <lastmod>2026-07-25T02:34:15.419Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
     <image:image>
@@ -11,7 +11,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/charts</loc>
-    <lastmod>2026-07-23T18:22:51.674Z</lastmod>
+    <lastmod>2026-07-25T02:34:15.657Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
     <image:image>
@@ -20,7 +20,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/changelog</loc>
-    <lastmod>2026-07-23T18:22:51.907Z</lastmod>
+    <lastmod>2026-07-25T02:34:15.891Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.5</priority>
     <image:image>
@@ -29,7 +29,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/for-hosts</loc>
-    <lastmod>2026-07-23T18:22:52.071Z</lastmod>
+    <lastmod>2026-07-25T02:34:16.066Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
     <image:image>
@@ -38,7 +38,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/for-venues</loc>
-    <lastmod>2026-07-23T18:22:52.304Z</lastmod>
+    <lastmod>2026-07-25T02:34:16.299Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
     <image:image>
@@ -47,7 +47,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/for-performers</loc>
-    <lastmod>2026-07-23T18:22:52.461Z</lastmod>
+    <lastmod>2026-07-25T02:34:16.459Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -56,7 +56,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/</loc>
-    <lastmod>2026-07-23T18:22:52.558Z</lastmod>
+    <lastmod>2026-07-25T02:34:16.544Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -65,7 +65,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/nationwide</loc>
-    <lastmod>2026-07-23T18:22:53.245Z</lastmod>
+    <lastmod>2026-07-25T02:34:17.238Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -74,7 +74,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/wa_kitsap</loc>
-    <lastmod>2026-07-23T18:22:53.682Z</lastmod>
+    <lastmod>2026-07-25T02:34:17.890Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -83,7 +83,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/us/wa/bainbridge-island</loc>
-    <lastmod>2026-07-23T18:22:54.554Z</lastmod>
+    <lastmod>2026-07-25T02:34:19.242Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -92,7 +92,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/us/wa/belfair</loc>
-    <lastmod>2026-07-23T18:22:54.763Z</lastmod>
+    <lastmod>2026-07-25T02:34:19.581Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -101,7 +101,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/us/wa/bremerton</loc>
-    <lastmod>2026-07-23T18:22:54.967Z</lastmod>
+    <lastmod>2026-07-25T02:34:19.914Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -110,7 +110,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/us/wa/gig-harbor</loc>
-    <lastmod>2026-07-23T18:22:55.178Z</lastmod>
+    <lastmod>2026-07-25T02:34:20.239Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -119,7 +119,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/us/wa/gorst</loc>
-    <lastmod>2026-07-23T18:22:55.387Z</lastmod>
+    <lastmod>2026-07-25T02:34:20.570Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -128,7 +128,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/us/wa/kingston</loc>
-    <lastmod>2026-07-23T18:22:55.596Z</lastmod>
+    <lastmod>2026-07-25T02:34:20.906Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -137,7 +137,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/us/wa/port-orchard</loc>
-    <lastmod>2026-07-23T18:22:55.804Z</lastmod>
+    <lastmod>2026-07-25T02:34:21.229Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -146,7 +146,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/us/wa/poulsbo</loc>
-    <lastmod>2026-07-23T18:22:56.015Z</lastmod>
+    <lastmod>2026-07-25T02:34:21.563Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -155,7 +155,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/us/wa/silverdale</loc>
-    <lastmod>2026-07-23T18:22:56.456Z</lastmod>
+    <lastmod>2026-07-25T02:34:22.230Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
     <image:image>
@@ -164,7 +164,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bainbridge_island_fletcher_bay_winery</loc>
-    <lastmod>2026-07-23T18:22:56.842Z</lastmod>
+    <lastmod>2026-07-25T02:34:22.792Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -173,7 +173,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bainbridge_island_the_plate_pint</loc>
-    <lastmod>2026-07-23T18:22:57.111Z</lastmod>
+    <lastmod>2026-07-25T02:34:23.366Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -182,7 +182,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_belfair_casey_s_bar_grill</loc>
-    <lastmod>2026-07-23T18:22:57.483Z</lastmod>
+    <lastmod>2026-07-25T02:34:23.849Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -191,7 +191,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_belfair_the_woodshed</loc>
-    <lastmod>2026-07-23T18:22:57.853Z</lastmod>
+    <lastmod>2026-07-25T02:34:24.308Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -200,7 +200,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_behind_the_pine_bar_grill</loc>
-    <lastmod>2026-07-23T18:22:58.160Z</lastmod>
+    <lastmod>2026-07-25T02:34:24.758Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -209,7 +209,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_beyond_karaoke</loc>
-    <lastmod>2026-07-23T18:22:58.367Z</lastmod>
+    <lastmod>2026-07-25T02:34:25.096Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -218,7 +218,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_mccloud_s_grill_house</loc>
-    <lastmod>2026-07-23T18:22:58.620Z</lastmod>
+    <lastmod>2026-07-25T02:34:25.451Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -227,7 +227,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_remedy_speakeasy</loc>
-    <lastmod>2026-07-23T18:22:58.929Z</lastmod>
+    <lastmod>2026-07-25T02:34:25.896Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -236,7 +236,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_siren_s</loc>
-    <lastmod>2026-07-23T18:22:59.151Z</lastmod>
+    <lastmod>2026-07-25T02:34:26.242Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -245,7 +245,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_south_pacific_bar_grill</loc>
-    <lastmod>2026-07-23T18:22:59.362Z</lastmod>
+    <lastmod>2026-07-25T02:34:26.565Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -254,7 +254,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_the_884_pub</loc>
-    <lastmod>2026-07-23T18:22:59.608Z</lastmod>
+    <lastmod>2026-07-25T02:34:26.921Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -263,7 +263,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_the_garage_bar_grill</loc>
-    <lastmod>2026-07-23T18:22:59.887Z</lastmod>
+    <lastmod>2026-07-25T02:34:27.326Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -272,7 +272,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_tik_tok_s_workshop</loc>
-    <lastmod>2026-07-23T18:23:00.195Z</lastmod>
+    <lastmod>2026-07-25T02:34:27.750Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -281,7 +281,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_bremerton_town_portal</loc>
-    <lastmod>2026-07-23T18:23:00.428Z</lastmod>
+    <lastmod>2026-07-25T02:34:28.078Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -290,7 +290,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_gig_harbor_eagles_club_gig_harbor</loc>
-    <lastmod>2026-07-23T18:23:00.750Z</lastmod>
+    <lastmod>2026-07-25T02:34:28.514Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -299,7 +299,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_gig_harbor_half_time_sports_saloon</loc>
-    <lastmod>2026-07-23T18:23:00.973Z</lastmod>
+    <lastmod>2026-07-25T02:34:28.854Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -308,7 +308,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_gig_harbor_ocean_5</loc>
-    <lastmod>2026-07-23T18:23:01.183Z</lastmod>
+    <lastmod>2026-07-25T02:34:29.211Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -317,7 +317,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_gig_harbor_the_float</loc>
-    <lastmod>2026-07-23T18:23:01.494Z</lastmod>
+    <lastmod>2026-07-25T02:34:29.650Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -326,7 +326,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_gorst_jimmy_d_s_bar_grill</loc>
-    <lastmod>2026-07-23T18:23:01.796Z</lastmod>
+    <lastmod>2026-07-25T02:34:30.108Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -335,7 +335,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_kingston_kingston_ale_house</loc>
-    <lastmod>2026-07-23T18:23:02.000Z</lastmod>
+    <lastmod>2026-07-25T02:34:30.436Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -344,7 +344,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_port_orchard_damn_fine_pizza</loc>
-    <lastmod>2026-07-23T18:23:02.235Z</lastmod>
+    <lastmod>2026-07-25T02:34:30.807Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -353,7 +353,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_port_orchard_eagles_club_port_orchard</loc>
-    <lastmod>2026-07-23T18:23:02.500Z</lastmod>
+    <lastmod>2026-07-25T02:34:31.195Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -362,7 +362,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_port_orchard_empire_pizza</loc>
-    <lastmod>2026-07-23T18:23:02.803Z</lastmod>
+    <lastmod>2026-07-25T02:34:31.625Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -371,7 +371,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_port_orchard_golden_grill_on_the_bay</loc>
-    <lastmod>2026-07-23T18:23:03.131Z</lastmod>
+    <lastmod>2026-07-25T02:34:32.061Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -380,7 +380,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_port_orchard_new_way_lounge</loc>
-    <lastmod>2026-07-23T18:23:03.333Z</lastmod>
+    <lastmod>2026-07-25T02:34:32.374Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -389,7 +389,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_port_orchard_ruby_slipper_bar_grill</loc>
-    <lastmod>2026-07-23T18:23:03.573Z</lastmod>
+    <lastmod>2026-07-25T02:34:32.732Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -398,7 +398,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_port_orchard_the_end_zone_sports_pub</loc>
-    <lastmod>2026-07-23T18:23:03.866Z</lastmod>
+    <lastmod>2026-07-25T02:34:33.167Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -407,7 +407,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_port_orchard_vfw_post_2669</loc>
-    <lastmod>2026-07-23T18:23:04.167Z</lastmod>
+    <lastmod>2026-07-25T02:34:33.594Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -416,7 +416,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_poulsbo_bushel_barrel_ciderhouse</loc>
-    <lastmod>2026-07-23T18:23:04.364Z</lastmod>
+    <lastmod>2026-07-25T02:34:33.926Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -425,7 +425,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_poulsbo_the_brass_kraken_pub</loc>
-    <lastmod>2026-07-23T18:23:04.601Z</lastmod>
+    <lastmod>2026-07-25T02:34:34.260Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -434,7 +434,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_poulsbo_the_sk_l_house_pub</loc>
-    <lastmod>2026-07-23T18:23:04.823Z</lastmod>
+    <lastmod>2026-07-25T02:34:34.616Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -443,7 +443,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/venues/venue_kitsap_silverdale_our_place_pub</loc>
-    <lastmod>2026-07-23T18:23:05.117Z</lastmod>
+    <lastmod>2026-07-25T02:34:35.043Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -452,7 +452,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_beaurocks_bremerton_live_band_2026</loc>
-    <lastmod>2026-07-23T18:23:05.300Z</lastmod>
+    <lastmod>2026-07-25T02:34:35.358Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -461,7 +461,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_beaurocks_poulsbo_other_2026</loc>
-    <lastmod>2026-07-23T18:23:05.477Z</lastmod>
+    <lastmod>2026-07-25T02:34:35.642Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -470,7 +470,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bainbridge_island_fletcher_bay_winery_fri</loc>
-    <lastmod>2026-07-23T18:23:05.687Z</lastmod>
+    <lastmod>2026-07-25T02:34:35.968Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -479,7 +479,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bainbridge_island_fletcher_bay_winery_sun</loc>
-    <lastmod>2026-07-23T18:23:05.894Z</lastmod>
+    <lastmod>2026-07-25T02:34:36.291Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -488,7 +488,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bainbridge_island_the_plate_pint_fri</loc>
-    <lastmod>2026-07-23T18:23:06.103Z</lastmod>
+    <lastmod>2026-07-25T02:34:36.617Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -497,7 +497,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bainbridge_island_the_plate_pint_sat</loc>
-    <lastmod>2026-07-23T18:23:06.310Z</lastmod>
+    <lastmod>2026-07-25T02:34:36.941Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -506,7 +506,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_belfair_casey_s_bar_grill_tue</loc>
-    <lastmod>2026-07-23T18:23:06.522Z</lastmod>
+    <lastmod>2026-07-25T02:34:37.268Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -515,7 +515,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_belfair_the_woodshed_fri</loc>
-    <lastmod>2026-07-23T18:23:06.736Z</lastmod>
+    <lastmod>2026-07-25T02:34:37.605Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -524,7 +524,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_belfair_the_woodshed_sun</loc>
-    <lastmod>2026-07-23T18:23:06.947Z</lastmod>
+    <lastmod>2026-07-25T02:34:37.929Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -533,7 +533,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_behind_the_pine_bar_grill_fri</loc>
-    <lastmod>2026-07-23T18:23:07.153Z</lastmod>
+    <lastmod>2026-07-25T02:34:38.252Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -542,7 +542,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_behind_the_pine_bar_grill_sat</loc>
-    <lastmod>2026-07-23T18:23:07.358Z</lastmod>
+    <lastmod>2026-07-25T02:34:38.579Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -551,7 +551,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_behind_the_pine_bar_grill_sun</loc>
-    <lastmod>2026-07-23T18:23:07.560Z</lastmod>
+    <lastmod>2026-07-25T02:34:38.901Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -560,7 +560,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_behind_the_pine_bar_grill_thu</loc>
-    <lastmod>2026-07-23T18:23:07.762Z</lastmod>
+    <lastmod>2026-07-25T02:34:39.228Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -569,7 +569,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_beyond_karaoke_fri</loc>
-    <lastmod>2026-07-23T18:23:07.965Z</lastmod>
+    <lastmod>2026-07-25T02:34:39.546Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -578,7 +578,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_beyond_karaoke_sat</loc>
-    <lastmod>2026-07-23T18:23:08.168Z</lastmod>
+    <lastmod>2026-07-25T02:34:39.881Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -587,7 +587,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_beyond_karaoke_sun</loc>
-    <lastmod>2026-07-23T18:23:08.367Z</lastmod>
+    <lastmod>2026-07-25T02:34:40.218Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -596,7 +596,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_beyond_karaoke_thu</loc>
-    <lastmod>2026-07-23T18:23:08.572Z</lastmod>
+    <lastmod>2026-07-25T02:34:40.547Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -605,7 +605,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_beyond_karaoke_tue</loc>
-    <lastmod>2026-07-23T18:23:08.776Z</lastmod>
+    <lastmod>2026-07-25T02:34:40.888Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -614,7 +614,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_mccloud_s_grill_house_wed</loc>
-    <lastmod>2026-07-23T18:23:08.978Z</lastmod>
+    <lastmod>2026-07-25T02:34:41.214Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -623,7 +623,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_remedy_speakeasy_fri</loc>
-    <lastmod>2026-07-23T18:23:09.180Z</lastmod>
+    <lastmod>2026-07-25T02:34:41.549Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -632,7 +632,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_remedy_speakeasy_sat</loc>
-    <lastmod>2026-07-23T18:23:09.383Z</lastmod>
+    <lastmod>2026-07-25T02:34:41.872Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -641,7 +641,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_remedy_speakeasy_sun</loc>
-    <lastmod>2026-07-23T18:23:09.594Z</lastmod>
+    <lastmod>2026-07-25T02:34:42.191Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -650,7 +650,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_remedy_speakeasy_tue</loc>
-    <lastmod>2026-07-23T18:23:09.795Z</lastmod>
+    <lastmod>2026-07-25T02:34:42.516Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -659,7 +659,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_remedy_speakeasy_wed</loc>
-    <lastmod>2026-07-23T18:23:10.000Z</lastmod>
+    <lastmod>2026-07-25T02:34:42.847Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -668,7 +668,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_siren_s_fri</loc>
-    <lastmod>2026-07-23T18:23:10.204Z</lastmod>
+    <lastmod>2026-07-25T02:34:43.175Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -677,7 +677,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_siren_s_sat</loc>
-    <lastmod>2026-07-23T18:23:10.413Z</lastmod>
+    <lastmod>2026-07-25T02:34:43.499Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -686,7 +686,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_siren_s_thu</loc>
-    <lastmod>2026-07-23T18:23:10.628Z</lastmod>
+    <lastmod>2026-07-25T02:34:43.849Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -695,7 +695,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_siren_s_tue</loc>
-    <lastmod>2026-07-23T18:23:10.830Z</lastmod>
+    <lastmod>2026-07-25T02:34:44.188Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -704,7 +704,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_siren_s_wed</loc>
-    <lastmod>2026-07-23T18:23:11.044Z</lastmod>
+    <lastmod>2026-07-25T02:34:44.516Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -713,7 +713,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_south_pacific_bar_grill_fri</loc>
-    <lastmod>2026-07-23T18:23:11.247Z</lastmod>
+    <lastmod>2026-07-25T02:34:44.844Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -722,7 +722,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_south_pacific_bar_grill_sat</loc>
-    <lastmod>2026-07-23T18:23:11.454Z</lastmod>
+    <lastmod>2026-07-25T02:34:45.163Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -731,7 +731,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_south_pacific_bar_grill_thu</loc>
-    <lastmod>2026-07-23T18:23:11.657Z</lastmod>
+    <lastmod>2026-07-25T02:34:45.483Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -740,7 +740,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_south_pacific_bar_grill_wed</loc>
-    <lastmod>2026-07-23T18:23:11.860Z</lastmod>
+    <lastmod>2026-07-25T02:34:45.809Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -749,7 +749,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_the_884_pub_fri</loc>
-    <lastmod>2026-07-23T18:23:12.066Z</lastmod>
+    <lastmod>2026-07-25T02:34:46.142Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -758,7 +758,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_the_garage_bar_grill_thu</loc>
-    <lastmod>2026-07-23T18:23:12.268Z</lastmod>
+    <lastmod>2026-07-25T02:34:46.474Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -767,7 +767,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_tik_tok_s_workshop_sun</loc>
-    <lastmod>2026-07-23T18:23:12.471Z</lastmod>
+    <lastmod>2026-07-25T02:34:46.796Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -776,7 +776,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_tik_tok_s_workshop_thu</loc>
-    <lastmod>2026-07-23T18:23:12.678Z</lastmod>
+    <lastmod>2026-07-25T02:34:47.123Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -785,7 +785,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_town_portal_tue</loc>
-    <lastmod>2026-07-23T18:23:12.886Z</lastmod>
+    <lastmod>2026-07-25T02:34:47.458Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -794,7 +794,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_bremerton_town_portal_wed</loc>
-    <lastmod>2026-07-23T18:23:13.090Z</lastmod>
+    <lastmod>2026-07-25T02:34:47.778Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -803,7 +803,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_gig_harbor_eagles_club_gig_harbor_tue</loc>
-    <lastmod>2026-07-23T18:23:13.315Z</lastmod>
+    <lastmod>2026-07-25T02:34:48.105Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -812,7 +812,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_gig_harbor_half_time_sports_saloon_fri</loc>
-    <lastmod>2026-07-23T18:23:13.519Z</lastmod>
+    <lastmod>2026-07-25T02:34:48.444Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -821,7 +821,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_gig_harbor_half_time_sports_saloon_wed</loc>
-    <lastmod>2026-07-23T18:23:13.728Z</lastmod>
+    <lastmod>2026-07-25T02:34:48.762Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -830,7 +830,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_gig_harbor_ocean_5_sun</loc>
-    <lastmod>2026-07-23T18:23:13.928Z</lastmod>
+    <lastmod>2026-07-25T02:34:49.081Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -839,7 +839,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_gig_harbor_the_float_fri</loc>
-    <lastmod>2026-07-23T18:23:14.130Z</lastmod>
+    <lastmod>2026-07-25T02:34:49.403Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -848,7 +848,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_gig_harbor_the_float_sat</loc>
-    <lastmod>2026-07-23T18:23:14.342Z</lastmod>
+    <lastmod>2026-07-25T02:34:49.732Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -857,7 +857,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_gorst_jimmy_d_s_bar_grill_fri</loc>
-    <lastmod>2026-07-23T18:23:14.554Z</lastmod>
+    <lastmod>2026-07-25T02:34:50.058Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -866,7 +866,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_gorst_jimmy_d_s_bar_grill_sat</loc>
-    <lastmod>2026-07-23T18:23:14.763Z</lastmod>
+    <lastmod>2026-07-25T02:34:50.381Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -875,7 +875,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_kingston_kingston_ale_house_fri</loc>
-    <lastmod>2026-07-23T18:23:14.969Z</lastmod>
+    <lastmod>2026-07-25T02:34:50.709Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -884,7 +884,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_kingston_kingston_ale_house_sat</loc>
-    <lastmod>2026-07-23T18:23:15.172Z</lastmod>
+    <lastmod>2026-07-25T02:34:51.048Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -893,7 +893,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_damn_fine_pizza_thu</loc>
-    <lastmod>2026-07-23T18:23:15.385Z</lastmod>
+    <lastmod>2026-07-25T02:34:51.381Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -902,7 +902,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_eagles_club_port_orchard_thu</loc>
-    <lastmod>2026-07-23T18:23:15.594Z</lastmod>
+    <lastmod>2026-07-25T02:34:51.714Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -911,7 +911,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_empire_pizza_fri</loc>
-    <lastmod>2026-07-23T18:23:15.798Z</lastmod>
+    <lastmod>2026-07-25T02:34:52.041Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -920,7 +920,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_golden_grill_on_the_bay_fri</loc>
-    <lastmod>2026-07-23T18:23:16.003Z</lastmod>
+    <lastmod>2026-07-25T02:34:52.371Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -929,7 +929,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_golden_grill_on_the_bay_sat</loc>
-    <lastmod>2026-07-23T18:23:16.205Z</lastmod>
+    <lastmod>2026-07-25T02:34:52.696Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -938,7 +938,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_golden_grill_on_the_bay_thu</loc>
-    <lastmod>2026-07-23T18:23:16.413Z</lastmod>
+    <lastmod>2026-07-25T02:34:53.020Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -947,7 +947,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_new_way_lounge_sat</loc>
-    <lastmod>2026-07-23T18:23:16.615Z</lastmod>
+    <lastmod>2026-07-25T02:34:53.355Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -956,7 +956,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_new_way_lounge_thu</loc>
-    <lastmod>2026-07-23T18:23:16.826Z</lastmod>
+    <lastmod>2026-07-25T02:34:53.680Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -965,7 +965,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_ruby_slipper_bar_grill_fri</loc>
-    <lastmod>2026-07-23T18:23:17.026Z</lastmod>
+    <lastmod>2026-07-25T02:34:54.014Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -974,7 +974,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_ruby_slipper_bar_grill_mon</loc>
-    <lastmod>2026-07-23T18:23:17.232Z</lastmod>
+    <lastmod>2026-07-25T02:34:54.333Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -983,7 +983,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_ruby_slipper_bar_grill_sat</loc>
-    <lastmod>2026-07-23T18:23:17.443Z</lastmod>
+    <lastmod>2026-07-25T02:34:54.657Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -992,7 +992,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_ruby_slipper_bar_grill_wed</loc>
-    <lastmod>2026-07-23T18:23:17.647Z</lastmod>
+    <lastmod>2026-07-25T02:34:54.989Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1001,7 +1001,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_the_end_zone_sports_pub_wed</loc>
-    <lastmod>2026-07-23T18:23:17.856Z</lastmod>
+    <lastmod>2026-07-25T02:34:55.310Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1010,7 +1010,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_port_orchard_vfw_post_2669_fri</loc>
-    <lastmod>2026-07-23T18:23:18.060Z</lastmod>
+    <lastmod>2026-07-25T02:34:55.641Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1019,7 +1019,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_poulsbo_bushel_barrel_ciderhouse_sat</loc>
-    <lastmod>2026-07-23T18:23:18.269Z</lastmod>
+    <lastmod>2026-07-25T02:34:55.974Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1028,7 +1028,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_poulsbo_bushel_barrel_ciderhouse_sun</loc>
-    <lastmod>2026-07-23T18:23:18.480Z</lastmod>
+    <lastmod>2026-07-25T02:34:56.305Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1037,7 +1037,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_poulsbo_the_brass_kraken_pub_wed</loc>
-    <lastmod>2026-07-23T18:23:18.687Z</lastmod>
+    <lastmod>2026-07-25T02:34:56.638Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1046,7 +1046,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_poulsbo_the_sk_l_house_pub_fri</loc>
-    <lastmod>2026-07-23T18:23:18.901Z</lastmod>
+    <lastmod>2026-07-25T02:34:56.964Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1055,7 +1055,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_poulsbo_the_sk_l_house_pub_sat</loc>
-    <lastmod>2026-07-23T18:23:19.114Z</lastmod>
+    <lastmod>2026-07-25T02:34:57.294Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1064,7 +1064,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_poulsbo_the_sk_l_house_pub_sun</loc>
-    <lastmod>2026-07-23T18:23:19.318Z</lastmod>
+    <lastmod>2026-07-25T02:34:57.616Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1073,7 +1073,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_poulsbo_the_sk_l_house_pub_tue</loc>
-    <lastmod>2026-07-23T18:23:19.524Z</lastmod>
+    <lastmod>2026-07-25T02:34:57.938Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1082,7 +1082,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_silverdale_our_place_pub_fri</loc>
-    <lastmod>2026-07-23T18:23:19.733Z</lastmod>
+    <lastmod>2026-07-25T02:34:58.268Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1091,7 +1091,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_silverdale_our_place_pub_sat</loc>
-    <lastmod>2026-07-23T18:23:19.940Z</lastmod>
+    <lastmod>2026-07-25T02:34:58.585Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1100,7 +1100,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/events/event_kitsap_silverdale_our_place_pub_wed</loc>
-    <lastmod>2026-07-23T18:23:20.144Z</lastmod>
+    <lastmod>2026-07-25T02:34:58.912Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1109,7 +1109,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/hosts/12scDWBbxVb6cYostveztDKMsji2</loc>
-    <lastmod>2026-07-23T18:23:20.315Z</lastmod>
+    <lastmod>2026-07-25T02:34:59.182Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1118,7 +1118,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/performers/12scDWBbxVb6cYostveztDKMsji2</loc>
-    <lastmod>2026-07-23T18:23:20.488Z</lastmod>
+    <lastmod>2026-07-25T02:34:59.454Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
     <image:image>
@@ -1127,7 +1127,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/terms</loc>
-    <lastmod>2026-07-23T18:23:20.488Z</lastmod>
+    <lastmod>2026-07-25T02:34:59.454Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.3</priority>
     <image:image>
@@ -1136,7 +1136,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/privacy</loc>
-    <lastmod>2026-07-23T18:23:20.488Z</lastmod>
+    <lastmod>2026-07-25T02:34:59.454Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.3</priority>
     <image:image>
@@ -1145,7 +1145,7 @@
   </url>
   <url>
     <loc>https://beaurocks.app/karaoke/data-deletion</loc>
-    <lastmod>2026-07-23T18:23:20.488Z</lastmod>
+    <lastmod>2026-07-25T02:34:59.454Z</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.3</priority>
     <image:image>

@@ -9,6 +9,7 @@ import {
   createEmptyCadenceRows,
 } from "./cadenceSchedule";
 import WeeklyScheduleEditor from "./WeeklyScheduleEditor";
+import "./listingGoldenPath.css";
 
 const splitTagInput = (value = "", max = 8) =>
   String(value || "")
@@ -32,23 +33,31 @@ const normalizeRequestedListingType = (value = "") => {
 };
 
 const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
+  const routeParams = route?.params || {};
   const canSubmit = !!session?.uid && !session?.isAnonymous;
-  const [listingType, setListingType] = useState(() => normalizeRequestedListingType(route?.params?.targetType));
+  const [listingType, setListingType] = useState(() => normalizeRequestedListingType(routeParams.targetType));
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [venueCreateMode, setVenueCreateMode] = useState(() => normalizeRequestedListingType(routeParams.targetType) !== "venue");
+  const [venueSearch, setVenueSearch] = useState("");
+  const [venueSearchBusy, setVenueSearchBusy] = useState(false);
+  const [venueSearchComplete, setVenueSearchComplete] = useState(false);
+  const [venueMatches, setVenueMatches] = useState([]);
   const [form, setForm] = useState({
     title: "",
     description: "",
-    city: "",
-    state: "",
+    city: String(routeParams.city || ""),
+    state: String(routeParams.state || ""),
     region: "nationwide",
-    timezone: getBrowserTimezone(),
-    address1: "",
+    timezone: String(routeParams.timezone || "") || getBrowserTimezone(),
+    address1: String(routeParams.address1 || ""),
     startsAtLocal: "",
     endsAtLocal: "",
     cadenceRows: createEmptyCadenceRows(),
     hostName: "",
-    venueName: "",
+    venueId: String(routeParams.venueId || ""),
+    venueName: String(routeParams.venueName || ""),
     roomCode: "",
     visibility: "public",
     experienceTagsInput: "",
@@ -68,6 +77,47 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
     () => fromDateTimeLocalInput(form.startsAtLocal) || Number(nextCadenceWindow.startsAtMs || 0),
     [form.startsAtLocal, nextCadenceWindow.startsAtMs]
   );
+
+  const chooseListingType = (nextType = "venue") => {
+    const safeType = normalizeRequestedListingType(nextType);
+    setListingType(safeType);
+    setSubmitted(false);
+    setStatus("");
+    setVenueCreateMode(safeType !== "venue");
+  };
+
+  const searchExistingVenues = async (event) => {
+    event.preventDefault();
+    const token = String(venueSearch || "").trim();
+    if (token.length < 2) {
+      setStatus("Enter at least two characters to search existing venues.");
+      return;
+    }
+    setVenueSearchBusy(true);
+    setVenueSearchComplete(false);
+    setStatus("");
+    try {
+      const result = await directoryActions.listDirectoryDiscover({
+        listingType: "venue",
+        search: token,
+        timeWindow: "all",
+        includeEnded: true,
+        sortMode: "smart",
+        limit: 8,
+      });
+      setVenueMatches(Array.isArray(result?.items) ? result.items : []);
+      setVenueSearchComplete(true);
+      trackEvent("mk_listing_venue_duplicate_search", {
+        resultCount: Array.isArray(result?.items) ? result.items.length : 0,
+      });
+    } catch (error) {
+      setVenueMatches([]);
+      setVenueSearchComplete(true);
+      setStatus(String(error?.message || "Could not search venues."));
+    } finally {
+      setVenueSearchBusy(false);
+    }
+  };
 
   const submit = async (event) => {
     event.preventDefault();
@@ -101,6 +151,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
       const payload = {
         title: form.title,
         description: form.description,
+        venueId: form.venueId,
         city: form.city,
         state: form.state,
         region: form.region,
@@ -128,6 +179,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
         listingType,
         payload,
       });
+      setSubmitted(true);
       setStatus(`Submitted for moderation. Submission ID: ${result?.submissionId || "pending"}`);
       trackEvent(`mk_listing_created_${listingType}`, {
         listingType,
@@ -151,10 +203,24 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-chip">submit listing</div>
-        <h2>List a Karaoke Venue or Night</h2>
+        <h2>Put Your Karaoke Night on the Map</h2>
         <p>
-          Add a venue or recurring night to the public map. BeauRocks reviews every listing.
+          List an existing karaoke night or add a venue for free. BeauRocks reviews new listings before they go live.
         </p>
+        <div className="mk3-owner-listing-choice" data-feature-id="listing-type-golden-path">
+          <button type="button" className={listingType === "event" ? "active" : ""} onClick={() => chooseListingType("event")}>
+            <strong>List a karaoke night</strong>
+            <span>One-time or recurring schedule</span>
+          </button>
+          <button type="button" className={listingType === "venue" ? "active" : ""} onClick={() => chooseListingType("venue")}>
+            <strong>Add or claim a venue</strong>
+            <span>Search first to avoid duplicates</span>
+          </button>
+          <button type="button" onClick={() => navigate("for_hosts", "", { intent: "host_apply" })}>
+            <strong>Run it with BeauRocks</strong>
+            <span>Queue, TV, and guest phones</span>
+          </button>
+        </div>
         {!canSubmit && (
           <div className="mk3-actions-block">
             <div className="mk3-status">Create your BeauRocks account to submit and manage listings.</div>
@@ -177,11 +243,51 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
             </button>
           </div>
         )}
-        {canSubmit && (
+        {canSubmit && listingType === "venue" && !venueCreateMode && (
+          <section className="mk3-venue-search-fork" data-feature-id="venue-add-or-claim-fork">
+            <div>
+              <h3>Find the venue first</h3>
+              <p>If it is already listed, open it and claim it. Create a new venue only when there is no match.</p>
+            </div>
+            <form onSubmit={searchExistingVenues}>
+              <input
+                value={venueSearch}
+                onChange={(event) => setVenueSearch(event.target.value)}
+                placeholder="Venue name or city"
+                aria-label="Search existing venues"
+              />
+              <button type="submit" disabled={venueSearchBusy}>
+                {venueSearchBusy ? "Searching..." : "Search Venues"}
+              </button>
+            </form>
+            {!!venueMatches.length && (
+              <div className="mk3-sub-list compact">
+                {venueMatches.map((venue) => (
+                  <button
+                    key={venue.id}
+                    type="button"
+                    className="mk3-list-row"
+                    onClick={() => navigate("venue", venue.id, { intent: "claim", targetType: "venue", targetId: venue.id })}
+                  >
+                    <span>{venue.title || "Venue"}</span>
+                    <span>{[venue.city, venue.state].filter(Boolean).join(", ") || "Open and claim"}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {venueSearchComplete && !venueMatches.length && (
+              <div className="mk3-status">No matching venue found. You can create a new one.</div>
+            )}
+            <button type="button" className="mk3-inline-next" onClick={() => setVenueCreateMode(true)}>
+              {venueSearchComplete && !venueMatches.length ? "Create This Venue" : "My Venue Is Not Listed"}
+            </button>
+          </section>
+        )}
+        {canSubmit && (listingType !== "venue" || venueCreateMode) && (
         <form className="mk3-form-grid" onSubmit={submit}>
           <label>
             Listing Type
-            <select value={listingType} onChange={(e) => setListingType(e.target.value)}>
+            <select value={listingType} onChange={(e) => chooseListingType(e.target.value)}>
               <option value="venue">Venue page</option>
               <option value="event">Karaoke night / event</option>
               <option value="room_session">BeauRocks room session</option>
@@ -360,6 +466,9 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
                 Venue Name
                 <input value={form.venueName} onChange={(e) => setForm((prev) => ({ ...prev, venueName: e.target.value }))} />
               </label>
+              {!!form.venueId && (
+                <div className="mk3-status full">Linked to the venue page for {form.venueName || form.venueId}.</div>
+              )}
             </>
           )}
           {listingType === "room_session" && (
@@ -384,6 +493,12 @@ const ListingSubmissionPage = ({ session, navigate, authFlow, route }) => {
         </form>
         )}
         {status && <div className="mk3-status">{status}</div>}
+        {submitted && (
+          <div className="mk3-actions-inline">
+            <button type="button" onClick={() => navigate("profile", "", { intent: "manage_listings" })}>Open My Listings</button>
+            <button type="button" className="mk3-inline-next" onClick={() => navigate("for_hosts", "", { intent: "host_apply" })}>Run This Night With BeauRocks</button>
+          </div>
+        )}
       </article>
 
       <aside className="mk3-actions-card">

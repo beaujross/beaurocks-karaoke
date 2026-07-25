@@ -83,9 +83,16 @@ const {
   normalizePopTriviaQuestions,
   normalizePopTriviaSeedRows,
   normalizePopTriviaSongCache,
+  selectItunesPopTriviaMetadata,
   selectPopTriviaSeedRows,
   shouldAttemptPopTriviaGeneration,
 } = require("./lib/popTrivia");
+const {
+  AUDIENCE_COMMUNITY_BOOST_ACTION_ID,
+  AUDIENCE_COMMUNITY_BOOST_NETWORKS,
+  AUDIENCE_COMMUNITY_BOOST_POINTS,
+  buildAudienceCommunityBoostClaimId,
+} = require("./lib/audienceCommunityBoost");
 const {
   BACKING_CANDIDATES_SUBCOLLECTION,
   buildCanonicalBackingCandidatePatchFromYouTubeIndexEntry,
@@ -223,6 +230,7 @@ const {
 admin.initializeApp();
 const APP_ID = "bross-app";
 const POP_TRIVIA_CACHE_FIELD = "popTriviaSongCache";
+const AUDIENCE_GROWTH_ACTION_CLAIMS_COLLECTION = "audience_growth_action_claims";
 const ORGS_COLLECTION = "organizations";
 const ORG_MEDIA_UPLOAD_SESSIONS_COLLECTION = "media_upload_sessions";
 const ORG_MEDIA_ASSETS_COLLECTION = "media_assets";
@@ -2853,9 +2861,7 @@ const isRoomBeauBucksAuthorityEnabled = ({ roomCode = "", roomData = {} } = {}) 
   isBeauBucksAuthorityCanaryRoom({ roomCode, roomData })
   && roomData?.eventCredits?.beauBucksAuthorityEnabled === true;
 const isRoomBeauBucksExperienceEnabled = ({ roomCode = "", roomData = {} } = {}) =>
-  isRoomBeauBucksAuthorityEnabled({ roomCode, roomData })
-  && roomData?.eventCredits?.enabled === true
-  && roomData?.eventCredits?.beauBucksEnabledTonight === true;
+  isRoomBeauBucksAuthorityEnabled({ roomCode, roomData });
 const ROOM_REQUEST_MODES = Object.freeze({
   canonicalOpen: "canonical_open",
   playableOnly: "playable_only",
@@ -11483,6 +11489,36 @@ const resolvePopTriviaAiAccess = async (roomData = {}) => {
   };
 };
 
+const enrichPopTriviaSongMetadata = async (song = {}) => {
+  const context = buildPopTriviaSongContext(song);
+  if (context.metadataConfidence === "grounded") return song;
+  const title = String(context.songTitle || "").trim();
+  const artist = String(context.artist || "").trim();
+  if (!title || !artist || artist.toLowerCase() === "unknown") return song;
+  try {
+    const term = `${title} ${artist}`;
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=5`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(4500) });
+    if (!response.ok) return song;
+    const payload = await response.json();
+    const metadataPatch = selectItunesPopTriviaMetadata(song, payload?.results || []);
+    if (!Object.keys(metadataPatch).length) return song;
+    return {
+      ...song,
+      album: song?.album || song?.albumName || metadataPatch.album || "",
+      releaseYear: song?.releaseYear || song?.year || metadataPatch.releaseYear || "",
+      genre: song?.genre || song?.primaryGenre || song?.primaryGenreName || metadataPatch.genre || "",
+      durationSec: song?.durationSec || song?.duration || metadataPatch.durationSec || "",
+      appleMusicId: song?.appleMusicId || metadataPatch.appleMusicId || "",
+      albumArtUrl: song?.albumArtUrl || song?.artworkUrl || metadataPatch.albumArtUrl || "",
+      popTriviaMetadataProvider: metadataPatch.metadataProvider || "itunes_search",
+    };
+  } catch (error) {
+    console.warn("popTrivia metadata enrichment skipped", error?.message || error);
+    return song;
+  }
+};
+
 const processPopTriviaForSong = async ({
   songRef,
   songData = {},
@@ -11539,13 +11575,14 @@ const processPopTriviaForSong = async ({
     }
   }
 
+  const triviaSong = await enrichPopTriviaSongMetadata(latestSong);
   const apiKey = GEMINI_API_KEY.value();
   if (!String(apiKey || "").trim()) {
     return writeFallbackPopTrivia({
       songRef,
       roomCode: safeRoomCode,
       cacheKey,
-      songData: latestSong,
+      songData: triviaSong,
       reason: "missing_api_key",
     });
   }
@@ -11556,7 +11593,7 @@ const processPopTriviaForSong = async ({
       songRef,
       roomCode: safeRoomCode,
       cacheKey,
-      songData: latestSong,
+      songData: triviaSong,
       reason: "ai_access_blocked",
     });
   }
@@ -11585,14 +11622,14 @@ const processPopTriviaForSong = async ({
         songRef,
         roomCode: safeRoomCode,
         cacheKey,
-        songData: latestSong,
+        songData: triviaSong,
         reason: error?.details?.reasonCode || "ai_provider_paused",
       });
     }
   }
 
   try {
-    const prompt = buildGeminiPrompt("pop_trivia_song", buildPopTriviaSongContext(latestSong));
+    const prompt = buildGeminiPrompt("pop_trivia_song", buildPopTriviaSongContext(triviaSong));
     let geminiPayload;
     try {
       geminiPayload = await requestGeminiJson({ apiKey, prompt, responseMimeType: "application/json" });
@@ -11609,9 +11646,9 @@ const processPopTriviaForSong = async ({
     const cleanText = rawText.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleanText);
     const seedRows = selectPopTriviaSeedRows({
-      song: latestSong,
+      song: triviaSong,
       aiRows: parsed?.result || parsed || [],
-      fallbackRows: buildFallbackPopTriviaSeedRows(latestSong),
+      fallbackRows: buildFallbackPopTriviaSeedRows(triviaSong),
       limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
     });
     const triviaQuestions = normalizePopTriviaQuestions(seedRows, {
@@ -11623,7 +11660,7 @@ const processPopTriviaForSong = async ({
         songRef,
         roomCode: safeRoomCode,
         cacheKey,
-        songData: latestSong,
+        songData: triviaSong,
         reason: "empty_ai_result",
       });
     }
@@ -11647,7 +11684,7 @@ const processPopTriviaForSong = async ({
         roomCode: safeRoomCode,
         cacheKey,
         seedRows,
-        songData: latestSong,
+        songData: triviaSong,
         source: resolvedPopTriviaSource,
       });
     }
@@ -11663,7 +11700,7 @@ const processPopTriviaForSong = async ({
       songRef,
       roomCode: safeRoomCode,
       cacheKey,
-      songData: latestSong,
+      songData: triviaSong,
       reason: String(error?.message || error || "generation_failed"),
     });
   }
@@ -12206,11 +12243,12 @@ Metadata confidence: ${metadataConfidence}.
 Source mode: ${sourceMode}.
 Rules:
 - Each question must be answerable in under 10 seconds.
-- Every question must focus on the requested song, the listed artist, or a safe fan-facing factoid about either one. The correct answer must be verifiable from known metadata, title/artist text, or a widely established music fact.
-- The set must feel like real music trivia, not internal app metadata confirmation. At most 1 question may ask for the listed artist, listed title, or artist-title pairing.
-- At least 3 questions must mention the song title, artist, or an unmistakable title phrase.
+- Every correct answer must be supported directly by Known metadata above or by a universally established, high-confidence fact about this exact song or artist. Never guess.
+- The set must feel like real music trivia, not internal app metadata confirmation. The title and artist are already visible, so do not ask players to identify either one.
+- Every question must mention the song title, artist, or an unmistakable title phrase.
+- Use four distinct angles when the evidence supports them: song fact, artist fact, album/release context, genre/duration, hook recognition, or a concrete arrangement detail.
 - Use one of these categories per question: song_fact, artist_fact, fan_fact, hook_recognition, arrangement, safe_fact.
-- Prefer factoid questions: listed artist, title phrase, album/release/genre only when metadata is provided, widely established song facts, hook/title recognition, and concrete arrangement cues observable from the track.
+- Prefer album, release year, genre, and duration questions when those fields appear in Known metadata. Use widely established facts only when confidence is high.
 - Do not ask generic filler such as "which song section sets up the story", "what usually helps most in karaoke", or "which production trick is common".
 - Keep each answer option concise (under 45 characters).
 - Wrong answers should be plausible music alternatives and funny, not random nonsense, placeholders, or generic labels.
@@ -12218,8 +12256,8 @@ Rules:
 - Avoid subjective taste, opinion, vibe, strategy, or "best" questions. Avoid obscure deep-cut facts and avoid speculation.
 - If metadata confidence is sparse or source mode is youtube/custom, do not invent release years, chart stats, album facts, music-video facts, or artist biography facts.
 - In sparse mode, do not ask "who released", "what year", "which album", award, chart, label, music-video, or biography questions.
-- In sparse mode, use title recognition, artist recognition, hook recognition, arrangement cues, or safe fan-observation questions that do not require catalog facts.
-- If you cannot write a safe factual question, write a title, artist, hook, or arrangement question instead, but do not repeat the same identity clue across multiple questions.
+- In sparse mode, return fewer than 4 questions rather than padding the set with generic or speculative filler.
+- Every row must contain exactly four distinct answer choices: one correct answer and three plausible distractors.
 Format strictly as JSON array of objects:
 [{"q":"...","correct":"...","w1":"...","w2":"...","w3":"...","category":"hook_recognition"}]
 Do not include markdown.`;
@@ -12946,6 +12984,7 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     singerUid: singerUid || null,
     songTitle: canonicalTitle,
     artist: canonicalArtist,
+    albumArtUrl: albumArtUrl || null,
     score: totalScore,
     totalScore,
     applauseScore,
@@ -17445,6 +17484,124 @@ exports.setMyVipAccountStatus = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.claimAudienceCommunityBoost = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "claim_audience_community_boost", { perMinute: 12, perHour: 60 });
+  await checkDurableRateLimit(request.rawRequest, "claim_audience_community_boost", { perMinute: 12, perHour: 60 });
+  enforceAppCheckIfEnabled(request, "claim_audience_community_boost");
+  const uid = requireAuth(request, "Create or sign in to a BeauRocks account first.");
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const selfAttested = request.data?.selfAttested === true;
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!selfAttested) {
+    throw new HttpsError("failed-precondition", "Confirm the Community Boost before claiming it.");
+  }
+
+  const userRecord = await admin.auth().getUser(uid);
+  const email = normalizeDirectoryEmail(userRecord?.email || "");
+  const phone = normalizeDirectoryPhone(userRecord?.phoneNumber || "");
+  if (!(email && userRecord?.emailVerified) && !phone) {
+    throw new HttpsError("failed-precondition", "A verified BeauRocks account is required.");
+  }
+
+  const claimId = buildAudienceCommunityBoostClaimId(uid);
+  if (!claimId) {
+    throw new HttpsError("invalid-argument", "A valid account is required.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${uid}`);
+  const accountUserRef = db.collection("users").doc(uid);
+  const claimRef = db.collection(AUDIENCE_GROWTH_ACTION_CLAIMS_COLLECTION).doc(claimId);
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap, claimSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(claimRef),
+    ]);
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("failed-precondition", "Join the room before claiming the Community Boost.");
+    }
+
+    const roomUserData = roomUserSnap.data() || {};
+    const currentRoomPoints = Math.max(0, Number(roomUserData.points || 0) || 0);
+    if (claimSnap.exists) {
+      return {
+        duplicate: true,
+        pointsGranted: 0,
+        roomPoints: currentRoomPoints,
+      };
+    }
+
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+    const nextRoomPoints = currentRoomPoints + AUDIENCE_COMMUNITY_BOOST_POINTS;
+    tx.set(claimRef, {
+      schemaVersion: 1,
+      claimId,
+      actionId: AUDIENCE_COMMUNITY_BOOST_ACTION_ID,
+      uid,
+      roomCode,
+      networks: [...AUDIENCE_COMMUNITY_BOOST_NETWORKS],
+      selfAttested: true,
+      pointsGranted: AUDIENCE_COMMUNITY_BOOST_POINTS,
+      status: "claimed",
+      createdAt: serverNow,
+      updatedAt: serverNow,
+    });
+    tx.set(roomUserRef, {
+      roomCode,
+      uid,
+      points: nextRoomPoints,
+      lastSeen: serverNow,
+      updatedAt: serverNow,
+    }, { merge: true });
+    tx.set(accountUserRef, {
+      uid,
+      pointsBalance: admin.firestore.FieldValue.increment(AUDIENCE_COMMUNITY_BOOST_POINTS),
+      communityBoostClaimed: true,
+      communityBoostClaimedAt: serverNow,
+      updatedAt: serverNow,
+    }, { merge: true });
+    setShadowLedgerEntry({
+      writer: tx,
+      db,
+      idempotencyKey: `audience_growth_action:${claimId}`,
+      roomCode,
+      uid,
+      eventCredits: { enabled: false },
+      type: AUDIENCE_COMMUNITY_BOOST_ACTION_ID,
+      amount: AUDIENCE_COMMUNITY_BOOST_POINTS,
+      source: {
+        provider: "beaurocks",
+        sourceId: claimId,
+        sourceCollection: AUDIENCE_GROWTH_ACTION_CLAIMS_COLLECTION,
+      },
+      serverTimestamp: serverNow,
+    });
+
+    return {
+      duplicate: false,
+      pointsGranted: AUDIENCE_COMMUNITY_BOOST_POINTS,
+      roomPoints: nextRoomPoints,
+    };
+  });
+
+  return {
+    ok: true,
+    actionId: AUDIENCE_COMMUNITY_BOOST_ACTION_ID,
+    rewardLabel: "Community Boost",
+    roomCode,
+    networks: [...AUDIENCE_COMMUNITY_BOOST_NETWORKS],
+    ...result,
+  };
+});
+
 exports.getDirectoryMapsConfig = onCall(
   { cors: true, secrets: [GOOGLE_MAPS_API_KEY] },
   async (request) => {
@@ -21285,7 +21442,7 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
   if (!roomUserSnap.exists) throw new HttpsError("failed-precondition", "Join the Room before viewing BeauBucks.");
   const roomData = roomSnap.data() || {};
   const authorityEnabled = isRoomBeauBucksAuthorityEnabled({ roomCode, roomData });
-  const hostEnabledTonight = roomData?.eventCredits?.beauBucksEnabledTonight === true;
+  const hostEnabledTonight = authorityEnabled;
   const experienceEnabled = isRoomBeauBucksExperienceEnabled({ roomCode, roomData });
   const canaryBuyerAllowed = isBeauBucksCanaryBuyerAllowed({
     uid: callerUid,
@@ -21317,11 +21474,7 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
     canaryBuyerAllowed,
     unavailableReason: !authorityEnabled
       ? "rollout_not_available"
-      : !roomData?.eventCredits?.enabled
-        ? "room_points_disabled"
-        : !hostEnabledTonight
-          ? "host_disabled"
-          : "",
+      : "",
     canPurchase: accountEligible && !!starterPack && purchaseReadiness?.allowed === true,
     purchaseUnavailableReason: starterPack && purchaseReadiness?.allowed !== true
       ? purchaseReadiness?.reasonCode || "purchase_unavailable"
@@ -21334,7 +21487,9 @@ exports.getMyRoomBeauBucksWallet = onCall({ cors: true }, async (request) => {
     ),
     premiumCatalog: listPublicPremiumProducts(),
     allowedSpendKinds: authorityEnabled
-      ? [...(experienceEnabled ? [SPEND_KINDS.reaction] : []), "durable_cosmetic_unlock"]
+      ? (Array.isArray(getBeauBucksPolicy()?.allowedSpendKinds)
+        ? [...getBeauBucksPolicy().allowedSpendKinds]
+        : [])
       : [],
     pack: starterPack,
   };
@@ -21495,6 +21650,10 @@ exports.spendAudienceBeauBucks = onCall({ cors: true }, async (request) => {
   const kind = normalizeSpendKind(request.data?.kind || "");
   const clientOperationId = normalizeClientOperationId(request.data?.clientOperationId || "");
   if (!roomCode) throw new HttpsError("invalid-argument", "roomCode is required.");
+  const allowedSpendKinds = Array.isArray(getBeauBucksPolicy()?.allowedSpendKinds)
+    ? getBeauBucksPolicy().allowedSpendKinds
+    : [];
+  if (!allowedSpendKinds.includes(kind)) throw new HttpsError("failed-precondition", "BeauBucks are for durable cosmetic unlocks, not per-reaction spending.");
   if (kind !== SPEND_KINDS.reaction) {
     throw new HttpsError("invalid-argument", "Only reaction spending is enabled in the BeauBucks canary.");
   }
@@ -21545,7 +21704,7 @@ exports.spendAudienceBeauBucks = onCall({ cors: true }, async (request) => {
     if (!roomUserSnap.exists) throw new HttpsError("failed-precondition", "Join the Room before spending BeauBucks.");
     const roomData = roomSnap.data() || {};
     if (!isRoomBeauBucksExperienceEnabled({ roomCode, roomData })) {
-      throw new HttpsError("failed-precondition", "BeauBucks are not available in this Room tonight.");
+      throw new HttpsError("failed-precondition", "BeauBucks are not available for this Room yet.");
     }
     const accountData = accountSnap.exists ? (accountSnap.data() || {}) : {};
     const balanceBefore = Math.max(0, Math.floor(Number(accountData.balance || 0) || 0));
@@ -27115,6 +27274,18 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
   const trackId = sanitizeQueueText(request.data?.trackId || "", "", 220) || null;
   const durationSec = Math.max(0, Math.round(Number(request.data?.durationSec || request.data?.duration || 0) || 0));
   const collabOpen = request.data?.collabOpen === true;
+  const requestedPlaybackSelectionMode = sanitizeQueueSourceToken(request.data?.playbackSelectionMode || "");
+  const playbackSelectionMode = ["song_only", "specific_version", "custom_media"].includes(requestedPlaybackSelectionMode)
+    ? requestedPlaybackSelectionMode
+    : (mediaUrl ? "specific_version" : "song_only");
+  const requestedSongIdentityStatus = sanitizeQueueSourceToken(request.data?.songIdentityStatus || "");
+  const songIdentityStatus = ["matched", "provisional", "unmatched", "original"].includes(requestedSongIdentityStatus)
+    ? requestedSongIdentityStatus
+    : (playbackSelectionMode === "custom_media" ? "unmatched" : "provisional");
+  const selectedPlaybackProvider = playbackSelectionMode === "song_only"
+    ? null
+    : sanitizeQueueSourceToken(request.data?.selectedPlaybackProvider || trackSource || "");
+  const mediaAssetId = sanitizeQueueText(request.data?.mediaAssetId || "", "", 220) || null;
 
   if (!roomCode) {
     throw new HttpsError("invalid-argument", "roomCode is required.");
@@ -27245,8 +27416,12 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
       priorityScore -= 120000;
     }
 
-    const songId = sanitizeQueueText(request.data?.songId || buildSongKey(songTitle, artist), "", 240)
-      || buildSongKey(songTitle, artist);
+    const songId = playbackSelectionMode === "custom_media" && songIdentityStatus === "unmatched"
+      ? null
+      : (
+        sanitizeQueueText(request.data?.songId || buildSongKey(songTitle, artist), "", 240)
+        || buildSongKey(songTitle, artist)
+      );
     const resolvedTrackSource = trackSource || (appleMusicId ? "apple_music" : null);
     const audioOnly = request.data?.audioOnly === true || resolvedTrackSource === "apple_music";
     const serverNow = admin.firestore.FieldValue.serverTimestamp();
@@ -27263,8 +27438,12 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
       timestamp: serverNow,
       priorityScore,
       songId,
+      songIdentityStatus,
       trackId,
       trackSource: resolvedTrackSource,
+      playbackSelectionMode,
+      selectedPlaybackProvider,
+      mediaAssetId,
       mediaUrl,
       appleMusicId,
       duration: durationSec > 0 ? durationSec : null,
@@ -29972,7 +30151,7 @@ exports.createBeauBucksCheckout = onCall(
       throw new HttpsError("failed-precondition", "Join the Room before buying BeauBucks.");
     }
     if (!isRoomBeauBucksExperienceEnabled({ roomCode, roomData: roomSnap.data() || {} })) {
-      throw new HttpsError("failed-precondition", "BeauBucks purchases are not enabled for this Room.");
+      throw new HttpsError("failed-precondition", "BeauBucks purchases are not available for this Room yet.");
     }
 
     const db = admin.firestore();

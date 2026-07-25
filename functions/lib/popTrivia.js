@@ -123,6 +123,7 @@ const buildPopTriviaSongContext = (song = {}) => {
     ["album", song?.album || song?.albumName || ""],
     ["releaseYear", song?.releaseYear || song?.year || ""],
     ["genre", song?.genre || song?.primaryGenre || song?.primaryGenreName || ""],
+    ["durationSec", song?.durationSec || song?.duration || (Number(song?.trackTimeMillis || 0) > 0 ? Math.round(Number(song.trackTimeMillis) / 1000) : "")],
     ["language", song?.language || ""],
     ["decade", song?.decade || ""],
     ["source", song?.source || song?.trackSource || ""],
@@ -148,6 +149,54 @@ const buildPopTriviaSongContext = (song = {}) => {
     metadataConfidence,
     sourceMode: isYouTubeSource ? "youtube" : isCustomSource ? "custom" : (sourceToken || "catalog"),
     style: "funny_insightful",
+  };
+};
+
+const normalizeMusicMatchText = (value = "") =>
+  cleanText(value)
+    .toLowerCase()
+    .replace(/\([^)]*(karaoke|remaster|live|version|edit)[^)]*\)/g, " ")
+    .replace(/\[[^\]]*(karaoke|remaster|live|version|edit)[^\]]*\]/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+
+const scoreMusicMetadataCandidate = (song = {}, candidate = {}) => {
+  const wantedTitle = normalizeMusicMatchText(song?.songTitle || song?.title || "");
+  const wantedArtist = normalizeMusicMatchText(song?.artist || "");
+  const candidateTitle = normalizeMusicMatchText(candidate?.trackName || candidate?.name || "");
+  const candidateArtist = normalizeMusicMatchText(candidate?.artistName || candidate?.artist || "");
+  if (!wantedTitle || !candidateTitle) return 0;
+  let score = 0;
+  if (wantedTitle === candidateTitle) score += 120;
+  else if (wantedTitle.includes(candidateTitle) || candidateTitle.includes(wantedTitle)) score += 65;
+  if (wantedArtist && candidateArtist) {
+    if (wantedArtist === candidateArtist) score += 90;
+    else if (wantedArtist.includes(candidateArtist) || candidateArtist.includes(wantedArtist)) score += 45;
+  }
+  return score;
+};
+
+const selectItunesPopTriviaMetadata = (song = {}, results = []) => {
+  const ranked = (Array.isArray(results) ? results : [])
+    .map((candidate) => ({ candidate, score: scoreMusicMetadataCandidate(song, candidate) }))
+    .sort((left, right) => right.score - left.score);
+  const best = ranked[0];
+  if (!best || best.score < 150) return {};
+  const candidate = best.candidate || {};
+  const releaseDate = cleanText(candidate?.releaseDate || "");
+  const releaseYear = /^\d{4}/.test(releaseDate) ? releaseDate.slice(0, 4) : "";
+  const durationSec = Number(candidate?.trackTimeMillis || 0) > 0
+    ? Math.round(Number(candidate.trackTimeMillis) / 1000)
+    : 0;
+  return {
+    album: cleanText(candidate?.collectionName || ""),
+    releaseYear,
+    genre: cleanText(candidate?.primaryGenreName || ""),
+    durationSec: durationSec || "",
+    appleMusicId: cleanText(candidate?.trackId || ""),
+    albumArtUrl: cleanText(candidate?.artworkUrl100 || candidate?.artworkUrl60 || ""),
+    metadataProvider: "itunes_search",
   };
 };
 
@@ -218,6 +267,7 @@ const buildFallbackPopTriviaSeedRows = (song = {}) => {
   const album = cleanText(context.metadata?.album || "");
   const releaseYear = cleanText(context.metadata?.releaseYear || "");
   const genre = cleanText(context.metadata?.genre || "");
+  const durationSec = Math.max(0, Number(context.metadata?.durationSec || 0) || 0);
 
   const rows = [];
 
@@ -235,7 +285,8 @@ const buildFallbackPopTriviaSeedRows = (song = {}) => {
       category: "song_fact",
       source: "fallback",
     });
-  } else if (album) {
+  }
+  if (album && rows.length < DEFAULT_POP_TRIVIA_MAX_QUESTIONS) {
     rows.push({
       q: `Which album is listed with "${songTitle}" by ${artist}?`,
       correct: album,
@@ -248,12 +299,30 @@ const buildFallbackPopTriviaSeedRows = (song = {}) => {
   }
 
   if (genre && rows.length < DEFAULT_POP_TRIVIA_MAX_QUESTIONS) {
+    const genreChoices = ["Pop", "Rock", "R&B/Soul", "Country", "Alternative", "Dance", "Hip-Hop/Rap"]
+      .filter((candidate) => normalizeOptionText(candidate) !== normalizeOptionText(genre))
+      .slice(0, 3);
     rows.push({
       q: `Which genre is listed for "${songTitle}" by ${artist}?`,
       correct: genre,
-      w1: "A different genre",
-      w2: "A venue type",
-      w3: "A chart position",
+      w1: genreChoices[0] || "Pop",
+      w2: genreChoices[1] || "Rock",
+      w3: genreChoices[2] || "R&B/Soul",
+      category: "song_fact",
+      source: "fallback",
+    });
+  }
+
+  if (durationSec > 0 && rows.length < DEFAULT_POP_TRIVIA_MAX_QUESTIONS) {
+    const durationBands = ["Under 3 minutes", "3 to 4 minutes", "4 to 5 minutes", "Over 5 minutes"];
+    const correctBand = durationSec < 180 ? durationBands[0] : durationSec < 240 ? durationBands[1] : durationSec < 300 ? durationBands[2] : durationBands[3];
+    const wrongBands = durationBands.filter((entry) => entry !== correctBand);
+    rows.push({
+      q: `About how long is the catalog version of "${songTitle}" by ${artist}?`,
+      correct: correctBand,
+      w1: wrongBands[0],
+      w2: wrongBands[1],
+      w3: wrongBands[2],
       category: "song_fact",
       source: "fallback",
     });
@@ -571,5 +640,6 @@ module.exports = {
   normalizePopTriviaSongCache,
   selectPopTriviaSeedRows,
   sanitizePopTriviaCacheKey,
+  selectItunesPopTriviaMetadata,
   shouldAttemptPopTriviaGeneration,
 };

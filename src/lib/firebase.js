@@ -517,6 +517,12 @@ const setMyVipAccountStatus = async (payload = {}) => {
   return data || null;
 };
 
+const claimAudienceCommunityBoost = async (payload = {}) => {
+  await requireAppCheckToken("claimAudienceCommunityBoost");
+  const data = await callFunction("claimAudienceCommunityBoost", payload || {});
+  return data || null;
+};
+
 const getDirectoryMapsConfig = async () => {
   const data = await callFunction("getDirectoryMapsConfig", {});
   return data || null;
@@ -1312,6 +1318,7 @@ export {
   getMyHostAccessStatus,
   getMyDirectoryAccess,
   setMyVipAccountStatus,
+  claimAudienceCommunityBoost,
   getDirectoryMapsConfig,
   upsertDirectoryProfile,
   submitDirectoryListing,

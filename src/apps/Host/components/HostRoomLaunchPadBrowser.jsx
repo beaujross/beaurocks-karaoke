@@ -45,7 +45,6 @@ const ROOM_SETUP_TABS = Object.freeze([
         label: 'Existing Rooms',
         icon: 'fa-rectangle-history-circle-plus',
         helper: 'Reopen, pin, archive, or clean up rooms you already created.',
-        activeToneClass: 'border-cyan-300/30 bg-[linear-gradient(180deg,rgba(13,35,46,0.98),rgba(8,18,28,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.14)]',
         badgeToneClass: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
     },
     {
@@ -53,7 +52,6 @@ const ROOM_SETUP_TABS = Object.freeze([
         label: 'Create Room',
         icon: 'fa-sparkles',
         helper: 'Name it, choose access, and start.',
-        activeToneClass: 'border-fuchsia-300/30 bg-[linear-gradient(180deg,rgba(43,16,39,0.98),rgba(23,10,24,0.98))] text-fuchsia-100 shadow-[0_-10px_30px_rgba(217,70,239,0.14)]',
         badgeToneClass: 'border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100',
     },
 ]);
@@ -126,7 +124,7 @@ const LAUNCH_OPERATING_MODEL_OPTIONS = Object.freeze([
         label: 'Crowd-Driven',
         eyebrow: 'Self-service',
         summary: 'The crowd drives a faster self-service room with Auto-DJ.',
-        details: ['One-Minute Mic', 'Crowd continuation votes', 'Auto-DJ on'],
+        details: ['Mic Checkpoint', 'Crowd continuation votes', 'Auto-DJ on'],
         icon: 'fa-people-group',
     },
 ]);
@@ -142,6 +140,7 @@ const LAUNCH_NIGHT_TYPE_OPTIONS = Object.freeze([
         flowRule: 'balanced',
         assistLevel: 'smart_assist',
         spotlightMode: 'karaoke',
+        performanceMode: 'karaoke',
         party: { autoCrowdMomentsEnabled: false },
         icon: 'fa-microphone-lines',
         effects: ['Balanced turns', 'Scoring off', 'Auto-DJ assist'],
@@ -150,17 +149,37 @@ const LAUNCH_NIGHT_TYPE_OPTIONS = Object.freeze([
         id: 'crowd_singalong',
         label: 'Crowd Sing-Along',
         eyebrow: 'Lyrics first',
-        summary: 'Apple Music and generated lyrics for full-song group energy.',
-        presetId: 'competition',
+        summary: 'Original recordings and lyrics for full-room singing.',
+        presetId: 'casual',
         operatingModel: 'assisted_host',
         economyMode: 'standard',
         flowRule: 'balanced',
         assistLevel: 'smart_assist',
         spotlightMode: 'karaoke',
+        performanceMode: 'sing_along',
+        requirements: { originalRecording: true, lyrics: 'preferred' },
         party: { autoCrowdMomentsEnabled: false },
         icon: 'fa-people-group',
-        settingsOverrides: { showScoring: false },
-        effects: ['Apple Music', 'Lyrics on TV', 'Full songs'],
+        settingsOverrides: { showScoring: false, showLyricsTv: true, autoLyricsOnQueue: true },
+        effects: ['Original recording', 'Lyrics on TV', 'Scoring off'],
+    },
+    {
+        id: 'lip_sync_night',
+        label: 'Lip Sync Night',
+        eyebrow: 'Performance first',
+        summary: 'Original recordings, big performances, and no score pressure.',
+        presetId: 'casual',
+        operatingModel: 'assisted_host',
+        economyMode: 'standard',
+        flowRule: 'balanced',
+        assistLevel: 'smart_assist',
+        spotlightMode: 'karaoke',
+        performanceMode: 'lip_sync',
+        requirements: { originalRecording: true, lyrics: 'optional' },
+        party: { autoCrowdMomentsEnabled: false },
+        icon: 'fa-star',
+        settingsOverrides: { showScoring: false, autoLyricsOnQueue: false },
+        effects: ['Original recording', 'Lyrics optional', 'Scoring off'],
     },
     {
         id: 'score_challenge',
@@ -173,6 +192,7 @@ const LAUNCH_NIGHT_TYPE_OPTIONS = Object.freeze([
         flowRule: 'fair_turns',
         assistLevel: 'manual_first',
         spotlightMode: 'karaoke',
+        performanceMode: 'karaoke',
         party: { autoCrowdMomentsEnabled: false },
         icon: 'fa-trophy',
         settingsOverrides: { showScoring: true },
@@ -189,6 +209,7 @@ const LAUNCH_NIGHT_TYPE_OPTIONS = Object.freeze([
         flowRule: 'balanced',
         assistLevel: 'smart_assist',
         spotlightMode: 'karaoke',
+        performanceMode: 'karaoke',
         party: {
             autoCrowdMomentsEnabled: true,
             autoCrowdMomentEverySongs: 3,
@@ -445,6 +466,8 @@ const HostRoomLaunchPadBrowser = ({
             flowRule: selectedNightType?.flowRule || 'balanced',
             assistLevel: selectedNightType?.assistLevel || 'smart_assist',
             spotlightMode: selectedNightType?.spotlightMode || 'karaoke',
+            performanceMode: selectedNightType?.performanceMode || 'karaoke',
+            requirements: { ...(selectedNightType?.requirements || {}) },
             overrides: { ...(selectedNightType?.settingsOverrides || {}) },
             party: { ...(selectedNightType?.party || {}) },
         },
@@ -581,11 +604,9 @@ const HostRoomLaunchPadBrowser = ({
     const createModeActive = roomSetupMode === 'create';
     const existingRoomCount = roomBrowserBuckets.find((bucket) => bucket.id === 'all')?.rooms.length || 0;
     const activeRoomSetupTab = ROOM_SETUP_TABS.find((tab) => tab.id === roomSetupMode) || ROOM_SETUP_TABS[0];
-    const getRoomSetupTabButtonClass = (active = false, activeToneClass = '') => (
-        `inline-flex min-h-[40px] items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition ${
-            active
-                ? activeToneClass
-                : 'border-white/8 bg-white/[0.025] text-zinc-300 hover:border-white/15 hover:bg-white/[0.05] hover:text-white'
+    const getRoomSetupTabButtonClass = (active = false) => (
+        `host-brand-tab px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] ${
+            active ? 'is-active' : ''
         }`
     );
 
@@ -602,7 +623,7 @@ const HostRoomLaunchPadBrowser = ({
                         <div className="truncate text-[11px] text-cyan-100/58">{activeRoomSetupTab.helper}</div>
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Room setup workspace">
+                <div className="host-brand-tabs host-brand-tabs--fill w-full sm:w-auto sm:min-w-[330px]" role="tablist" aria-label="Room setup workspace">
                     {ROOM_SETUP_TABS.map((tab) => {
                         const active = roomSetupMode === tab.id;
                         return (
@@ -612,7 +633,7 @@ const HostRoomLaunchPadBrowser = ({
                                 role="tab"
                                 aria-selected={active}
                                 onClick={() => setRoomSetupMode(tab.id)}
-                                className={getRoomSetupTabButtonClass(active, tab.activeToneClass)}
+                                className={getRoomSetupTabButtonClass(active)}
                             >
                                 <i className={`fa-solid ${tab.icon} text-[10px]`} />
                                 <span>{tab.label}</span>

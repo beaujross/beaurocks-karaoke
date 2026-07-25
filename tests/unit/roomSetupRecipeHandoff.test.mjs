@@ -32,6 +32,7 @@ describe('room recipe launch handoff', () => {
       flowRule: 'balanced',
       assistLevel: 'smart_assist',
       spotlightMode: 'karaoke',
+      performanceMode: 'karaoke',
     });
     expect(buildMissionPartyFromRoom(room)).toMatchObject({
       autoCrowdMomentsEnabled: true,

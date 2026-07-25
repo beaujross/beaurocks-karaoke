@@ -75,26 +75,25 @@ test("SingerApp declares ready-check auto-party copy before the ready-check rend
   );
 });
 
-test("SingerApp declares bracket signup state before streamlined tight15 effects", () => {
+test("SingerApp keeps streamlined Tight 15 available outside bracket signup", () => {
   const source = readFileSync(singerAppPath, "utf8");
   const bracketSignupDecl = "const bracketSignupActive = isBracketSignupOpen(bracketSignupBracket);";
-  const tight15Effect = "if (!isStreamlinedAudienceShell || songsTab !== 'tight15' || bracketSignupActive) return;";
   const bracketSignupIndex = source.indexOf(bracketSignupDecl);
-  const tight15EffectIndex = source.indexOf(tight15Effect);
 
   assert.notEqual(
     bracketSignupIndex,
     -1,
     "SingerApp should declare bracket signup activity state",
   );
-  assert.notEqual(
-    tight15EffectIndex,
-    -1,
-    "SingerApp streamlined Tight 15 redirect effect should exist",
+  assert.match(
+    source,
+    /const streamlinedSongsNavItems = \[[\s\S]*\{ key: 'tight15', label: 'Tight 15'/,
+    "SingerApp should always include Tight 15 in streamlined song navigation",
   );
-  assert.ok(
-    bracketSignupIndex < tight15EffectIndex,
-    "SingerApp must declare `bracketSignupActive` before the streamlined Tight 15 effect to avoid TDZ crashes on audience boot",
+  assert.doesNotMatch(
+    source,
+    /songsTab !== 'tight15' \|\| bracketSignupActive/,
+    "SingerApp should not redirect Tight 15 back to Browse when bracket signup is inactive",
   );
 });
 

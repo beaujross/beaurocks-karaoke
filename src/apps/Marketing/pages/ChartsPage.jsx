@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { subscribePublicCharts } from "../api/directoryApi";
 import { trackEvent } from "../lib/marketingAnalytics";
 import { buildPublicSongItemListJsonLd, mergePublicSongChart, PUBLIC_CHART_VISIBLE_LIMIT } from "./publicChartModel.js";
+import DirectoryOwnerPathway from "./DirectoryOwnerPathway";
 import "./charts.css";
 
 const TABS = Object.freeze([
@@ -35,11 +36,11 @@ const CHART_STORIES = Object.freeze({
     eyebrow: "Most points earned in one room",
     title: "Where is karaoke busiest?",
     copy: "Active Nights ranks public rooms by total performance points.",
-    ctaKicker: "Run a karaoke night?",
-    ctaTitle: "Put it on the map.",
-    ctaCopy: "Publish the venue, schedule, and host.",
+    ctaKicker: "Already run a karaoke night?",
+    ctaTitle: "List the night.",
+    ctaCopy: "Publish the schedule, then keep it current from your BeauRocks account.",
     ctaLabel: "Get on the Map",
-    ctaPage: "for_venues",
+    ctaPage: "submit",
   },
 });
 
@@ -342,8 +343,19 @@ const ChartsPage = ({ navigate }) => {
 
       <section className={`mk3-chart-persona-cta is-${activeTab}`}>
         <div><span>{activeStory.ctaKicker}</span><h2>{activeStory.ctaTitle}</h2><p>{activeStory.ctaCopy}</p></div>
-        <button type="button" onClick={() => { trackEvent("mk_public_chart_persona_cta", { chart: activeTab, destination: activeStory.ctaPage }); navigate(activeStory.ctaPage); }}>{activeStory.ctaLabel}</button>
+        <button type="button" onClick={() => {
+          trackEvent("mk_public_chart_persona_cta", { chart: activeTab, destination: activeStory.ctaPage });
+          navigate(
+            activeStory.ctaPage,
+            "",
+            activeTab === "nights" ? { intent: "listing_submit", targetType: "event" } : {}
+          );
+        }}>
+          {activeStory.ctaLabel}
+        </button>
       </section>
+
+      <DirectoryOwnerPathway navigate={navigate} source={`charts_${activeTab}`} />
 
       <footer className="mk3-charts-footnote">
         Sign in before you sing to appear on public charts. Scores must come from a public BeauRocks night.

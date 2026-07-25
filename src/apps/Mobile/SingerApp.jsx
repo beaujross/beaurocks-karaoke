@@ -12,6 +12,7 @@ import {
     ensureAppCheckToken,
     initAuth,
     setMyVipAccountStatus,
+    claimAudienceCommunityBoost,
     redeemPromoCode,
     mergeAnonymousAccountData,
     joinRoomAudience,
@@ -66,6 +67,7 @@ import { POINTS_PACKS, SUBSCRIPTIONS } from '../../billing/catalog';
 import { BILLING_PLATFORMS, createBillingProvider, detectBillingPlatform } from '../../billing/provider';
 import { DEFAULT_TIP_CRATES, TOP100_SEED } from '../Host/hostAppData';
 import { resolveSongCatalog, extractYouTubeId, buildSongKey } from '../../lib/songCatalog';
+import { buildRoomRecapUrl } from '../../lib/roomRecap';
 import { getBackingSourceLabel, normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import {
     AUDIENCE_ACCESS_MODES,
@@ -102,6 +104,11 @@ import {
     requiresBackingHostReview,
     normalizeRoomRequestMode
 } from '../../lib/requestModes';
+import {
+    PLAYBACK_SELECTION_MODES,
+    SONG_IDENTITY_STATUSES,
+    normalizePlaybackSelectionMode
+} from '../../lib/playbackSelection';
 import GameContainer from '../../components/GameContainer';
 import GameLifecycleStatusCard from '../../components/GameLifecycleStatusCard';
 import { getGameLifecyclePresentation } from '../../lib/gameLifecyclePresentation';
@@ -151,6 +158,7 @@ import {
     getCrowdObjectiveModeFromLightMode
 } from '../../lib/crowdObjectiveModes';
 import { buildSurfaceUrl } from '../../lib/surfaceDomains';
+import { getOfficialBeauRocksSocialLink, OFFICIAL_BEAUROCKS_SOCIAL_LINKS } from '../../lib/officialSocialLinks';
 import {
     getRunOfShowOperatorRole,
     getRunOfShowReleaseWindowRemainingMs,
@@ -235,11 +243,14 @@ import { shouldShowStreamlinedIdleRequestCard } from './lib/singerHomeState.js';
 
 const AudienceReactionCollection = React.lazy(() => import('./components/AudienceReactionCollection'));
 
+const COMMUNITY_BOOST_SOCIAL_LINKS = OFFICIAL_BEAUROCKS_SOCIAL_LINKS.filter((entry) => ['facebook', 'instagram'].includes(entry.id));
+const OFFICIAL_BEAUROCKS_YOUTUBE_LINK = getOfficialBeauRocksSocialLink('youtube');
+
 const AUDIENCE_EMAIL_LINK_STORAGE_KEY = 'beaurocks_audience_email_link';
 const BONUS_DROP_AUDIENCE_CLAIM_MS = 15000;
 const POINTS_STOREFRONT_ROOM_OFFER_LIMIT = 2;
 const POINTS_STOREFRONT_PERSONAL_OFFER_LIMIT = 3;
-const POINTS_STOREFRONT_EARN_LIMIT = 2;
+const POINTS_STOREFRONT_EARN_LIMIT = 6;
 
 const sortPointStorefrontOffers = (offers = []) => [...offers].sort((left, right) => {
     const leftAmount = Number(left?.amount || 0) || 0;
@@ -1377,7 +1388,7 @@ const SingerApp = ({ roomCode, uid }) => {
         const totalVotes = releaseWindowTally.totalVotes || 0;
         if (isAudienceOneMinuteMicDecision) {
             return {
-                eyebrow: 'One-Minute Mic',
+                eyebrow: 'Mic Checkpoint',
                 helper: 'Tap your choice. Next Singer must win clearly; a tie keeps the singer.',
                 badgeLabel: 'Vote Now',
                 tallyLabel: String(totalVotes) + ' vote' + (totalVotes === 1 ? '' : 's'),
@@ -1795,6 +1806,9 @@ const SingerApp = ({ roomCode, uid }) => {
     const [lastSongRequestFeedback, setLastSongRequestFeedback] = useState(null);
     const [tight15SearchQ, setTight15SearchQ] = useState('');
     const [tight15Results, setTight15Results] = useState([]);
+    const [accountPerformanceHistory, setAccountPerformanceHistory] = useState([]);
+    const [accountPerformanceHistoryLoading, setAccountPerformanceHistoryLoading] = useState(false);
+    const [accountPerformanceHistoryError, setAccountPerformanceHistoryError] = useState('');
     const [dragIndex, setDragIndex] = useState(null);
     const [dragOverIndex, setDragOverIndex] = useState(null);
     const tight15TouchRef = useRef(null);
@@ -1840,6 +1854,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const [pointsCheckoutPendingKey, setPointsCheckoutPendingKey] = useState('');
     const [eventGrantCode, setEventGrantCode] = useState('');
     const [eventGrantBusy, setEventGrantBusy] = useState(false);
+    const [communityBoostBusy, setCommunityBoostBusy] = useState(false);
+    const [communityBoostClaimed, setCommunityBoostClaimed] = useState(false);
     const eventGrantAutoClaimRef = useRef('');
     const [avatarPreviewEmoji, setAvatarPreviewEmoji] = useState('');
     const [showHowToPlay, setShowHowToPlay] = useState(false);
@@ -2931,25 +2947,31 @@ const SingerApp = ({ roomCode, uid }) => {
         if (!pointsStatus && !tipStatus && !beauBucksStatus) return;
 
         if (pointsStatus === 'success') {
+            setCurrencyFunnelTarget('points');
             setShowPoints(true);
             toast('Points checkout complete. Your room points should land in a moment.');
         } else if (pointsStatus === 'cancel') {
+            setCurrencyFunnelTarget('points');
             setShowPoints(true);
             toast('Points checkout canceled.');
         }
 
         if (tipStatus === 'success') {
+            setCurrencyFunnelTarget('points');
             setShowPoints(true);
             toast('Room boost complete. The room should light up in a moment.');
         } else if (tipStatus === 'cancel') {
+            setCurrencyFunnelTarget('points');
             setShowPoints(true);
             toast('Room boost canceled.');
         }
 
         if (beauBucksStatus === 'success') {
+            setCurrencyFunnelTarget('beaubucks');
             setShowPoints(true);
             toast('BeauBucks purchase complete. Your account balance should update in a moment.');
         } else if (beauBucksStatus === 'cancel') {
+            setCurrencyFunnelTarget('beaubucks');
             setShowPoints(true);
             toast('BeauBucks checkout canceled.');
         }
@@ -3296,9 +3318,7 @@ const SingerApp = ({ roomCode, uid }) => {
         };
     }, [room?.eventCredits]);
     const beauBucksRoomCandidate = activeEventCredits.beauBucksAuthorityEnabled === true;
-    const beauBucksIntentEnabled = beauBucksRoomCandidate
-        && activeEventCredits.enabled
-        && activeEventCredits.beauBucksEnabledTonight;
+    const beauBucksIntentEnabled = beauBucksRoomCandidate;
     const loadBeauBucksWallet = useCallback(async ({ force = false } = {}) => {
         if (!beauBucksRoomCandidate || !roomCode || !activeUid) return null;
         if (!force && beauBucksWalletState.roomCode === roomCode && beauBucksWalletState.status === 'loading') return null;
@@ -3320,7 +3340,7 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [activeUid, beauBucksRoomCandidate, beauBucksWalletState.roomCode, beauBucksWalletState.status, roomCode]);
     useEffect(() => {
         setBeauBucksWalletState({ status: 'idle', roomCode: '', wallet: null, error: '' });
-    }, [activeEventCredits.beauBucksEnabledTonight, activeEventCredits.enabled, roomCode]);
+    }, [beauBucksRoomCandidate, roomCode]);
     useEffect(() => {
         if (!beauBucksRoomCandidate || !authUserUid || isAnon) return;
         if (beauBucksWalletState.roomCode === roomCode && beauBucksWalletState.status !== 'idle') return;
@@ -3836,6 +3856,7 @@ const SingerApp = ({ roomCode, uid }) => {
     };
     const sixthReactionSlotProduct = REACTION_SLOT_PRODUCTS.find((product) => Number(product.slotCount || 0) === 6) || null;
     const fifthReactionSlotPointsCost = 250;
+    const activeCurrencyHubTab = ['points', 'beaubucks', 'reactions'].includes(currencyFunnelTarget) ? currencyFunnelTarget : 'points';
     const openAudienceCurrencyFunnel = (target = '') => {
         setCurrencyFunnelTarget(String(target || '').trim().toLowerCase());
         if (target === 'reactions' || target === 'points' || target === 'beaubucks') {
@@ -3910,27 +3931,136 @@ const SingerApp = ({ roomCode, uid }) => {
             toast('Could not unlock the reaction slot. Try again.');
         }
     };
+    const audienceRecapUrl = typeof window !== 'undefined'
+        ? (
+            String(room?.latestRecapUrl || room?.publicRecapUrl || '').trim()
+            || (room?.recap ? buildRoomRecapUrl(roomCode, window.location.origin) : '')
+        )
+        : '';
+    const shareAudienceRoomInvite = async () => {
+        if (typeof window === 'undefined') return;
+        const inviteUrl = new URL(window.location.href);
+        inviteUrl.search = '';
+        inviteUrl.searchParams.set('room', roomCode);
+        inviteUrl.searchParams.set('utm_source', 'audience_invite');
+        inviteUrl.searchParams.set('utm_medium', 'referral');
+        const sharePayload = {
+            title: `${room?.roomName || 'Join my karaoke party'} on BeauRocks`,
+            text: `Join room ${roomCode} and add your song.`,
+            url: inviteUrl.toString(),
+        };
+        trackEvent('audience_room_invite_started', { roomCode, surface: 'points_earn_more' });
+        try {
+            if (navigator.share) {
+                await navigator.share(sharePayload);
+                trackEvent('audience_room_invite_shared', { roomCode, method: 'native_share' });
+                toast('Party invite shared.');
+                return;
+            }
+            await navigator.clipboard.writeText(sharePayload.url);
+            trackEvent('audience_room_invite_shared', { roomCode, method: 'clipboard' });
+            toast('Party link copied.');
+        } catch (error) {
+            if (String(error?.name || '') === 'AbortError') return;
+            try {
+                await navigator.clipboard.writeText(sharePayload.url);
+                toast('Party link copied.');
+            } catch {
+                toast('Could not share the party link.');
+            }
+        }
+    };
+    const communityBoostAlreadyClaimed = communityBoostClaimed || profile?.communityBoostClaimed === true;
+    const claimCommunityBoost = async () => {
+        if (!signedInBeauRocksAccount) {
+            setShowPoints(false);
+            openVipUpgrade('email');
+            return;
+        }
+        if (communityBoostBusy || communityBoostAlreadyClaimed) return;
+        setCommunityBoostBusy(true);
+        trackEvent('audience_community_boost_claim_started', { roomCode });
+        try {
+            const result = await claimAudienceCommunityBoost({
+                roomCode,
+                selfAttested: true,
+            });
+            if (result?.duplicate) {
+                setCommunityBoostClaimed(true);
+                toast('Community Boost was already claimed on this account.');
+                return;
+            }
+            const grantedPoints = Math.max(0, Number(result?.pointsGranted || 0) || 0);
+            setCommunityBoostClaimed(true);
+            setProfile((previous) => ({ ...(previous || {}), communityBoostClaimed: true }));
+            if (grantedPoints > 0) {
+                showRewardToast(`Community Boost +${grantedPoints} PTS`, grantedPoints, { durationMs: 3200 });
+            } else {
+                toast('Community Boost claimed.');
+            }
+            trackEvent('audience_community_boost_claimed', { roomCode, points: grantedPoints });
+            await syncPoints(true);
+        } catch (error) {
+            console.error('community boost claim error', error);
+            const code = String(error?.code || '').toLowerCase();
+            if (code.includes('failed-precondition')) {
+                toast('Create and verify your BeauRocks account first.');
+            } else {
+                toast('Could not claim the Community Boost. Try again.');
+            }
+        } finally {
+            setCommunityBoostBusy(false);
+        }
+    };
+    const shareAudienceRoomRecap = async () => {
+        if (!audienceRecapUrl) return;
+        const sharePayload = {
+            title: `${room?.roomName || 'Karaoke night'} recap`,
+            text: 'See the songs, scores, and crowd moments from our BeauRocks party.',
+            url: audienceRecapUrl,
+        };
+        trackEvent('audience_recap_share_started', { roomCode, surface: 'currency_hub' });
+        try {
+            if (navigator.share) {
+                await navigator.share(sharePayload);
+                trackEvent('audience_recap_share_completed', { roomCode, method: 'native_share' });
+                toast('Recap shared.');
+                return;
+            }
+            await navigator.clipboard.writeText(audienceRecapUrl);
+            trackEvent('audience_recap_share_completed', { roomCode, method: 'clipboard' });
+            toast('Recap link copied.');
+        } catch (error) {
+            if (String(error?.name || '') === 'AbortError') return;
+            try {
+                await navigator.clipboard.writeText(audienceRecapUrl);
+                toast('Recap link copied.');
+            } catch {
+                toast('Could not share the recap.');
+            }
+        }
+    };
     const pointsDrawerContent = (
         <>
             <div className="space-y-5" data-feature-id="audience-points-storefront">
                 <section className="relative overflow-hidden rounded-[1.5rem] bg-[linear-gradient(135deg,rgba(34,211,238,0.22),rgba(236,72,153,0.15)_42%,rgba(12,18,32,0.98))] p-4 shadow-[0_24px_60px_rgba(0,0,0,0.34)]">
-                    <div className={`grid gap-2 ${beauBucksRoomCandidate ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                        <div className="rounded-2xl bg-black/20 p-3">
+                    <div className={`grid gap-2 ${activeCurrencyHubTab === 'reactions' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        {activeCurrencyHubTab !== 'beaubucks' ? <div className="rounded-2xl bg-black/20 p-3">
                             <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/78">{roomCurrencyPresentation.balanceLabel} · this party</div>
                             <CurrencyAmount currency="points" amount={getEffectivePoints()} size="sm" className="mt-2 text-2xl" />
                             <div className="mt-1 text-[11px] text-cyan-50/65">Spend on reactions and room unlocks.</div>
-                        </div>
-                        {beauBucksRoomCandidate ? (
-                            <button type="button" onClick={() => signedInBeauRocksAccount ? loadBeauBucksWallet({ force: true }) : openVipUpgrade('email')} className="rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 p-3 text-left">
+                        </div> : null}
+                        {activeCurrencyHubTab !== 'points' ? (
+                            <button type="button" onClick={() => signedInBeauRocksAccount && beauBucksRoomCandidate ? loadBeauBucksWallet({ force: true }) : openVipUpgrade('email')} className="rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 p-3 text-left">
                                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-100/78">BeauBucks · permanent</div>
                                 {signedInBeauRocksAccount && visibleBeauBucksWalletState.status === 'ready'
                                     ? <CurrencyAmount currency="beaubucks" amount={visibleBeauBucksWalletState.wallet?.balance || 0} size="sm" className="mt-2 text-2xl" />
-                                    : <div className="mt-2 text-sm font-black text-white">Create account</div>}
+                                    : <div className="mt-2 text-sm font-black text-white">{signedInBeauRocksAccount ? (beauBucksRoomCandidate ? 'Loading balance' : 'Rollout pending') : 'Create account'}</div>}
                                 <div className="mt-1 text-[11px] text-fuchsia-50/65">Premium cosmetics stay with your account.</div>
                             </button>
                         ) : null}
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    {activeCurrencyHubTab === 'points' ? <div className="mt-3 flex flex-wrap gap-2">
                         {activeEventCredits.generalAdmissionPoints > 0 ? (
                             <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black text-white">
                                 Start +{formatEarnedPointsLabel(activeEventCredits.generalAdmissionPoints)}
@@ -3941,10 +4071,32 @@ const SingerApp = ({ roomCode, uid }) => {
                                 +{formatEarnedPointsLabel(activeEventCredits.timedLobbyPoints)} {timedLobbyIntervalLabel.toLowerCase()}
                             </span>
                         ) : null}
-                    </div>
+                    </div> : null}
                 </section>
 
-                {currencyFunnelTarget === 'points' ? (
+                {audienceRecapUrl ? (
+                    <section className="rounded-[1.25rem] border border-pink-300/30 bg-[linear-gradient(135deg,rgba(236,72,153,0.18),rgba(34,211,238,0.12),rgba(8,15,28,0.98))] p-4" data-feature-id="audience-room-recap-actions">
+                        <div className="flex items-center gap-3">
+                            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-pink-400/16 text-xl text-pink-100">
+                                <i className="fa-solid fa-clapperboard" aria-hidden="true"></i>
+                            </div>
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-100/70">Tonight's crowd report</div>
+                                <div className="mt-1 text-base font-black text-white">The recap is ready</div>
+                            </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                            <a href={audienceRecapUrl} className="inline-flex min-h-[48px] items-center justify-center rounded-xl bg-white px-3 text-sm font-black text-slate-950">
+                                View recap
+                            </a>
+                            <button type="button" onClick={shareAudienceRoomRecap} className="min-h-[48px] rounded-xl bg-gradient-to-r from-pink-400 to-cyan-300 px-3 text-sm font-black text-slate-950">
+                                Share it
+                            </button>
+                        </div>
+                    </section>
+                ) : null}
+
+                {activeCurrencyHubTab === 'points' ? (
                     <section className="rounded-[1.25rem] border-2 border-cyan-300/45 bg-[linear-gradient(145deg,rgba(34,211,238,0.18),rgba(8,15,28,0.98))] p-4 shadow-[0_0_30px_rgba(34,211,238,0.14)]" data-feature-id="audience-points-conversion-funnel">
                         <div className="flex items-start justify-between gap-3">
                             <div>
@@ -3996,7 +4148,7 @@ const SingerApp = ({ roomCode, uid }) => {
                             ) : null}
                         </div>
                     </section>
-                ) : currencyFunnelTarget === 'beaubucks' ? (
+                ) : activeCurrencyHubTab === 'beaubucks' ? (
                     <section className="rounded-[1.25rem] border-2 border-fuchsia-300/45 bg-[linear-gradient(145deg,rgba(217,70,239,0.2),rgba(8,15,28,0.98))] p-4 shadow-[0_0_32px_rgba(217,70,239,0.16)]" data-feature-id="audience-beaubucks-conversion-funnel">
                         <div className="flex items-start justify-between gap-3">
                             <div>
@@ -4051,7 +4203,7 @@ const SingerApp = ({ roomCode, uid }) => {
                     </section>
                 ) : null}
 
-                {beauBucksRoomCandidate ? (
+                {activeCurrencyHubTab === 'beaubucks' ? (
                     <section className="rounded-[1.25rem] border border-fuchsia-300/22 bg-[linear-gradient(145deg,rgba(192,38,211,0.14),rgba(12,18,32,0.96))] p-4" data-feature-id="audience-beaubucks-wallet">
                         <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-3">
@@ -4119,13 +4271,13 @@ const SingerApp = ({ roomCode, uid }) => {
                                     ? 'Sign in to a BeauRocks account to carry BeauBucks between parties.'
                                     : beauBucksIntentEnabled
                                         ? 'Purchases are not open right now. Your unlocked cosmetics stay available.'
-                                        : 'The Host has not made BeauBucks available for this party.'}
+                                        : 'BeauBucks are not available in this room yet. Platform rollout—not the Host—controls availability.'}
                             </div>
                         )}
                     </section>
                 ) : null}
 
-                <React.Suspense fallback={<section className="min-h-[88px] rounded-[1.25rem] border border-violet-300/18 bg-violet-500/8 p-4 text-sm font-bold text-violet-100" data-feature-id="audience-reaction-collection-loading" role="status">Loading reaction collection...</section>}>
+                {activeCurrencyHubTab === 'reactions' ? <React.Suspense fallback={<section className="min-h-[88px] rounded-[1.25rem] border border-violet-300/18 bg-violet-500/8 p-4 text-sm font-bold text-violet-100" data-feature-id="audience-reaction-collection-loading" role="status">Loading reaction collection...</section>}>
                     <AudienceReactionCollection
                     open={reactionDeckOpen}
                     onToggle={() => setReactionDeckOpen((open) => !open)}
@@ -4142,9 +4294,9 @@ const SingerApp = ({ roomCode, uid }) => {
                     premiumUnlockPendingId={premiumUnlockPendingId}
                     onCreateAccount={() => openVipUpgrade('email')}
                     />
-                </React.Suspense>
+                </React.Suspense> : null}
 
-                <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035]" data-feature-id="audience-credit-activity">
+                {activeCurrencyHubTab !== 'reactions' ? <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035]" data-feature-id="audience-credit-activity">
                     <button
                         type="button"
                         onClick={toggleCreditActivity}
@@ -4206,8 +4358,9 @@ const SingerApp = ({ roomCode, uid }) => {
                             ) : null}
                         </div>
                     ) : null}
-                </section>
+                </section> : null}
 
+                {activeCurrencyHubTab === 'points' ? <>
                 <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-4" data-feature-id="audience-spend-intent-guide">
                     <div className="flex items-start justify-between gap-3">
                         <div>
@@ -4298,19 +4451,84 @@ const SingerApp = ({ roomCode, uid }) => {
                     </section>
                 ) : null}
 
-                {(visibleQuestLogItems.length > 0 || eventPromoSummary.hasPromoClaims) ? (
-                    <section className="space-y-2" data-feature-id="audience-points-earn-more">
-                        <h3 className="text-xl font-black text-white">Earn more</h3>
+                <section className="space-y-2" data-feature-id="audience-points-earn-more">
+                        <div className="flex items-end justify-between gap-3">
+                            <div>
+                                <h3 className="text-xl font-black text-white">Get more Points</h3>
+                                <p className="mt-1 text-xs leading-5 text-zinc-400">Play, complete verified actions, or invite people into the party.</p>
+                            </div>
+                            <CurrencyIcon currency="points" size="sm" />
+                        </div>
+                        <section className="rounded-[1.25rem] border border-pink-300/28 bg-[linear-gradient(145deg,rgba(236,72,153,0.16),rgba(34,211,238,0.1),rgba(8,15,28,0.98))] p-4" data-feature-id="audience-community-boost">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-100/72">Community Boost</div>
+                                    <div className="mt-1 text-base font-black text-white">Follow BeauRocks</div>
+                                    <div className="mt-1 text-[11px] leading-4 text-zinc-400">Facebook or Instagram. Honor system, once per verified account.</div>
+                                </div>
+                                <span className="shrink-0 rounded-full bg-pink-300 px-3 py-1.5 text-xs font-black text-slate-950">+250 PTS</span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                                {COMMUNITY_BOOST_SOCIAL_LINKS.map((social) => (
+                                    <a
+                                        key={social.id}
+                                        href={social.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={() => trackEvent('audience_community_boost_social_opened', { roomCode, network: social.id })}
+                                        className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/7 px-3 text-sm font-black text-white"
+                                    >
+                                        <i className={social.iconClass} aria-hidden="true"></i>
+                                        {social.label}
+                                    </a>
+                                ))}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={claimCommunityBoost}
+                                disabled={communityBoostBusy || communityBoostAlreadyClaimed}
+                                className="mt-2 min-h-[50px] w-full rounded-xl bg-gradient-to-r from-pink-400 to-cyan-300 px-4 text-sm font-black text-slate-950 disabled:cursor-default disabled:opacity-55"
+                            >
+                                {communityBoostAlreadyClaimed
+                                    ? 'Community Boost claimed'
+                                    : communityBoostBusy
+                                        ? 'Claiming...'
+                                        : signedInBeauRocksAccount
+                                            ? 'I followed BeauRocks · Claim 250 PTS'
+                                            : 'Create account to claim 250 PTS'}
+                            </button>
+                        </section>
+                        {OFFICIAL_BEAUROCKS_YOUTUBE_LINK ? (
+                            <a
+                                href={OFFICIAL_BEAUROCKS_YOUTUBE_LINK.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={() => trackEvent('audience_social_outbound_click', { roomCode, network: 'youtube', reward: false })}
+                                className="flex min-h-[52px] items-center justify-between gap-3 rounded-2xl border border-red-300/18 bg-red-500/8 px-4 text-left"
+                            >
+                                <span className="flex items-center gap-3"><i className={OFFICIAL_BEAUROCKS_YOUTUBE_LINK.iconClass} aria-hidden="true"></i><span><span className="block text-sm font-black text-white">Subscribe on YouTube</span><span className="block text-[11px] text-zinc-400">Follow the channel · no Points reward</span></span></span>
+                                <i className="fa-solid fa-arrow-up-right-from-square text-red-200" aria-hidden="true"></i>
+                            </a>
+                        ) : null}
+                        <button
+                            type="button"
+                            data-feature-id="audience-share-party-invite"
+                            onClick={shareAudienceRoomInvite}
+                            className="flex min-h-[64px] w-full items-center justify-between gap-3 rounded-2xl border border-cyan-300/25 bg-cyan-500/10 px-4 text-left"
+                        >
+                            <span className="flex min-w-0 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-cyan-300/14 text-cyan-100"><i className="fa-solid fa-user-plus" aria-hidden="true"></i></span><span><span className="block text-sm font-black text-white">Invite friends to this room</span><span className="mt-0.5 block text-[11px] leading-4 text-zinc-400">Share the direct join link and fill tonight's queue.</span></span></span>
+                            <i className="fa-solid fa-share-nodes text-cyan-200" aria-hidden="true"></i>
+                        </button>
                         {visibleQuestLogItems.length > 0 ? (
                             <div className="grid gap-2">
                                 {visibleQuestLogItems.map((item) => (
                                     <div key={item.id} className="flex items-center justify-between gap-3 rounded-[1rem] bg-amber-300/10 px-3 py-3">
                                         <div className="flex min-w-0 items-center gap-3">
                                             <i className={`fa-solid ${item.icon} text-amber-200`} aria-hidden="true"></i>
-                                            <span className="truncate text-sm font-black text-white">{item.label}</span>
+                                            <span className="min-w-0"><span className="block truncate text-sm font-black text-white">{item.label}</span><span className="mt-0.5 block text-[11px] leading-4 text-zinc-400">{item.detail}</span></span>
                                         </div>
                                         <span className="shrink-0 rounded-full bg-amber-300/18 px-2.5 py-1 text-xs font-black text-amber-50">
-                                            +{Math.max(0, Number(item.points || 0) || 0)}
+                                            +{Math.max(0, Number(item.points || 0) || 0)} PTS
                                         </span>
                                     </div>
                                 ))}
@@ -4333,8 +4551,8 @@ const SingerApp = ({ roomCode, uid }) => {
                                 </button>
                             </div>
                         ) : null}
-                    </section>
-                ) : null}
+                        <p className="text-[11px] leading-4 text-zinc-500">Social follows and posts must use a promo code or another verified campaign. Opening a social link alone never awards Points.</p>
+                </section>
 
                 {roomSupportOffer ? (
                     <section className="space-y-2">
@@ -4377,6 +4595,7 @@ const SingerApp = ({ roomCode, uid }) => {
                         )}
                     </section>
                 ) : null}
+                </> : null}
             </div>
             <div className="mt-5 flex flex-col gap-2">
                 {!festivalGuestJoinNoEmail && (
@@ -5191,24 +5410,42 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const selectedAvatarUnlock = useMemo(() => getUnlockHint(selectedAvatar), [selectedAvatar, getUnlockHint]);
     const historyItems = useMemo(() => {
         const name = user?.name;
-        return songs
+        const roomHistory = songs
             .filter(s => s.status === 'performed' && (s.singerUid === uid || s.singerName === name))
-            .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0))
-            .slice(0, 12);
-    }, [songs, user?.name, uid]);
+            .map((item) => ({ ...item, historySource: 'room' }));
+        const merged = [...accountPerformanceHistory, ...roomHistory];
+        const seen = new Set();
+        return merged
+            .filter((item) => {
+                const key = String(
+                    item.performanceId
+                    || item.id
+                    || `${item.songTitle || ''}:${item.artist || ''}:${timestampToMs(item.timestamp)}`
+                );
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            })
+            .sort((a, b) => timestampToMs(b.timestamp) - timestampToMs(a.timestamp))
+            .slice(0, 50);
+    }, [accountPerformanceHistory, songs, user?.name, uid]);
     const performanceStats = useMemo(() => {
-        const name = user?.name;
-        const performed = songs.filter(s => s.status === 'performed' && (s.singerUid === uid || s.singerName === name));
-        const total = performed.length;
-        const loudest = performed.reduce((max, s) => Math.max(max, s.applauseScore || 0), 0);
-        const totalPoints = performed.reduce((sum, s) => sum + (s.applauseScore || 0) + (s.hypeScore || 0) + (s.hostBonus || 0), 0);
-        const topSong = performed.reduce((best, s) => {
-            const score = (s.applauseScore || 0) + (s.hypeScore || 0) + (s.hostBonus || 0);
-            if (!best || score > best.score) return { score, songTitle: s.songTitle, artist: s.artist };
+        const total = historyItems.length;
+        const loudest = historyItems.reduce((max, item) => Math.max(max, Number(item.peakDecibel || item.applauseScore || 0)), 0);
+        const totalPoints = historyItems.reduce((sum, item) => (
+            sum + Number(item.totalScore ?? item.score ?? (
+                Number(item.applauseScore || 0) + Number(item.hypeScore || 0) + Number(item.hostBonus || 0)
+            ))
+        ), 0);
+        const topSong = historyItems.reduce((best, item) => {
+            const score = Number(item.totalScore ?? item.score ?? (
+                Number(item.applauseScore || 0) + Number(item.hypeScore || 0) + Number(item.hostBonus || 0)
+            ));
+            if (!best || score > best.score) return { score, songTitle: item.songTitle, artist: item.artist };
             return best;
         }, null);
         return { total, loudest, totalPoints, topSong };
-    }, [songs, user?.name, uid]);
+    }, [historyItems]);
     const favoriteSongs = useMemo(() => {
         const counts = {};
         historyItems.forEach(item => {
@@ -5741,6 +5978,40 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         );
         return () => unsub();
     }, [authReadyUid]);
+
+    useEffect(() => {
+        if (!canSaveTight15 || !accountProfileUid || isAudienceFixtureMode) {
+            setAccountPerformanceHistory([]);
+            setAccountPerformanceHistoryLoading(false);
+            setAccountPerformanceHistoryError('');
+            return undefined;
+        }
+        setAccountPerformanceHistoryLoading(true);
+        setAccountPerformanceHistoryError('');
+        const performanceHistoryQuery = query(
+            collection(db, 'performances'),
+            where('singerUid', '==', accountProfileUid),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+        );
+        const unsub = onSnapshot(
+            performanceHistoryQuery,
+            (snapshot) => {
+                setAccountPerformanceHistory(snapshot.docs.map((performanceDoc) => ({
+                    id: performanceDoc.id,
+                    ...performanceDoc.data(),
+                    historySource: 'account'
+                })));
+                setAccountPerformanceHistoryLoading(false);
+            },
+            (error) => {
+                console.error('Performance history subscription failed', error);
+                setAccountPerformanceHistoryError('Performance history is temporarily unavailable.');
+                setAccountPerformanceHistoryLoading(false);
+            }
+        );
+        return () => unsub();
+    }, [accountProfileUid, canSaveTight15, isAudienceFixtureMode]);
 
     useEffect(() => {
         if (!activeUid || !accountProfileUid || isAnon || !user || !profile) return;
@@ -8481,6 +8752,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             let resolvedDurationSec = Math.max(0, Math.round(Number(options.durationSec || 0)));
             let resolvedAudioOnly = !!options.audioOnly;
             let playbackReady = !!backingUrl;
+            let catalogIdentityMatched = false;
             const needsPastedYouTubeValidation = !!backingUrl && trackSource === 'youtube' && !options.mediaUrl;
             if (needsPastedYouTubeValidation) {
                 const pastedYoutubeId = extractYouTubeId(backingUrl);
@@ -8531,7 +8803,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         artist: artist || 'Unknown',
                         roomCode
                     });
-                    if (resolved?.songId) songId = resolved.songId;
+                    if (resolved?.songId) {
+                        songId = resolved.songId;
+                        catalogIdentityMatched = true;
+                    }
                     if (resolved?.track && (resolved.track.mediaUrl || resolved.track.appleMusicId)) {
                         trackId = String(resolved.track.id || '').startsWith('yt_index:') ? null : (resolved.track.id || null);
                         resolvedTrackSource = resolved.track.source || null;
@@ -8573,6 +8848,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             }
 
             const collabOpen = options?.collabOpen === true || (!!requestCollabOpen && options?.collabOpen !== false);
+            const playbackSelectionMode = normalizePlaybackSelectionMode(options?.playbackSelectionMode, {
+                mediaUrl: backingUrl,
+                appleMusicId: resolvedAppleMusicId,
+                trackSource: resolvedTrackSource,
+                resolutionLayer,
+                mediaResolutionStatus,
+            });
+            const songIdentityStatus = String(options?.songIdentityStatus || '').trim().toLowerCase()
+                || (catalogIdentityMatched ? SONG_IDENTITY_STATUSES.matched : SONG_IDENTITY_STATUSES.provisional);
             const bracketRoundPick = options?.skipBracketRoundSong === true ? null : getActiveBracketRoundSongPickContext();
             const targetSingerUid = String(activeCoHostQueueTarget?.uid || audienceQueueActorUid || '').trim();
             const targetSingerIsSelf = !targetSingerUid || targetSingerUid === audienceQueueActorUid;
@@ -8587,8 +8871,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 emoji: targetSingerAvatar,
                 targetSingerUid: !targetSingerIsSelf ? targetSingerUid : null,
                 songId: songId || null,
+                songIdentityStatus,
                 trackId,
                 trackSource: resolvedTrackSource,
+                playbackSelectionMode,
+                selectedPlaybackProvider: playbackSelectionMode === PLAYBACK_SELECTION_MODES.specificVersion
+                    ? resolvedTrackSource
+                    : null,
                 mediaUrl: resolvedMediaUrl,
                 appleMusicId: resolvedAppleMusicId,
                 itunesId: resolvedAppleMusicId,
@@ -8745,6 +9034,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         return {
             mediaUrl: option.mediaUrl,
             trackSource: option.source || 'youtube',
+            playbackSelectionMode: PLAYBACK_SELECTION_MODES.specificVersion,
             durationSec: Number(option.duration || option.durationSec || 0),
             allowTrack: true,
             trackLabel: option.label || badge.label,
@@ -8797,6 +9087,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             {
                 mediaUrl: result.mediaUrl,
                 trackSource: 'youtube',
+                playbackSelectionMode: PLAYBACK_SELECTION_MODES.specificVersion,
                 durationSec: Number(result.durationSec || 0),
                 audioOnly: false,
                 allowTrack: true,
@@ -8960,15 +9251,30 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         return sanitizeTight15List(temporary);
     };
 
+    const openTight15AccountGate = () => {
+        trackEvent('audience_tight15_account_gate_opened', {
+            roomCode,
+            savedCount: getTight15List().length
+        });
+        toast('Create a free BeauRocks account to save your Tight 15.');
+        openVipUpgrade('email');
+    };
+    const requireTight15Account = () => {
+        if (canSaveTight15) return true;
+        openTight15AccountGate();
+        return false;
+    };
+
     const saveTight15List = async (next) => {
         if (!activeUid) return;
         const sanitized = sanitizeTight15List(next);
         if (!canSaveTight15) {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { tight15Temp: sanitized }, { merge: true });
-            return;
+            openTight15AccountGate();
+            return false;
         }
         await setDoc(doc(db, 'users', accountProfileUid), { tight15: sanitized }, { merge: true });
         await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { tight15Temp: sanitized }, { merge: true });
+        return true;
     };
     const setRoomUserRequestIntent = async (nextIntent = '') => {
         if (!activeUid) {
@@ -8993,6 +9299,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         }
     };
     const _requestHostPickFromTight15 = async () => {
+        if (!requireTight15Account()) return;
         const tight15 = getTight15List();
         if (!tight15.length) {
             setSongsTab('tight15');
@@ -9011,6 +9318,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     };
 
     const addToTight15 = async (item) => {
+        if (!requireTight15Account()) return;
         if (!activeUid) return toast('Session is still connecting. Try again.');
         try {
             const existing = getTight15List();
@@ -9031,6 +9339,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     };
 
     const removeFromTight15 = async (id) => {
+        if (!requireTight15Account()) return;
         if (!activeUid) return;
         try {
             const cur = getTight15List();
@@ -9041,6 +9350,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     };
 
     const reorderTight15 = async (fromIdx, toIdx) => {
+        if (!requireTight15Account()) return;
         if (fromIdx === null || toIdx === null || fromIdx === toIdx) return;
         const cur = [...getTight15List()];
         const [moved] = cur.splice(fromIdx, 1);
@@ -9078,12 +9388,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     const getRecentMySongs = () => {
         const seen = new Set();
-        const mine = songs
-            .filter((s) => {
-                if (uid && s.singerUid) return s.singerUid === uid;
-                return s.singerName === user?.name;
-            })
-            .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+        const mine = [...historyItems]
+            .sort((a, b) => timestampToMs(b.timestamp) - timestampToMs(a.timestamp));
         const unique = [];
         for (const s of mine) {
             const key = `${normalizeTight15Text(s.songTitle)}__${normalizeTight15Text(s.artist)}`;
@@ -9096,6 +9402,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     };
 
     const importRecentToTight15 = async () => {
+        if (!requireTight15Account()) return;
         const recent = getRecentMySongs();
         if (!recent.length) return toast('No recent songs');
         const existing = getTight15List();
@@ -9802,11 +10109,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         })
         : null;
     const myBracketSignupEntry = bracketSignupSummary?.roster?.find((entry) => entry.uid === (activeUid || uid)) || null;
-
-    useEffect(() => {
-        if (!isStreamlinedAudienceShell || songsTab !== 'tight15' || bracketSignupActive) return;
-        setSongsTab('browse');
-    }, [bracketSignupActive, isStreamlinedAudienceShell, songsTab]);
 
     useEffect(() => {
         if (!isStreamlinedAudienceShell || tab !== 'social') return;
@@ -11540,6 +11842,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 </div>
                 <div className="bg-zinc-800/70 border border-zinc-700 rounded-2xl p-4">
                     <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-3">Recent Performances</div>
+                    {canSaveTight15 && (
+                        <div className="mb-3 text-sm text-zinc-400">Saved to your BeauRocks account across rooms.</div>
+                    )}
+                    {accountPerformanceHistoryLoading && (
+                        <div className="mb-3 text-sm text-cyan-200">Loading your performance history...</div>
+                    )}
+                    {accountPerformanceHistoryError && <div className="mb-3 text-sm text-amber-200">{accountPerformanceHistoryError}</div>}
                     {historyItems.length === 0 ? (
                         <div className="text-zinc-400 text-sm">No performances yet. Hit the stage!</div>
                     ) : (
@@ -11556,7 +11865,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         <div className="text-sm text-zinc-400 truncate">{s.artist}</div>
                                     </div>
                                     <div className="text-xs text-zinc-500 font-mono">
-                                        {s.timestamp?.seconds ? new Date(s.timestamp.seconds * 1000).toLocaleDateString() : '-'}
+                                        {timestampToMs(s.timestamp) ? new Date(timestampToMs(s.timestamp)).toLocaleDateString() : '-'}
                                     </div>
                                 </div>
                             ))}
@@ -12333,17 +12642,40 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             <div className="mx-auto flex min-h-full w-full max-w-md flex-col px-4 py-3 text-left">
                 <div className="sticky top-0 z-20 -mx-1 mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-[#070a12]/94 px-1 py-2 backdrop-blur">
                     <div className="min-w-0">
-                        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/70">{beauBucksRoomCandidate ? 'Points + BeauBucks' : (allowsDonationAccess ? 'Support + Points' : 'Points')}</div>
-                        <h2 className="mt-1 text-4xl font-black leading-none text-white">{currencyFunnelTarget === 'reactions' ? 'Reaction Emoji Library' : currencyFunnelTarget === 'beaubucks' ? 'Get BeauBucks' : currencyFunnelTarget === 'points' ? 'Get More Points' : 'Fuel the show'}</h2>
+                        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/70">Audience wallet</div>
+                        <h2 className="mt-1 text-4xl font-black leading-none text-white">{activeCurrencyHubTab === 'reactions' ? 'Reaction Bank' : activeCurrencyHubTab === 'beaubucks' ? 'Get BeauBucks' : 'Get More Points'}</h2>
                     </div>
                     <button
                         onClick={() => { setSupportEmbedOpen(false); setCurrencyFunnelTarget(''); setShowPoints(false); }}
                         className="grid min-h-[48px] min-w-[48px] place-items-center rounded-full bg-white/10 text-zinc-100 active:scale-95"
-                        aria-label="Close points sheet"
+                        aria-label="Close audience wallet"
                     >
                         <i className="fa-solid fa-xmark" aria-hidden="true"></i>
                     </button>
                 </div>
+                <nav className="sticky top-[82px] z-20 mb-5 grid grid-cols-3 gap-1 rounded-2xl border border-white/10 bg-[#0b0f1a]/94 p-1 shadow-[0_10px_24px_rgba(0,0,0,0.25)] backdrop-blur" role="tablist" aria-label="Audience wallet sections" data-feature-id="audience-currency-tabs">
+                    {[
+                        { id: 'points', label: 'Points', icon: 'fa-bolt' },
+                        { id: 'beaubucks', label: 'BeauBucks', icon: 'fa-gem' },
+                        { id: 'reactions', label: 'Reactions', icon: 'fa-face-grin-stars' },
+                    ].map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={activeCurrencyHubTab === item.id}
+                            data-feature-id={`audience-currency-tab-${item.id}`}
+                            onClick={() => {
+                                setCurrencyFunnelTarget(item.id);
+                                if (item.id === 'reactions') setReactionDeckOpen(true);
+                            }}
+                            className={`min-h-[48px] rounded-xl px-2 text-[10px] font-black uppercase tracking-[0.1em] transition ${activeCurrencyHubTab === item.id ? (item.id === 'beaubucks' ? 'bg-fuchsia-400/18 text-fuchsia-50' : item.id === 'reactions' ? 'bg-violet-400/18 text-violet-50' : 'bg-cyan-300/16 text-cyan-50') : 'text-zinc-400'}`}
+                        >
+                            <i className={`fa-solid ${item.icon} mb-1 block text-xs`} aria-hidden="true"></i>
+                            {item.label}
+                        </button>
+                    ))}
+                </nav>
                 {pointsDrawerContent}
             </div>
         </div>
@@ -13081,7 +13413,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     ];
     const streamlinedSongsNavItems = [
         { key: 'queue', label: 'Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
-        ...(bracketSignupActive ? [{ key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }] : [])
+        { key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }
     ];
     const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
     const forceExpandedHomeStageCard = showAudienceVideoInline || showAudienceVideoFullscreen || inlineLyrics || viewLyrics;
@@ -13282,6 +13614,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     type="button"
                                     role="tab"
                                     aria-selected={isActive}
+                                    data-feature-id={item.key === 'tight15' ? 'audience-tight15-nav' : undefined}
                                     onClick={() => openStreamlinedSongsStageTab(item.key)}
                                     className={`relative inline-flex min-h-[36px] shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
                                         isActive
@@ -13291,7 +13624,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     style={isActive ? streamlinedSongsTabActiveStyle : undefined}
                                 >
                                     <i className={`fa-solid ${item.icon} text-[10px]`}></i>
-                                    <span className="hidden min-[390px]:inline">{item.label}</span>
+                                    <span className="hidden min-[360px]:inline">{item.label}</span>
                                     {typeof item.badge === 'number' ? (
                                         <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/12 text-cyan-50' : 'bg-white/8 text-zinc-300'}`}>
                                             {item.badge}
@@ -13324,6 +13657,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         {audienceAskHostAllowed ? (
                             <button
                                 type="button"
+                                data-feature-id="singer-manual-request-open"
                                 onClick={openAudienceManualRequestFromSearch}
                                 className="rounded-full border border-pink-300/20 bg-pink-500/8 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-pink-100"
                             >
@@ -13621,7 +13955,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         <div className="flex items-center justify-end min-w-0 relative z-10">
                           <AnimatedPoints
                               value={effectivePoints}
-                              onClick={() => setShowPoints(true)}
+                              onClick={() => openAudienceCurrencyFunnel('points')}
                               rewardDelta={pointsRewardPulse.delta}
                               rewardPulseKey={pointsRewardPulse.key}
                               displayValue={coHostUnlimitedCredits ? 'âˆž' : null}
@@ -16295,6 +16629,28 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 {isStreamlinedAudienceShell ? (
                                     <div className="space-y-3">
                                         {renderStreamlinedInlineSearchResults()}
+                                        <button
+                                            type="button"
+                                            data-feature-id="audience-tight15-discovery"
+                                            onClick={() => setSongsTab('tight15')}
+                                            className="flex w-full items-center gap-3 rounded-2xl border border-cyan-300/25 bg-gradient-to-r from-cyan-500/12 via-black/20 to-fuchsia-500/12 p-3.5 text-left shadow-[0_10px_28px_rgba(0,0,0,0.2)]"
+                                        >
+                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/35 bg-cyan-500/15 text-lg text-cyan-100">
+                                                <i className="fa-solid fa-bolt"></i>
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-200/80">Your Tight 15</div>
+                                                <div className="mt-0.5 text-sm font-bold leading-snug text-white">Your 15 go-to karaoke songs</div>
+                                                <div className="mt-0.5 text-xs leading-snug text-zinc-400">Hosts and game modes can pull from your list.</div>
+                                            </div>
+                                            <div className="shrink-0 text-right">
+                                                <div className="text-sm font-black text-white">{getTight15List().length}/{TIGHT15_MAX}</div>
+                                                <div className={`text-[9px] font-black uppercase tracking-[0.12em] ${canSaveTight15 ? 'text-cyan-200' : 'text-fuchsia-200'}`}>
+                                                    {canSaveTight15 ? 'Saved' : 'Account'}
+                                                </div>
+                                            </div>
+                                            <i className="fa-solid fa-chevron-right text-xs text-zinc-500"></i>
+                                        </button>
                                         {latestMyRequest ? (
                                             <div className="rounded-2xl border border-white/10 bg-black/25 p-3.5 text-left">
                                                 <div className="flex items-start justify-between gap-3">
@@ -16807,22 +17163,40 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             </div>
                         )}
                         {songsTab === 'tight15' && (
-                            <div ref={tight15SectionRef} className="bg-zinc-800 p-4 rounded-2xl border border-zinc-700">
-                                <div className="text-left mb-2">
-                                    <div className="text-sm uppercase tracking-[0.35em] text-zinc-400">Tight 15</div>
-                                    <h3 className="text-2xl font-bebas text-cyan-400">Tight 15</h3>
-                                    <p className="text-base text-zinc-400">Your personal 15-song setlist. Tap "Add New" or save songs during performances.</p>
-                                    <div className="text-sm text-zinc-500 mt-1">{getTight15List().length}/{TIGHT15_MAX} songs</div>
+                            <div
+                                ref={tight15SectionRef}
+                                data-feature-id="audience-tight15-library"
+                                className="rounded-3xl border border-cyan-300/20 bg-gradient-to-br from-zinc-800 via-zinc-900 to-fuchsia-950/35 p-4 shadow-[0_16px_44px_rgba(0,0,0,0.3)]"
+                            >
+                                <div className="mb-3 text-left">
+                                    <div className="text-sm uppercase tracking-[0.35em] text-cyan-200/70">Your songs</div>
+                                    <h3 className="text-3xl font-bebas text-cyan-300">Tight 15</h3>
+                                    <p className="text-base leading-snug text-zinc-300">Your 15 go-to songs. Hosts and game modes can pull from it, and your list follows your account from room to room.</p>
+                                    <div className="mt-2 text-sm font-bold text-zinc-400">{getTight15List().length}/{TIGHT15_MAX} songs saved</div>
                                 </div>
+                                {!canSaveTight15 && (
+                                    <div data-feature-id="audience-tight15-account-gate" className="mb-4 rounded-2xl border border-fuchsia-300/35 bg-fuchsia-500/12 p-4 text-left">
+                                        <div className="text-sm font-black uppercase tracking-[0.18em] text-fuchsia-100">Save it with an account</div>
+                                        <p className="mt-1 text-sm leading-snug text-zinc-300">Create a free BeauRocks account to save your Tight 15 and build your performance history. You’ll also get 5,000 PTS.</p>
+                                        <button
+                                            type="button"
+                                            onClick={openTight15AccountGate}
+                                            className="mt-3 min-h-[48px] w-full rounded-xl bg-gradient-to-r from-cyan-300 to-fuchsia-400 px-4 py-3 text-sm font-black uppercase tracking-[0.14em] text-black"
+                                        >
+                                            Create account + 5,000 PTS
+                                        </button>
+                                    </div>
+                                )}
                                 <div className="flex gap-2 mb-2">
-                                    <button onClick={importRecentToTight15} className="flex-1 bg-zinc-900/70 border border-zinc-700 text-zinc-200 py-1 rounded-md text-sm font-semibold uppercase tracking-widest">Import Recent</button>
+                                    <button onClick={importRecentToTight15} className="min-h-[44px] flex-1 rounded-xl border border-zinc-700 bg-zinc-900/70 px-2 py-2 text-xs font-black uppercase tracking-[0.14em] text-zinc-200">Import History</button>
                                     <button
                                         onClick={() => {
+                                            if (!requireTight15Account()) return;
                                             setTight15SearchQ('');
                                             tight15SectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                                             setTimeout(() => tight15InputRef.current?.focus(), 120);
                                         }}
-                                        className="flex-1 bg-[#00C4D9]/15 border border-[#00C4D9]/40 text-[#00C4D9] py-1 rounded-md text-sm font-semibold uppercase tracking-widest"
+                                        className="min-h-[44px] flex-1 rounded-xl border border-[#00C4D9]/40 bg-[#00C4D9]/15 px-2 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#00C4D9]"
                                     >
                                         + Add New
                                     </button>
@@ -16834,6 +17208,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         value={tight15SearchQ}
                                         onChange={e => setTight15SearchQ(e.target.value)}
                                         className="w-full bg-zinc-900 border border-zinc-600 rounded-lg p-2.5 text-base text-white outline-none"
+                                        disabled={!canSaveTight15}
                                         placeholder="Search songs to add to your Tight 15..."
                                     />
                                     {tight15Results.length > 0 && (
@@ -16867,15 +17242,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     {getTight15List().map((item, idx) => (
                                         <div
                                             key={item.id}
-                                            draggable
+                                            draggable={canSaveTight15}
                                             onDragStart={() => setDragIndex(idx)}
                                             onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx); }}
                                             onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
                                             onDrop={() => { reorderTight15(dragIndex, idx); setDragIndex(null); setDragOverIndex(null); }}
                                             data-tight15-index={idx}
-                                            onTouchStart={() => handleTight15TouchStart(idx)}
-                                            onTouchMove={handleTight15TouchMove}
-                                            onTouchEnd={handleTight15TouchEnd}
+                                            onTouchStart={canSaveTight15 ? () => handleTight15TouchStart(idx) : undefined}
+                                            onTouchMove={canSaveTight15 ? handleTight15TouchMove : undefined}
+                                            onTouchEnd={canSaveTight15 ? handleTight15TouchEnd : undefined}
                                             className={`flex items-center justify-between bg-zinc-900/60 border rounded-xl p-3 gap-3 ${dragOverIndex === idx ? 'border-[#00C4D9]' : 'border-zinc-700'}`}
                                         >
                                             {item.albumArtUrl ? (
@@ -16908,8 +17283,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     ))}
                                 </div>
 
-                                {!canSaveTight15 && !festivalGuestJoinNoEmail && (
-                                    <button onClick={()=>openVipUpgrade('email')} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Continue with Email to Save Across Rooms</button>
+                                {canSaveTight15 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAccount(true)}
+                                        className="mt-4 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-4 py-3 text-sm font-black uppercase tracking-[0.14em] text-cyan-100"
+                                    >
+                                        <i className="fa-solid fa-clock-rotate-left"></i>
+                                        Performance history
+                                    </button>
                                 )}
                             </div>
                         )}

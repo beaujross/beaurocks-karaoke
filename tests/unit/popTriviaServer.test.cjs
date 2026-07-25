@@ -333,9 +333,9 @@ test("popTriviaServer.test", async () => {
   );
 
   const functionsSource = readFileSync("functions/index.js", "utf8");
-  assert.match(functionsSource, /Every question must focus on the requested song/);
+  assert.match(functionsSource, /Every correct answer must be supported directly by Known metadata/);
   assert.match(functionsSource, /Do not mention or ask about the current singer/);
-  assert.match(functionsSource, /At most 1 question may ask for the listed artist/);
-  assert.match(functionsSource, /If you cannot write a safe factual question, write a title, artist, hook, or arrangement question instead/);
+  assert.match(functionsSource, /The title and artist are already visible, so do not ask players to identify either one/);
+  assert.match(functionsSource, /return fewer than 4 questions rather than padding the set/);
   assert.match(functionsSource, /"category":"hook_recognition"/);
 });

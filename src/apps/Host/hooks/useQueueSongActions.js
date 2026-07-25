@@ -27,6 +27,7 @@ import {
 } from '../../../lib/songCatalog';
 import { normalizeBackingChoice } from '../../../lib/playbackSource';
 import { RESOLUTION_STATUSES, requiresBackingHostReview } from '../../../lib/requestModes';
+import { PLAYBACK_CONTENT_KINDS } from '../../../lib/playbackSource';
 import { buildHostEditedReviewState } from '../../../lib/queueSongReviewState';
 import { getTrackDurationSecFromSearchResult } from '../hostPlaybackAutomation';
 import { normalizeYouTubePlaybackState } from '../../../lib/youtubePlaybackStatus';
@@ -910,6 +911,10 @@ const useQueueSongActions = ({
             originalLyrics: song.lyrics || '',
             originalLyricsTimed: song.lyricsTimed || null,
             originalAppleMusicId: song.appleMusicId || '',
+            playbackContentKind: song.appleMusicId
+                ? PLAYBACK_CONTENT_KINDS.originalRecording
+                : (song.playbackContentKind || PLAYBACK_CONTENT_KINDS.unknown),
+            originalPlaybackContentKind: song.playbackContentKind || '',
             youtubeEmbeddable: song.youtubeEmbeddable ?? null,
             youtubeUploadStatus: song.youtubeUploadStatus || '',
             youtubePrivacyStatus: song.youtubePrivacyStatus || '',
@@ -950,6 +955,12 @@ const useQueueSongActions = ({
                 : normalizedUrl
                     ? 'custom'
                     : '';
+        const requestedContentKind = String(workingForm.playbackContentKind || '').trim().toLowerCase();
+        const playbackContentKind = normalizedAppleMusicId
+            ? PLAYBACK_CONTENT_KINDS.originalRecording
+            : Object.values(PLAYBACK_CONTENT_KINDS).includes(requestedContentKind)
+                ? requestedContentKind
+                : PLAYBACK_CONTENT_KINDS.unknown;
         const originalBacking = normalizeBackingChoice({
             mediaUrl: workingForm.originalUrl,
             appleMusicId: workingForm.originalAppleMusicId
@@ -964,7 +975,8 @@ const useQueueSongActions = ({
             albumArtUrl: workingForm.art,
             duration: safeDuration,
             audioOnly: isAudioUrl(normalizedUrl),
-            trackSource: trackSource || null
+            trackSource: trackSource || null,
+            playbackContentKind,
         };
         if (playbackChanged) {
             const nextYouTubePlaybackPatch = buildQueueSongYouTubePlaybackPatch({

@@ -49,7 +49,7 @@
     "test:callables:lyrics": "npx firebase-tools emulators:exec --project demo-bross --only firestore \"node tests/integration/resolveQueueSongLyricsCallable.test.cjs\"",
     "test:callables:media-catalog": "npx firebase-tools emulators:exec --project demo-bross --only firestore \"node tests/integration/upsertCuratedYouTubeIndexesCallable.test.cjs\"",
     "test:callables:public-recap-evidence": "node scripts/qa/run-public-recap-evidence-emulator.mjs",
-    "test:callables:vip-account": "npx firebase-tools emulators:exec --project demo-bross --only auth,firestore \"node tests/integration/vipAccountStatusCallable.test.cjs\"",
+    "test:callables:vip-account": "npx firebase-tools emulators:exec --project demo-bross --only auth,firestore \"node tests/integration/vipAccountStatusCallable.test.cjs && node tests/integration/claimAudienceCommunityBoostCallable.test.cjs\"",
     "qa:admin:prod": "node scripts/qa/admin-workspace-playwright-smoke.mjs",
     "qa:beaubucks:spend-canary": "node scripts/qa/beau-bucks-spend-canary.mjs",
     "qa:admin:prod:secure:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa/run-admin-prod-secure-win.ps1",

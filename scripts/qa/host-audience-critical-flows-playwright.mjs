@@ -47,7 +47,7 @@ const main = async () => {
       { waitUntil: 'domcontentloaded', timeout: timeoutMs },
     );
     await hostPage.locator('.host-app').first().waitFor({ state: 'attached', timeout: timeoutMs });
-    const hostWizard = hostPage.locator('div.fixed.inset-0').filter({ hasText: 'Pick the night you want' }).last();
+    const hostWizard = hostPage.locator('div.fixed.inset-0').filter({ has: hostPage.locator('[data-room-setup-recipes="true"]') }).last();
     await hostWizard.locator('[data-room-setup-recipes="true"]').waitFor({ state: 'visible', timeout: timeoutMs });
     await delay(400);
 

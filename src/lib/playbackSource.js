@@ -1,3 +1,21 @@
+export const PERFORMANCE_MODES = Object.freeze({
+    karaoke: 'karaoke',
+    singAlong: 'sing_along',
+    lipSync: 'lip_sync',
+});
+
+export const PLAYBACK_CONTENT_KINDS = Object.freeze({
+    originalRecording: 'original_recording',
+    karaokeBacking: 'karaoke_backing',
+    custom: 'custom',
+    unknown: 'unknown',
+});
+
+export const normalizePerformanceMode = (value = '') => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return Object.values(PERFORMANCE_MODES).includes(normalized) ? normalized : PERFORMANCE_MODES.karaoke;
+};
+
 const extractYouTubeId = (input = '') => {
     if (!input) return '';
     const match = input.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/);
@@ -47,6 +65,97 @@ export const isQueueEntryPlayable = (song = {}, { appleMusicEnabled = true } = {
     if (backing.usesAppleBacking) return !!appleMusicEnabled;
     return !!backing.mediaUrl;
 };
+
+export const performanceModeRequiresOriginalRecording = (performanceMode = '') => {
+    const normalized = normalizePerformanceMode(performanceMode);
+    return normalized === PERFORMANCE_MODES.singAlong || normalized === PERFORMANCE_MODES.lipSync;
+};
+
+export const getQueueEntryPlaybackContentKind = (song = {}) => {
+    const explicitKind = String(song?.playbackContentKind || '').trim().toLowerCase();
+    if (Object.values(PLAYBACK_CONTENT_KINDS).includes(explicitKind)) return explicitKind;
+    const backing = normalizeBackingChoice(song || {});
+    if (backing.usesAppleBacking) return PLAYBACK_CONTENT_KINDS.originalRecording;
+    return PLAYBACK_CONTENT_KINDS.unknown;
+};
+
+export const getQueueEntryPerformanceReadiness = (song = {}, {
+    performanceMode = PERFORMANCE_MODES.karaoke,
+    appleMusicEnabled = true,
+    basePlayable,
+} = {}) => {
+    const normalizedMode = normalizePerformanceMode(performanceMode);
+    const backing = normalizeBackingChoice(song || {});
+    const provider = backing.usesAppleBacking
+        ? 'apple'
+        : (String(song?.selectedPlaybackProvider || song?.trackSource || '').trim().toLowerCase()
+            || (backing.isYouTube ? 'youtube' : (backing.mediaUrl ? 'local' : '')));
+    const playable = basePlayable === undefined
+        ? isQueueEntryPlayable(song, { appleMusicEnabled })
+        : basePlayable === true;
+
+    if (!playable) {
+        return {
+            autopilotReady: false,
+            manuallyPlayable: false,
+            status: 'missing',
+            reason: 'missing_backing',
+            performanceMode: normalizedMode,
+            contentKind: getQueueEntryPlaybackContentKind(song),
+            provider,
+            title: 'Choose a playable version',
+            detail: 'This queue entry needs a playable backing before it can start.',
+        };
+    }
+
+    if (!performanceModeRequiresOriginalRecording(normalizedMode)) {
+        return {
+            autopilotReady: true,
+            manuallyPlayable: true,
+            status: 'ready',
+            reason: 'standard_karaoke_ready',
+            performanceMode: normalizedMode,
+            contentKind: getQueueEntryPlaybackContentKind(song),
+            provider,
+            title: 'Ready',
+            detail: '',
+        };
+    }
+
+    const contentKind = getQueueEntryPlaybackContentKind(song);
+    if (contentKind === PLAYBACK_CONTENT_KINDS.originalRecording) {
+        return {
+            autopilotReady: true,
+            manuallyPlayable: true,
+            status: 'ready',
+            reason: 'original_recording_ready',
+            performanceMode: normalizedMode,
+            contentKind,
+            provider,
+            title: 'Original recording ready',
+            detail: '',
+        };
+    }
+
+    const incompatible = contentKind === PLAYBACK_CONTENT_KINDS.karaokeBacking;
+    return {
+        autopilotReady: false,
+        manuallyPlayable: true,
+        status: incompatible ? 'incompatible' : 'review',
+        reason: incompatible ? 'karaoke_backing_in_original_format' : 'original_recording_unconfirmed',
+        performanceMode: normalizedMode,
+        contentKind,
+        provider,
+        title: incompatible ? 'Choose an original recording' : 'Confirm this is the original recording',
+        detail: incompatible
+            ? 'This format uses the full recording with original vocals.'
+            : 'Auto-DJ will wait rather than guess. You can still start it manually.',
+    };
+};
+
+export const isQueueEntryAutopilotPlayable = (song = {}, options = {}) => (
+    getQueueEntryPerformanceReadiness(song, options).autopilotReady
+);
 
 export const isBackingPlaying = ({ usesAppleBacking = false, room, appleMusicPlaying = false } = {}) => {
     if (usesAppleBacking) {

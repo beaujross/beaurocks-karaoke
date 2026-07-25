@@ -44,8 +44,8 @@ const MissionSetupAdvancedDrawer = ({
             className="w-full px-4 py-3 flex items-center justify-between text-left"
         >
             <div>
-                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Advanced</div>
-                <div className="text-base font-bold text-white mt-1">More room settings</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-500">Fine-tune</div>
+                <div className="mt-1 text-base font-bold text-white">Queue, scoring, screens, and guardrails</div>
             </div>
             <div className="flex items-center gap-2">
                 {overrideCount > 0 && (

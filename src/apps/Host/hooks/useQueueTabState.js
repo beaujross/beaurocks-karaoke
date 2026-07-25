@@ -175,6 +175,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         lyrics: '',
         lyricsTimed: null,
         appleMusicId: '',
+        playbackContentKind: 'unknown',
         duration: 180
     });
     const [customBonus, setCustomBonus] = useState('');

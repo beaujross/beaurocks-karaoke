@@ -125,6 +125,9 @@ async function run() {
       assert.equal(queueSnap.get("submittedByUid"), GUEST_UID);
       assert.equal(queueSnap.get("queueRequestId"), "request_1");
       assert.equal(queueSnap.get("runOfShowItemId"), "ros_item_1");
+      assert.equal(queueSnap.get("playbackSelectionMode"), "song_only");
+      assert.equal(queueSnap.get("songIdentityStatus"), "provisional");
+      assert.equal(queueSnap.get("selectedPlaybackProvider"), null);
 
       const duplicate = await submitAudienceQueueSong.run(requestFor(GUEST_UID, {
         roomCode: ROOM_CODE,
@@ -207,6 +210,8 @@ async function run() {
         resolutionStatus: "resolved",
         resolutionLayer: "global_catalog",
         trustedCandidate: true,
+        playbackSelectionMode: "specific_version",
+        selectedPlaybackProvider: "youtube",
       }));
       assert.equal(result.ok, true);
       assert.equal(result.status, "requested");
@@ -214,6 +219,8 @@ async function run() {
       const queueSnap = await queueRefFor(GUEST_UID, "has_backing").get();
       assert.equal(queueSnap.get("playbackReady"), true);
       assert.equal(queueSnap.get("status"), "requested");
+      assert.equal(queueSnap.get("playbackSelectionMode"), "specific_version");
+      assert.equal(queueSnap.get("selectedPlaybackProvider"), "youtube");
     }],
 
     ["audience queue song rejects known non-embeddable YouTube picks", async () => {

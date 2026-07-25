@@ -36,7 +36,7 @@ try {
         await tab.click();
       }
       await page.getByText("Syncing live crowns...").waitFor({ state: "hidden", timeout: TIMEOUT_MS });
-      await page.getByText("For venues and recurring nights", { exact: true }).waitFor({ state: "visible", timeout: TIMEOUT_MS });
+      await page.getByRole("heading", { name: "Where is karaoke busiest?", exact: true }).waitFor({ state: "visible", timeout: TIMEOUT_MS });
       const warning = page.locator(".mk3-charts-page .mk3-status-warning");
       assert(await warning.count() === 0, "Charts rendered an error state: " + await warning.allTextContents());
       const overflow = await page.evaluate(() => ({

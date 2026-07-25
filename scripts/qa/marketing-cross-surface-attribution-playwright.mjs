@@ -117,8 +117,8 @@ const runProfile = async ({
         `Expected /marketing legacy path to land on a current entry surface, got ${page.url()}`,
       );
       const visibleEntry = await Promise.any([
-        page.getByText(/turn karaoke night into a room-wide party game/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => "fans"),
-        page.getByText(/join the beaurocks host waitlist/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => "host"),
+        page.getByText(/your karaoke night, all in one room/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => "fans"),
+        page.getByText(/host karaoke your way/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => "host"),
         page.getByText(/host login and applications/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => "host_access"),
       ]).catch(() => null);
       assert(!!visibleEntry, "Expected a current entry headline on the /marketing legacy path.");
@@ -185,7 +185,7 @@ const runProfile = async ({
       try {
       const demoUrl = `${baseUrl}/auto-demo?utm_source=qa_cross_surface&utm_medium=qa&utm_campaign=root_marketing_cutover&utm_content=demo_launch`;
       await isolated.goto(demoUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-      await isolated.getByText(/turn karaoke night into a room-wide party game/i).first().waitFor({ state: "visible", timeout: timeoutMs });
+      await isolated.getByText(/your karaoke night, all in one room/i).first().waitFor({ state: "visible", timeout: timeoutMs });
       const parsed = new URL(isolated.url());
       assert(parsed.pathname === "/", `Expected /auto-demo to canonicalize to /, got ${parsed.pathname}${parsed.search}`);
       assert(parsed.searchParams.get("utm_source") === "qa_cross_surface", "Expected UTM params to survive demo-route canonicalization.");

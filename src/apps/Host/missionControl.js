@@ -64,6 +64,11 @@ const normalizeRequestMode = (value = '', allowSingerTrackSelect = false) => {
     }
     return allowSingerTrackSelect ? 'guest_backing_optional' : 'canonical_open';
 };
+const normalizePerformanceMode = (value = '') => {
+    const mode = String(value || '').trim().toLowerCase();
+    if (mode === 'sing_along' || mode === 'lip_sync') return mode;
+    return 'karaoke';
+};
 
 const deepSet = (target, path, value) => {
     if (!isObject(target) || typeof path !== 'string' || !path.trim()) return target;
@@ -121,8 +126,9 @@ export const buildMissionDraftFromRoom = (room = {}, options = {}) => {
         const archetype = String(setupDraft.archetype || DEFAULT_ARCHETYPE).trim() || DEFAULT_ARCHETYPE;
         const flowRule = String(setupDraft.flowRule || inferFlowRuleFromQueue(room?.queueSettings, flowRules)).trim() || 'balanced';
         const spotlightMode = String(setupDraft.spotlightMode || resolveSpotlightMode(room, options?.primaryModes)).trim() || 'karaoke';
+        const performanceMode = normalizePerformanceMode(setupDraft.performanceMode || room?.performanceMode);
         const assistLevel = String(setupDraft.assistLevel || DEFAULT_ASSIST_LEVEL).trim() || DEFAULT_ASSIST_LEVEL;
-        return { archetype, flowRule, spotlightMode, assistLevel };
+        return { archetype, flowRule, spotlightMode, performanceMode, assistLevel };
     }
 
     const preset = String(room?.hostNightPreset || DEFAULT_ARCHETYPE).trim() || DEFAULT_ARCHETYPE;
@@ -133,6 +139,7 @@ export const buildMissionDraftFromRoom = (room = {}, options = {}) => {
         archetype: preset,
         flowRule: String(savedRecipe.flowRule || inferFlowRuleFromQueue(room?.queueSettings, flowRules)).trim() || 'balanced',
         spotlightMode: String(savedRecipe.spotlightMode || resolveSpotlightMode(room, options?.primaryModes)).trim() || 'karaoke',
+        performanceMode: normalizePerformanceMode(savedRecipe.performanceMode || room?.performanceMode),
         assistLevel: String(savedRecipe.assistLevel || DEFAULT_ASSIST_LEVEL).trim() || DEFAULT_ASSIST_LEVEL
     };
 };
@@ -151,6 +158,7 @@ export const compileMissionDraftToRoomPayload = (draft = {}, _capabilities = {},
     const gameDefaults = presetSettings.gameDefaults || {};
     const requestedSpotlight = String(draft?.spotlightMode || '').trim() || (presetSettings.gamePreviewId || 'karaoke');
     const spotlightMode = requestedSpotlight || 'karaoke';
+    const performanceMode = normalizePerformanceMode(draft?.performanceMode || presetSettings.performanceMode);
 
     return {
         hostNightPreset: preset?.id || archetype || DEFAULT_ARCHETYPE,
@@ -182,6 +190,7 @@ export const compileMissionDraftToRoomPayload = (draft = {}, _capabilities = {},
         popTriviaEnabled: presetSettings.popTriviaEnabled === true,
         audienceShellVariant: String(presetSettings.audienceShellVariant || '').trim().toLowerCase() === 'classic' ? 'classic' : 'streamlined',
         audienceFeatureAccess: cloneObject(presetSettings.audienceFeatureAccess || {}),
+        performanceMode,
         ...(audienceBrandTheme ? { audienceBrandTheme } : {}),
         gamePreviewId: spotlightMode === 'karaoke' ? null : spotlightMode,
         gameDefaults: {

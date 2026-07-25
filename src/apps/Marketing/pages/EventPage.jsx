@@ -3,7 +3,9 @@ import { directoryActions } from "../api/directoryApi";
 import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
+import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import DirectoryExperienceSpotlight from "./DirectoryExperienceSpotlight";
+import DirectoryOwnerPathway from "./DirectoryOwnerPathway";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
   MARKETING_BRAND_BADGE_URL,
@@ -321,6 +323,20 @@ const EventPage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEn
       </article>
 
       <div className="mk3-side-stack">
+        <DirectoryOwnerPathway
+          navigate={navigate}
+          source="event_page"
+          compact
+        />
+        <ClaimOwnershipCard
+          listingType="event"
+          listingId={eventItem.id}
+          session={session}
+          navigate={navigate}
+          authFlow={authFlow}
+          isModernized={eventIsBeauRocksPowered}
+          canManage={eventItem.canManage === true}
+        />
         <CadenceUpdateCard
           listingType="event"
           listing={eventItem}

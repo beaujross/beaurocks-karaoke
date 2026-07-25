@@ -173,20 +173,10 @@ async function run() {
   await roomRef.update({ 'eventCredits.beauBucksEnabledTonight': false });
   const offWallet = await getMyRoomBeauBucksWallet.run(requestFor(USER_UID, { roomCode: ROOM_CODE }));
   assert.equal(offWallet.authorityEnabled, true);
-  assert.equal(offWallet.hostEnabledTonight, false);
-  assert.equal(offWallet.experienceEnabled, false);
-  assert.equal(offWallet.unavailableReason, 'host_disabled');
+  assert.equal(offWallet.hostEnabledTonight, true);
+  assert.equal(offWallet.experienceEnabled, true);
+  assert.equal(offWallet.unavailableReason, '');
   assert.deepEqual(offWallet.allowedSpendKinds, ['durable_cosmetic_unlock']);
-  await expectHttpsError(
-    () => spendAudienceBeauBucks.run(requestFor(USER_UID, {
-      roomCode: ROOM_CODE,
-      kind: 'reaction',
-      clientOperationId: 'paid-reaction-while-off',
-      payload: { reactionType: 'fire' },
-    })),
-    'failed-precondition',
-  );
-  await roomRef.update({ 'eventCredits.beauBucksEnabledTonight': true });
 
   await expectHttpsError(
     () => createBeauBucksCheckout.run(requestFor(USER_UID, { roomCode: ROOM_CODE, packId: 'beaubucks_starter_1200' })),
@@ -223,7 +213,7 @@ async function run() {
   assert.equal(wallet.experienceEnabled, true);
   assert.equal(wallet.unavailableReason, '');
   assert.equal(wallet.canPurchase, false);
-  assert.deepEqual(wallet.allowedSpendKinds, ['reaction', 'durable_cosmetic_unlock']);
+  assert.deepEqual(wallet.allowedSpendKinds, ['durable_cosmetic_unlock']);
 
   const spendRequest = requestFor(USER_UID, {
     roomCode: ROOM_CODE,
@@ -231,28 +221,26 @@ async function run() {
     clientOperationId: 'paid-reaction-1',
     payload: { reactionType: 'fire', performanceId: 'performance-1' },
   });
-  const spend = await spendAudienceBeauBucks.run(spendRequest);
-  assert.equal(spend.outcome, 'accepted');
-  assert.equal(spend.chargedAmount, 5);
-  assert.equal(spend.balanceAfter, 1195);
-  const spendReplay = await spendAudienceBeauBucks.run(spendRequest);
-  assert.equal(spendReplay.duplicate, true);
-  assert.equal((await accountRef.get()).get('balance'), 1195);
+  await expectHttpsError(
+    () => spendAudienceBeauBucks.run(spendRequest),
+    'failed-precondition',
+  );
+  assert.equal((await accountRef.get()).get('balance'), 1200);
   assert.equal((await roomUserRef.get()).get('points'), 777);
 
   const secondRoomWallet = await getMyRoomBeauBucksWallet.run(requestFor(USER_UID, { roomCode: SECOND_ROOM_CODE }));
   assert.equal(secondRoomWallet.scope, 'account');
-  assert.equal(secondRoomWallet.balance, 1195);
+  assert.equal(secondRoomWallet.balance, 1200);
   assert.equal(secondRoomWallet.experienceEnabled, true);
   const secondRoomActivity = await listMyRoomCreditActivity.run(requestFor(USER_UID, { roomCode: SECOND_ROOM_CODE, limit: 10 }));
   assert.equal(secondRoomActivity.balance, 222);
-  assert.equal(secondRoomActivity.beauBucksBalance, 1195);
+  assert.equal(secondRoomActivity.beauBucksBalance, 1200);
   assert.equal(secondRoomActivity.beauBucksWalletScope, 'account');
   assert.ok(secondRoomActivity.activities.some((entry) => entry.currency === 'beaubucks'));
 
   const activity = await listMyRoomCreditActivity.run(requestFor(USER_UID, { roomCode: ROOM_CODE, limit: 10 }));
   assert.equal(activity.balance, 777);
-  assert.equal(activity.beauBucksBalance, 1195);
+  assert.equal(activity.beauBucksBalance, 1200);
   assert.equal(activity.beauBucksBalanceAuthority, 'ledger');
   assert.equal(activity.beauBucksWalletAvailable, true);
   const purchaseProof = activity.activities.find((entry) => entry.title === 'BeauBucks purchase');
@@ -271,10 +259,10 @@ async function run() {
   const refund = await invokeStripeWebhook(refundEvent);
   assert.equal(refund.body.beauBucksAdjustment, true);
   assert.equal(refund.body.applied, true);
-  assert.equal((await accountRef.get()).get('balance'), 595);
+  assert.equal((await accountRef.get()).get('balance'), 600);
   const refundReplay = await invokeStripeWebhook(refundEvent);
   assert.equal(refundReplay.body.duplicate, true);
-  assert.equal((await accountRef.get()).get('balance'), 595);
+  assert.equal((await accountRef.get()).get('balance'), 600);
 
   const chargebackEvent = {
     id: 'evt_beaubucks_chargeback',
@@ -291,17 +279,18 @@ async function run() {
   assert.equal((await accountRef.get()).get('balance'), 0);
   assert.equal((await accountRef.get()).get('status'), 'restricted');
   const adjustment = (await db.doc(`beaurocks_payment_adjustments/${buildBeauBucksAdjustmentId(chargebackEvent.id)}`).get()).data();
-  assert.equal(adjustment.appliedRevocation, 595);
-  assert.equal(adjustment.unrecoveredAmount, 5);
+  assert.equal(adjustment.appliedRevocation, 600);
+  assert.equal(adjustment.unrecoveredAmount, 0);
 
-  const restrictedSpend = await spendAudienceBeauBucks.run(requestFor(USER_UID, {
-    roomCode: ROOM_CODE,
-    kind: 'reaction',
-    clientOperationId: 'paid-reaction-after-chargeback',
-    payload: { reactionType: 'fire' },
-  }));
-  assert.equal(restrictedSpend.outcome, 'account_restricted');
-  assert.equal(restrictedSpend.chargedAmount, 0);
+  await expectHttpsError(
+    () => spendAudienceBeauBucks.run(requestFor(USER_UID, {
+      roomCode: ROOM_CODE,
+      kind: 'reaction',
+      clientOperationId: 'paid-reaction-after-chargeback',
+      payload: { reactionType: 'fire' },
+    })),
+    'failed-precondition',
+  );
   assert.equal((await accountRef.get()).get('balance'), 0);
   assert.equal((await roomUserRef.get()).get('points'), 777);
 

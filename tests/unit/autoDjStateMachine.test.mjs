@@ -180,3 +180,55 @@ test("Auto DJ queue advance intent waits for the full post-performance recap hol
     assert.equal(intent.configuredDelayMs, 5000);
     assert.equal(intent.postPerformanceHoldMs, 21500);
 });
+
+test("Auto DJ holds queue order when Sing-Along needs an original recording review", () => {
+    const intent = getAutoDjQueueAdvanceIntent({
+        autoDjEnabled: true,
+        activeMode: 'karaoke',
+        performanceMode: 'sing_along',
+        appleMusicEnabled: true,
+        songs: [
+            {
+                id: 'youtube_first',
+                status: 'requested',
+                mediaUrl: 'https://youtube.com/watch?v=unknown123',
+                playbackReady: true,
+                priorityScore: 1,
+            },
+            {
+                id: 'apple_second',
+                status: 'requested',
+                appleMusicId: 'apple_original_2',
+                playbackReady: true,
+                priorityScore: 2,
+            },
+        ],
+    });
+
+    assert.equal(intent.shouldStart, false);
+    assert.equal(intent.reason, 'next_song_needs_format_review');
+    assert.equal(intent.songId, 'youtube_first');
+    assert.equal(intent.formatReadiness.status, 'review');
+});
+
+test("Auto DJ starts a connected Apple Music original in Sing-Along", () => {
+    const intent = getAutoDjQueueAdvanceIntent({
+        autoDjEnabled: true,
+        activeMode: 'karaoke',
+        performanceMode: 'sing_along',
+        appleMusicEnabled: true,
+        songs: [
+            {
+                id: 'apple_original',
+                status: 'requested',
+                appleMusicId: 'apple_original_1',
+                playbackReady: true,
+                priorityScore: 1,
+            },
+        ],
+    });
+
+    assert.equal(intent.shouldStart, true);
+    assert.equal(intent.reason, 'ready');
+    assert.equal(intent.songId, 'apple_original');
+});

@@ -109,6 +109,7 @@ test("missionControl.test", () => {
             archetype: 'competition',
             flowRule: 'fair_turns',
             spotlightMode: 'trivia_pop',
+            performanceMode: 'sing_along',
             assistLevel: 'smart_assist'
         },
         { 'ai.generate_content': false },
@@ -121,6 +122,7 @@ test("missionControl.test", () => {
     assert.equal(compiledNoAi.autoLyricsOnQueue, true);
     assert.equal(compiledNoAi.hypeMeterDisplayMode, 'score_integrated');
     assert.equal(compiledNoAi.gamePreviewId, 'trivia_pop');
+    assert.equal(compiledNoAi.performanceMode, 'sing_along');
     assert.equal(compiledNoAi.hostNightPresetConfig.id, 'competition');
     assert.equal(compiledNoAi.audienceShellVariant, 'streamlined');
     assert.equal(compiledNoAi.audienceBrandTheme.appTitle, 'Competition Stage');

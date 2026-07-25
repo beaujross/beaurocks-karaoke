@@ -26,21 +26,21 @@ export const RESOLUTION_STATUSES = Object.freeze({
 export const REQUEST_MODE_OPTIONS = Object.freeze([
   {
     id: REQUEST_MODES.canonicalOpen,
-    label: 'Host Chooses the Track',
-    shortLabel: 'Host picks track',
-    description: 'Guests can request any song. If no clear backing is known yet, it waits for you to choose one.',
+    label: 'Guests Pick a Song',
+    shortLabel: 'Host picks version',
+    description: 'Guests choose the song. BeauRocks uses a known version or asks the host to choose one.',
   },
   {
     id: REQUEST_MODES.playableOnly,
-    label: 'Known Tracks Only',
-    shortLabel: 'Known tracks only',
-    description: 'Guests only see songs that already have a working backing track.',
+    label: 'Ready Songs Only',
+    shortLabel: 'Ready songs only',
+    description: 'Guests only see songs with a version that is already ready to play.',
   },
   {
     id: REQUEST_MODES.guestBackingOptional,
-    label: 'Guests Can Pick a Track',
-    shortLabel: 'Guests pick track',
-    description: 'Guests can request any song and choose a YouTube backing when the room does not already know one.',
+    label: 'Guests Can Pick a Version',
+    shortLabel: 'Guests pick version',
+    description: 'Guests can request a song or choose a specific YouTube version for the host to review.',
   },
 ]);
 

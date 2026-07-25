@@ -8,6 +8,7 @@ const BUILTIN_RECIPE_DEFINITIONS = Object.freeze([
         flowRule: 'balanced',
         assistLevel: 'smart_assist',
         spotlightMode: 'karaoke',
+        performanceMode: 'karaoke',
         icon: 'fa-microphone-lines',
         accent: 'from-cyan-500/24 via-sky-500/8 to-transparent',
         overrides: {},
@@ -19,15 +20,46 @@ const BUILTIN_RECIPE_DEFINITIONS = Object.freeze([
         id: 'crowd_singalong',
         label: 'Crowd Sing-Along',
         eyebrow: 'Lyrics first',
-        description: 'Apple Music, generated lyrics, and full-song performances built for singing together.',
-        presetId: 'competition',
+        description: 'Original tracks, big-screen lyrics when available, and group-friendly turns.',
+        presetId: 'casual',
         flowRule: 'balanced',
         assistLevel: 'smart_assist',
         spotlightMode: 'karaoke',
+        performanceMode: 'sing_along',
         icon: 'fa-people-group',
         accent: 'from-fuchsia-500/24 via-violet-500/8 to-transparent',
         overrides: {
             showScoring: false,
+            showLyricsTv: true,
+            autoLyricsOnQueue: true,
+        },
+        requirements: {
+            originalRecording: true,
+            lyrics: 'preferred',
+        },
+        party: {
+            autoCrowdMomentsEnabled: false,
+        },
+    },
+    {
+        id: 'lip_sync_night',
+        label: 'Lip Sync Night',
+        eyebrow: 'Performance first',
+        description: 'Original vocals, optional lyrics, and crowd reactions focused on the show.',
+        presetId: 'casual',
+        flowRule: 'balanced',
+        assistLevel: 'smart_assist',
+        spotlightMode: 'karaoke',
+        performanceMode: 'lip_sync',
+        icon: 'fa-star',
+        accent: 'from-violet-500/24 via-pink-500/10 to-transparent',
+        overrides: {
+            showScoring: false,
+            autoLyricsOnQueue: false,
+        },
+        requirements: {
+            originalRecording: true,
+            lyrics: 'optional',
         },
         party: {
             autoCrowdMomentsEnabled: false,
@@ -42,6 +74,7 @@ const BUILTIN_RECIPE_DEFINITIONS = Object.freeze([
         flowRule: 'fair_turns',
         assistLevel: 'manual_first',
         spotlightMode: 'karaoke',
+        performanceMode: 'karaoke',
         icon: 'fa-trophy',
         accent: 'from-amber-500/26 via-yellow-500/8 to-transparent',
         overrides: {
@@ -60,6 +93,7 @@ const BUILTIN_RECIPE_DEFINITIONS = Object.freeze([
         flowRule: 'balanced',
         assistLevel: 'smart_assist',
         spotlightMode: 'karaoke',
+        performanceMode: 'karaoke',
         icon: 'fa-lightbulb',
         accent: 'from-emerald-500/24 via-cyan-500/8 to-transparent',
         overrides: {
@@ -98,6 +132,12 @@ const getMediaLabel = (preset = {}) => {
     return labels.length ? labels.join(' + ') : 'Curated only';
 };
 
+const getPerformanceModeLabel = (performanceMode = '') => ({
+    karaoke: 'Karaoke',
+    sing_along: 'Sing-Along',
+    lip_sync: 'Lip Sync',
+}[performanceMode] || 'Karaoke');
+
 const getFlowLabel = (flowRule = '') => ({
     balanced: 'Balanced turns',
     fair_turns: 'Fair-turn cap',
@@ -119,6 +159,7 @@ const buildFacts = (recipe = {}, preset = {}) => {
         ? `Every ${Math.max(1, Number(recipe.party.autoCrowdMomentEverySongs || 3))} singers`
         : 'No automatic breaks';
     return [
+        { label: 'Format', value: getPerformanceModeLabel(recipe.performanceMode) },
         { label: 'Songs', value: getMediaLabel(preset) },
         { label: 'Queue', value: getFlowLabel(recipe.flowRule) },
         { label: 'Host help', value: getAssistLabel(recipe.assistLevel) },
@@ -140,9 +181,11 @@ const buildSavedRecipe = (preset = {}) => {
         flowRule,
         assistLevel,
         spotlightMode: normalizeText(stored.spotlightMode) || normalizeText(preset?.settings?.gamePreviewId) || 'karaoke',
+        performanceMode: normalizeText(stored.performanceMode) || 'karaoke',
         icon: 'fa-bookmark',
         accent: 'from-fuchsia-500/22 via-cyan-500/8 to-transparent',
         overrides: stored.overrides && typeof stored.overrides === 'object' ? { ...stored.overrides } : {},
+        requirements: stored.requirements && typeof stored.requirements === 'object' ? { ...stored.requirements } : {},
         party: stored.party && typeof stored.party === 'object' ? { ...stored.party } : {},
         isSaved: true,
     };
@@ -172,6 +215,57 @@ export const isRoomSetupRecipeSelected = (recipe = {}, selection = {}) => (
     && normalizeText(selection.flowRule) === normalizeText(recipe.flowRule)
     && normalizeText(selection.assistLevel) === normalizeText(recipe.assistLevel)
     && normalizeText(selection.spotlightMode || 'karaoke') === normalizeText(recipe.spotlightMode || 'karaoke')
+    && normalizeText(selection.performanceMode || 'karaoke') === normalizeText(recipe.performanceMode || 'karaoke')
 );
+
+export const getPerformanceModeRequirements = (performanceMode = '') => {
+    const normalized = normalizeText(performanceMode).toLowerCase();
+    if (normalized === 'sing_along') return { originalRecording: true, lyrics: 'preferred' };
+    if (normalized === 'lip_sync') return { originalRecording: true, lyrics: 'optional' };
+    return {};
+};
+
+export const buildRoomSetupRecipePreflight = (recipe = {}, {
+    searchSources = {},
+    appleMusicAuthorized = false,
+    localTrackCount = 0,
+} = {}) => {
+    const requirements = recipe?.requirements && typeof recipe.requirements === 'object'
+        ? recipe.requirements
+        : getPerformanceModeRequirements(recipe?.performanceMode);
+    if (!requirements.originalRecording && !requirements.lyrics) return null;
+
+    let status = 'action';
+    let provider = '';
+    let title = 'Choose a playback source';
+    let detail = 'Enable a source with the recording this format needs.';
+
+    if (searchSources.itunes !== false && appleMusicAuthorized) {
+        status = 'ready';
+        provider = 'apple';
+        title = 'Apple Music connected';
+        detail = 'Original recordings are ready for host playback.';
+    } else if (searchSources.local !== false && Number(localTrackCount || 0) > 0) {
+        status = 'review';
+        provider = 'local';
+        title = 'Local media available';
+        detail = 'Confirm which local files contain the original recording before using Auto-DJ.';
+    } else if (searchSources.youtube !== false) {
+        status = 'review';
+        provider = 'youtube';
+        title = 'Pick an original version per song';
+        detail = 'YouTube is available, but the host should confirm each requested version.';
+    } else if (searchSources.itunes !== false) {
+        provider = 'apple';
+        title = 'Connect Apple Music';
+        detail = 'Connect the host account before relying on original recordings.';
+    }
+
+    if (requirements.lyrics === 'preferred') {
+        detail += ' Lyrics appear only when an authorized or host-supplied source provides them.';
+    }
+
+    return { status, provider, title, detail };
+};
 
 export const BUILTIN_ROOM_SETUP_RECIPES = BUILTIN_RECIPE_DEFINITIONS;

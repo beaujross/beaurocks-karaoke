@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, db, doc, getDocs, onSnapshot, query, where } from '../../lib/firebase';
+import { collection, db, doc, getDocs, onSnapshot, query, trackEvent, where } from '../../lib/firebase';
 import { APP_ID, ASSETS } from '../../lib/assets';
 import { normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
 import { getSongArtworkUrl } from '../../lib/roomRecap';
 import { resolveRecapBranding, toAbsoluteRecapUrl } from '../../lib/recapBranding';
+import { buildSurfaceUrl } from '../../lib/surfaceDomains';
 
 const n = (value, fallback = 0) => {
     const parsed = Number(value);
@@ -315,6 +316,7 @@ const RecapView = ({ roomCode }) => {
     const [data, setData] = useState({ songs: [], users: [], reactions: [], activities: [], crowdSelfies: [] });
     const [loaded, setLoaded] = useState(false);
     const [error, setError] = useState('');
+    const [shareStatus, setShareStatus] = useState('Share recap');
 
     useEffect(() => {
         if (typeof document === 'undefined') return undefined;
@@ -556,6 +558,40 @@ const RecapView = ({ roomCode }) => {
         ensureMetaTag({ name: 'twitter:image', content: socialImageUrl });
     }, [roomCode, summary]);
 
+    const shareRecap = async () => {
+        if (typeof window === 'undefined') return;
+        const sharePayload = {
+            title: `${summary?.title || roomCode || 'Karaoke night'} recap`,
+            text: `See the songs, scores, and crowd moments from ${summary?.title || 'our karaoke night'}.`,
+            url: window.location.href,
+        };
+        setShareStatus('Opening share...');
+        trackEvent('recap_share_started', { room_code: roomCode, surface: 'recap_hero' });
+        try {
+            if (navigator.share) {
+                await navigator.share(sharePayload);
+                setShareStatus('Shared');
+                trackEvent('recap_share_completed', { room_code: roomCode, method: 'native_share' });
+                return;
+            }
+            await navigator.clipboard.writeText(sharePayload.url);
+            setShareStatus('Link copied');
+            trackEvent('recap_share_completed', { room_code: roomCode, method: 'clipboard' });
+        } catch (shareError) {
+            if (String(shareError?.name || '') === 'AbortError') {
+                setShareStatus('Share recap');
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(sharePayload.url);
+                setShareStatus('Link copied');
+                trackEvent('recap_share_completed', { room_code: roomCode, method: 'clipboard_fallback' });
+            } catch {
+                setShareStatus('Try again');
+            }
+        }
+    };
+
     if (!roomCode) return <div data-recap-state="missing_room" className="flex min-h-screen items-center justify-center bg-[#05060b] px-6 text-center text-white">Missing room code.</div>;
     if (!recap && !loaded) return <div data-recap-state="loading" className="flex min-h-screen items-center justify-center bg-[#05060b] text-white"><div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-cyan-300"></div></div>;
     if (!recap) {
@@ -572,6 +608,9 @@ const RecapView = ({ roomCode }) => {
 
     const { primaryColor: primary, secondaryColor: secondary, accentColor: accent, appTitle } = summary.theme;
     const titleWordmark = summary.title.replace(/\s+karaoke\s+kick-off/i, ' Kick-Off').trim();
+    const startRoomUrl = typeof window !== 'undefined'
+        ? (buildSurfaceUrl({ surface: 'marketing', path: 'host-access' }, window.location) || '/host-access')
+        : '/host-access';
     const heroValue = fmt(summary.totalEmojiBursts || summary.totalPerformedSongs);
     const heroLabel = summary.totalEmojiBursts > 0 ? 'Crowd Reactions' : 'Songs Performed';
 
@@ -604,6 +643,24 @@ const RecapView = ({ roomCode }) => {
                                     {summary.startMs ? <div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/74">{dateLabel(summary.startMs)}</div> : null}
                                     {summary.startMs && summary.endMs ? <div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/74">{timeRange(summary.startMs, summary.endMs)}</div> : null}
                                     <div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/74">{roomCode}</div>
+                                </div>
+                                <div className="mt-5 flex flex-wrap gap-3" data-feature-id="recap-share-actions">
+                                    <button
+                                        type="button"
+                                        onClick={shareRecap}
+                                        className="min-h-[52px] rounded-2xl px-5 text-sm font-black text-slate-950 shadow-[0_16px_36px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5"
+                                        style={{ background: `linear-gradient(135deg, ${primary}, ${accent})` }}
+                                    >
+                                        <i className="fa-solid fa-arrow-up-from-bracket mr-2" aria-hidden="true"></i>
+                                        {shareStatus}
+                                    </button>
+                                    <a
+                                        href={startRoomUrl}
+                                        className="inline-flex min-h-[52px] items-center rounded-2xl border border-white/14 bg-black/35 px-5 text-sm font-black text-white transition hover:bg-white/10"
+                                    >
+                                        Start your own room
+                                        <i className="fa-solid fa-arrow-right ml-2 text-cyan-200" aria-hidden="true"></i>
+                                    </a>
                                 </div>
                             </div>
 

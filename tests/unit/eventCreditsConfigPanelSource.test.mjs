@@ -28,13 +28,14 @@ test('room economy config exposes currency-aware starting balance and timed refi
   assert.match(source, /timedLobbyMaxPerGuest/);
 });
 
-test('authorized rooms expose one plain-language BeauBucks cosmetics control', () => {
+test('authorized rooms explain platform-managed BeauBucks availability without a host off switch', () => {
   assert.match(source, /beauBucksControlAvailable = eventCreditsConfig\?\.beauBucksAuthorityEnabled === true/);
   assert.match(source, /data-feature-id="host-beaubucks-tonight-control"/);
-  assert.match(source, /BeauBucks cosmetics/);
+  assert.match(source, /BeauBucks collection/);
   assert.match(source, /Guests keep BeauBucks and unlocked cosmetics on their account/);
-  assert.match(source, /live Room actions still use earned Points/);
-  assert.match(source, /beauBucksEnabledTonight: e\.target\.checked/);
+  assert.match(source, /not a Room setting/);
+  assert.match(source, /Always available/);
+  assert.doesNotMatch(source, /beauBucksEnabledTonight: e\.target\.checked/);
   assert.doesNotMatch(source, />Authority</);
   assert.doesNotMatch(source, />Canary</);
 });

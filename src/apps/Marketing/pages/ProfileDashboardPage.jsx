@@ -34,6 +34,7 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     checkins: [],
     reviews: [],
     submissions: [],
+    claims: [],
     rsvps: [],
     reminders: [],
     performanceHistory: [],
@@ -56,6 +57,8 @@ const ProfileDashboardPage = ({ session, navigate }) => {
   const [followedHostsLoading, setFollowedHostsLoading] = useState(false);
   const [followedVenues, setFollowedVenues] = useState([]);
   const [followedVenuesLoading, setFollowedVenuesLoading] = useState(false);
+  const [managedListings, setManagedListings] = useState([]);
+  const [managedListingsLoading, setManagedListingsLoading] = useState(false);
   const [moderationQueue, setModerationQueue] = useState([]);
   const [moderationLoading, setModerationLoading] = useState(false);
   const [moderationStatus, setModerationStatus] = useState("");
@@ -95,6 +98,7 @@ const ProfileDashboardPage = ({ session, navigate }) => {
         reviews: [],
         submissions: [],
         rsvps: [],
+        claims: [],
         reminders: [],
         performanceHistory: [],
       });
@@ -109,6 +113,7 @@ const ProfileDashboardPage = ({ session, navigate }) => {
         reviews: [],
         submissions: [],
         rsvps: [],
+        claims: [],
         reminders: [],
         performanceHistory: [],
       }),
@@ -216,6 +221,63 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     };
   }, [canUseDashboard, followedVenueIds]);
 
+  const managedListingRefs = useMemo(() => {
+    const refs = [];
+    (Array.isArray(history.submissions) ? history.submissions : []).forEach((item) => {
+      if (String(item?.status || "").toLowerCase() !== "approved") return;
+      const listingType = String(item?.listingType || "").trim().toLowerCase();
+      const id = String(item?.entityId || "").trim();
+      if (listingType && id) refs.push({ listingType, id });
+    });
+    (Array.isArray(history.claims) ? history.claims : []).forEach((item) => {
+      if (String(item?.status || "").toLowerCase() !== "approved") return;
+      const listingType = String(item?.listingType || "").trim().toLowerCase();
+      const id = String(item?.listingId || "").trim();
+      if (listingType && id) refs.push({ listingType, id });
+    });
+    const seen = new Set();
+    return refs.filter((item) => {
+      const key = `${item.listingType}:${item.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 40);
+  }, [history.claims, history.submissions]);
+
+  useEffect(() => {
+    if (!canUseDashboard || !managedListingRefs.length) {
+      setManagedListings([]);
+      setManagedListingsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const collectionByType = {
+      venue: "venues",
+      event: "karaoke_events",
+      room_session: "room_sessions",
+    };
+    setManagedListingsLoading(true);
+    (async () => {
+      const docs = await Promise.all(managedListingRefs.map(async (ref) => {
+        const collectionName = collectionByType[ref.listingType];
+        if (!collectionName) return null;
+        try {
+          const item = await fetchEntityDoc({ collectionName, id: ref.id });
+          return item ? { ...item, id: item.id || ref.id, listingType: ref.listingType } : null;
+        } catch {
+          return null;
+        }
+      }));
+      if (cancelled) return;
+      setManagedListings(docs.filter(Boolean));
+      setManagedListingsLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canUseDashboard, managedListingRefs]);
+
+
   const hostNameById = useMemo(() => {
     const next = new Map();
     followedHostProfiles.forEach((entry) => {
@@ -256,10 +318,10 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     follows: history.follows.length,
     checkins: history.checkins.length,
     reviews: history.reviews.length,
-    submissions: history.submissions.length,
+    listings: managedListings.length,
     rsvps: history.rsvps.length,
     performances: history.performanceHistory.length,
-  }), [history]);
+  }), [history, managedListings.length]);
 
   const performanceStats = useMemo(() => {
     const source = Array.isArray(history.performanceHistory) ? history.performanceHistory : [];
@@ -385,6 +447,46 @@ const ProfileDashboardPage = ({ session, navigate }) => {
         <h2>Profile Dashboard</h2>
         <p>Manage your public profile and keep your account details up to date.</p>
 
+        <section className="mk3-profile-chart-settings" data-feature-id="managed-karaoke-listings">
+          <div>
+            <h3>My Karaoke Listings</h3>
+            <p>Open a night or venue to update its public schedule. Approved listings and claims appear here.</p>
+          </div>
+          <div className="mk3-actions-inline">
+            <button type="button" onClick={() => navigate("submit", "", { intent: "listing_submit", targetType: "event" })}>
+              List a Karaoke Night
+            </button>
+            <button type="button" onClick={() => navigate("submit", "", { intent: "listing_submit", targetType: "venue" })}>
+              Add or Claim a Venue
+            </button>
+            <button type="button" className="mk3-inline-next" onClick={() => navigate("for_hosts", "", { intent: "host_apply" })}>
+              Run a Night With BeauRocks
+            </button>
+          </div>
+          {managedListingsLoading && <div className="mk3-status">Loading your listings...</div>}
+          {!managedListingsLoading && managedListings.map((item) => {
+            const routePage = item.listingType === "room_session" ? "session" : item.listingType;
+            const title = item.title || item.name || item.venueName || item.roomName || "Karaoke listing";
+            const schedule = item.listingType === "venue"
+              ? (item.karaokeNightsLabel || "Open to update the weekly schedule")
+              : formatDateTime(item.startsAtMs || item.startsAt || item.startTime || 0);
+            return (
+              <button
+                key={`${item.listingType}:${item.id}`}
+                type="button"
+                className="mk3-list-row"
+                onClick={() => navigate(routePage, item.id, { intent: "manage_listing" })}
+              >
+                <span>{title}</span>
+                <span>{schedule || "Open listing"}</span>
+              </button>
+            );
+          })}
+          {!managedListingsLoading && !managedListings.length && (
+            <div className="mk3-status">No approved listings yet. Add a night or claim an existing venue to start here.</div>
+          )}
+        </section>
+
         <div className="mk3-form-grid">
           <label>
             First Name
@@ -473,7 +575,7 @@ const ProfileDashboardPage = ({ session, navigate }) => {
           <article className="mk3-metric"><span>Following</span><strong>{summary.follows}</strong></article>
           <article className="mk3-metric"><span>Check-ins</span><strong>{summary.checkins}</strong></article>
           <article className="mk3-metric"><span>Reviews</span><strong>{summary.reviews}</strong></article>
-          <article className="mk3-metric"><span>Listings</span><strong>{summary.submissions}</strong></article>
+          <article className="mk3-metric"><span>Listings</span><strong>{summary.listings}</strong></article>
           <article className="mk3-metric"><span>RSVPs</span><strong>{summary.rsvps}</strong></article>
           <article className="mk3-metric"><span>Performances</span><strong>{summary.performances}</strong></article>
         </div>
@@ -580,6 +682,16 @@ const ProfileDashboardPage = ({ session, navigate }) => {
 
         <div className="mk3-sub-list compact">
           <h3>Performance History</h3>
+        <div className="mk3-sub-list compact">
+          <h3>Recent Claims</h3>
+          {history.claims.slice(0, 8).map((item) => (
+            <div key={item.id || item.claimId} className="mk3-list-row static">
+              <span>{item.listingType}: {item.listingId}</span>
+              <span>{item.status}</span>
+            </div>
+          ))}
+        </div>
+
           <div className="mk3-list-row static">
             <span>Total performances</span>
             <span>{performanceStats.total}</span>

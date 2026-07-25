@@ -1,6 +1,20 @@
 {
   "indexes": [
     {
+      "collectionGroup": "performances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "singerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "beaurocks_ledger_entries",
       "queryScope": "COLLECTION",
       "fields": [

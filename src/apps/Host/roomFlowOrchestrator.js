@@ -1,5 +1,11 @@
 import { getAutoDjQueueAdvanceIntent } from './autoDjStateMachine.js';
 import {
+    getQueueEntryPerformanceReadiness,
+    isQueueEntryPlayable as baseIsQueueEntryPlayable,
+    normalizePerformanceMode,
+    performanceModeRequiresOriginalRecording,
+} from '../../lib/playbackSource.js';
+import {
     getDeadAirAutoFillIntent,
     isDeadAirAutoFillQueueItem
 } from './deadAirAutopilot.js';
@@ -19,13 +25,10 @@ const APPLAUSE_PHASES = new Set(['applause_countdown', 'applause', 'applause_res
 const normalizeText = (value = '') => String(value || '').trim();
 const normalizeKey = (value = '') => normalizeText(value).toLowerCase();
 
-const defaultIsQueueEntryPlayable = (song = {}, { appleMusicEnabled = true } = {}) => {
+const defaultIsQueueEntryPlayable = (song = {}, options = {}) => {
     const mediaResolutionStatus = normalizeKey(song?.mediaResolutionStatus);
     if (mediaResolutionStatus === 'needs_backing' || mediaResolutionStatus === 'pending_youtube_match') return false;
-    if (song?.playbackReady === false) return false;
-    const appleMusicId = normalizeText(song?.appleMusicId);
-    if (appleMusicId) return !!appleMusicEnabled;
-    return !!normalizeText(song?.mediaUrl || song?.youtubeId);
+    return baseIsQueueEntryPlayable(song, options);
 };
 
 export const ROOM_FLOW_OWNERS = Object.freeze({
@@ -40,6 +43,7 @@ export const ROOM_FLOW_OWNERS = Object.freeze({
     betweenSingers: 'between_singers_bridge_armed',
     deadAirRecovery: 'dead_air_recovery_armed',
     queueReady: 'queue_ready',
+    formatReview: 'format_review',
     idle: 'idle_waiting'
 });
 
@@ -121,6 +125,7 @@ export const getRoomFlowSnapshot = ({
     songs = [],
     autoDjEnabled = false,
     appleMusicEnabled = true,
+    performanceMode = '',
     party = {},
     assistLevel = '',
     lastPerformanceTs = 0,
@@ -156,12 +161,32 @@ export const getRoomFlowSnapshot = ({
         Number(performingCount || 0) || 0,
         list.filter((song) => song?.status === 'performing').length
     );
-    const queuedPlayableSongs = list
-        .filter((song) => (
-            song?.status === 'requested'
-            && isQueueEntryPlayable(song, { appleMusicEnabled })
-        ))
+    const effectivePerformanceMode = normalizePerformanceMode(
+        performanceMode
+        || room?.performanceMode
+        || room?.missionControl?.setupDraft?.performanceMode
+    );
+    const originalRecordingRequired = performanceModeRequiresOriginalRecording(effectivePerformanceMode);
+    const orderedRequestedSongs = list
+        .filter((song) => song?.status === 'requested')
         .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
+    const getFormatReadiness = (song = {}) => getQueueEntryPerformanceReadiness(song, {
+        performanceMode: effectivePerformanceMode,
+        appleMusicEnabled,
+        basePlayable: isQueueEntryPlayable(song, { appleMusicEnabled }),
+    });
+    const firstRequestedSong = orderedRequestedSongs[0] || null;
+    const firstRequestedFormatReadiness = firstRequestedSong
+        ? getFormatReadiness(firstRequestedSong)
+        : null;
+    const queuedPlayableSongs = originalRecordingRequired
+        ? (firstRequestedFormatReadiness?.autopilotReady ? [firstRequestedSong] : [])
+        : orderedRequestedSongs.filter((song) => getFormatReadiness(song).autopilotReady);
+    const formatReview = originalRecordingRequired
+        && firstRequestedFormatReadiness?.manuallyPlayable
+        && !firstRequestedFormatReadiness?.autopilotReady
+        ? { song: firstRequestedSong, readiness: firstRequestedFormatReadiness }
+        : null;
     const nextQueuedSong = queuedPlayableSongs[0] || null;
     const nextQueuedSongIsDeadAir = isDeadAirAutoFillQueueItem(nextQueuedSong);
     const runOfShowCoverage = getRunOfShowCoverageState({
@@ -182,6 +207,7 @@ export const getRoomFlowSnapshot = ({
         programMode: normalizedProgramMode,
         songs: list,
         appleMusicEnabled,
+        performanceMode: effectivePerformanceMode,
         lastPerformanceTs,
         autoDjDelaySec,
         postPerformanceHoldMs,
@@ -270,6 +296,8 @@ export const getRoomFlowSnapshot = ({
         owner = ROOM_FLOW_OWNERS.autoMoment;
     } else if (normalizedActiveMode && normalizedActiveMode !== 'karaoke') {
         owner = ROOM_FLOW_OWNERS.otherMode;
+    } else if (formatReview) {
+        owner = ROOM_FLOW_OWNERS.formatReview;
     } else if (autoPartyIntent.shouldStart) {
         owner = ROOM_FLOW_OWNERS.betweenSingers;
     } else if (deadAirIntent.shouldQueue) {
@@ -291,6 +319,8 @@ export const getRoomFlowSnapshot = ({
         nextQueuedSong,
         nextQueuedSongIsDeadAir,
         queuedPlayableSongs,
+        performanceMode: effectivePerformanceMode,
+        formatReview,
         queuedCount: effectiveQueuedCount,
         performingCount: effectivePerformingCount,
         runOfShowCoverage,

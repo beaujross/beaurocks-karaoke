@@ -47,8 +47,31 @@ describe("marketing page source", () => {
     expect(venueSource).toContain("Publish a public room");
     expect(venueSource).toContain("List an existing night");
     expect(discoverSource).toContain("List Your Karaoke Night");
-    expect(submissionSource).toContain("Add a venue or recurring night to the public map");
+    expect(submissionSource).toContain("Put Your Karaoke Night on the Map");
     expect(submissionSource).toContain("Venue Timezone");
+  });
+
+  it("provides a complete owner path from discovery through ongoing schedule management", () => {
+    const discoverSource = readSource("src/apps/Marketing/pages/DiscoverPage.jsx");
+    const eventSource = readSource("src/apps/Marketing/pages/EventPage.jsx");
+    const venueSource = readSource("src/apps/Marketing/pages/VenuePage.jsx");
+    const claimSource = readSource("src/apps/Marketing/pages/ClaimOwnershipCard.jsx");
+    const submissionSource = readSource("src/apps/Marketing/pages/ListingSubmissionPage.jsx");
+    const profileSource = readSource("src/apps/Marketing/pages/ProfileDashboardPage.jsx");
+    const apiSource = readSource("src/apps/Marketing/api/directoryApi.js");
+
+    expect(discoverSource).toContain('targetType: "event"');
+    expect(discoverSource).toContain("DirectoryOwnerPathway");
+    expect(eventSource).toContain("ClaimOwnershipCard");
+    expect(eventSource).toContain("CadenceUpdateCard");
+    expect(venueSource).toContain("venueCanManage");
+    expect(claimSource).toContain("You Manage This Listing");
+    expect(submissionSource).toContain("venue-add-or-claim-fork");
+    expect(submissionSource).toContain("Find the venue first");
+    expect(submissionSource).toContain("Run This Night With BeauRocks");
+    expect(profileSource).toContain("My Karaoke Listings");
+    expect(profileSource).toContain('intent: "manage_listing"');
+    expect(apiSource).toContain('collection(db, "directory_claim_requests")');
   });
 
   it("keeps nationwide discovery as the device-independent default", () => {

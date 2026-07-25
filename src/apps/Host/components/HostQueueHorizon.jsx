@@ -61,13 +61,13 @@ const HostQueueHorizon = ({
         <section
             data-feature-id="host-queue-horizon"
             aria-label="Live Queue horizon"
-            className="host-queue-horizon shrink-0 border-b border-cyan-300/15 bg-zinc-950/96 px-3 py-1.5 shadow-[0_12px_30px_rgba(0,0,0,0.28)] sm:px-4"
+            className="host-queue-horizon shrink-0 border-b border-pink-200/20 bg-[linear-gradient(100deg,rgba(18,60,76,0.96),rgba(30,42,75,0.97)_48%,rgba(71,27,66,0.96))] px-3 py-1.5 shadow-[0_12px_30px_rgba(8,15,34,0.3),inset_0_1px_0_rgba(165,243,252,0.08)] sm:px-4"
         >
             <div className="mx-auto flex min-h-[52px] w-full items-center gap-2">
                 <button
                     type="button"
                     onClick={onOpenQueue}
-                    className="inline-flex min-h-[44px] shrink-0 items-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 text-[12px] font-black uppercase tracking-[0.14em] text-cyan-100 transition hover:border-cyan-200/50 hover:bg-cyan-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80"
+                    className="inline-flex min-h-[44px] shrink-0 items-center gap-2 rounded-xl border border-cyan-200/45 bg-cyan-300/16 px-3 text-[12px] font-black uppercase tracking-[0.14em] text-cyan-50 shadow-[0_8px_22px_rgba(34,211,238,0.12)] transition hover:border-cyan-100/75 hover:bg-cyan-300/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80"
                     aria-label={`Open Live Queue${model?.queueTotalCount ? `, ${model.queueTotalCount} ready` : ''}`}
                 >
                     <i className="fa-solid fa-list-ol" aria-hidden="true"></i>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import './hostBrandTabs.css';
 import { GAMES_META } from '../../lib/gameRegistry';
 import { getRoomGameLaunchPreflight, getRunOfShowGameMode } from '../../lib/gameLaunchCompatibility';
 import HostTopChrome from './components/HostTopChrome';
@@ -594,7 +595,7 @@ const ROOM_CONTROL_MODEL_OPTIONS = Object.freeze([
     {
         id: 'crowd_driven',
         label: 'Crowd-Driven',
-        summary: 'One-Minute Mic plus Auto-DJ for self-service party flow.',
+        summary: 'Mic Checkpoint plus Auto-DJ for self-service party flow.',
     },
 ]);
 
@@ -1582,16 +1583,16 @@ const deleteLocalVideo = async (id = '') => {
 const STYLES = {
     btnStd: "host-btn rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-normal text-center leading-tight backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0 bg-clip-padding relative",
     btnPrimary: "bg-gradient-to-r from-[#00C4D9] via-[#61E6F4] to-[#A5F3FC] text-slate-950 border-transparent bg-clip-padding shadow-[0_0_22px_rgba(0,196,217,0.34)] hover:brightness-110",
-    btnHighlight: "bg-gradient-to-r from-[#0f2d39] via-[#17263d] to-[#26172e] text-cyan-100 border-cyan-400/30 bg-clip-padding shadow-[0_0_16px_rgba(0,196,217,0.12)] hover:border-cyan-300/55 hover:text-white",
-    btnNeutral: "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#00C4D9]/60 hover:text-white hover:bg-zinc-800 transition-all",
+    btnHighlight: "bg-gradient-to-r from-[#087f91] via-[#436b9f] to-[#c3357f] text-white border-cyan-200/45 bg-clip-padding shadow-[0_0_24px_rgba(0,196,217,0.2),0_0_20px_rgba(236,72,153,0.13)] hover:brightness-110 hover:border-pink-200/55",
+    btnNeutral: "bg-[#1d2b46] border-slate-500/60 text-slate-100 hover:border-[#67E8F9]/75 hover:text-white hover:bg-[#263a5c] transition-all",
     btnDanger: "bg-[#EC4899]/20 text-[#FBCFE8] border-[#EC4899]/40 hover:bg-[#EC4899]/30 hover:text-white",
-    btnInfo: "bg-[#00C4D9]/12 text-cyan-100 border-cyan-400/30 hover:bg-[#00C4D9]/20 hover:border-cyan-300/50 hover:text-white",
+    btnInfo: "bg-[#00C4D9]/22 text-cyan-50 border-cyan-300/45 hover:bg-[#00C4D9]/32 hover:border-cyan-200/70 hover:text-white",
     btnSuccess: "bg-emerald-500/14 text-emerald-100 border-emerald-400/35 hover:bg-emerald-500/24 hover:border-emerald-300/55 hover:text-white",
     btnBrand: "bg-gradient-to-r from-[#EC4899] to-[#F472B6] text-white border-transparent bg-clip-padding shadow-[0_0_16px_rgba(236,72,153,0.35)] hover:brightness-110",
-    btnSecondary: "bg-zinc-950/88 border border-zinc-700 text-zinc-200 bg-clip-padding hover:border-cyan-300/28 hover:text-white hover:bg-zinc-900/92",
-    btnStandardBrandHover: "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#EC4899]/60 hover:text-white hover:bg-zinc-800 transition-all",
-    panel: "bg-zinc-900/95 border border-white/10 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden",
-    input: "min-h-[44px] bg-zinc-950 border border-zinc-600 rounded-xl px-3 py-2.5 text-[15px] leading-5 text-white focus:border-[#00C4D9] focus:ring-2 focus:ring-[#00C4D9]/20 outline-none transition-colors w-full placeholder-zinc-500",
+    btnSecondary: "bg-[#18253f]/94 border border-cyan-200/25 text-slate-100 bg-clip-padding hover:border-pink-300/45 hover:text-white hover:bg-[#263854]",
+    btnStandardBrandHover: "bg-[#1d2b46] border-slate-500/60 text-slate-100 hover:border-[#F472B6]/70 hover:text-white hover:bg-[#302846] transition-all",
+    panel: "host-vivid-panel border backdrop-blur-md rounded-2xl overflow-hidden",
+    input: "host-vivid-field min-h-[44px] border rounded-xl px-3 py-2.5 text-[15px] leading-5 text-white focus:border-[#67E8F9] focus:ring-2 focus:ring-[#00C4D9]/25 outline-none transition-colors w-full placeholder-slate-400",
     header: "text-xs font-bold text-[#00C4D9] mb-2 tracking-widest uppercase border-b border-white/5 pb-1 flex justify-between items-center"
 };
 
@@ -6928,10 +6929,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (['off', '0', 'false', 'legacy'].includes(value)) return false;
         return null;
     }, []);
-    const missionFlowRuleLabel = useMemo(() => {
-        const found = MISSION_FLOW_RULE_OPTIONS.find((rule) => rule.id === missionDraft.flowRule);
-        return found?.label || 'Balanced Flow';
-    }, [missionDraft.flowRule]);
     const missionAssistLabel = useMemo(() => {
         const found = MISSION_ASSIST_LEVELS.find((assist) => assist.id === missionDraft.assistLevel);
         return found?.label || 'Smart Assist';
@@ -15913,9 +15910,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const appendQaHelperQueueSong = useCallback((payload = {}, options = {}) => {
         const safePayload = {
             roomCode,
-            songId: String(payload.songId || '').trim() || buildSongKey(payload.songTitle || 'Song', payload.artist || ''),
+            songId: payload.songId === null
+                ? null
+                : (String(payload.songId || '').trim() || buildSongKey(payload.songTitle || 'Song', payload.artist || '')),
+            songIdentityStatus: String(payload.songIdentityStatus || '').trim() || (payload.songId === null ? 'unmatched' : 'provisional'),
             trackId: payload.trackId || null,
             trackSource: String(payload.trackSource || '').trim() || 'fixture_helper',
+            playbackSelectionMode: String(payload.playbackSelectionMode || '').trim() || (payload.songId === null ? 'custom_media' : 'song_only'),
+            selectedPlaybackProvider: String(payload.selectedPlaybackProvider || '').trim() || null,
+            mediaAssetId: String(payload.mediaAssetId || '').trim() || null,
             songTitle: String(payload.songTitle || payload.title || '').trim() || 'Song',
             artist: String(payload.artist || '').trim() || 'Unknown Artist',
             singerUid: String(payload.singerUid || '').trim() || null,
@@ -15962,6 +15965,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const singerName = singerIdentity.singerName || room?.hostName || hostName || 'Host';
             if (isMarketingDemoFixture) {
                 appendQaHelperQueueSong({
+                    songId: null,
+                    songIdentityStatus: 'unmatched',
                     songTitle: mediaTitle,
                     artist: item.artist || 'Local Upload',
                     singerUid: singerIdentity.singerUid || null,
@@ -15969,34 +15974,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     mediaUrl,
                     albumArtUrl: item.artworkUrl100 || '',
                     trackSource: 'custom',
+                    playbackSelectionMode: 'custom_media',
+                    selectedPlaybackProvider: 'local',
+                    mediaAssetId: String(item?.id || item?.storagePath || '').trim() || null,
                     backingAudioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl),
                     audioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl)
                 }, { source: 'local_library' });
                 toast('Added local upload to queue');
                 return;
             }
-            const songRecord = await ensureSong({
-                title: mediaTitle,
-                artist: item.artist || 'Local Upload',
-                artworkUrl: '',
-                verifyMeta: false,
-                verifiedBy: hostName || 'host'
-            });
-            const songId = songRecord?.songId || buildSongKey(mediaTitle, item.artist || 'Local Upload');
-            const trackRecord = await ensureTrack({
-                songId,
-                source: 'custom',
-                mediaUrl,
-                duration: null,
-                audioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl),
-                backingOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl),
-                addedBy: hostName || 'Host'
-            });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
                 roomCode,
-                songId,
-                trackId: trackRecord?.trackId || null,
+                songId: null,
+                songIdentityStatus: 'unmatched',
+                trackId: null,
                 trackSource: 'custom',
+                playbackSelectionMode: 'custom_media',
+                selectedPlaybackProvider: 'local',
+                mediaAssetId: String(item?.id || item?.storagePath || '').trim() || null,
                 songTitle: mediaTitle,
                 artist: item.artist || 'Local Upload',
                 singerUid: singerIdentity.singerUid || null,
@@ -16004,6 +15999,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 mediaUrl,
                 albumArtUrl: item.artworkUrl100 || '',
                 lyrics: '',
+                playbackReady: true,
+                mediaResolutionStatus: 'custom_media_ready',
+                resolutionStatus: 'resolved',
+                resolutionLayer: 'local_library',
+                submittedVia: 'local_library',
                 status: 'requested',
                 timestamp: serverTimestamp(),
                 priorityScore: nowMs(),
@@ -19802,7 +19802,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 { label: 'Max Break', value: `${missionPartyPreview?.maxBreakDurationSec || 20}s` },
                 { label: 'Group Streak', value: `x${missionPartyPreview?.maxConsecutiveNonKaraokeModes || 1}` }
             ];
-            const missionSummary = `Archetype: ${missionPreset.label} | Constraint: ${missionFlowRuleLabel} | Host Style: ${missionAssistLabel} | Format: ${missionMode.label}`;
+            const intermissionSummary = missionPartyPreview?.autoCrowdMomentsEnabled
+                ? `activities every ${missionPartyPreview.autoCrowdMomentEverySongs || 1} singer${Number(missionPartyPreview.autoCrowdMomentEverySongs || 1) === 1 ? '' : 's'}`
+                : 'no scheduled breaks';
+            const missionSummary = `${missionPreset.label} · ${missionAssistLabel} · ${intermissionSummary}`;
 
             return (
                 <MissionSetupShell
@@ -19823,8 +19826,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 selectedFlowRule={missionDraft?.flowRule}
                                 selectedAssistLevel={missionDraft?.assistLevel}
                                 selectedSpotlightMode={missionDraft?.spotlightMode || 'karaoke'}
+                                selectedPerformanceMode={missionDraft?.performanceMode || 'karaoke'}
                                 recipeStorageLabel={hostNightRecipeStorage.storageLabel}
                                 recipeSyncStatus={hostNightRecipeStorage.syncStatus}
+                                sourceContext={{
+                                    searchSources: missionPreset?.searchSources || searchSources,
+                                    appleMusicAuthorized,
+                                    localTrackCount: localLibrary.length,
+                                }}
                                 onApplyRecipe={(recipe) => {
                                     const nextOverrides = recipe?.overrides && typeof recipe.overrides === 'object'
                                         ? { ...recipe.overrides }
@@ -19835,6 +19844,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         flowRule: recipe?.flowRule || 'balanced',
                                         assistLevel: recipe?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL,
                                         spotlightMode: recipe?.spotlightMode || 'karaoke',
+                                        performanceMode: recipe?.performanceMode || 'karaoke',
                                     };
                                     setMissionAdvancedOverrides(nextOverrides);
                                     setMissionPartyDraft((previous) => buildMissionPartyPayload({
@@ -19871,6 +19881,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             flowRule: missionDraft?.flowRule || 'balanced',
                                             assistLevel: missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL,
                                             spotlightMode: missionDraft?.spotlightMode || 'karaoke',
+                                            performanceMode: missionDraft?.performanceMode || 'karaoke',
+                                            requirements: missionDraft?.performanceMode === 'sing_along'
+                                                ? { originalRecording: true, lyrics: 'preferred' }
+                                                : missionDraft?.performanceMode === 'lip_sync' ? { originalRecording: true, lyrics: 'optional' } : {},
                                             overrides: { ...(missionAdvancedOverrides || {}) },
                                             party: { ...(missionPartyPreview || {}) },
                                         },
@@ -20037,7 +20051,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     }
                                 ]}
                             />
-                            {roomFormatLauncher}
+                            {roomFormatLauncher && (
+                                <details className="group rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                                    <summary className="flex min-h-[40px] cursor-pointer list-none items-center justify-between gap-3 text-xs font-black text-zinc-300">
+                                        More room formats
+                                        <i className="fa-solid fa-chevron-down text-[10px] text-cyan-200 transition-transform group-open:rotate-180" />
+                                    </summary>
+                                    <div className="mt-3 border-t border-white/8 pt-3">
+                                        {roomFormatLauncher}
+                                    </div>
+                                </details>
+                            )}
                         </>
                     )}
                     sideContent={(
@@ -20095,31 +20119,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-sm text-zinc-400 mt-1">Set room defaults, queue behavior, and live TV basics.</div>
                                 </div>
                                 <div className="flex-1 min-w-0 lg:px-4">
-                                    <div className="flex flex-wrap lg:flex-nowrap items-center justify-center gap-2">
-                                        {NIGHT_SETUP_STEPS.map((step, idx) => (
-                                            <button
-                                                key={`night-setup-step-${step.id}`}
-                                                onClick={() => setNightSetupStep(step.id)}
-                                                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-all ${
-                                                    nightSetupStep === step.id
-                                                        ? 'border-cyan-400/60 bg-cyan-500/12 text-cyan-100'
-                                                        : nightSetupStep > step.id
-                                                                ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100'
-                                                                : 'border-zinc-700 bg-zinc-900/70 text-zinc-300 hover:border-zinc-500'
-                                                } min-w-[124px] justify-center`}
-                                            >
-                                                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
-                                                    nightSetupStep === step.id
-                                                        ? 'bg-cyan-400/20 text-cyan-100'
-                                                        : nightSetupStep > step.id
-                                                            ? 'bg-emerald-500/20 text-emerald-100'
-                                                            : 'bg-zinc-800 text-zinc-400'
-                                                }`}>
-                                                    {idx + 1}
-                                                </span>
-                                                <span className="font-bold uppercase tracking-[0.2em]">{step.label}</span>
-                                            </button>
-                                        ))}
+                                    <div className="host-brand-tabs host-brand-tabs--steps" role="tablist" aria-label="Room setup steps">
+                                        {NIGHT_SETUP_STEPS.map((step, idx) => {
+                                            const active = nightSetupStep === step.id;
+                                            const complete = nightSetupStep > step.id;
+                                            return (
+                                                <button
+                                                    key={`night-setup-step-${step.id}`}
+                                                    type="button"
+                                                    role="tab"
+                                                    aria-selected={active}
+                                                    onClick={() => setNightSetupStep(step.id)}
+                                                    className={`host-brand-tab min-w-[124px] flex-1 px-3 py-1.5 text-xs ${
+                                                        active ? 'is-active' : ''
+                                                    } ${complete ? 'is-complete' : ''}`}
+                                                >
+                                                    <span className="host-brand-tab__index">
+                                                        {idx + 1}
+                                                    </span>
+                                                    <span className="font-bold uppercase tracking-[0.2em]">{step.label}</span>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                                 <button
@@ -22032,10 +22053,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         try {
             await updateRoom(roomPatch);
-            toast(nextEnabled ? 'One-Minute Mic is on.' : 'Full songs restored.');
+            toast(nextEnabled ? 'Mic Checkpoint is on.' : 'Full songs restored.');
         } catch (error) {
             console.error('Failed to update One-Minute Mic from host chrome', error);
-            toast('Could not update One-Minute Mic.');
+            toast('Could not update Mic Checkpoint.');
         }
     };
 
@@ -22049,7 +22070,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         } catch (error) {
             console.error('Failed to update One-Minute Mic timing from host chrome', error);
-            toast('Could not update One-Minute Mic timing.');
+            toast('Could not update Mic Checkpoint timing.');
         }
     };
     const applyRoomControlModelQuick = async (modelId = 'host_led') => {
@@ -22162,7 +22183,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const isSkipVote = audienceDecisionTypeQuick === 'skip_performance';
             return {
                 state: 'live',
-                label: isSkipVote ? 'Crowd rescue vote is live' : 'One-Minute Mic vote is live',
+                label: isSkipVote ? 'Crowd rescue vote is live' : 'Mic Checkpoint vote is live',
                 detail: `${audienceDecisionVotesQuick} vote${audienceDecisionVotesQuick === 1 ? '' : 's'} in. Phones and TV should be showing the decision now.`,
                 badge: 'Live vote',
                 tone: 'live',
@@ -22208,7 +22229,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return {
             state: 'waiting',
             label: 'Waiting for a singer',
-            detail: 'One-Minute Mic is enabled. The next live song will arm the crowd vote.',
+            detail: 'Mic Checkpoint is enabled. The next live song will arm the crowd vote.',
             badge: 'Ready',
             tone: 'idle',
         };
@@ -22486,7 +22507,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 data-host-tablet-touch={tabletTouchViewport ? 'true' : 'false'}
                 data-host-active-tab={String(tab || '').trim()}
                 data-host-active-workspace-section={String(activeWorkspaceSection || '').trim()}
-                className="host-app min-h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_22%),linear-gradient(180deg,#09090b_0%,#0a0d18_100%)] text-white font-saira flex flex-col"
+                className="host-app host-vivid-shell min-h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain text-white font-saira flex flex-col"
             >
                 <div className="shrink-0 border-b border-yellow-300/16 bg-[linear-gradient(145deg,rgba(68,33,12,0.92),rgba(9,14,25,0.94))] shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur">
                     <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5 md:px-6">
@@ -22562,7 +22583,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return (
             <div
                 data-host-prototype-shell="night_pilot"
-                className="host-app min-h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#05070c] text-white font-saira"
+                className="host-app host-vivid-shell min-h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain text-white font-saira"
             >
                 {hostDeploymentBanners ? (
                     <div className="px-4 pt-4">
@@ -22603,7 +22624,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 data-host-tablet-touch={tabletTouchViewport ? 'true' : 'false'}
                 data-host-active-tab={String(tab || '').trim()}
                 data-host-active-workspace-section={String(activeWorkspaceSection || '').trim()}
-                className={`host-app min-h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain ${tabletTouchViewport ? 'h-[100dvh]' : 'md:h-screen'} flex flex-col relative bg-zinc-950 text-white font-saira ${tabletTouchViewport ? '' : 'md:overflow-hidden'}`}
+                className={`host-app host-vivid-shell min-h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain ${tabletTouchViewport ? 'h-[100dvh]' : 'md:h-screen'} flex flex-col relative text-white font-saira ${tabletTouchViewport ? '' : 'md:overflow-hidden'}`}
             >
                 {/* Header */}
                 <HostTopChrome
@@ -25658,7 +25679,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <div>
                                             <div className="text-xs uppercase tracking-[0.22em] text-fuchsia-200">Room control model</div>
                                             <div className="mt-1 text-sm font-semibold text-white">Decide who drives the room before launch.</div>
-                                            <div className="mt-1 text-xs text-zinc-300">Host-Led protects full songs. Assisted Host keeps full songs with queue automation. Crowd-Driven enables One-Minute Mic and Auto-DJ for self-service parties.</div>
+                                            <div className="mt-1 text-xs text-zinc-300">Host-Led protects full songs. Assisted Host keeps full songs with queue automation. Crowd-Driven enables Mic Checkpoint and Auto-DJ for self-service parties.</div>
                                         </div>
                                         <span className="rounded-full border border-fuchsia-300/20 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-fuchsia-100">
                                             Launch decision

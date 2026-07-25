@@ -317,6 +317,7 @@ export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
       checkins: [],
       reviews: [],
       submissions: [],
+      claims: [],
       rsvps: [],
       reminders: [],
       performanceHistory: [],
@@ -344,6 +345,12 @@ export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
   );
   const submissionQuery = query(
     collection(db, "directory_submissions"),
+    where("createdBy", "==", uid),
+    orderBy("createdAt", "desc"),
+    limit(80)
+  );
+  const claimQuery = query(
+    collection(db, "directory_claim_requests"),
     where("createdBy", "==", uid),
     orderBy("createdAt", "desc"),
     limit(80)
@@ -379,6 +386,7 @@ export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
     submissions: [],
     rsvps: [],
     reminders: [],
+    claims: [],
     performanceHistory: [],
   };
   const emit = () => onData?.({ ...state });
@@ -401,6 +409,10 @@ export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
       emit();
     }, onError),
     onSnapshot(rsvpQuery, (snap) => {
+    onSnapshot(claimQuery, (snap) => {
+      state.claims = mapDocs(snap);
+      emit();
+    }, onError),
       state.rsvps = mapDocs(snap);
       emit();
     }, onError),

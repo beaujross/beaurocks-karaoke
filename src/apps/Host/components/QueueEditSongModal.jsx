@@ -6,6 +6,7 @@ const QueueEditSongModal = ({
     styles,
     editForm,
     setEditForm,
+    performanceMode = 'karaoke',
     openYtSearch,
     syncEditDuration,
     onRetryLyrics,
@@ -15,6 +16,8 @@ const QueueEditSongModal = ({
 }) => {
     if (!open) return null;
 
+    const originalRecordingRequired = ['sing_along', 'lip_sync'].includes(String(performanceMode || '').trim().toLowerCase());
+    const isOriginalRecording = editForm.appleMusicId || editForm.playbackContentKind === 'original_recording';
     const hasTimedLyrics = Array.isArray(song?.lyricsTimed) && song.lyricsTimed.length > 0;
     const hasLyrics = !!String(song?.lyrics || editForm.lyrics || '').trim();
     const lyricsStatus = String(song?.lyricsGenerationStatus || editForm.lyricsGenerationStatus || '').trim().toLowerCase();
@@ -192,7 +195,12 @@ const QueueEditSongModal = ({
 
                             <div className="flex flex-wrap gap-2">
                                 <button
-                                    onClick={() => setEditForm((prev) => ({ ...prev, url: '', appleMusicId: prev.originalAppleMusicId || prev.appleMusicId || '' }))}
+                                    onClick={() => setEditForm((prev) => ({
+                                        ...prev,
+                                        url: '',
+                                        appleMusicId: prev.originalAppleMusicId || prev.appleMusicId || '',
+                                        playbackContentKind: (prev.originalAppleMusicId || prev.appleMusicId) ? 'original_recording' : prev.playbackContentKind,
+                                    }))}
                                     className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-sm text-[#00C4D9] border-[#00C4D9]`}
                                     title="Use the saved or Apple default backing for this song"
                                 >
@@ -211,10 +219,51 @@ const QueueEditSongModal = ({
 
                             <input
                                 value={editForm.url}
-                                onChange={(e) => setEditForm({ ...editForm, url: e.target.value, appleMusicId: '' })}
+                                onChange={(e) => setEditForm({
+                                    ...editForm,
+                                    url: e.target.value,
+                                    appleMusicId: '',
+                                    playbackContentKind: 'unknown',
+                                })}
                                 className={styles.input}
                                 placeholder="Optional: paste a YouTube, local, or playlist URL directly"
                             />
+
+                            {originalRecordingRequired ? (
+                                <div className="rounded-xl border border-amber-300/25 bg-amber-500/[0.06] p-3">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
+                                        What will the room hear?
+                                    </div>
+                                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditForm((prev) => ({ ...prev, playbackContentKind: 'original_recording' }))}
+                                            className={`min-h-[48px] rounded-xl border px-3 py-2 text-left text-xs font-black transition ${isOriginalRecording
+                                                ? 'border-emerald-300/45 bg-emerald-500/12 text-emerald-50'
+                                                : 'border-white/10 bg-black/20 text-zinc-300 hover:border-emerald-300/30'}`}
+                                        >
+                                            <i className="fa-solid fa-record-vinyl mr-2" />
+                                            Original recording
+                                            <span className="mt-1 block text-[10px] font-normal text-zinc-400">Full track with original vocals</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={Boolean(editForm.appleMusicId)}
+                                            onClick={() => setEditForm((prev) => ({ ...prev, playbackContentKind: 'karaoke_backing' }))}
+                                            className={`min-h-[48px] rounded-xl border px-3 py-2 text-left text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-40 ${editForm.playbackContentKind === 'karaoke_backing'
+                                                ? 'border-fuchsia-300/45 bg-fuchsia-500/12 text-fuchsia-50'
+                                                : 'border-white/10 bg-black/20 text-zinc-300 hover:border-fuchsia-300/30'}`}
+                                        >
+                                            <i className="fa-solid fa-microphone-lines mr-2" />
+                                            Karaoke backing
+                                            <span className="mt-1 block text-[10px] font-normal text-zinc-400">Instrumental or karaoke version</span>
+                                        </button>
+                                    </div>
+                                    <div className="mt-2 text-[10px] leading-4 text-amber-100/65">
+                                        Auto-DJ starts this format only after an original recording is confirmed.
+                                    </div>
+                                </div>
+                            ) : null}
 
                             <div className="text-sm text-zinc-400">
                                 Leave this blank to use the saved/default backing. Playlist URLs queue up to 1000 tracks.

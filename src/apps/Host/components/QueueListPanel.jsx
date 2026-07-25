@@ -1,6 +1,8 @@
 import React from 'react';
 import { deleteDoc, doc, db } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
+import { getQueueEntryPerformanceReadiness } from '../../../lib/playbackSource';
+import ContentSourceBadge from '../../../components/ContentSourceBadge';
 import {
     buildSelfServeModePresentation,
     buildSelfServeTransitionMoment,
@@ -336,6 +338,9 @@ const QueueListPanel = ({
     selfServeAuctionLeaderboard = [],
     nextQueueReasonLabel = '',
     nextQueueReasonDetail = '',
+    performanceMode = 'karaoke',
+    appleMusicEnabled = false,
+    autoDjEnabled = false,
 }) => {
     const [selectedSongId, setSelectedSongId] = React.useState('');
     const [expandedSections, setExpandedSections] = React.useState({
@@ -351,6 +356,19 @@ const QueueListPanel = ({
         () => allSongs.find((song) => song.id === selectedSongId) || null,
         [allSongs, selectedSongId]
     );
+    const autoDjFormatReview = React.useMemo(() => {
+        if (!autoDjEnabled || !queue[0]) return null;
+        const readiness = getQueueEntryPerformanceReadiness(queue[0], {
+            performanceMode,
+            appleMusicEnabled,
+        });
+        if (readiness.autopilotReady || !readiness.manuallyPlayable) return null;
+        return {
+            song: queue[0],
+            readiness,
+            formatLabel: readiness.performanceMode === 'sing_along' ? 'Sing-Along' : 'Lip Sync',
+        };
+    }, [appleMusicEnabled, autoDjEnabled, performanceMode, queue]);
     const selfServePresentation = React.useMemo(
         () => (selfServeMode?.enabled ? buildSelfServeModePresentation(selfServeMode) : null),
         [selfServeMode]
@@ -531,6 +549,30 @@ const QueueListPanel = ({
                 {touchReorderMode ? (
                     <div className="mb-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
                         Reorder mode is live. Drag a song by its handle, then tap Done Reordering.
+                    </div>
+                ) : null}
+                {autoDjFormatReview ? (
+                    <div
+                        className="mb-2 rounded-xl border border-amber-300/30 bg-amber-500/[0.08] px-3 py-2.5"
+                        data-autodj-format-review="true"
+                    >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                            <span className="min-w-0">
+                                <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-amber-200">
+                                    Auto-DJ waiting · {autoDjFormatReview.formatLabel}
+                                </span>
+                                <span className="mt-1 block truncate text-xs font-black text-white">
+                                    {autoDjFormatReview.song.songTitle || 'Next song'}
+                                    {autoDjFormatReview.song.singerName ? ` · ${autoDjFormatReview.song.singerName}` : ''}
+                                </span>
+                            </span>
+                            {autoDjFormatReview.readiness.provider ? (
+                                <ContentSourceBadge source={autoDjFormatReview.readiness.provider} compact />
+                            ) : null}
+                        </div>
+                        <div className="mt-1 text-[11px] leading-4 text-amber-100/75">
+                            {autoDjFormatReview.readiness.title}. Select this song and use Edit to choose an original recording, or start it manually.
+                        </div>
                     </div>
                 ) : null}
                 {selfServePresentation ? (

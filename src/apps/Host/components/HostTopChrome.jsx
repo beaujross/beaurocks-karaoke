@@ -34,7 +34,7 @@ const QUICK_REWARD_REFILL_PRESETS = Object.freeze([
     { id: 'friendly', label: 'Friendly', timedLobbyEnabled: true, timedLobbyPoints: 25, timedLobbyIntervalMin: 10, timedLobbyMaxPerGuest: 150 },
     { id: 'party', label: 'Party', timedLobbyEnabled: true, timedLobbyPoints: 50, timedLobbyIntervalMin: 10, timedLobbyMaxPerGuest: 300 },
 ]);
-const ONE_MINUTE_MIC_OPENING_PRESETS = Object.freeze([45, 60, 90]);
+const ONE_MINUTE_MIC_OPENING_PRESETS = Object.freeze([45, 60, 90, 120]);
 const ONE_MINUTE_MIC_VOTE_WINDOW_PRESETS = Object.freeze([8, 12, 15, 20]);
 const ROOM_CONTROL_MODEL_OPTIONS = Object.freeze([
     {
@@ -53,7 +53,7 @@ const ROOM_CONTROL_MODEL_OPTIONS = Object.freeze([
         id: 'crowd_driven',
         label: 'Crowd-Driven',
         icon: 'fa-people-group',
-        summary: 'One-Minute Mic plus Auto-DJ for self-service parties.',
+        summary: 'Mic Checkpoint plus Auto-DJ for self-service parties.',
     },
 ]);
 const getRunOfShowDurationSec = (item = {}) => Math.max(
@@ -427,7 +427,7 @@ const HostTopChrome = ({
         [quickRoomControls]
     );
     const requestModeShortLabel = React.useMemo(
-        () => quickRoomControls?.requestModeOptions?.find((option) => option.id === quickRoomControls?.requestMode)?.shortLabel || 'Host picks track',
+        () => quickRoomControls?.requestModeOptions?.find((option) => option.id === quickRoomControls?.requestMode)?.shortLabel || 'Host picks version',
         [quickRoomControls]
     );
     const quickRewardUsers = React.useMemo(() => {
@@ -1230,7 +1230,7 @@ const HostTopChrome = ({
             : 'border-amber-400/35 bg-amber-500/10 text-amber-100';
     const topStatusLabel = topStatusAllGreen ? 'Systems Ready' : `${topStatusIssueCount} Attention`;
     return (
-    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : minimalRuntimeChrome ? 'px-3 py-1.5' : adminWorkspaceChrome ? 'px-3 py-1.5' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col ${minimalRuntimeChrome ? 'gap-1' : adminWorkspaceChrome ? 'gap-1.5' : 'gap-2'} shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800 ${modalOverlayActive ? 'pointer-events-none invisible' : ''}`} aria-hidden={modalOverlayActive ? 'true' : undefined}>
+    <div data-host-top-chrome="true" className={`bg-[radial-gradient(circle_at_12%_0%,rgba(34,211,238,0.2),transparent_34%),radial-gradient(circle_at_88%_0%,rgba(244,114,182,0.18),transparent_36%),linear-gradient(105deg,rgba(20,42,66,0.98),rgba(37,31,67,0.98)_52%,rgba(61,25,59,0.97))] ${runOfShowFocusMode ? 'px-3.5 py-2' : minimalRuntimeChrome ? 'px-3 py-1.5' : adminWorkspaceChrome ? 'px-3 py-1.5' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col ${minimalRuntimeChrome ? 'gap-1' : adminWorkspaceChrome ? 'gap-1.5' : 'gap-2'} shadow-[0_16px_45px_rgba(8,15,34,0.38)] shrink-0 relative isolate z-[160] overflow-visible border-b border-cyan-200/25 ${modalOverlayActive ? 'pointer-events-none invisible' : ''}`} aria-hidden={modalOverlayActive ? 'true' : undefined}>
         <div className={`flex flex-col ${minimalRuntimeChrome ? 'gap-1.5' : 'gap-2.5'} lg:flex-row lg:items-center lg:justify-between w-full`}>
             <div className="flex items-center gap-2 lg:gap-3">
                 <img
@@ -1356,7 +1356,7 @@ const HostTopChrome = ({
                     <div data-host-live-mode={room.activeMode} className="bg-red-600 px-2.5 py-0.5 rounded text-xs lg:text-sm font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
                 )}
                 <div className="hidden xl:flex items-center gap-2">
-                    <div data-host-top-tabs="primary" className="relative z-10 shrink-0 flex items-center gap-2">
+                    <div data-host-top-tabs="primary" className="host-brand-tabs host-brand-tabs--compact relative z-10 shrink-0" role="tablist" aria-label="Host workspace">
                         {[
                             { key: 'stage', label: 'Queue' },
                             { key: 'run_of_show', label: 'Show' },
@@ -1366,6 +1366,8 @@ const HostTopChrome = ({
                             <button
                                 key={t.key}
                                 type="button"
+                                role="tab"
+                                aria-selected={tab === t.key}
                                 data-host-tab={t.key}
                                 onClick={() => {
                                     closeAllTopMenus();
@@ -1375,7 +1377,7 @@ const HostTopChrome = ({
                                     }
                                     setTab(t.key);
                                 }}
-                                className={`${minimalRuntimeChrome ? 'h-8 px-2 text-[11px]' : denseChrome ? 'h-9 px-2.5 text-[12px]' : 'h-9 px-2.5 text-sm'} relative z-10 inline-flex shrink-0 items-center font-black uppercase tracking-[0.2em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
+                                className={`${minimalRuntimeChrome ? 'h-8 px-2 text-[11px]' : denseChrome ? 'h-9 px-2.5 text-[12px]' : 'h-9 px-2.5 text-sm'} host-brand-tab shrink-0 font-black uppercase tracking-[0.2em] ${tab === t.key ? 'is-active' : ''}`}
                             >
                                 <span>{t.label}</span>
                                 {t.key === 'stage' && queueAttentionVisible ? (
@@ -1862,7 +1864,7 @@ const HostTopChrome = ({
                                             {
                                                 key: 'singer-turns',
                                                 label: 'Let the crowd extend or rotate singers',
-                                                detail: 'One-Minute Mic',
+                                                detail: 'Mic Checkpoint',
                                                 active: !!quickRoomControls?.oneMinuteMicEnabled,
                                                 onClick: () => quickRoomControls?.onSetOneMinuteMic?.(!quickRoomControls?.oneMinuteMicEnabled),
                                             },
@@ -1965,9 +1967,9 @@ const HostTopChrome = ({
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
                                             <div className={`${quickMenuEyebrowClass} text-cyan-200`}>Song length</div>
-                                            <div className={quickMenuTitleClass}>{quickRoomControls.oneMinuteMicEnabled ? 'One-Minute Mic' : 'Full songs'}</div>
+                                            <div className={quickMenuTitleClass}>{quickRoomControls.oneMinuteMicEnabled ? 'Mic Checkpoint' : 'Full songs'}</div>
                                             <div className={quickMenuBodyClass}>
-                                                Let the crowd decide whether a singer earns the rest of the track after the opening minute.
+                                                Let the crowd decide whether a singer continues after a configurable opening stretch.
                                             </div>
                                         </div>
                                         <span className={`${quickMenuBadgeClass} ${quickRoomControls.oneMinuteMicEnabled ? 'border-cyan-300/40 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-white/5 text-zinc-300'}`}>
@@ -1990,7 +1992,7 @@ const HostTopChrome = ({
                                             aria-pressed={quickRoomControls.oneMinuteMicEnabled === true}
                                             className={`${styles.btnStd} ${quickRoomControls.oneMinuteMicEnabled ? styles.btnHighlight : styles.btnNeutral} min-h-[58px] justify-between py-2 text-sm normal-case tracking-[0.02em]`}
                                         >
-                                            <span className="inline-flex items-center gap-2"><i className="fa-solid fa-stopwatch"></i>One-Minute Mic</span>
+                                            <span className="inline-flex items-center gap-2"><i className="fa-solid fa-stopwatch"></i>Mic Checkpoint</span>
                                             <span className="text-xs uppercase tracking-widest">Vote</span>
                                         </button>
                                     </div>

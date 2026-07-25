@@ -53,6 +53,31 @@ test('custom preset normalization preserves queue and request policy fields', ()
     assert.equal(preset.settings.queueSettings.firstTimeBoost, false);
 });
 
+test('preset normalization preserves performance format and provider requirements', () => {
+    const preset = normalizeHostNightPresetRecord({
+        id: 'sing_along',
+        label: 'Sing-Along',
+        basePresetId: 'casual',
+        recipe: {
+            flowRule: 'balanced',
+            assistLevel: 'smart_assist',
+            spotlightMode: 'karaoke',
+            performanceMode: 'sing_along',
+            requirements: {
+                originalRecording: true,
+                lyrics: 'preferred',
+            },
+        },
+    }, BUILTIN_HOST_NIGHT_PRESETS.casual);
+    const config = buildHostNightPresetConfig(preset);
+
+    assert.equal(config.recipe.performanceMode, 'sing_along');
+    assert.deepEqual(config.recipe.requirements, {
+        originalRecording: true,
+        lyrics: 'preferred',
+    });
+});
+
 test('mergeHostNightPresets exposes custom presets and room-scoped preset configs', () => {
     const merged = mergeHostNightPresets(
         {

@@ -11,6 +11,7 @@ const functionsSource = readFileSync(new URL("../../functions/index.js", import.
 const chartsSource = readFileSync(new URL("../../src/apps/Marketing/pages/ChartsPage.jsx", import.meta.url), "utf8");
 const chartModelSource = readFileSync(new URL("../../src/apps/Marketing/pages/publicChartModel.js", import.meta.url), "utf8");
 const discoverSource = readFileSync(new URL("../../src/apps/Marketing/pages/DiscoverPage.jsx", import.meta.url), "utf8");
+const ownerPathSource = readFileSync(new URL("../../src/apps/Marketing/pages/DirectoryOwnerPathway.jsx", import.meta.url), "utf8");
 
 test("public charts have a canonical indexable route", () => {
   assert.equal(buildMarketingPath({ page: MARKETING_ROUTE_PAGES.charts }), "/charts");
@@ -39,9 +40,13 @@ test("charts stay low-friction and reportable", () => {
   assert.match(chartsSource, /Active Nights/);
   assert.match(chartsSource, /Host your own night/);
   assert.match(chartsSource, /Ready to sing\?/);
-  assert.match(chartsSource, /Run a karaoke night\?/);
+  assert.match(chartsSource, /Already run a karaoke night\?/);
   assert.match(chartsSource, /Top performances for/);
   assert.doesNotMatch(chartsSource, /canonical song/i);
+  assert.match(chartsSource, /DirectoryOwnerPathway/);
+  assert.match(chartsSource, /targetType: "event"/);
+  assert.match(ownerPathSource, /List a Karaoke Night/);
+  assert.match(ownerPathSource, /Manage My Listings/);
   assert.match(discoverSource, /PublicChartsTeaser/);
   assert.doesNotMatch(chartsSource, /Claim this score/);
 });

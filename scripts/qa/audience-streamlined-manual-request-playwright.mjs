@@ -120,6 +120,41 @@ const main = async () => {
       return "streamlined SONGS opens a writable manual request composer";
     });
 
+    await runCheck(checks, "singer_app_streamlined_tight15_reachable", async () => {
+      await page.goto(
+        `${server.baseUrl}/?room=DEMOAUD&qaAudienceFixture=streamlined-browse`,
+        { waitUntil: "domcontentloaded", timeout: timeoutMs },
+      );
+      await singerRoot.waitFor({ state: "visible", timeout: Math.min(timeoutMs, 15000) });
+      await delay(250);
+
+      const tight15Discovery = page
+        .locator('[data-feature-id="audience-tight15-discovery"]:visible')
+        .first();
+      await tight15Discovery.waitFor({ state: "visible", timeout: Math.min(timeoutMs, 5000) });
+
+      const tight15Nav = page
+        .locator('[data-feature-id="audience-tight15-nav"]:visible')
+        .first();
+      await tight15Nav.waitFor({ state: "visible", timeout: Math.min(timeoutMs, 5000) });
+      await tight15Nav.click({ force: true });
+
+      const tight15Library = page
+        .locator('[data-feature-id="audience-tight15-library"]:visible')
+        .first();
+      await tight15Library.waitFor({ state: "visible", timeout: Math.min(timeoutMs, 5000) });
+
+      const accountGate = page
+        .locator('[data-feature-id="audience-tight15-account-gate"]:visible')
+        .first();
+      await accountGate.waitFor({ state: "visible", timeout: Math.min(timeoutMs, 5000) });
+      const gateText = String(await accountGate.innerText()).replace(/\s+/g, " ");
+      if (!gateText.includes("5,000 PTS")) {
+        throw new Error(`Tight 15 account gate did not disclose its reward. text=${gateText}`);
+      }
+      return "streamlined SONGS reveals Tight 15 and its account-backed save path";
+    });
+
     await runCheck(checks, "singer_app_streamlined_no_page_errors", async () => {
       if (pageErrors.length) throw new Error(pageErrors[0]);
       return "no client-side runtime errors";

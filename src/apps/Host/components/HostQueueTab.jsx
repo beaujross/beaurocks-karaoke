@@ -5,6 +5,12 @@ import HostInboxPanel from './HostInboxPanel';
 import HostNightPilotPrototype from './HostNightPilotPrototype';
 import HostStageConsoleExperimental from './HostStageConsoleExperimental';
 import QueueListPanel from './QueueListPanel';
+import ContentSourceBadge from '../../../components/ContentSourceBadge';
+import {
+  PLAYBACK_SELECTION_MODES,
+  getContentSourceMeta,
+  getQueuePlaybackSelection,
+} from '../../../lib/playbackSelection';
 import HostLiveOpsPanel from './HostLiveOpsPanel';
 import StageNowPlayingPanel from './StageNowPlayingPanel';
 import RunOfShowQueueHud from './RunOfShowQueueHud';
@@ -321,13 +327,9 @@ const getReviewCandidateArtworkUrl = (candidate = {}) => {
 
 const getReviewCandidateSourceMeta = (candidate = {}) => {
   const source = String(candidate?.source || '').trim().toLowerCase();
-  if (source === 'apple' || source === 'itunes') {
-    return { label: 'Apple', iconClass: 'fa-brands fa-apple', className: 'border-pink-300/35 bg-pink-500/10 text-pink-100' };
-  }
-  if (source === 'youtube' || parseYouTubeVideoId(candidate?.mediaUrl || candidate?.url || '')) {
-    return { label: 'YouTube', iconClass: 'fa-brands fa-youtube', className: 'border-red-300/35 bg-red-500/10 text-red-100' };
-  }
-  return { label: 'Known', iconClass: 'fa-solid fa-hard-drive', className: 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100' };
+  const inferredSource = source || (parseYouTubeVideoId(candidate?.mediaUrl || candidate?.url || '') ? 'youtube' : 'local');
+  const sourceMeta = getContentSourceMeta(inferredSource);
+  return inferredSource === 'local' ? { ...sourceMeta, label: 'Known' } : sourceMeta;
 };
 
 const getReviewCandidateBeauScore = (candidate = {}) => {
@@ -2446,6 +2448,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
               title: editForm.title || displayTitle || '',
               artist: editForm.artist || video.channel || '',
               url: video.url || editForm.url,
+              playbackContentKind: /karaoke|instrumental/i.test(String(video.title || ''))
+                  ? 'karaoke_backing'
+                  : 'unknown',
               youtubeEmbeddable: playbackState.embeddable,
               youtubeUploadStatus: playbackState.uploadStatus,
               youtubePrivacyStatus: playbackState.privacyStatus,
@@ -4278,12 +4283,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         ? (queueSurface.activeCompactTab === 'show' ? 'show' : queueSurface.activeCompactTab === 'catalog' ? 'catalog' : queueSurface.activeCompactTab === 'inbox' ? 'inbox' : queueSurface.activeCompactTab === 'add' ? 'add' : 'queue')
         : (desktopQueueSurfaceTab === 'show' ? 'show' : desktopQueueSurfaceTab === 'catalog' ? 'catalog' : desktopQueueSurfaceTab === 'inbox' ? 'inbox' : desktopQueueSurfaceTab === 'add' ? 'add' : 'queue');
     const activeQueueWorkspaceTone = queueWorkspaceToneMap[activeQueueWorkspaceToneKey] || queueWorkspaceToneMap.queue;
-    const queueWorkspaceTabListClass = `flex flex-wrap items-end gap-1.5 border-b border-white/10 ${isDenseLayout ? 'px-3 pt-3' : 'px-4 pt-4'}`;
-    const getQueueWorkspaceTabButtonClass = (active = false, activeToneClass = '') => (
-        `inline-flex min-h-[42px] items-center gap-2 rounded-t-[18px] border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition ${
-            active
-                ? `${activeToneClass} border-b-transparent`
-                : 'border-transparent bg-white/[0.03] text-zinc-300 hover:border-white/10 hover:bg-white/[0.05] hover:text-white'
+    const queueWorkspaceTabListClass = `host-brand-tabs host-brand-tabs--workspace ${isDenseLayout ? 'mx-3 mt-3' : 'mx-4 mt-4'}`;
+    const getQueueWorkspaceTabButtonClass = (active = false) => (
+        `host-brand-tab inline-flex min-h-[42px] items-center gap-2 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] ${
+            active ? 'is-active' : ''
         }`
     );
     const renderQueueWorkspaceTabButton = ({
@@ -4757,7 +4760,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 <div
                     role="tablist"
                     aria-label="Account media library sections"
-                    className="mt-3 flex min-h-[46px] items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/22 p-1 custom-scrollbar"
+                    className="host-brand-tabs host-brand-tabs--workspace mt-3 min-h-[46px] custom-scrollbar"
                     data-feature-id="host-media-library-tabs"
                 >
                     {mediaLibraryTabs.map((tabItem) => {
@@ -4769,7 +4772,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 role="tab"
                                 aria-selected={active}
                                 onClick={() => setMediaLibraryTab(tabItem.id)}
-                                className={`inline-flex min-h-[38px] min-w-max items-center gap-2 rounded-xl px-3 py-2 text-sm font-black transition ${active ? 'bg-cyan-400 text-zinc-950 shadow-[0_10px_24px_rgba(34,211,238,0.22)]' : 'text-zinc-300 hover:bg-white/8 hover:text-white'}`}
+                                className={`host-brand-tab inline-flex min-h-[38px] min-w-max items-center gap-2 px-3 py-2 text-sm font-black ${active ? 'is-active' : ''}`}
                             >
                                 <i className={`fa-solid ${tabItem.icon}`}></i>
                                 <span>{tabItem.label}</span>
@@ -5506,6 +5509,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 selfServeAuctionLeaderboard={spotlightAuctionLeaderboard}
                 nextQueueReasonLabel={nextQueueReason.shortLabel}
                 nextQueueReasonDetail={nextQueueReason.detail}
+                performanceMode={room?.performanceMode || room?.missionControl?.setupDraft?.performanceMode || 'karaoke'}
+                appleMusicEnabled={appleMusicAuthorized}
+                autoDjEnabled={autoDj}
             />
             {showQueueList ? (
                 activeQueueFaceOffWindow ? (
@@ -5864,6 +5870,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         </div>
                     </button>
                     {reviewQueueOpen ? reviewQueueItems.map((song) => {
+                        const playbackSelection = getQueuePlaybackSelection(song);
                         const topCandidate = song.reviewCandidates?.[0] || null;
                         const busy = reviewActionBusyKey.startsWith(`${song.id}:`);
                         const appleMusicId = String(song?.appleMusicId || song?.trackId || '').trim();
@@ -5873,7 +5880,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         const prioritizeYouTubeReview = youtubeTrackCheckEnabled || !appleTrackCheckEnabled;
                         const sourceLabel = String(song?.trackSource || song?.source || '').trim().toLowerCase();
                         const requestLooksApple = canUseAppleSingAlong || sourceLabel.includes('apple') || sourceLabel.includes('itunes');
-                        const reviewPrompt = topCandidate
+                        const reviewPrompt = playbackSelection.mode === PLAYBACK_SELECTION_MODES.specificVersion
+                            ? `${playbackSelection.detail} Approve it or choose another version.`
+                            : topCandidate
                             ? `Best match: ${topCandidate.label || String(topCandidate.layer || 'candidate').replace(/_/g, ' ')}`
                             : prioritizeYouTubeReview
                                 ? requestLooksApple && appleTrackCheckEnabled
@@ -5912,6 +5921,19 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <span className="text-xl">{song.emoji || EMOJI.mic}</span>
                                             <div className="text-base font-black text-white truncate">{song.songTitle}</div>
+                                            {playbackSelection.showSource ? (
+                                                <ContentSourceBadge
+                                                    source={playbackSelection.source}
+                                                    label={playbackSelection.label}
+                                                    title={playbackSelection.detail}
+                                                    compact
+                                                />
+                                            ) : (
+                                                <span className="inline-flex min-h-[20px] items-center rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-amber-100">
+                                                    <i className="fa-solid fa-layer-group mr-1"></i>
+                                                    Song only · choose version
+                                                </span>
+                                            )}
                                             {song.collabOpen && (
                                                 <span className="rounded-full border border-pink-300/25 bg-pink-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-pink-100">Duet / group open</span>
                                             )}
@@ -6200,7 +6222,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const compactQueueSurfaceControls = queueSurface.isCompactQueueSurface ? (
         <div className={`border-b border-white/10 px-3 py-3 ${activeQueueWorkspaceTone.headerClass}`}>
             <div className="flex flex-wrap items-center gap-2">
-                <div className="flex flex-wrap items-end gap-1.5">
+                <div className="host-brand-tabs host-brand-tabs--workspace max-w-full">
                     {renderQueueWorkspaceTabButton({
                         id: 'queue-mobile',
                         label: 'Queue',
@@ -6348,6 +6370,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         styles={STYLES}
                         editForm={editForm}
                         setEditForm={setEditForm}
+                        performanceMode={room?.performanceMode || room?.missionControl?.setupDraft?.performanceMode || 'karaoke'}
                         openYtSearch={openYtSearch}
                         syncEditDuration={syncEditDuration}
                         onRetryLyrics={retryLyricsForSong}

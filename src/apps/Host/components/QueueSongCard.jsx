@@ -1,6 +1,11 @@
 import React from 'react';
 import { normalizeBackingChoice, isQueueEntryPlayable } from '../../../lib/playbackSource';
 import { isAudienceSelectedUnverifiedResolution, requiresBackingHostReview } from '../../../lib/requestModes';
+import {
+    PLAYBACK_SELECTION_MODES,
+    getQueuePlaybackSelection,
+} from '../../../lib/playbackSelection';
+import ContentSourceBadge from '../../../components/ContentSourceBadge';
 
 const QueueSongCard = ({
     song,
@@ -48,10 +53,9 @@ const QueueSongCard = ({
         appleMusicId: song.appleMusicId
     });
     const queueMediaUrl = queueBacking.mediaUrl;
-    const queueUsesAppleBacking = queueBacking.usesAppleBacking;
-    const queueIsYouTube = queueBacking.isYouTube;
     const queuePlaybackReady = isQueueEntryPlayable(song);
     const queueUsesExternalWindow = !!song?.backingAudioOnly && !!queueMediaUrl;
+    const playbackSelection = getQueuePlaybackSelection(song);
     const songStatus = String(song?.status || '').trim().toLowerCase();
     const isHeld = songStatus === 'held';
     const needsTrackReview = ['requested', 'pending'].includes(songStatus) && requiresBackingHostReview(song?.resolutionStatus);
@@ -170,7 +174,11 @@ const QueueSongCard = ({
             className: selfServeTone.badgeClass,
         }
         : needsTrackReview
-            ? { label: 'Track Check', icon: 'fa-wand-magic-sparkles', className: ' border-amber-300/45 text-amber-100 bg-amber-500/10' }
+            ? {
+                label: playbackSelection.mode === PLAYBACK_SELECTION_MODES.songOnly ? 'Choose Version' : 'Track Check',
+                icon: playbackSelection.mode === PLAYBACK_SELECTION_MODES.songOnly ? 'fa-layer-group' : 'fa-wand-magic-sparkles',
+                className: ' border-amber-300/45 text-amber-100 bg-amber-500/10'
+            }
             : isPendingApproval
                 ? { label: 'Approve', icon: 'fa-circle-check', className: ' border-orange-300/45 text-orange-100 bg-orange-500/10' }
                 : isAssignedToRunOfShow
@@ -257,6 +265,16 @@ const QueueSongCard = ({
                     <div className="min-w-0">
                         <div className={`font-bold text-white truncate ${compactViewport ? 'text-[13px] leading-tight' : 'text-[13px] leading-tight'}`}>{song.songTitle}</div>
                         <div className={`text-zinc-400 truncate ${compactViewport ? 'text-[11px] leading-tight' : 'text-[11px] leading-tight'}`}>{song.singerName}</div>
+                        {!selectedExpanded && playbackSelection.showSource ? (
+                            <div className="mt-1">
+                                <ContentSourceBadge
+                                    source={playbackSelection.source}
+                                    label={playbackSelection.label}
+                                    title={playbackSelection.detail}
+                                    compact
+                                />
+                            </div>
+                        ) : null}
                         {selectedExpanded ? (
                         <div className={`mt-1 flex flex-wrap gap-1 text-[10px] uppercase ${compactViewport ? 'tracking-[0.12em]' : 'tracking-[0.14em]'}`}>
                             {selfServeState?.badgeLabel ? (
@@ -265,19 +283,24 @@ const QueueSongCard = ({
                                     {selfServeState.badgeLabel}
                                 </span>
                             ) : null}
-                            {queueUsesAppleBacking ? (
-                                <span className={statusPill}><i className="fa-brands fa-apple mr-1"></i>Apple</span>
-                            ) : queueMediaUrl ? (
-                                <span className={statusPill}>
-                                    <i className={`fa-solid ${queueUsesExternalWindow ? 'fa-up-right-from-square' : (queueIsYouTube ? 'fa-video' : 'fa-file-audio')} mr-1`}></i>
-                                    {queueIsYouTube ? 'YouTube' : 'Custom'}
+                            {playbackSelection.showSource ? (
+                                <ContentSourceBadge
+                                    source={playbackSelection.source}
+                                    label={playbackSelection.label}
+                                    title={playbackSelection.detail}
+                                    compact
+                                />
+                            ) : needsTrackReview ? (
+                                <span className={`${statusPill} border-amber-300/35 bg-amber-500/10 text-amber-100`}>
+                                    <i className="fa-solid fa-layer-group mr-1"></i>
+                                    Song only · host picks version
                                 </span>
-                            ) : (
-                                <span className={`${statusPill}${queuePlaybackReady ? '' : ' border-amber-300/45 text-amber-100 bg-amber-500/10'}`}>
-                                    <i className={`fa-solid ${queuePlaybackReady ? 'fa-file-audio' : 'fa-triangle-exclamation'} mr-1`}></i>
-                                    {queuePlaybackReady ? 'No Track' : 'Backing'}
+                            ) : !queuePlaybackReady ? (
+                                <span className={`${statusPill} border-amber-300/45 text-amber-100 bg-amber-500/10`}>
+                                    <i className="fa-solid fa-triangle-exclamation mr-1"></i>
+                                    Needs backing
                                 </span>
-                            )}
+                            ) : null}
                             {queueUsesExternalWindow ? (
                                 <span className={`${statusPill} border-orange-300/40 text-orange-100 bg-orange-500/10`}>
                                     <i className="fa-solid fa-window-restore mr-1"></i>

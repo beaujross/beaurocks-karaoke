@@ -12,6 +12,7 @@ const ACTIVITY_KIND = Object.freeze({
 
 const LEDGER_LABELS = Object.freeze({
   vip_account_upgrade: 'VIP account reward',
+  community_social_boost_v1: 'Community Boost',
   join_grant: 'Room welcome reward',
   ticket_value: 'Event access reward',
   timed_refill: 'Lobby reward',

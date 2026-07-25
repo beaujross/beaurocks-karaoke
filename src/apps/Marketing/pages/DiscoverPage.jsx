@@ -7,6 +7,7 @@ import { trackEvent } from "../lib/marketingAnalytics";
 import EmptyStatePanel from "./EmptyStatePanel";
 import DiscoverListingCard from "./DiscoverListingCard";
 import PublicChartsTeaser from "./PublicChartsTeaser";
+import DirectoryOwnerPathway from "./DirectoryOwnerPathway";
 import { createDiscoverViewState, reduceDiscoverViewState } from "./discoverViewState";
 import { countJoinableRoomListings, isJoinableRoomListing } from "./discoverFilters";
 import {
@@ -1926,7 +1927,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
               className="mk3-rebuild-button is-secondary"
               onClick={() => {
                 trackEvent("mk_discover_list_night_click", { source: "discover_hero" });
-                navigate("for_venues");
+                navigate("submit", "", { intent: "listing_submit", targetType: "event" });
               }}
             >
               List Your Karaoke Night
@@ -1967,6 +1968,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
       </section>
 
       <PublicChartsTeaser navigate={navigate} />
+
+      <DirectoryOwnerPathway navigate={navigate} source="discover" />
 
       {!!discoverHeroListings.length && (
         <section className="mk3-discover-live-rail mk3-zone">

@@ -16,6 +16,7 @@ import { normalizeComparableMarketingUrl } from "./marketingCanonicalization";
 import { formatDateTime, MARKETING_BRAND_NEON_URL } from "./pages/shared";
 import { buildSurfaceUrl, inferSurfaceFromHostname } from "../../lib/surfaceDomains";
 import { getMarketingNavModel } from "./iaModel";
+import { OFFICIAL_BEAUROCKS_SOCIAL_LINKS } from "../../lib/officialSocialLinks";
 import "./marketing.css";
 
 const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
@@ -1404,6 +1405,19 @@ const MarketingSite = () => {
                 >
                   Join
                 </a>
+                {OFFICIAL_BEAUROCKS_SOCIAL_LINKS.map((social) => (
+                  <a
+                    key={social.id}
+                    href={social.url}
+                    target="_blank"
+                    rel="me noreferrer"
+                    aria-label={`BeauRocks Karaoke on ${social.label}`}
+                    onClick={() => trackEvent("mk_social_outbound_click", { network: social.id, surface: "footer" })}
+                  >
+                    <i className={social.iconClass} aria-hidden="true"></i>
+                    <span>{social.label}</span>
+                  </a>
+                ))}
               </div>
               <div className="mk3-site-footer-actions">
                 <button

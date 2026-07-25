@@ -1,6 +1,6 @@
 import React from 'react';
 
-const OVERLAY_BG = 'radial-gradient(circle at 12% 6%, rgba(0,196,217,0.26), transparent 32%), radial-gradient(circle at 90% 10%, rgba(236,72,153,0.22), transparent 34%), linear-gradient(180deg, #06070d 0%, #090b14 45%, #05060c 100%)';
+const OVERLAY_BG = 'radial-gradient(circle at 10% 4%, rgba(34,211,238,0.42), transparent 34%), radial-gradient(circle at 92% 8%, rgba(244,114,182,0.38), transparent 38%), linear-gradient(145deg, #13243c 0%, #18233e 48%, #351d3d 100%)';
 
 const MissionSetupShell = ({
     header = null,
@@ -9,14 +9,14 @@ const MissionSetupShell = ({
     footer = null
 }) => (
     <div className="fixed inset-0 z-[240] overflow-y-auto overscroll-y-contain p-2 pt-[calc(env(safe-area-inset-top)+0.35rem)] pb-[calc(env(safe-area-inset-bottom)+6rem)] md:p-3" style={{ background: OVERLAY_BG }}>
-        <div className="mx-auto flex min-h-full w-full max-w-7xl items-start pb-24">
-            <div className="w-full overflow-hidden rounded-3xl border border-white/15 bg-zinc-950/94 shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
+        <div className="mx-auto flex min-h-full w-full max-w-6xl items-start pb-24">
+            <div className="w-full overflow-hidden rounded-[1.75rem] border border-cyan-200/35 bg-[radial-gradient(circle_at_8%_8%,rgba(34,211,238,0.18),transparent_29%),radial-gradient(circle_at_92%_10%,rgba(244,114,182,0.16),transparent_30%),linear-gradient(145deg,rgba(25,43,70,0.98),rgba(52,29,62,0.98))] shadow-[0_32px_90px_rgba(8,15,34,0.48),inset_0_1px_0_rgba(207,250,254,0.08)]">
                 {header}
-                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.25fr)_minmax(280px,0.75fr)]">
-                    <div className="space-y-3 px-3 py-3 md:px-4 md:py-4">
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.72fr)_minmax(300px,0.72fr)]">
+                    <div className="space-y-3 px-3 py-3 md:px-5 md:py-5">
                         {primaryContent}
                     </div>
-                    <aside className="border-t border-white/10 bg-zinc-950/75 px-3 py-3 md:px-4 md:py-4 xl:border-l xl:border-t-0">
+                    <aside className="border-t border-cyan-100/15 bg-cyan-950/14 px-3 py-3 md:px-4 md:py-5 xl:border-l xl:border-t-0">
                         {sideContent}
                     </aside>
                 </div>
