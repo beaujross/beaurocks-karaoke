@@ -6089,7 +6089,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             normalizeHostAudioLibraryCategory(item?.audioLibraryCategory || item?.libraryCategory) === 'bg'
         ))
     ), [roomAudioLibraryItems]);
-    const roomBgTrackOptions = useMemo(() => buildRoomBgTrackOptions(bgLibraryItems), [bgLibraryItems]);
+    const roomBgTrackOptions = useMemo(() => buildRoomBgTrackOptions(bgLibraryItems, {
+        excludedTrackIds: room?.bgLoopExcludedTrackIds,
+    }), [bgLibraryItems, room?.bgLoopExcludedTrackIds]);
     const autoBgTrackOptions = useMemo(() => (
         roomBgTrackOptions.filter((track) => track?.autoEligible !== false)
     ), [roomBgTrackOptions]);
@@ -6510,11 +6512,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [activeRoomEventProfile?.basePresetId, hostNightPresetList]);
     const [audiencePreviewVisible, setAudiencePreviewVisible] = useState(() => {
         try {
-            if (typeof window === 'undefined') return true;
-            const saved = localStorage.getItem('bross_host_audience_preview_visible');
-            return saved === null ? true : saved === '1';
+            if (typeof window === 'undefined') return false;
+            return localStorage.getItem('bross_host_audience_preview_visible_v2') === '1';
         } catch {
-            return true;
+            return false;
         }
     });
     useEffect(() => {
@@ -11560,7 +11561,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [room?.marqueeEnabled, room?.marqueeDurationMs, room?.marqueeIntervalMs, room?.marqueeItems, room?.marqueeShowMode, room]);
     useEffect(() => {
         try {
-            localStorage.setItem('bross_host_audience_preview_visible', audiencePreviewVisible ? '1' : '0');
+            localStorage.setItem('bross_host_audience_preview_visible_v2', audiencePreviewVisible ? '1' : '0');
             localStorage.setItem('bross_host_audience_preview_collapsed', audiencePreviewCollapsed ? '1' : '0');
             localStorage.setItem(
                 'bross_host_audience_preview_mode',
@@ -18993,7 +18994,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const browsePanel = (
-                    <div className="flex flex-col h-full min-h-0 gap-6 pr-2 custom-scrollbar touch-scroll-y">
+                    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-y-contain pb-8 pr-2 custom-scrollbar touch-scroll-y">
                         {!catalogueOnly ? (
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div>
@@ -20540,6 +20541,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 runLandingRoomPermanentDelete={runLandingRoomPermanentDelete}
                 audienceBase={audienceBase}
                 canPermanentlyDeleteRooms={canPermanentlyDeleteRooms}
+                activeRoomCode={roomCode}
             />
             </React.Suspense>
             {showOnboardingWizard && (

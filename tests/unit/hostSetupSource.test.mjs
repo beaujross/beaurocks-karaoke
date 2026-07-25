@@ -771,7 +771,7 @@ test('room setup exposes host-led assisted-host and crowd-driven launch decision
   assert.match(hostAppSource, /ROOM_CONTROL_MODEL_OPTIONS = Object\.freeze\(\[[\s\S]*Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
   assert.match(hostAppSource, /data-room-setup-control-model/);
   assert.match(hostAppSource, /Decide who drives the room before launch/);
-  assert.match(hostAppSource, /Host-Led protects full songs[\s\S]*Crowd-Driven enables One-Minute Mic and Auto-DJ/);
+  assert.match(hostAppSource, /Host-Led protects full songs[\s\S]*Crowd-Driven enables Mic Checkpoint and Auto-DJ/);
   assert.match(hostAppSource, /currentRoomControlModelId = room\?\.oneMinuteMicEnabled === true[\s\S]*'crowd_driven'[\s\S]*autoDj[\s\S]*'assisted_host'[\s\S]*'host_led'/);
   assert.match(hostAppSource, /onClick=\{\(\) => \{ void applyRoomControlModelQuick\(option\.id\); \}\}/);
   assert.match(hostAppSource, /safeModel === 'crowd_driven'[\s\S]*nextAutoDj = safeModel !== 'host_led'/);

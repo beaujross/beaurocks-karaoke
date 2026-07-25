@@ -288,6 +288,7 @@ const HostRoomLaunchPadBrowser = ({
     launchState,
     launchStateTone,
     launchAccessPending,
+    activeRoomCode = '',
     launchDraftOwnerKey,
     roomCodeInput,
     setRoomCodeInput,
@@ -650,6 +651,16 @@ const HostRoomLaunchPadBrowser = ({
                 <span className={`rounded-full border px-2 py-1 text-[9px] uppercase tracking-[0.14em] ${launchAccessPending ? 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100' : 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100'}`}>
                     {launchAccessPending ? 'Syncing' : 'Ready'}
                 </span>
+                {activeRoomCode ? (
+                    <button
+                        type="button"
+                        onClick={() => openExistingRoomWorkspace(activeRoomCode, 'queue.live_run')}
+                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] uppercase tracking-[0.14em]`}
+                    >
+                        <i className="fa-solid fa-arrow-left" />
+                        Back to Live Room
+                    </button>
+                ) : null}
             </header>
             <div className="mt-2 space-y-3">
 
@@ -1236,12 +1247,12 @@ const HostRoomLaunchPadBrowser = ({
                                         })}
                                     </div>
                                 </div>
-                                <button type="button" data-host-create-room-primary="true" aria-busy={creatingRoom} onClick={() => handleStartLauncherRoom({ openNightSetup: true, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`group/launch mt-5 flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(100deg,#db2777_0%,#ec4899_35%,#14b8a6_78%,#22d3ee_100%)] px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_14px_34px_rgba(236,72,153,0.18),0_0_28px_rgba(34,211,238,0.1)] transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(236,72,153,0.24),0_0_34px_rgba(34,211,238,0.16)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:brightness-100 ${roomLaunchDisabled ? 'cursor-not-allowed opacity-45' : ''}`}>
+                                <button type="button" data-host-create-room-primary="true" aria-busy={creatingRoom} onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`group/launch mt-5 flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(100deg,#db2777_0%,#ec4899_35%,#14b8a6_78%,#22d3ee_100%)] px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_14px_34px_rgba(236,72,153,0.18),0_0_28px_rgba(34,211,238,0.1)] transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(236,72,153,0.24),0_0_34px_rgba(34,211,238,0.16)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:brightness-100 ${roomLaunchDisabled ? 'cursor-not-allowed opacity-45' : ''}`}>
                                     {creatingRoom ? <i className="fa-solid fa-circle-notch animate-spin" /> : <i className="fa-solid fa-wand-magic-sparkles" />}
-                                    <span>{creatingRoom ? 'Creating room...' : 'Continue to Room Readiness'}</span>
+                                    <span>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</span>
                                     {!creatingRoom ? <i className="fa-solid fa-arrow-right text-[10px] transition-transform group-hover/launch:translate-x-1" /> : null}
                                 </button>
-                                <div className="mt-3 flex items-center justify-center gap-2 text-center text-[11px] text-cyan-100/42"><i className="fa-solid fa-shield-check text-[9px]" /> Review Tonight Setup, then Launch Room to open Public TV and copy the Audience App link.</div>
+                                <div className="mt-3 flex items-center justify-center gap-2 text-center text-[11px] text-cyan-100/42"><i className="fa-solid fa-shield-check text-[9px]" /> Your recipe and media guardrails apply immediately. Fine-tune them later from Room Settings.</div>
                             </div>
                         </div>
 

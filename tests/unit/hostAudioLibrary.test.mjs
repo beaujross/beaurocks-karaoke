@@ -77,3 +77,18 @@ test('custom background tracks are appended after built-ins with stable metadata
   assert.equal(roomTracks.at(-1)?.id, 'upload_room_upload_123');
   assert.equal(roomTracks.at(-1)?.url, 'https://example.com/cash-cannon.mp3');
 });
+
+test('room background rotation can exclude built-in or uploaded tracks without deleting them', () => {
+  const upload = {
+    id: 'room_upload_456',
+    title: 'Walk-In Loop',
+    url: 'https://example.com/walk-in.mp3',
+    audioLibraryCategory: 'bg',
+  };
+  const uploadTrackId = buildHostAudioUploadTrackId(upload);
+  const excludedTrackIds = [BG_TRACK_OPTIONS[0].id, uploadTrackId];
+  const roomTracks = buildRoomBgTrackOptions([upload], { excludedTrackIds });
+
+  assert.equal(roomTracks.some((track) => excludedTrackIds.includes(track.id)), false);
+  assert.equal(roomTracks.length, BG_TRACK_OPTIONS.length - 1);
+});

@@ -147,9 +147,9 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /data-launch-room-privacy="true"/);
   assert.match(source, /data-launch-media-readiness="true"/);
   assert.match(source, /Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
-  assert.match(source, /openNightSetup: true/);
-  assert.match(source, /Continue to Room Readiness/);
-  assert.match(source, /Launch Room to open Public TV and copy the Audience App link/);
+  assert.match(source, /openNightSetup: false, launchTarget: 'stage'/);
+  assert.match(source, /Create \+ Open Host Panel/);
+  assert.match(source, /Your recipe and media guardrails apply immediately/);
   assert.match(source, /Custom room code/);
   assert.match(source, /data-launch-configuration-contract="true"/);
   assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Party Karaoke[\s\S]*Crowd Sing-Along[\s\S]*Score Challenge[\s\S]*Karaoke \+ Trivia/);

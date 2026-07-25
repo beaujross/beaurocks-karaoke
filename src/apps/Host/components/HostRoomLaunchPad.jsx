@@ -551,6 +551,7 @@ const HostRoomLaunchPad = ({
     runLandingRoomPermanentDelete,
     audienceBase = '',
     canPermanentlyDeleteRooms = false,
+    activeRoomCode = '',
 }) => {
     const [browserNowMs, setBrowserNowMs] = useState(() => Date.now());
     const [pinnedRoomCodes, setPinnedRoomCodes] = useState(() => {
@@ -784,6 +785,7 @@ const HostRoomLaunchPad = ({
             entryError={entryError}
             retryLastHostAction={retryLastHostAction}
             hostUpdateDeploymentBanner={hostUpdateDeploymentBanner}
+            activeRoomCode={activeRoomCode}
         />
     );
 

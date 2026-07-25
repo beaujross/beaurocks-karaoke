@@ -4348,7 +4348,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </div>
     );
     const catalogWorkspaceSection = (
-        <div data-feature-id="panel-catalog" className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-4 ${activeQueueWorkspaceToneKey === 'catalog' ? 'bg-violet-500/[0.03]' : ''}`}>
+        <div data-feature-id="panel-catalog" className={`flex flex-1 min-h-0 flex-col overflow-hidden px-4 py-4 ${activeQueueWorkspaceToneKey === 'catalog' ? 'bg-violet-500/[0.03]' : ''}`}>
             {catalogPanel || (
                 <div className="rounded-2xl border border-dashed border-violet-300/20 bg-black/20 px-4 py-5 text-sm text-zinc-400">
                     Catalog is not available in this host session yet.
@@ -4595,6 +4595,72 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 {backgroundAudioState.actionLabel}
             </button> : null}
         </div>
+    );
+    const bgLoopExcludedTrackIdSet = new Set(
+        (Array.isArray(room?.bgLoopExcludedTrackIds) ? room.bgLoopExcludedTrackIds : [])
+            .map((trackId) => String(trackId || '').trim().toLowerCase())
+            .filter(Boolean)
+    );
+    const toggleBuiltInBgLoopTrack = async (trackId = '') => {
+        const safeTrackId = String(trackId || '').trim().toLowerCase();
+        if (!safeTrackId) return;
+        const nextExcludedIds = new Set(bgLoopExcludedTrackIdSet);
+        if (nextExcludedIds.has(safeTrackId)) nextExcludedIds.delete(safeTrackId);
+        else nextExcludedIds.add(safeTrackId);
+        await updateRoom?.({ bgLoopExcludedTrackIds: Array.from(nextExcludedIds) });
+    };
+    const backgroundLoopManagerCard = (
+        <section data-feature-id="host-background-loop-manager" className="rounded-[24px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.1),transparent_34%),linear-gradient(145deg,rgba(17,29,48,0.96),rgba(34,25,51,0.94))] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">Background Loop</div>
+                    <div className="mt-1 text-lg font-black text-white">Choose what can play between performances</div>
+                    <div className="mt-1 max-w-2xl text-xs leading-5 text-zinc-300">Checked sources stay available to Auto BG. Turning a track off removes it from rotation without deleting it.</div>
+                </div>
+                <button
+                    type="button"
+                    aria-pressed={autoBgMusic}
+                    onClick={async () => {
+                        const next = !autoBgMusic;
+                        setAutoBgMusic?.(next);
+                        await updateRoom?.({ autoBgMusic: next });
+                        await setBgMusicState?.(next);
+                    }}
+                    className={`${STYLES.btnStd} ${autoBgMusic ? STYLES.btnHighlight : STYLES.btnNeutral} px-3 py-2 text-[10px]`}
+                >
+                    <i className={`fa-solid ${autoBgMusic ? 'fa-rotate' : 'fa-pause'}`}></i>
+                    Auto BG {autoBgMusic ? 'On' : 'Off'}
+                </button>
+            </div>
+            <div className="mt-4">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/80">Included with BeauRocks</div>
+                    <div className="text-[10px] text-zinc-400">{BG_TRACK_OPTIONS.length - bgLoopExcludedTrackIdSet.size} of {BG_TRACK_OPTIONS.length} in rotation</div>
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {BG_TRACK_OPTIONS.map((track) => {
+                        const included = !bgLoopExcludedTrackIdSet.has(track.id);
+                        return (
+                            <button
+                                key={`bg-loop-${track.id}`}
+                                type="button"
+                                aria-pressed={included}
+                                onClick={() => void toggleBuiltInBgLoopTrack(track.id)}
+                                className={`flex min-h-[52px] items-center gap-3 rounded-xl border px-3 py-2 text-left transition ${included ? 'border-emerald-300/28 bg-emerald-500/10 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}
+                            >
+                                <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border ${included ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-500'}`}><i className={`fa-solid ${included ? 'fa-check' : 'fa-plus'} text-[10px]`}></i></span>
+                                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-black">{track.name}</span><span className="block text-[10px] uppercase tracking-[0.14em] opacity-65">{included ? 'In loop' : 'Not in loop'}</span></span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                <div className="rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-100">Your uploads</div><div className="mt-1 text-sm font-black text-white">{(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg' && item?.bgAutoEligible !== false).length} checked</div><div className="mt-1 text-[11px] text-zinc-400">Use each track&apos;s checkbox below.</div></div>
+                <button type="button" onClick={() => setMediaLibraryTab('apple')} className="rounded-xl border border-rose-300/18 bg-rose-500/8 px-3 py-3 text-left"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-100">Apple Music</div><div className="mt-1 truncate text-sm font-black text-white">{appleMusicAutoPlaylistTitle || (appleMusicAuthorized ? 'Choose a playlist' : 'Connect account')}</div><div className="mt-1 text-[11px] text-zinc-400">Use one playlist as the background source.</div></button>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">Spotify</div><div className="mt-1 text-sm font-black text-zinc-300">Provider not connected</div><div className="mt-1 text-[11px] text-zinc-500">Playlist controls appear here when integration is available.</div></div>
+            </div>
+        </section>
     );
     const appleMusicMediaLibrarySection = (
         <div data-feature-id="host-media-library-apple-music" className="grid gap-4">
@@ -5186,6 +5252,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 ) : (
                     <div className="grid gap-4">
                         {mediaLibraryTab === 'bg' ? backgroundAudioStatusCard : null}
+                        {mediaLibraryTab === 'bg' ? backgroundLoopManagerCard : null}
                         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                             <div className="rounded-[24px] border border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-5">
                                 <div className="flex flex-wrap items-start justify-between gap-3">

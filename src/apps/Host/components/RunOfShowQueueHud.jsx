@@ -388,7 +388,7 @@ export default function RunOfShowQueueHud({
                         onClick={() => setDetailsOpen((value) => !value)}
                         className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
                     >
-                        {detailsOpen ? 'Hide Details' : 'Show Details'}
+                        {detailsOpen ? 'Hide Actions' : 'Manage Plan'}
                     </button>
                     {enabled && typeof onRewind === 'function' ? (
                         <button
@@ -427,7 +427,7 @@ export default function RunOfShowQueueHud({
                 </div>
             </div>
 
-            {detailsOpen ? (
+            {horizonItems.length ? (
                 <div className="mt-3 grid gap-2 xl:grid-cols-3">
                     {renderSlotCard(
                         nowItem,

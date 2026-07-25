@@ -1332,8 +1332,11 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
-                {showTimeClockEnabled && !minimalRuntimeChrome && (
-                    <div className={`ml-1 flex ${denseChrome ? 'min-w-[136px]' : 'min-w-[152px]'} items-center gap-1.5 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] px-2.5 py-1`}>
+                {!minimalRuntimeChrome && (
+                    <div
+                        aria-hidden={!showTimeClockEnabled ? 'true' : undefined}
+                        className={`ml-1 flex ${denseChrome ? 'min-w-[136px]' : 'min-w-[152px]'} items-center gap-1.5 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] px-2.5 py-1 ${showTimeClockEnabled ? '' : 'invisible pointer-events-none'}`}
+                    >
                         <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
                             <i className="fa-solid fa-clock"></i>
                         </div>
@@ -3094,8 +3097,8 @@ const HostTopChrome = ({
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-mobile-screen-button"></i>
                                         <span className="flex flex-col">
-                                            <span>Audience App Preview</span>
-                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Persistent host-side phone view</span>
+                                            <span>Audience Preview</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Show only when you need the phone view</span>
                                         </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{audiencePreviewVisible ? 'On' : 'Off'}</span>

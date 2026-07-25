@@ -162,7 +162,7 @@ test('RunOfShowDirectorPanel renders the planner scene library with shown-tonigh
   assert.match(markup, /Capture Live Room/);
 });
 
-test('RunOfShowQueueHud stays collapsed by default and keeps the summary visible with sparse plan data', async () => {
+test('RunOfShowQueueHud keeps its next moments visible while detailed actions stay collapsed', async () => {
   const markup = await renderQueueHudMarkup({
     director: {
       items: [
@@ -178,9 +178,11 @@ test('RunOfShowQueueHud stays collapsed by default and keeps the summary visible
     },
   });
 
-  assert.match(markup, /Show Details/);
+  assert.match(markup, /Manage Plan/);
   assert.match(markup, /Now: Sponsor Break/);
-  assert.doesNotMatch(markup, /Hide Details/);
+  assert.match(markup, /Sponsor Break/);
+  assert.match(markup, /Keep one more ready|Nothing set/);
+  assert.doesNotMatch(markup, /Hide Actions/);
   assert.doesNotMatch(markup, /Full List/);
 });
 
@@ -218,7 +220,7 @@ test('RunOfShowQueueHud can render the expanded detail state without crashing wh
     },
   });
 
-  assert.match(markup, /Hide Details/);
+  assert.match(markup, /Hide Actions/);
   assert.match(markup, /Full List/);
   assert.match(markup, /Sponsor Break/);
   assert.match(markup, /Keep one more ready|Nothing set/);

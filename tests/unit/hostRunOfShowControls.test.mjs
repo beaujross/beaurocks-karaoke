@@ -146,7 +146,7 @@ test("Host chrome keeps launch utilities but strips dead runtime redirects", () 
   assert.doesNotMatch(chromeSource, /roomReadinessLaunchBusy \? 'Launching\.\.\.' : 'Launch'/);
   assert.match(chromeSource, /data-feature-id="deck-automation-menu-toggle"/);
   assert.match(chromeSource, /Automation/);
-  assert.match(hostSource, /btnInfo: "bg-\[#00C4D9\]\/12 text-cyan-100 border-cyan-400\/30/);
+  assert.match(hostSource, /btnInfo: "bg-\[#00C4D9\]\/22 text-cyan-50 border-cyan-300\/45/);
   assert.match(hostSource, /btnSuccess: "bg-emerald-500\/14 text-emerald-100 border-emerald-400\/35/);
   assert.match(chromeSource, /missionRecommendation\?\.id !== 'crowd_check'/);
 });
@@ -299,8 +299,8 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
   assert.match(queueHudSource, /const \[previewItemId, setPreviewItemId\] = React\.useState\(''\)/);
   assert.match(queueHudSource, /const renderSlotCard = \(item = null, fallbackLabel = '', fallbackSummary = ''\) => \(/);
   assert.match(queueHudSource, /Actions/);
-  assert.match(queueHudSource, /Hide Details/);
-  assert.match(queueHudSource, /Show Details/);
+  assert.match(queueHudSource, /Hide Actions/);
+  assert.match(queueHudSource, /Manage Plan/);
   assert.match(queueHudSource, /Next 3 set/);
   assert.match(queueHudSource, /horizonSummary/);
   assert.doesNotMatch(queueHudSource, /Moment Plan|Order can flex\./);

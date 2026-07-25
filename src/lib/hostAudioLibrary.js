@@ -87,11 +87,18 @@ export const buildCustomBgTrackOption = (item = {}, index = 0) => {
     };
 };
 
-export const buildRoomBgTrackOptions = (items = []) => {
+export const buildRoomBgTrackOptions = (items = [], options = {}) => {
+    const excludedTrackIds = new Set(
+        (Array.isArray(options?.excludedTrackIds) ? options.excludedTrackIds : [])
+            .map((trackId) => String(trackId || '').trim().toLowerCase())
+            .filter(Boolean)
+    );
     const customTracks = (Array.isArray(items) ? items : [])
         .map((item, index) => buildCustomBgTrackOption(item, index))
         .filter(Boolean);
-    return [...BG_TRACK_OPTIONS, ...customTracks];
+    return [...BG_TRACK_OPTIONS, ...customTracks].filter((track) => (
+        !excludedTrackIds.has(String(track?.id || '').trim().toLowerCase())
+    ));
 };
 
 export const isHostAudioUploadActive = ({ item = {}, track = {}, playback = {} } = {}) => {
