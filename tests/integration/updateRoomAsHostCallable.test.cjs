@@ -88,6 +88,47 @@ async function run() {
       assert.equal((await roomRef.get()).get("autoDj"), true);
     }],
 
+    ["host can update live stage camera presentation", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        liveStageCameraMode: "corner",
+        liveStageCameraCorner: "bottom_right",
+        liveStageCameraMirror: false,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, [
+        "liveStageCameraMode",
+        "liveStageCameraCorner",
+        "liveStageCameraMirror",
+      ]);
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("liveStageCameraMode"), "corner");
+      assert.equal(snap.get("liveStageCameraCorner"), "bottom_right");
+      assert.equal(snap.get("liveStageCameraMirror"), false);
+    }],
+
+    ["invalid live stage camera values are rejected", async () => {
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          liveStageCameraMode: "cinematic",
+        })),
+        "invalid-argument"
+      );
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          liveStageCameraCorner: "center",
+        })),
+        "invalid-argument"
+      );
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          liveStageCameraMirror: "yes",
+        })),
+        "invalid-argument"
+      );
+    }],
+
     ["host can require, rotate, and remove a guest passcode without exposing it on the room", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         audienceJoinPolicy: { accessMode: "passcode_required" },

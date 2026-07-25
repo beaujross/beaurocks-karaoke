@@ -2963,6 +2963,18 @@ const ROOM_UPDATE_BLOCKED_ROOT_KEYS = new Set([
   "prototype",
   "constructor",
 ]);
+const LIVE_STAGE_CAMERA_MODE_VALUES = new Set([
+  "off",
+  "full",
+  "corner",
+]);
+const LIVE_STAGE_CAMERA_CORNER_VALUES = new Set([
+  "auto",
+  "top_left",
+  "top_right",
+  "bottom_left",
+  "bottom_right",
+]);
 const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   'audienceJoinPasscode',
   "activeMode",
@@ -3076,6 +3088,9 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "karaokeBracket",
   "lastPerformance",
   "layoutMode",
+  "liveStageCameraCorner",
+  "liveStageCameraMirror",
+  "liveStageCameraMode",
   "lightMode",
   "lobbyOrbSkinUrl",
   "lobbyPlaygroundMaxPerMinute",
@@ -3193,6 +3208,7 @@ const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "hideLogo",
   "hideOverlay",
   "hideWaveform",
+  "liveStageCameraMirror",
   "lobbyPlaygroundPaused",
   "lobbyPlaygroundStrictMode",
   "lobbyPlaygroundVisualOnly",
@@ -3295,6 +3311,8 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "hostNightPreset",
   "layoutMode",
   "lightMode",
+  "liveStageCameraCorner",
+  "liveStageCameraMode",
   "lobbyOrbSkinUrl",
   "logoUrl",
   "lyricsMode",
@@ -3573,6 +3591,19 @@ const validateHostRoomUpdateType = (key, value) => {
   }
   if (HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS.has(key) && !(value === null || isPlainObject(value))) {
     throw new HttpsError("invalid-argument", `Room field "${key}" must be an object or null.`);
+  }
+
+  if (key === "liveStageCameraMode" && !LIVE_STAGE_CAMERA_MODE_VALUES.has(value)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Room field \"liveStageCameraMode\" must be off, full, or corner.",
+    );
+  }
+  if (key === "liveStageCameraCorner" && !LIVE_STAGE_CAMERA_CORNER_VALUES.has(value)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Room field \"liveStageCameraCorner\" has an unsupported corner.",
+    );
   }
 
   if (key === "backgroundAudioPlayback" && value !== null) {
