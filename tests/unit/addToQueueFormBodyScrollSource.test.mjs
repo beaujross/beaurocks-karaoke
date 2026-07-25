@@ -15,13 +15,13 @@ test('AddToQueueFormBody keeps YouTube/autocomplete results inside a dedicated s
 
   assert.match(
     source,
-    /host-autocomplete-results-list min-h-0 flex-1 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar px-2 py-2/,
+    /host-autocomplete-results-list min-h-0 flex-1 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar px-2 py-2 \$\{compactRows \? 'grid content-start gap-1 xl:grid-cols-2' : ''\}/,
     'Autocomplete results should be their own compact touch-friendly scroll surface',
   );
   assert.match(
     source,
-    /host-autocomplete-shell relative z-30 w-full min-w-0 \$\{dockResults \? 'flex min-h-0 flex-1 flex-col' : ''\}/,
-    'Autocomplete shell should fill the available add-song workspace instead of inheriting a narrow field width',
+    /host-autocomplete-shell relative z-30 w-full min-w-0 \$\{dockResults \? 'flex min-h-0 shrink-0 flex-col' : ''\}/,
+    'Autocomplete controls should keep their natural height instead of splitting the workspace with the results',
   );
   assert.match(
     source,
@@ -35,7 +35,7 @@ test('AddToQueueFormBody keeps YouTube/autocomplete results inside a dedicated s
   );
   assert.match(
     source,
-    /mt-2 flex min-h-\[16rem\] flex-1 basis-0 flex-col overflow-hidden/,
+    /mt-2 flex min-h-0 flex-1 basis-0 flex-col overflow-hidden/,
     'Docked add-tab results should fill the available add workspace and keep an internal scroll lane',
   );
   assert.match(
@@ -63,8 +63,9 @@ test('AddToQueueFormBody autocomplete rows stay dense and metadata-forward', () 
   assert.match(source, /const getResultDurationSec = \(result = \{\}\) => \{/);
   assert.match(source, /const durationLabel = formatResultDuration\(getResultDurationSec\(r\)\);/);
   assert.match(source, /grid-cols-\[48px_minmax\(0,1fr\)\]/);
-  assert.match(source, /compactRows \? 'mb-1 rounded-lg px-2 py-1\.5'/);
+  assert.match(source, /compactRows \? 'rounded-lg px-2 py-1\.5'/);
   assert.match(source, /compactRows \? 'h-12'/);
+  assert.match(source, /compactRows \? 'grid content-start gap-1 xl:grid-cols-2'/);
   assert.match(source, /max-h-\[18px\] flex-nowrap gap-1 overflow-hidden/);
   assert.match(source, /line-clamp-1 font-black/);
   assert.match(source, /durationLabel \? \([\s\S]*\{durationLabel\}/);
@@ -97,7 +98,7 @@ test('host add workspace owns the available panel height beneath the persistent 
   assert.match(hostQueueSource, /dockResults=\{addToQueueWorkspaceActive\}/);
   assert.match(
     hostQueueSource,
-    /addToQueueWorkspaceActive \? 'flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3'/,
+    /addToQueueWorkspaceActive \? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3'/,
   );
   assert.match(
     hostQueueSource,

@@ -52,7 +52,7 @@ const ResultList = ({
                 {results.length > 0 ? `${results.length} match${results.length === 1 ? '' : 'es'}` : 'No matches'}
             </div>
         </div>
-        <div className="host-autocomplete-results-list min-h-0 flex-1 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar px-2 py-2">
+        <div className={`host-autocomplete-results-list min-h-0 flex-1 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar px-2 py-2 ${compactRows ? 'grid content-start gap-1 xl:grid-cols-2' : ''}`}>
             {results.length > 0 ? results.map((r, idx) => {
                 const rowKey = getResultRowKey(r, idx);
                 const isAdding = quickAddLoadingKey === rowKey;
@@ -94,7 +94,7 @@ const ResultList = ({
                                 activateResult();
                             }
                         }}
-                        className={`host-autocomplete-result-row group ${compactRows ? 'mb-1 rounded-lg px-2 py-1.5' : 'mb-2 rounded-[1.15rem] p-2.5'} ${isAdding ? 'cursor-wait opacity-70' : 'cursor-pointer'} border border-white/10 bg-[linear-gradient(180deg,rgba(25,16,44,0.98),rgba(16,10,34,0.95))] shadow-[0_10px_24px_rgba(0,0,0,0.2)] transition hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(35,22,58,0.98),rgba(18,12,38,0.98))] focus-visible:border-cyan-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/25`}
+                        className={`host-autocomplete-result-row group ${compactRows ? 'rounded-lg px-2 py-1.5' : 'mb-2 rounded-[1.15rem] p-2.5'} ${isAdding ? 'cursor-wait opacity-70' : 'cursor-pointer'} border border-white/10 bg-[linear-gradient(180deg,rgba(25,16,44,0.98),rgba(16,10,34,0.95))] shadow-[0_10px_24px_rgba(0,0,0,0.2)] transition hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(35,22,58,0.98),rgba(18,12,38,0.98))] focus-visible:border-cyan-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/25`}
                     >
                         <div className={`grid gap-2 ${compactRows ? 'grid-cols-[48px_minmax(0,1fr)]' : 'grid-cols-[64px_minmax(0,1fr)] md:grid-cols-[76px_minmax(0,1fr)]'}`}>
                             <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/40">
@@ -208,7 +208,7 @@ const ResultList = ({
                     </div>
                 );
             }) : (
-                <div className="host-search-helper py-3 text-center text-xs uppercase tracking-widest text-zinc-500">
+                <div className={`host-search-helper py-3 text-center text-xs uppercase tracking-widest text-zinc-500 ${compactRows ? 'col-span-full' : ''}`}>
                     {searchQ.length >= 3 ? (queueSearchNoResultHint || 'No results yet') : 'Type at least 3 characters. Each result has Add to Queue.'}
                 </div>
             )}
@@ -811,7 +811,7 @@ const AddToQueueFormBody = ({
                     </div>
                 </div>
             ) : (
-                <div className={`host-autocomplete-shell relative z-30 w-full min-w-0 ${dockResults ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
+                <div className={`host-autocomplete-shell relative z-30 w-full min-w-0 ${dockResults ? 'flex min-h-0 shrink-0 flex-col' : ''}`}>
                     <div className={`host-autocomplete-field-wrap w-full min-w-0 rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 ${dockResults ? 'sticky top-0 z-20 shrink-0 py-1.5' : 'py-2'}`}>
                         <div className={`grid gap-2 ${dockResults ? 'md:grid-cols-[minmax(0,1fr)_minmax(11rem,0.52fr)_auto]' : 'md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.62fr)]'}`}>
                             <div className="relative">
@@ -1201,7 +1201,7 @@ const AddToQueueFormBody = ({
             ) : null}
 
             {performanceMode && renderResultsInline ? (
-                <div className={`mt-2 flex min-h-[16rem] flex-1 basis-0 flex-col overflow-hidden ${baseResultsCardClass}`}>
+                <div className={`mt-2 flex min-h-0 flex-1 basis-0 flex-col overflow-hidden ${baseResultsCardClass}`}>
                     <ResultList {...performanceResultListProps} compactRows={dockResults} />
                 </div>
             ) : null}

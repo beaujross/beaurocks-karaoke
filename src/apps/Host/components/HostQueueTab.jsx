@@ -4387,7 +4387,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [current?.id, handleEndPerformance, nextQueueSong, updateStatus]);
 
     const addToQueueSection = (
-        <div className={`border-b border-white/10 relative ${addToQueueWorkspaceActive ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3' : 'p-3'} ${addToQueueWorkspaceActive ? 'bg-fuchsia-500/[0.04]' : 'bg-black/20'}`}>
+        <div className={`border-b border-white/10 relative ${addToQueueWorkspaceActive ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3' : 'p-3'} ${addToQueueWorkspaceActive ? 'bg-fuchsia-500/[0.04]' : 'bg-black/20'}`}>
             {!addToQueueWorkspaceActive ? (
                 <SectionHeader
                     label="Build a Moment"
