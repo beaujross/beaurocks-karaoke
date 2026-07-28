@@ -6495,6 +6495,7 @@ const PublicTV = ({ roomCode }) => {
     const {
         bgVisualizerSimulatedLevel,
         shouldUseBgMediaElement,
+        shouldUseStageMediaElement,
         visualizerEnabled,
         visualizerInputMode,
         visualizerResolvedPreset,
@@ -6502,18 +6503,25 @@ const PublicTV = ({ roomCode }) => {
         visualizerSmoothing
     } = useTvVisualizerSettings({
         room,
+        current,
         started,
         bgVisualizerAudioRef,
         logger: tvLogger
     });
-    const [visualizerSourceElement, setVisualizerSourceElement] = useState(null);
+    const [bgVisualizerSourceElement, setBgVisualizerSourceElement] = useState(null);
+    const [stageVisualizerSourceElement, setStageVisualizerSourceElement] = useState(null);
     useEffect(() => {
         if (!shouldUseBgMediaElement) {
-            setVisualizerSourceElement(null);
+            setBgVisualizerSourceElement(null);
             return;
         }
-        setVisualizerSourceElement(bgVisualizerAudioRef.current || null);
+        setBgVisualizerSourceElement(bgVisualizerAudioRef.current || null);
     }, [shouldUseBgMediaElement, started, room?.videoStartTimestamp]);
+    const visualizerSourceElement = shouldUseStageMediaElement
+        ? stageVisualizerSourceElement
+        : shouldUseBgMediaElement
+            ? bgVisualizerSourceElement
+            : null;
     const guitarSessionParticipants = useMemo(
         () => (room?.guitarSessionId
             ? roomUsers
@@ -9260,6 +9268,7 @@ const PublicTV = ({ roomCode }) => {
                                         videoVolume: oneMinuteMicRotateFadeActive ? oneMinuteMicStageVideoVolume : room?.videoVolume
                                     }}
                                     current={current}
+                                    onVisualizerMediaElementChange={setStageVisualizerSourceElement}
                                     started={started}
                                     combo={combo}
                                     minimalUI={isMinimal || lobbyVolleySceneActive || guitarTakeoverMode}

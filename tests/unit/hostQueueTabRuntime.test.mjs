@@ -267,7 +267,7 @@ test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', a
     },
   });
 
-  assert.match(markup, /Planner|Planned Moments Hopper/);
+  assert.match(markup, /Moment Prep|Planned Moments Hopper/);
   assert.match(markup, />3</);
 });
 
@@ -291,13 +291,13 @@ test('HostQueueTab renders one unified desktop content rail with queue add inbox
   });
 
   assert.match(markup, /data-feature-id="queue-surface-tab-add-desktop"/);
-  assert.match(markup, /Add/);
+  assert.match(markup, /Performance Prep/);
   assert.match(markup, /data-feature-id="queue-surface-tab-queue-desktop"/);
   assert.match(markup, /Live Queue/);
   assert.match(markup, /data-feature-id="queue-surface-tab-inbox-desktop"/);
   assert.match(markup, />Inbox</);
   assert.match(markup, /data-feature-id="queue-surface-tab-show-desktop"/);
-  assert.match(markup, /Planner/);
+  assert.match(markup, /Moment Prep/);
   assert.doesNotMatch(markup, /Moment Plan/);
 });
 
@@ -482,7 +482,7 @@ test('HostQueueTab keeps performance creation append-only even when show slots a
     ],
   });
 
-  assert.match(markup, /Build a Moment/);
+  assert.match(markup, /Performance Prep/);
   assert.match(markup, /Add to Queue/);
   assert.doesNotMatch(markup, /Next: #2 Performance Slot/);
   assert.doesNotMatch(markup, /Later target/);

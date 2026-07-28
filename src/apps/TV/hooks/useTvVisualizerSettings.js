@@ -1,4 +1,8 @@
 import { useEffect, useMemo } from 'react';
+import {
+    getTvVisualizerInputMode,
+    resolveTvVisualizerSource,
+} from '../../../lib/tvVisualizerInput';
 
 const LIGHT_PRESET_BY_MODE = Object.freeze({
     banger: 'club',
@@ -8,8 +12,6 @@ const LIGHT_PRESET_BY_MODE = Object.freeze({
     guitar: 'retro',
     volley: 'neon'
 });
-const APPLAUSE_MODES = new Set(['applause_countdown', 'applause', 'applause_result']);
-
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 const parseBounded = (value, fallback, min, max) => {
@@ -24,6 +26,7 @@ const getSilentLogger = () => ({
 
 const useTvVisualizerSettings = ({
     room,
+    current,
     started,
     bgVisualizerAudioRef,
     logger = null
@@ -31,6 +34,8 @@ const useTvVisualizerSettings = ({
     const activeLogger = logger || getSilentLogger();
     const isHostBgMusicActive = !!room?.bgMusicPlaying && !!room?.bgMusicUrl;
     const visualizerSource = room?.visualizerSource || 'auto';
+    const stageMediaUrl = String(current?.mediaUrl || room?.mediaUrl || '').trim();
+    const stageAudioOnly = current?.audioOnly === true;
     const visualizerSensitivity = parseBounded(room?.visualizerSensitivity, 1, 0.5, 2.5);
     const visualizerSmoothing = parseBounded(room?.visualizerSmoothing, 0.35, 0, 0.95);
     const visualizerPreset = room?.visualizerPreset || 'neon';
@@ -43,27 +48,33 @@ const useTvVisualizerSettings = ({
     }, [room?.lightMode, visualizerPreset, visualizerSyncLightMode]);
 
     const visualizerResolvedSource = useMemo(() => {
-        // Applause meter always samples stage mic regardless of user visualizer source choice.
-        if (APPLAUSE_MODES.has(room?.activeMode)) return 'stage_mic';
-        if (visualizerSource !== 'auto') return visualizerSource;
-        return isHostBgMusicActive ? 'host_bg' : 'stage_mic';
-    }, [isHostBgMusicActive, room?.activeMode, visualizerSource]);
+        return resolveTvVisualizerSource({
+            activeMode: room?.activeMode,
+            configuredSource: visualizerSource,
+            hostBgMusicActive: isHostBgMusicActive,
+            stageMediaUrl,
+            stageAudioOnly,
+            stagePlaying: room?.videoPlaying === true,
+        });
+    }, [isHostBgMusicActive, room?.activeMode, room?.videoPlaying, stageAudioOnly, stageMediaUrl, visualizerSource]);
 
     const visualizerEnabled = visualizerResolvedSource !== 'off';
-    const visualizerInputMode = visualizerResolvedSource === 'host_bg'
-        ? 'media'
-        : visualizerResolvedSource === 'stage_mic'
-            ? 'mic'
-            : 'none';
-    const shouldUseBgMediaElement = visualizerEnabled && visualizerInputMode === 'media';
+    const visualizerInputMode = getTvVisualizerInputMode(visualizerResolvedSource);
+    const shouldUseBgMediaElement = visualizerEnabled && visualizerResolvedSource === 'host_bg';
+    const shouldUseStageMediaElement = visualizerEnabled && visualizerResolvedSource === 'stage_media';
 
     const bgVisualizerSimulatedLevel = useMemo(() => {
+        if (visualizerResolvedSource === 'stage_media') {
+            if (!room?.videoPlaying) return 0;
+            const stageVolume = parseBounded(room?.videoVolume, 80, 0, 100) / 100;
+            return Math.round(stageVolume * 70);
+        }
         if (!room?.bgMusicPlaying) return 0;
         const normalizedVolume = parseBounded(room?.bgMusicVolume, 0.3, 0, 1);
         const normalizedMix = parseBounded(room?.mixFader, 50, 0, 100);
         const bgMixWeight = 1 - (normalizedMix / 100);
         return Math.round(normalizedVolume * bgMixWeight * 100);
-    }, [room?.bgMusicPlaying, room?.bgMusicVolume, room?.mixFader]);
+    }, [room?.bgMusicPlaying, room?.bgMusicVolume, room?.mixFader, room?.videoPlaying, room?.videoVolume, visualizerResolvedSource]);
 
     useEffect(() => {
         const audioEl = bgVisualizerAudioRef.current;
@@ -92,8 +103,10 @@ const useTvVisualizerSettings = ({
     return {
         bgVisualizerSimulatedLevel,
         shouldUseBgMediaElement,
+        shouldUseStageMediaElement,
         visualizerEnabled,
         visualizerInputMode,
+        visualizerResolvedSource,
         visualizerResolvedPreset,
         visualizerSensitivity,
         visualizerSmoothing

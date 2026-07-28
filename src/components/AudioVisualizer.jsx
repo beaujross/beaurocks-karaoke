@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { createLogger } from '../lib/logger';
+import {
+    canAttemptVisualizerMicrophone,
+    isNonRetryableVisualizerMicrophoneError,
+} from '../lib/tvVisualizerInput';
 
 const visualizerLogger = createLogger('AudioVisualizer');
 const MAX_INIT_RETRIES = 5;
@@ -75,6 +79,7 @@ const AudioVisualizer = ({
         let stream = null;
         let dataArray = new Uint8Array(128);
         let smoothData = new Float32Array(128);
+        let mediaOutputConnected = false;
 
         const resetSmoothData = (nextLength) => {
             smoothData = new Float32Array(nextLength);
@@ -82,6 +87,13 @@ const AudioVisualizer = ({
         };
 
         const teardownInput = () => {
+            if (mediaOutputConnected && analyser) {
+                try {
+                    analyser.disconnect(externalCtx.destination);
+                } catch (_error) {
+                    // noop
+                }
+            }
             if (source && analyser) {
                 try {
                     source.disconnect(analyser);
@@ -93,6 +105,7 @@ const AudioVisualizer = ({
                 stream.getTracks().forEach((track) => track.stop());
             }
             stream = null;
+            mediaOutputConnected = false;
             analyser = null;
             source = null;
         };
@@ -820,6 +833,8 @@ const AudioVisualizer = ({
         };
 
         const init = async () => {
+            const wantsMediaElement = inputMode === 'media' || (inputMode === 'auto' && !!mediaElement);
+            const wantsMic = inputMode === 'mic' || inputMode === 'auto';
             try {
                 if (externalCtx.state === 'suspended') {
                     await externalCtx.resume();
@@ -827,15 +842,16 @@ const AudioVisualizer = ({
 
                 teardownInput();
 
-                const wantsMediaElement = inputMode === 'media' || (inputMode === 'auto' && !!mediaElement);
-                const wantsMic = inputMode === 'mic' || inputMode === 'auto';
-
                 if (wantsMediaElement && mediaElement) {
                     try {
                         analyser = externalCtx.createAnalyser();
                         analyser.fftSize = 256;
                         source = getOrCreateMediaElementSource(externalCtx, mediaElement);
-                        if (source) source.connect(analyser);
+                        if (source) {
+                            source.connect(analyser);
+                            analyser.connect(externalCtx.destination);
+                            mediaOutputConnected = true;
+                        }
                     } catch (mediaErr) {
                         analyser = null;
                         source = null;
@@ -849,6 +865,17 @@ const AudioVisualizer = ({
                 }
 
                 if (!analyser && wantsMic) {
+                    const microphoneAllowed = await canAttemptVisualizerMicrophone({
+                        documentRef: typeof document !== 'undefined' ? document : null,
+                        navigatorRef: typeof navigator !== 'undefined' ? navigator : null,
+                    });
+                    if (!microphoneAllowed) {
+                        resetSmoothData(128);
+                        retryCount = 0;
+                        retriesExhausted = true;
+                        if (!animationFrame) render();
+                        return;
+                    }
                     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     analyser = externalCtx.createAnalyser();
                     analyser.fftSize = 256;
@@ -865,6 +892,12 @@ const AudioVisualizer = ({
             } catch (error) {
                 teardownInput();
                 resetSmoothData(128);
+                if (wantsMic && isNonRetryableVisualizerMicrophoneError(error)) {
+                    retryCount = 0;
+                    retriesExhausted = true;
+                    if (!animationFrame) render();
+                    return;
+                }
                 if (!warnedInitErrorRef.current) {
                     warnedInitErrorRef.current = true;
                     visualizerLogger.warn('[visualizer] init failed; retrying with fallback', error);

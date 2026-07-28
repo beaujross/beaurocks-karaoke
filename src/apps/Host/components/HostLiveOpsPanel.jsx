@@ -243,14 +243,14 @@ export default function HostLiveOpsPanel({
                 compact
             />
             <SnapshotCard
-                label="Planned"
-                title={queuedMoment ? getRunOfShowSceneTitle(queuedMoment) : (runOfShowEnabled ? 'Next planned slot is open' : 'Planner is optional')}
+                label="Next Moment"
+                title={queuedMoment ? getRunOfShowSceneTitle(queuedMoment) : (runOfShowEnabled ? 'No moment committed next' : 'Moments are optional')}
                 detail={queuedMoment
                     ? getRunOfShowSceneSummary(queuedMoment)
                     : runOfShowEnabled
                         ? 'Open slot'
-                        : 'Planner off'}
-                meta={queuedMoment ? (runOfShowFlightedItem?.id ? 'Armed' : 'On Deck') : (runOfShowEnabled ? 'Plan' : 'Planner Off')}
+                        : 'No moment'}
+                meta={queuedMoment ? (runOfShowFlightedItem?.id ? 'Next' : 'Later') : (runOfShowEnabled ? 'Open' : 'Optional')}
                 artworkUrl={getRunOfShowSceneArtwork(queuedMoment)}
                 avatarEmoji={getRunOfShowSceneEmoji(queuedMoment)}
                 toneClass={queuedMoment ? 'border-violet-300/22 bg-violet-500/8' : 'border-white/10 bg-black/20'}
@@ -286,7 +286,7 @@ export default function HostLiveOpsPanel({
                             onClick={() => onOpenRunOfShow?.()}
                             className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[30px] px-2.5 py-1 text-[10px]`}
                         >
-                            Planner
+                            Moments
                         </button>
                     ) : null}
                 </div>
@@ -319,7 +319,7 @@ export default function HostLiveOpsPanel({
                             onClick={() => onOpenRunOfShow?.()}
                             className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[30px] px-2.5 py-1 text-[10px]`}
                         >
-                            Planner
+                            Moments
                         </button>
                     ) : null}
                 </div>
@@ -348,7 +348,7 @@ export default function HostLiveOpsPanel({
                             onClick={() => onOpenRunOfShow?.()}
                             className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[36px] px-3 py-1.5 text-[11px]`}
                         >
-                            Planner
+                            Moments
                         </button>
                     ) : null}
                 </div>

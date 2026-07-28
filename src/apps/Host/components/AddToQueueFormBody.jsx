@@ -248,15 +248,15 @@ const momentDestinationOptions = [
     },
     {
         id: HOST_MOMENT_DESTINATIONS.planner,
-        label: 'Planner',
-        actionLabel: 'Save to Planner',
-        detail: 'Keeps it out of the live sequence until you add it.',
+        label: 'Prepared',
+        actionLabel: 'Save for Later',
+        detail: 'Keeps it ready for tonight without putting it in the Live Queue.',
     },
     {
         id: HOST_MOMENT_DESTINATIONS.runOfShow,
-        label: 'Full Night Builder',
-        actionLabel: 'Add to Run of Show',
-        detail: 'Adds it to the end of the structured show plan.',
+        label: "Tonight's Flow",
+        actionLabel: "Add to Tonight's Flow",
+        detail: 'Commits it to the structured order for tonight.',
     },
 ];
 
@@ -686,7 +686,7 @@ const AddToQueueFormBody = ({
         <div className={`mt-2 pr-1 ${dockResults ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden' : ''}`}>
             <div
                 role="tablist"
-                aria-label="Build a Moment types"
+                aria-label="Performance and moment types"
                 data-feature-id="host-moment-type-tabs"
                 className={`${dockResults && performanceMode && !momentTypeMenuOpen ? 'hidden' : 'mb-2 flex'} host-brand-tabs host-brand-tabs--workspace min-h-[46px] shrink-0 custom-scrollbar`}
             >

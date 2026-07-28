@@ -4155,6 +4155,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const sectionPaddingClass = isDenseLayout ? 'px-3 py-3' : 'px-4 py-4';
     const activeEditingSong = editingSongId ? songs.find((song) => song.id === editingSongId) || null : null;
     const hasRunOfShowPlan = Array.isArray(runOfShowDirector?.items) && runOfShowDirector.items.length > 0;
+    const preparedMomentCount = (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
+        .filter((item) => (
+            item?.destination === 'planner'
+            && item?.type !== 'performance'
+            && !['complete', 'skipped'].includes(String(item?.status || '').trim().toLowerCase())
+        )).length;
     const hasRunOfShowQueueHud = runOfShowEnabled || hasRunOfShowPlan;
     const hasRunOfShowQueueWork = runOfShowEnabled && (reviewQueueItems.length > 0 || pending.length > 0 || queue.length > 0 || assigned.length > 0);
     const runOfShowNeedsAttentionCount = Math.max(
@@ -4388,9 +4394,22 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
 
     const addToQueueSection = (
         <div className={`border-b border-white/10 relative ${addToQueueWorkspaceActive ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3' : 'p-3'} ${addToQueueWorkspaceActive ? 'bg-fuchsia-500/[0.04]' : 'bg-black/20'}`}>
+            {addToQueueWorkspaceActive ? (
+                <div data-feature-id="host-performance-prep-header" className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-2.5">
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200">Performance Prep</div>
+                        <div className="mt-0.5 text-sm text-zinc-300">Choose the singer, song, and backing before it reaches the Live Queue.</div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-[0.14em]">
+                        <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-1 text-amber-100">{pending.length + reviewQueueItems.length} need review</span>
+                        <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-cyan-100">{queue.length} ready</span>
+                        {assigned.length ? <span className="rounded-full border border-violet-300/20 bg-violet-500/10 px-2 py-1 text-violet-100">{assigned.length} assigned</span> : null}
+                    </div>
+                </div>
+            ) : null}
             {!addToQueueWorkspaceActive ? (
                 <SectionHeader
-                    label="Build a Moment"
+                    label="Prep a Performance or Moment"
                     open={addToQueueSectionOpen}
                     onToggle={() => {
                         if (addToQueueWorkspaceActive) {
@@ -4472,15 +4491,28 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             />
         </div>
     ) : null;
-    const plannerWorkspaceSection = runOfShowQueueHudSection || (
+    const plannerWorkspaceSection = runOfShowQueueHudSection ? (
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar">
+            <div data-feature-id="host-moment-prep-header" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-300/18 bg-violet-500/8 px-3 py-2.5">
+                <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-200">Moment Prep</div>
+                    <div className="mt-0.5 text-sm text-zinc-300">Prepare announcements, trivia, games, and TV moments before committing them.</div>
+                </div>
+                <span className="rounded-full border border-violet-300/25 bg-violet-500/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-violet-100">
+                    {preparedMomentCount} saved for later
+                </span>
+            </div>
+            {runOfShowQueueHudSection}
+        </div>
+    ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
             <div className="mx-auto w-full max-w-3xl rounded-2xl border border-emerald-300/16 bg-emerald-500/8 px-5 py-6">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-300/22 bg-emerald-500/12 text-emerald-100">
                     <i className="fa-solid fa-clapperboard"></i>
                 </div>
-                <div className="mt-4 text-center text-lg font-black text-white">Build tonight&apos;s sequence</div>
+                <div className="mt-4 text-center text-lg font-black text-white">Prepare moments for tonight</div>
                 <div className="mt-2 text-center text-sm leading-6 text-zinc-400">
-                    Planner is for intentional, one-time moments in a specific order. Use Auto Party for activities that repeat every few performances.
+                    Save moments for later, or add them to Tonight&apos;s Flow when their content and timing are ready.
                 </div>
                 <div className="mt-5 grid gap-2 sm:grid-cols-2">
                     {[
@@ -4503,7 +4535,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 </div>
                 <div className="mt-4 flex justify-center">
                     <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4 py-2 text-[11px]`}>
-                        Open Full Planner
+                        Open Moment Prep
                     </button>
                 </div>
             </div>
@@ -6296,7 +6328,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 })}
                 {renderQueueWorkspaceTabButton({
                     id: 'add',
-                    label: 'Add',
+                    label: 'Performance Prep',
                     icon: 'fa-plus',
                     active: desktopQueueSurfaceTab === 'add',
                     onClick: () => setDesktopQueueSurfaceTab('add'),
@@ -6325,7 +6357,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 })}
                 {renderQueueWorkspaceTabButton({
                     id: 'show',
-                    label: 'Planner',
+                    label: 'Moment Prep',
                     icon: 'fa-clapperboard',
                     active: desktopQueueSurfaceTab === 'show',
                     onClick: () => setDesktopQueueSurfaceTab('show'),
@@ -6379,7 +6411,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     })}
                     {renderQueueWorkspaceTabButton({
                         id: 'add-mobile',
-                        label: 'Add',
+                        label: 'Performances',
                         icon: 'fa-plus',
                         active: queueSurface.activeCompactTab === 'add',
                         onClick: () => queueSurface.activateCompactTab('add'),
@@ -6408,7 +6440,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     })}
                     {renderQueueWorkspaceTabButton({
                         id: 'show-mobile',
-                        label: 'Planner',
+                        label: 'Moments',
                         icon: 'fa-clapperboard',
                         active: queueSurface.activeCompactTab === 'show',
                         onClick: () => queueSurface.activateCompactTab('show'),

@@ -42,6 +42,8 @@ describe('shared Host tab language', () => {
     const topChrome = readSource('src/apps/Host/components/HostTopChrome.jsx');
     const horizon = readSource('src/apps/Host/components/HostQueueHorizon.jsx');
     const setupShell = readSource('src/apps/Host/components/setup/MissionSetupShell.jsx');
+    assert.match(horizon, /Planned moments use Tonight\\'s Flow controls/);
+    assert.match(horizon, /model\?\.automation\?\.label/);
 
     expect(host).toContain('host-app host-vivid-shell');
     expect(host).toContain('panel: "host-vivid-panel');

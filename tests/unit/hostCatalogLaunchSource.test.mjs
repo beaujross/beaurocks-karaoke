@@ -187,6 +187,11 @@ test('host catalog and media library accept migrated upload URL fields', () => {
   );
   assert.match(
     hostAppSource,
+    /const localAudioOnly = getRoomMediaType\(\{ \.\.\.item, mediaUrl \}\) === 'audio'\s*\|\| isAudioUrl\(mediaUrl\);[\s\S]*?backingAudioOnly: false,\s*audioOnly: localAudioOnly/,
+    'Local audio uploads should use native TV playback rather than the external-window backing flag',
+  );
+  assert.match(
+    hostAppSource,
     /flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-6 custom-scrollbar touch-scroll-y/,
     'Browse and Top 100 modals should expose real scroll containers, not only scrollbar styling',
   );

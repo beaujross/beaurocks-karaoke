@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getHostNightFlowBuckets } from '../lib/hostNightFlowModel';
 import { TRIVIA_BANK, WYR_BANK } from '../../../lib/gameDataConstants';
 import {
     RUN_OF_SHOW_ADVANCE_MODES,
@@ -826,7 +827,7 @@ const statusTone = (status = '') => {
 const getConveyorPhaseLabel = (phase = '', fallback = '') => {
     const safePhase = String(phase || '').trim().toLowerCase();
     if (safePhase === 'live') return 'Live';
-    if (safePhase === 'flighted') return 'Flighted';
+    if (safePhase === 'flighted') return 'Next';
     if (safePhase === 'on_deck') return 'On deck';
     if (safePhase === 'warming') return 'Warming';
     if (safePhase === 'blocked') return 'Blocked';
@@ -2209,7 +2210,7 @@ const CompactTimelineOverview = ({
             {selectedTimelineItem ? (
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-cyan-300/18 bg-cyan-500/6 px-3 py-2.5">
                     <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/80">Conveyor Actions</div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/80">Live Queue Actions</div>
                         <div className="mt-1 truncate text-sm font-black text-white">{selectedTimelineItem.title || getRunOfShowItemLabel(selectedTimelineItem.type)}</div>
                         <div className="text-xs text-zinc-400">Drag the strip to resequence fast, or use these buttons when you need a precise nudge.</div>
                     </div>
@@ -2350,7 +2351,7 @@ const StoryboardTimeline = ({
                     const sceneLabel = item.id === liveItemId
                         ? 'Now'
                         : item.id === stagedItemId
-                            ? 'Flighted'
+                            ? 'Next'
                             : item.id === nextItemId
                                 ? 'On deck'
                                 : `Slot ${index + 1}`;
@@ -3398,7 +3399,7 @@ const ShowMapCard = ({
                     const railLabel = item.id === liveItemId
                         ? 'Now'
                         : item.id === stagedItemId
-                            ? 'Flighted'
+                            ? 'Next'
                             : item.id === nextItemId
                                 ? 'On deck'
                                 : `Scene ${index + 1}`;
@@ -3731,6 +3732,8 @@ export default function RunOfShowDirectorPanel({
     onDeleteItem,
     onMoveItem,
     onUpdateItem,
+    onPromotePreparedItems,
+    onSchedulePreparedItems,
     onToggleAutomationPause,
     onStartRunOfShow,
     onStopRunOfShow,
@@ -3758,6 +3761,11 @@ export default function RunOfShowDirectorPanel({
     onArchiveCurrent,
 }) {
     const items = useMemo(() => (Array.isArray(director?.items) ? director.items : []), [director?.items]);
+    const nightFlowBuckets = useMemo(
+        () => getHostNightFlowBuckets(director || {}),
+        [director]
+    );
+    const plannerPromotionBusyRef = useRef(false);
     const safeEventProfileId = String(eventProfileId || '').trim().toLowerCase();
     const safeEventProfileLabel = String(eventProfileLabel || '').trim();
     const safeLogoUrl = String(logoUrl || '').trim();
@@ -5380,7 +5388,14 @@ export default function RunOfShowDirectorPanel({
     };
     function getPrimaryActionForItem(item = null, readiness = null, options = {}) {
         if (!item || !safeOperatorCapabilities.canEditFlow && !safeOperatorCapabilities.canOperate) return null;
-        if (item?.destination === 'planner') return null;
+        if (item?.destination === 'planner') {
+            if (!safeOperatorCapabilities.canEditFlow || typeof onPromotePreparedItems !== 'function') return null;
+            return {
+                label: 'Add to Live Queue',
+                tone: 'primary',
+                onClick: () => promotePreparedItems([item.id])
+            };
+        }
         const pendingCount = Number(options.pendingCount || 0);
         const blockers = Array.isArray(readiness?.blockers) ? readiness.blockers : [];
         const status = String(item?.status || '').toLowerCase();
@@ -5515,6 +5530,34 @@ export default function RunOfShowDirectorPanel({
         setMediaPicker({ itemId: '', sourceType: '', query: '', remoteResults: [], loading: false, error: '' });
     };
 
+    const promotePreparedItems = async (itemIds = []) => {
+        if (plannerPromotionBusyRef.current || typeof onPromotePreparedItems !== 'function') return null;
+        const safeItemIds = (Array.isArray(itemIds) ? itemIds : [itemIds])
+            .map((value) => String(value || '').trim())
+            .filter(Boolean);
+        if (!safeItemIds.length) return null;
+        plannerPromotionBusyRef.current = true;
+        try {
+            return await onPromotePreparedItems(safeItemIds);
+        } finally {
+            plannerPromotionBusyRef.current = false;
+        }
+    };
+
+    const schedulePreparedItems = async (itemIds = [], everyPerformances = 3) => {
+        if (plannerPromotionBusyRef.current || typeof onSchedulePreparedItems !== 'function') return null;
+        const safeItemIds = (Array.isArray(itemIds) ? itemIds : [itemIds])
+            .map((value) => String(value || '').trim())
+            .filter(Boolean);
+        if (!safeItemIds.length) return null;
+        plannerPromotionBusyRef.current = true;
+        try {
+            return await onSchedulePreparedItems(safeItemIds, everyPerformances);
+        } finally {
+            plannerPromotionBusyRef.current = false;
+        }
+    };
+
     return (
         <section
             data-run-of-show-director-surface="true"
@@ -5577,13 +5620,13 @@ export default function RunOfShowDirectorPanel({
                     </div>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Conveyor</div>
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Tonight's Flow</div>
                             <div className="mt-1 hidden text-sm text-white sm:block">
                                 {isRunOfShowActive
                                     ? automationPaused
-                                        ? 'Show is paused. Fix the issue or resume when you are ready.'
-                                        : 'Show is live. Watch Now, Next, and only step in when the board asks for help.'
-                                    : 'Build the show here, then use Go Live when the room is ready.'}
+                                        ? 'The Live Queue is paused. Fix the issue or resume when you are ready.'
+                                        : 'The night is live. Watch Now and Next, and step in only when something needs you.'
+                                    : 'Prepare performances and moments here, then commit them to the Live Queue.'}
                             </div>
                             <div className="mt-1 text-xs uppercase tracking-[0.16em] text-zinc-500">
                                 {compactBoardSummary || 'No scenes yet'}
@@ -5610,7 +5653,7 @@ export default function RunOfShowDirectorPanel({
                                 onClick={() => setStudioMode('build')}
                                 className={`rounded-full border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'build' ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/25'}`}
                             >
-                                Build
+                                Prepare
                             </button>
                             {!isRunOfShowActive ? (
                                 <button
@@ -5618,7 +5661,7 @@ export default function RunOfShowDirectorPanel({
                                     onClick={() => setStudioMode('preflight')}
                                     className={`rounded-full border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'preflight' ? 'border-emerald-300/45 bg-emerald-500/15 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-emerald-300/25'}`}
                                 >
-                                    Preflight
+                                    Review
                                 </button>
                             ) : null}
                             {isRunOfShowActive ? (
@@ -5627,7 +5670,7 @@ export default function RunOfShowDirectorPanel({
                                     onClick={() => setStudioMode('run')}
                                     className={`rounded-full border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'run' ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/25'}`}
                                 >
-                                    Run
+                                    Live
                                 </button>
                             ) : null}
                             {!isRunOfShowActive ? (
@@ -5793,7 +5836,7 @@ export default function RunOfShowDirectorPanel({
                                             {liveAdjustmentTarget.title || getRunOfShowItemLabel(liveAdjustmentTarget.type)}
                                         </div>
                                         <div className="mt-1 text-xs text-zinc-400">
-                                            {liveItem?.id === liveAdjustmentTarget.id ? 'Live now' : stagedItem?.id === liveAdjustmentTarget.id ? 'Flighted next' : 'On deck'} - {formatDurationSec(liveAdjustmentDurationSec) || `${liveAdjustmentDurationSec}s`} window
+                                            {liveItem?.id === liveAdjustmentTarget.id ? 'Live now' : stagedItem?.id === liveAdjustmentTarget.id ? 'Next' : 'On deck'} - {formatDurationSec(liveAdjustmentDurationSec) || `${liveAdjustmentDurationSec}s`} window
                                             {liveAdjustmentRequiresHostAdvance ? ` - ${liveAdjustmentAdvanceSummary}` : ''}
                                             {liveAdjustmentSoundtrackConfigured ? ` - takeover audio ${liveAdjustmentSoundtrackActive ? 'on' : 'paused'}` : ''}
                                         </div>
@@ -5840,7 +5883,7 @@ export default function RunOfShowDirectorPanel({
                                             onClick={() => setLiveTimelineOpen((prev) => !prev)}
                                             className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200 hover:border-cyan-300/25"
                                         >
-                                            {liveTimelineOpen ? 'Hide Conveyor' : 'Show Conveyor'}
+                                            {liveTimelineOpen ? 'Hide Upcoming' : 'Show Upcoming'}
                                         </button>
                                         {previewActiveId ? (
                                             <button
@@ -5983,7 +6026,7 @@ export default function RunOfShowDirectorPanel({
                     <article className={`${surfaceClass} border-emerald-300/20 bg-emerald-500/8 p-4`} aria-label="Go live preflight">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-200">Preflight</div>
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-200">Review Before Live</div>
                                 <div className="mt-1 text-base font-semibold text-white">
                                     {safePreflightReport.criticalCount > 0
                                         ? 'Fix the blockers before the show starts.'
@@ -6264,6 +6307,96 @@ export default function RunOfShowDirectorPanel({
 
             {studioMode === 'build' ? (
             <>
+                {nightFlowBuckets.preparedItems.length ? (
+                    <article data-feature-id="host-prepared-items-tray" className={`${surfaceClass} border-violet-300/20 bg-violet-500/10 p-4`}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-violet-200">Prepared for Tonight</div>
+                                <div className="mt-1 text-lg font-black text-white">Move ready work into the Live Queue</div>
+                                <div className="mt-1 max-w-2xl text-sm text-zinc-300">
+                                    Prepared items stay off-air until you commit them. Add one, or add the full prepared set in its current order.
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.14em]">
+                                    <span className="rounded-full border border-violet-300/25 bg-violet-500/12 px-2.5 py-1 text-violet-100">
+                                        {nightFlowBuckets.preparedMomentItems.length} moment{nightFlowBuckets.preparedMomentItems.length === 1 ? '' : 's'}
+                                    </span>
+                                    {nightFlowBuckets.preparedPerformanceItems.length ? (
+                                        <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/12 px-2.5 py-1 text-fuchsia-100">
+                                            {nightFlowBuckets.preparedPerformanceItems.length} performance{nightFlowBuckets.preparedPerformanceItems.length === 1 ? '' : 's'}
+                                        </span>
+                                    ) : null}
+                                    <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
+                                        {nightFlowBuckets.liveQueueItems.length} already committed
+                                    </span>
+                                </div>
+                            </div>
+                            <ControlButton
+                                tone="primary"
+                                            disabled={!safeOperatorCapabilities.canEditFlow}
+                                onClick={() => promotePreparedItems(nightFlowBuckets.preparedItems.map((item) => item.id))}
+                            >
+                                {`Add All ${nightFlowBuckets.preparedItems.length} to Live Queue`}
+                            </ControlButton>
+                        </div>
+                        {nightFlowBuckets.preparedMomentItems.length ? (
+                            <div data-feature-id="host-prepared-moment-cadence" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3">
+                                <div className="min-w-0">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-200">Space moments through the Live Queue</div>
+                                    <div className="mt-1 text-xs text-zinc-300">
+                                        {nightFlowBuckets.liveQueueItems.filter((item) => item?.type === 'performance').length
+                                            ? 'Choose a simple gap. You can still reorder individual moments afterward.'
+                                            : 'Add at least one performance to the Live Queue before spacing moments.'}
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Moment spacing">
+                                    {[1, 2, 3].map((cadence) => (
+                                        <button
+                                            key={`prepared-cadence-${cadence}`}
+                                            type="button"
+                                            disabled={
+                                                !safeOperatorCapabilities.canEditFlow
+                                                || typeof onSchedulePreparedItems !== 'function'
+                                                || !nightFlowBuckets.liveQueueItems.some((item) => item?.type === 'performance')
+                                            }
+                                            onClick={() => schedulePreparedItems(
+                                                nightFlowBuckets.preparedMomentItems.map((item) => item.id),
+                                                cadence
+                                            )}
+                                            className="min-h-[40px] rounded-xl border border-fuchsia-300/28 bg-fuchsia-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-fuchsia-100 transition hover:border-fuchsia-200/55 hover:bg-fuchsia-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            Every {cadence}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+                        <div className="mt-4 grid gap-2 xl:grid-cols-2">
+                            {nightFlowBuckets.preparedItems.map((item) => {
+                                const visual = getItemVisual(item.type);
+                                return (
+                                    <div key={`prepared-${item.id}`} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/10 bg-black/25 p-3">
+                                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${visual.chip}`}>
+                                            <i className={`fa-solid ${visual.icon}`}></i>
+                                        </div>
+                                        <button type="button" onClick={() => openItem(item.id)} className="min-w-0 flex-1 text-left">
+                                            <div className="truncate text-sm font-black text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
+                                            <div className="mt-1 truncate text-xs text-zinc-400">{itemSummary(item)}</div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                disabled={!safeOperatorCapabilities.canEditFlow}
+                                            onClick={() => promotePreparedItems([item.id])}
+                                            className="min-h-[40px] shrink-0 rounded-xl border border-cyan-300/35 bg-cyan-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100 disabled:opacity-40"
+                                        >
+                                            Add to Live Queue
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </article>
+                ) : null}
+
                 <article className={`${surfaceClass} p-4`}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="max-w-3xl">
@@ -6614,17 +6747,17 @@ export default function RunOfShowDirectorPanel({
 
             {studioMode === 'run' ? (
             <div className="space-y-3">
-                <article className={`${surfaceClass} p-4`} aria-label="Run of show conveyor live HUD">
+                <article className={`${surfaceClass} p-4`} aria-label="Live Queue status">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Conveyor status</div>
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Live Queue status</div>
                             <div className="mt-1 flex flex-wrap items-center gap-2">
                                 <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${liveHudToneClass}`}>
                                     {liveHudIssue.label}
                                 </span>
                                 {(liveItem?.id || flightedItem?.id || onDeckItem?.id) ? (
                                     <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                                        {liveItem?.id ? 'Live lane running' : flightedItem?.id ? 'Flighted and armed' : 'On deck'}
+                                        {liveItem?.id ? 'Live now' : flightedItem?.id ? 'Next item ready' : 'Coming up'}
                                     </span>
                                 ) : null}
                             </div>
@@ -6664,9 +6797,9 @@ export default function RunOfShowDirectorPanel({
                         onFocus={openItem}
                     />
                     <LiveHudCard
-                        label="Flighted"
+                        label="Next"
                         item={flightedItem}
-                        phaseLabel={flightedItem ? getConveyorPhaseLabel(getRunOfShowConveyorPhase(director || {}, flightedItem), 'Flighted') : ''}
+                        phaseLabel={flightedItem ? getConveyorPhaseLabel(getRunOfShowConveyorPhase(director || {}, flightedItem), 'Next') : ''}
                         summary={flightedItem ? itemSummary(flightedItem) : ''}
                         note={
                             flightedItem
@@ -6674,14 +6807,14 @@ export default function RunOfShowDirectorPanel({
                                     ? 'Needs singer approval before it can run.'
                                     : readinessById[flightedItem.id]?.blockers?.length
                                         ? getRunOfShowBlockedActionLabel(readinessById[flightedItem.id], flightedItem, safePolicy)
-                                        : 'Released from the conveyor and ready to run.'
+                                        : 'Committed next and ready to run.'
                                 : ''
                         }
                         badge={
                             flightedItem
                                 ? pendingApprovals.some((entry) => entry.itemId === flightedItem.id) || readinessById[flightedItem.id]?.blockers?.length
                                     ? 'Check first'
-                                    : 'Flighted'
+                                    : 'Next'
                                 : ''
                         }
                         badgeTone={
@@ -6689,7 +6822,7 @@ export default function RunOfShowDirectorPanel({
                                 ? 'danger'
                                 : 'success'
                         }
-                        emptyLabel="Nothing is flighted yet."
+                        emptyLabel="Nothing is committed next."
                         onFocus={openItem}
                     />
                     <LiveHudCard
@@ -7244,7 +7377,7 @@ export default function RunOfShowDirectorPanel({
                                                     </div>
                                                     <div className="flex flex-wrap justify-end gap-2">
                                                         <div className="rounded-full border border-cyan-300/18 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                                            {item.id === liveItem?.id ? 'Now' : item.id === stagedItem?.id ? 'Flighted' : item.id === nextItem?.id ? 'On deck' : 'Timeline'}
+                                                            {item.id === liveItem?.id ? 'Now' : item.id === stagedItem?.id ? 'Next' : item.id === nextItem?.id ? 'On deck' : 'Timeline'}
                                                         </div>
                                                         <div className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${statusTone(item.status)}`}>{item.status}</div>
                                                     </div>

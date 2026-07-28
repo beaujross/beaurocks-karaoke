@@ -57,14 +57,14 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
 
   assert.match(source, /getCrowdPulseSnapshot/);
   assert.match(source, /crowdPulse=\{crowdPulse\}/);
-  assert.match(source, /Show Conveyor/);
+  assert.match(source, /Tonight's Flow/);
   assert.match(directorPanelSource, /getRunOfShowConveyorSnapshot/);
   assert.match(directorPanelSource, /getRunOfShowConveyorPhase/);
   assert.match(directorPanelSource, /Crowd Pulse/);
-  assert.match(directorPanelSource, /Conveyor status/);
-  assert.match(directorPanelSource, /Show Conveyor/);
+  assert.match(directorPanelSource, /Live Queue status/);
+  assert.match(directorPanelSource, /Tonight's Flow/);
   assert.match(directorPanelSource, /On Deck/);
-  assert.match(directorPanelSource, /Flighted/);
+  assert.match(directorPanelSource, /Next/);
   assert.match(source, /const openRunOfShowReleaseWindow = useCallback\(async \(itemId, options = \{\}\) => \{/);
   assert.match(source, /const closeRunOfShowReleaseWindow = useCallback\(async \(options = \{\}\) => \{/);
   assert.match(source, /queuedForPostPerformance: performanceActive/);

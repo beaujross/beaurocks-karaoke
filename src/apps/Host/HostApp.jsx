@@ -138,6 +138,10 @@ import {
 } from '../../lib/audienceDisplay';
 import { computeOpenSlotAssignments, isOpenRunOfShowPerformanceSlot } from './lib/openSlotSuggestions';
 import { prepareRunOfShowQueueAssignment } from './lib/runOfShowQueueAssignment';
+import {
+    promotePreparedItemsToLiveQueue,
+    schedulePreparedMomentsByPerformanceCadence,
+} from './lib/hostNightFlowModel';
 import { buildCurrentRoomRunOfShowDraft } from './lib/currentRoomRunOfShowDraft';
 import buildHostRuntimeShellModel from './lib/hostRuntimeShellModel';
 import buildHostQueueHorizonModel from './lib/hostQueueHorizonModel';
@@ -8453,7 +8457,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const targetItem = director.items.find((item) => item.id === itemId);
         if (!targetItem) return director;
         if (targetItem?.destination === 'planner') {
-            toast('Add this Planner moment to Queue or Run of Show before staging it.');
+            toast('Add this prepared moment to the Live Queue before making it next.');
             return director;
         }
         const ready = isRunOfShowItemReady(targetItem);
@@ -8526,7 +8530,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const requestedItem = currentDirector.items.find((item) => item.id === itemId) || null;
         if (requestedItem?.destination === 'planner') {
-            toast('Add this Planner moment to Queue or Run of Show before starting it.');
+            toast('Add this prepared moment to the Live Queue before starting it.');
             return currentDirector;
         }
         const requestedGameMode = getRunOfShowGameMode(requestedItem);
@@ -8650,7 +8654,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
         if (targetItem?.destination === 'planner') {
-            toast('Planner moments are completed from Planner, not the live show controls.');
+            toast('Prepared moments are not live yet. Add this one to the Live Queue first.');
             return currentDirector;
         }
         const completionDecision = getRunOfShowProgressionDecision({
@@ -9365,6 +9369,41 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         items.splice(nextIndex, 0, moved);
         return persistRunOfShowDirector({ ...director, items: resequenceRunOfShowItems(items) });
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const promotePreparedRunOfShowItems = useCallback(async (itemIds = []) => {
+        const result = promotePreparedItemsToLiveQueue(
+            getCurrentRunOfShowDirector(),
+            itemIds
+        );
+        if (!result.promotedCount) {
+            toast('Those items are already in the Live Queue.');
+            return result.director;
+        }
+        const persistedDirector = await persistRunOfShowDirector(result.director);
+        toast(
+            result.promotedCount === 1
+                ? 'Added to Live Queue.'
+                : `Added ${result.promotedCount} prepared items to Live Queue.`
+        );
+        return persistedDirector;
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, toast]);
+    const schedulePreparedRunOfShowMoments = useCallback(async (itemIds = [], everyPerformances = 3) => {
+        const result = schedulePreparedMomentsByPerformanceCadence(
+            getCurrentRunOfShowDirector(),
+            itemIds,
+            everyPerformances
+        );
+        if (!result.promotedCount) {
+            toast('Choose at least one prepared moment to space through the Live Queue.');
+            return result.director;
+        }
+        const persistedDirector = await persistRunOfShowDirector(result.director);
+        toast(
+            result.promotedCount === 1
+                ? `Added 1 moment after every ${result.cadence} performance${result.cadence === 1 ? '' : 's'}.`
+                : `Spaced ${result.promotedCount} moments after every ${result.cadence} performance${result.cadence === 1 ? '' : 's'}.`
+        );
+        return persistedDirector;
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, toast]);
     const patchRunOfShowItem = useCallback(async (itemId, patch = {}) => {
         const director = getCurrentRunOfShowDirector();
         const previousItem = (director.items || []).find((item) => item.id === itemId) || null;
@@ -10744,7 +10783,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runtimeModel: hostHorizonRuntimeModel,
         queueTotalCount: missionQueueSongs.length,
         attentionCount: queueAttentionCount,
-    }), [hostHorizonRuntimeModel, missionQueueSongs.length, queueAttentionCount]);
+        runOfShowDirector,
+        queueSongs: missionQueueSongs,
+    }), [hostHorizonRuntimeModel, missionQueueSongs, queueAttentionCount, runOfShowDirector]);
     const {
         smokeRunning,
         smokeResults,
@@ -15961,6 +16002,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Images can be used for TV scenes or Run Of Show, not the karaoke queue.');
             return;
         }
+        const localAudioOnly = getRoomMediaType({ ...item, mediaUrl }) === 'audio'
+            || isAudioUrl(mediaUrl);
         try {
             const singerIdentity = resolveQueueSingerIdentity(singerOverride);
             const singerName = singerIdentity.singerName || room?.hostName || hostName || 'Host';
@@ -15978,8 +16021,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     playbackSelectionMode: 'custom_media',
                     selectedPlaybackProvider: 'local',
                     mediaAssetId: String(item?.id || item?.storagePath || '').trim() || null,
-                    backingAudioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl),
-                    audioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl)
+                    backingAudioOnly: false,
+                    audioOnly: localAudioOnly
                 }, { source: 'local_library' });
                 toast('Added local upload to queue');
                 return;
@@ -16009,8 +16052,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 timestamp: serverTimestamp(),
                 priorityScore: nowMs(),
                 emoji: EMOJI.mic,
-                backingAudioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl),
-                audioOnly: getRoomMediaType({ ...item, mediaUrl }) === 'audio' || isAudioUrl(mediaUrl)
+                backingAudioOnly: false,
+                audioOnly: localAudioOnly
             });
             toast('Added local upload to queue');
         } catch (e) {
@@ -22915,8 +22958,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <div className="flex flex-1 min-h-0 flex-col gap-4">
                         <div className="hidden flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/82 px-4 py-3 sm:flex">
                             <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Conveyor</div>
-                                <div className="mt-1 text-sm text-zinc-400">Build, preflight, and slot scenes into the live lane. Queue stays the runtime home.</div>
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Tonight's Flow</div>
+                                <div className="mt-1 text-sm text-zinc-400">Prepare performances and moments, then commit them to one Live Queue.</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <button
@@ -22937,7 +22980,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                         <div className="min-h-0">
                             {roomCode ? (
-                                <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading show conveyor..." />}>
+                                <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading tonight's flow..." />}>
                                 <RunOfShowDirectorPanel
                                     enabled={runOfShowEnabled}
                                     roomCode={roomCode}
@@ -22968,6 +23011,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     crowdPulse={crowdPulse}
                                     compactViewport={compactHostViewport}
                                     onSetEnabled={setRunOfShowEnabledState}
+                                    onPromotePreparedItems={promotePreparedRunOfShowItems}
+                                    onSchedulePreparedItems={schedulePreparedRunOfShowMoments}
                                     onSetProgramMode={setRunOfShowProgramModeState}
                                     onAddItem={addRunOfShowItem}
                                     onImportCsv={importRunOfShowCsv}

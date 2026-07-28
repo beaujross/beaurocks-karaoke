@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import AppleLyricsRenderer from './AppleLyricsRenderer';
 import { EMOJI } from '../lib/emoji';
+import { isAudioMediaUrl } from '../lib/tvVisualizerInput';
 import { attachPerformancePlaybackContext } from '../lib/performanceSessionPlayback';
 import { resolveLyricsPlaybackClock } from '../lib/lyricsPlaybackClock';
 
@@ -48,9 +49,8 @@ const getTrustedYoutubeDurationSec = ({ room = {}, current = {} } = {}) => {
     return Number.isFinite(durationSec) && durationSec >= 20 ? durationSec : 0;
 };
 
-const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVideo = true, runOfShowHud = null, onPlaybackEvent = null }) => {
+const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVideo = true, runOfShowHud = null, onPlaybackEvent = null, onVisualizerMediaElementChange = null }) => {
     const mediaUrl = current?.mediaUrl || room?.mediaUrl;
-    const isBackingAudioOnly = current?.backingAudioOnly || false;
     const applePlayback = room?.appleMusicPlayback || null;
     const applePlaybackActive = !!applePlayback?.id;
     const lyricsPlaybackClock = resolveLyricsPlaybackClock({ room, current });
@@ -61,7 +61,10 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     const hasLyrics = !!(current?.lyrics && String(current.lyrics).trim()) || (Array.isArray(current?.lyricsTimed) && current.lyricsTimed.length > 0);
     const lyricsVisible = !!room?.showLyricsTv && hasLyrics;
     
-    const isAudioOnly = !!(current?.audioOnly) || (mediaUrl && /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(mediaUrl));
+    const isDirectAudioMedia = isAudioMediaUrl(mediaUrl);
+    const isAudioOnly = !!(current?.audioOnly) || isDirectAudioMedia;
+    // Older local-upload queue records reused this external-window flag. Direct audio still belongs in the native player.
+    const isBackingAudioOnly = !!current?.backingAudioOnly && !isDirectAudioMedia;
     // Detect Native Video (mp4, webm, ogg)
     const isNativeVideo = mediaUrl && /\.(mp4|webm|ogg)$/i.test(mediaUrl);
     // Detect YouTube (fallback)
@@ -101,6 +104,10 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     const iframeRef = useRef(null);
     const nativeVideoRef = useRef(null);
     const audioRef = useRef(null);
+    const setAudioElementRef = useCallback((element) => {
+        audioRef.current = element;
+        onVisualizerMediaElementChange?.(element);
+    }, [onVisualizerMediaElementChange]);
     const [autoplayBlocked, setAutoplayBlocked] = useState(false);
     const [youtubeIframeReadyKey, setYoutubeIframeReadyKey] = useState('');
     const nativeHeartbeatBucketRef = useRef('');
@@ -501,7 +508,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                     ) : null)
                 )}
                 {!isBackingAudioOnly && isAudioOnly && (
-                    <audio ref={audioRef} src={mediaUrl} preload="auto" />
+                    <audio ref={setAudioElementRef} src={mediaUrl} preload="auto" crossOrigin="anonymous" />
                 )}
                 
                 {showVideo && !isBackingAudioOnly && layout === 'cinema' && (

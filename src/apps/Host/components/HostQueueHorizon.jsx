@@ -51,7 +51,7 @@ const HostQueueHorizon = ({
     compact = false,
 }) => {
     const segments = Array.isArray(model?.segments) ? model.segments : [];
-    const primarySegments = segments.slice(0, 3);
+    const primarySegments = segments.slice(0, 4);
     const mobilePrimarySegment = primarySegments.find((segment) => segment?.key !== 'on-stage') || primarySegments[0] || null;
     const attentionCount = Math.max(0, Number(model?.attentionCount || 0));
     const remainingCount = Math.max(0, Number(model?.remainingCount || 0));
@@ -91,13 +91,13 @@ const HostQueueHorizon = ({
                     )}
                 </div>
 
-                <div className="hidden min-w-0 flex-1 gap-2 sm:grid sm:grid-cols-2 lg:grid-cols-3">
+                <div className="hidden min-w-0 flex-1 gap-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {primarySegments.length ? primarySegments.map((segment, index) => (
                         <HorizonSegment
                             key={`${segment.key}-${segment.item?.id || index}`}
                             segment={segment}
                             onSelect={onSelectSegment}
-                            className={index > 1 ? 'sm:hidden lg:flex' : ''}
+                            className={index > 2 ? 'sm:hidden xl:flex' : index > 1 ? 'sm:hidden lg:flex' : ''}
                         />
                     )) : (
                         <button
@@ -115,7 +115,7 @@ const HostQueueHorizon = ({
                         type="button"
                         onClick={onOpenQueue}
                         className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm font-black text-white transition hover:border-cyan-300/35 hover:bg-cyan-500/10"
-                        aria-label={`Open ${remainingCount} more queued performance${remainingCount === 1 ? '' : 's'}`}
+                        aria-label={`Open ${remainingCount} more Live Queue item${remainingCount === 1 ? '' : 's'}`}
                     >
                         +{remainingCount}
                     </button>
@@ -143,14 +143,14 @@ const HostQueueHorizon = ({
                             : 'border-white/10 bg-white/[0.04] text-zinc-300 hover:border-cyan-300/30 hover:text-white'
                     }`}
                     aria-label={automationEnabled
-                        ? 'Auto-DJ is on. Turn it off to require the Host to start and advance every performance.'
-                        : 'Auto-DJ is off. Turn it on to start ready performances and advance the Queue after the configured delay.'}
+                        ? 'Song auto advance is on. Planned moments use separate Tonight\'s Flow controls.'
+                        : 'Song auto advance is off. The Host starts and advances each performance.'}
                     title={automationEnabled
-                        ? 'ON: BeauRocks starts ready performances and advances the Queue after the configured delay. Click for manual control.'
-                        : 'OFF: the Host starts and advances each performance. Click to let BeauRocks move through ready Queue entries.'}
+                        ? 'Songs only: BeauRocks starts ready performances and advances after the configured delay. Planned moments use Tonight\'s Flow controls.'
+                        : 'Songs only: the Host starts and advances each performance. Planned moments use Tonight\'s Flow controls.'}
                 >
                     <i className={`fa-solid ${automationEnabled ? 'fa-wand-magic-sparkles' : 'fa-hand'} text-[11px]`} aria-hidden="true"></i>
-                    {model?.automation?.label || 'Manual'}
+                    {model?.automation?.label || 'Songs: Manual'}
                 </button>
             </div>
         </section>

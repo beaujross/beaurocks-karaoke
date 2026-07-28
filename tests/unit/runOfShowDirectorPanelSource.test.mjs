@@ -40,18 +40,20 @@ test('run-of-show presets include a standalone leaderboard stack moment', () => 
   assert.match(source, /\{ value: 'leaderboard_stack', label: 'Leaderboard Stack' \}/);
 });
 
-test('run-of-show live HUD uses conveyor language and shows crowd pulse guidance', () => {
-  assert.match(source, /Conveyor status/);
+test('run-of-show live HUD uses Live Queue language and shows crowd pulse guidance', () => {
+  assert.match(source, /Live Queue status/);
   assert.match(source, /Crowd Pulse/);
   assert.match(source, /With Host/);
   assert.match(source, /alignmentLabel/);
   assert.match(source, /hostDirective/);
-  assert.match(source, /Show Conveyor/);
-  assert.match(source, /Conveyor Actions/);
+  assert.match(source, /Show Upcoming/);
+  assert.match(source, /Live Queue Actions/);
   assert.match(source, /Open Issues/);
-  assert.match(source, /Flighted/);
-  assert.match(source, /Nothing is flighted yet\./);
+  assert.match(source, /Next item ready/);
+  assert.match(source, /Nothing is committed next\./);
   assert.match(source, /No scene is on deck yet\./);
+  assert.doesNotMatch(source, />Show Conveyor</);
+  assert.doesNotMatch(source, /label="Flighted"/);
   assert.doesNotMatch(source, /<div className="mr-2 text-\[10px\] uppercase tracking-\[0\.16em\] text-amber-100\/75">Open issues<\/div>/);
 });
 

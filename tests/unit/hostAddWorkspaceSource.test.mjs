@@ -71,8 +71,8 @@ test("host room setup keeps quick actions compact instead of repeating the Night
 
 test("host add workspace uses one destination selector and append-only Queue language", () => {
   assert.match(addWorkspaceSource, /Add to Queue/);
-  assert.match(addWorkspaceSource, /Save to Planner/);
-  assert.match(addWorkspaceSource, /Add to Run of Show/);
+  assert.match(addWorkspaceSource, /Save for Later/);
+  assert.match(addWorkspaceSource, /Add to Tonight's Flow/);
   assert.match(addWorkspaceSource, /data-feature-id="moment-destination-control"/);
   assert.match(addWorkspaceSource, /Queue always adds it at the end\./);
   assert.match(addWorkspaceSource, /placement: 'append'/);
@@ -99,7 +99,7 @@ test("host add workspace uses one YouTube expansion action and consistent segmen
   );
 
   assert.match(addWorkspaceSource, /data-feature-id="host-moment-type-tabs"/);
-  assert.match(addWorkspaceSource, /role="tablist"\s*aria-label="Build a Moment types"/);
+  assert.match(addWorkspaceSource, /role="tablist"\s*aria-label="Performance and moment types"/);
   assert.match(addWorkspaceSource, /role="tab"\s*aria-selected=\{active\}/);
   assert.match(performanceSearchSource, /Backing source/);
   assert.match(performanceSearchSource, /YouTube filter/);
