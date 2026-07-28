@@ -4786,6 +4786,170 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             )}
         </div>
     );
+    const mediaLibraryCategoryMeta = ({
+        scenes: {
+            label: 'Scenes',
+            icon: 'fa-images',
+            detail: 'Visual moments for Public TV and the Run Of Show.',
+            accepts: 'Images + video',
+            route: `Scene library - ${mediaLibraryUploadDestinationLabel}`,
+            playback: 'Public TV + Run Of Show',
+            status: `${visibleScenePresets.length} visible`,
+        },
+        sfx: {
+            label: 'Sound Effects',
+            icon: 'fa-drum',
+            detail: 'Short audio drops for live pads and automatic moment cues.',
+            accepts: 'Audio files',
+            route: `Sound Effects - ${mediaLibraryUploadDestinationLabel}`,
+            playback: 'Host soundboard + cues',
+            status: `${activeAudioLaneItems.length} ready`,
+        },
+        bg: {
+            label: 'Background',
+            icon: 'fa-wave-square',
+            detail: 'Music beds that can play between performances.',
+            accepts: 'Audio files',
+            route: `Background - ${mediaLibraryUploadDestinationLabel}`,
+            playback: 'Background player + Auto BG',
+            status: `${activeAudioLaneItems.length} tracks`,
+        },
+        apple: {
+            label: 'Apple Music',
+            icon: 'fa-music',
+            detail: 'A connected playlist source for room background music.',
+            accepts: 'Connected playlists',
+            route: appleMusicAuthorized ? 'Selected Apple Music playlist' : 'Connect Apple Music',
+            playback: 'Background player + Auto BG',
+            status: appleMusicAuthorized ? 'Connected' : 'Not connected',
+        },
+    })[mediaLibraryTab] || {};
+    const mediaLibraryCategoryWorkbench = (
+        <section
+            data-feature-id="host-media-library-category-workbench"
+            className="mb-4 rounded-[24px] border border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.09),transparent_32%),linear-gradient(145deg,rgba(17,29,48,0.96),rgba(28,20,43,0.94))] p-4"
+        >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-cyan-300/22 bg-cyan-500/12 text-cyan-100">
+                        <i className={`fa-solid ${mediaLibraryCategoryMeta.icon}`}></i>
+                    </span>
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">Library category</div>
+                        <div className="mt-1 text-xl font-black text-white">{mediaLibraryCategoryMeta.label}</div>
+                        <div className="mt-1 max-w-2xl text-sm text-zinc-300">{mediaLibraryCategoryMeta.detail}</div>
+                    </div>
+                </div>
+                <span className="rounded-full border border-white/12 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200">
+                    {mediaLibraryCategoryMeta.status}
+                </span>
+            </div>
+
+            <div data-feature-id="host-media-library-playback-map" className="mt-4 grid gap-2 md:grid-cols-3">
+                {[
+                    { step: '1 - Add from', value: mediaLibraryCategoryMeta.accepts, icon: 'fa-file-arrow-up' },
+                    { step: '2 - Saved to', value: mediaLibraryCategoryMeta.route, icon: 'fa-folder-tree' },
+                    { step: '3 - Plays through', value: mediaLibraryCategoryMeta.playback, icon: 'fa-circle-play' },
+                ].map((step) => (
+                    <div key={`${mediaLibraryTab}_${step.step}`} className="rounded-2xl border border-white/10 bg-black/22 px-3 py-3">
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">
+                            <i className={`fa-solid ${step.icon} text-cyan-200`}></i>
+                            {step.step}
+                        </div>
+                        <div className="mt-1 text-sm font-black text-white">{step.value}</div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-950/45 p-3">
+                {mediaLibraryTab === 'scenes' ? (
+                    <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+                        <input
+                            value={scenePresetTitle}
+                            onChange={(event) => setScenePresetTitle(event.target.value)}
+                            className={`${STYLES.input} h-11 px-3 text-sm`}
+                            placeholder="Optional title for a single scene"
+                        />
+                        <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} min-h-11 cursor-pointer justify-center px-4 py-2 text-[10px] ${scenePresetUploading ? 'pointer-events-none opacity-60' : ''}`}>
+                            <input
+                                type="file"
+                                accept="image/*,video/*"
+                                multiple
+                                className="hidden"
+                                disabled={scenePresetUploading}
+                                onChange={async (event) => {
+                                    await handleScenePresetFileSelection(event.target.files);
+                                    event.target.value = '';
+                                }}
+                            />
+                            <i className="fa-solid fa-upload mr-2"></i>
+                            {scenePresetUploading ? `Uploading ${Math.round(scenePresetUploadProgress || 0)}%` : 'Upload Scenes'}
+                        </label>
+                    </div>
+                ) : mediaLibraryTab === 'sfx' || mediaLibraryTab === 'bg' ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0 text-sm text-zinc-300">
+                            New files are mapped directly to <span className="font-black text-white">{mediaLibraryTab === 'sfx' ? 'Sound Effects' : 'Background'}</span>. You can change their destination later.
+                        </div>
+                        <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} min-h-11 cursor-pointer justify-center px-4 py-2 text-[10px]`}>
+                            <input
+                                type="file"
+                                accept="audio/*"
+                                multiple
+                                className="hidden"
+                                onChange={async (event) => {
+                                    await handleAudioLibraryFileSelection(event.target.files, activeAudioLane);
+                                    event.target.value = '';
+                                }}
+                            />
+                            <i className="fa-solid fa-upload mr-2"></i>
+                            {mediaLibraryTab === 'sfx' ? 'Upload to Sound Effects' : 'Upload to Background'}
+                        </label>
+                    </div>
+                ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="text-sm text-zinc-300">
+                            {appleMusicAuthorized
+                                ? 'Choose a playlist below. It becomes the room background source - no file upload required.'
+                                : 'Connect the host browser to browse playlists and map one to Background.'}
+                        </div>
+                        <button
+                            type="button"
+                            disabled={appleMusicPickerLoading}
+                            onClick={() => {
+                                if (appleMusicAuthorized) void loadAppleMusicPicker?.(appleMusicPickerMode);
+                                else void connectAppleMusic?.();
+                            }}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} min-h-11 px-4 py-2 text-[10px] ${appleMusicPickerLoading ? 'cursor-not-allowed opacity-60' : ''}`}
+                        >
+                            {appleMusicAuthorized ? (appleMusicPickerLoading ? 'Loading...' : 'Browse Playlists') : 'Connect Apple Music'}
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {mediaLibraryTab === 'scenes' ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">
+                            Default
+                            <input type="number" min="5" max="600" value={scenePresetDurationSec} onChange={(event) => setScenePresetDurationSec(event.target.value)} className={`${STYLES.input} h-9 w-24 px-2 text-sm font-black`} />
+                            seconds
+                        </label>
+                        {hasSceneLibrarySeedPack ? (
+                            <button type="button" disabled={scenePresetSeedPending} onClick={() => onSeedScenePresetLibrary?.({ silent: false })} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px] ${scenePresetSeedPending ? 'cursor-not-allowed opacity-60' : ''}`}>
+                                {scenePresetSeedPending ? 'Syncing Pack...' : `Sync ${sceneLibrarySeedPack.label}`}
+                            </button>
+                        ) : null}
+                    </div>
+                    <div className="inline-flex rounded-full border border-white/10 bg-black/25 p-1 text-[10px] font-black uppercase tracking-[0.14em]">
+                        <button type="button" onClick={() => setSceneLibraryView('grid')} className={`rounded-full px-3 py-1.5 transition ${sceneLibraryView === 'grid' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}>Pads</button>
+                        <button type="button" onClick={() => setSceneLibraryView('list')} className={`rounded-full px-3 py-1.5 transition ${sceneLibraryView === 'list' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}>List</button>
+                    </div>
+                </div>
+            ) : null}
+        </section>
+    );
     const scenePresetLibrarySection = (
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(145deg,rgba(9,16,28,0.98),rgba(18,12,27,0.96))]">
             <div className="sticky top-0 z-10 border-b border-white/10 bg-[linear-gradient(145deg,rgba(9,16,28,0.985),rgba(18,12,27,0.985))] px-4 py-3 backdrop-blur sm:px-5 sm:py-3.5">
@@ -4847,7 +5011,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         );
                     })}
                 </div>
-                <div className="mt-3 rounded-2xl border border-white/10 bg-black/18 px-3 py-3">
+                {mediaLibraryTab !== 'apple' ? (
+                <div data-feature-id="host-media-library-folder-bar" className="mt-3 rounded-2xl border border-white/10 bg-black/18 px-3 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <button
@@ -4877,79 +5042,18 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         </div>
                         <div className="inline-flex min-h-[32px] items-center gap-2 rounded-full border border-white/10 bg-zinc-950/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
                             <i className="fa-solid fa-upload text-cyan-200"></i>
-                            Uploads: <span className="text-white">{mediaLibraryUploadDestinationLabel}</span>
+                            New uploads: <span className="text-white">{mediaLibraryUploadDestinationLabel}</span>
                         </div>
                     </div>
                 </div>
-                {mediaLibraryTab === 'scenes' ? (
-                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)]">
-                    <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/6 p-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">Batch Upload</div>
-                        <div className="mt-1 text-xs text-zinc-400">Drop in one file or a whole set of sponsor cards, donation prompts, videos, or next-up slides at once.</div>
-                        <div className="mt-3 grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto]">
-                            <input value={scenePresetTitle} onChange={(event) => setScenePresetTitle(event.target.value)} className={STYLES.input} placeholder="Optional custom title for a single upload" />
-                            <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} cursor-pointer justify-center px-3 py-2 text-[10px] ${scenePresetUploading ? 'pointer-events-none opacity-60' : ''}`}>
-                                <input
-                                    type="file"
-                                    accept="image/*,video/*"
-                                    multiple
-                                    className="hidden"
-                                    disabled={scenePresetUploading}
-                                    onChange={async (event) => {
-                                        await handleScenePresetFileSelection(event.target.files);
-                                        event.target.value = '';
-                                    }}
-                                />
-                                {scenePresetUploading ? `Uploading ${Math.round(scenePresetUploadProgress || 0)}%` : 'Upload Scenes'}
-                            </label>
-                        </div>
-                        {hasSceneLibrarySeedPack ? (
-                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-fuchsia-300/16 bg-fuchsia-500/8 px-3 py-3">
-                                <div className="min-w-0">
-                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-100">{sceneLibrarySeedPack.label}</div>
-                                    <div className="mt-1 text-xs text-zinc-300">The earlier AAHF flyer and video pack can stay synced here automatically so the host does not need to rebuild that library by hand.</div>
-                                </div>
-                                <button
-                                    type="button"
-                                    disabled={scenePresetSeedPending}
-                                    onClick={() => onSeedScenePresetLibrary?.({ silent: false })}
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] ${scenePresetSeedPending ? 'cursor-not-allowed opacity-60' : ''}`}
-                                >
-                                    {scenePresetSeedPending ? 'Syncing Pack...' : `Sync ${sceneLibrarySeedPack.label}`}
-                                </button>
-                            </div>
-                        ) : null}
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-200">Defaults + View</div>
-                                <div className="mt-1 text-xs text-zinc-500">Batch default. Use pads for quick-fire scene launching or switch to list for editing.</div>
-                            </div>
-                            <div className="inline-flex rounded-full border border-white/10 bg-black/25 p-1 text-[10px] font-black uppercase tracking-[0.14em]">
-                                <button
-                                    type="button"
-                                    onClick={() => setSceneLibraryView('grid')}
-                                    className={`rounded-full px-2.5 py-1 transition ${sceneLibraryView === 'grid' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
-                                >
-                                    Pads
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSceneLibraryView('list')}
-                                    className={`rounded-full px-2.5 py-1 transition ${sceneLibraryView === 'list' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
-                                >
-                                    List
-                                </button>
-                            </div>
-                        </div>
-                        <div className="mt-3 flex items-center gap-2">
-                            <input type="number" min="5" max="600" value={scenePresetDurationSec} onChange={(event) => setScenePresetDurationSec(event.target.value)} className={`${STYLES.input} h-10 w-28 px-3 text-sm font-black`} title="Default duration in seconds" />
-                            <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">seconds</span>
-                        </div>
-                    </div>
+                ) : (
+                <div data-feature-id="host-media-library-provider-bar" className="mt-3 flex min-h-[48px] items-center justify-between gap-3 rounded-2xl border border-rose-300/16 bg-rose-500/7 px-3 py-2.5">
+                    <span className="text-xs font-bold text-zinc-300">Provider library - playlists stay in Apple Music and map into the room background player.</span>
+                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${appleMusicAuthorized ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}>
+                        {appleMusicAuthorized ? 'Connected' : 'Not connected'}
+                    </span>
                 </div>
-                ) : null}
+                )}
                 {activeMediaScene ? (
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
                         <span>Live on TV: {activeMediaScene.title || activeMediaScene.headline || 'Media scene'}</span>
@@ -4960,6 +5064,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 ) : null}
             </div>
             <div ref={sceneLibraryScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-4 custom-scrollbar scroll-pt-20 sm:px-5">
+                {mediaLibraryCategoryWorkbench}
                 {mediaLibraryTab === 'scenes' ? (
                 <>
                     <div data-feature-id="host-scene-template-quick-pads" className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -5253,63 +5358,27 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     <div className="grid gap-4">
                         {mediaLibraryTab === 'bg' ? backgroundAudioStatusCard : null}
                         {mediaLibraryTab === 'bg' ? backgroundLoopManagerCard : null}
-                        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-                            <div className="rounded-[24px] border border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-5">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
-                                            <i className={`fa-solid ${mediaLibraryTab === 'sfx' ? 'fa-wave-square' : 'fa-music'} text-lg`}></i>
-                                        </div>
-                                        <div className="mt-4 text-xl font-black text-white">
-                                            {mediaLibraryTab === 'sfx' ? 'Build Sound Effects' : 'Build Background Music'}
-                                        </div>
-                                        <div className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-                                            {mediaLibraryTab === 'sfx'
-                                                ? 'Upload crowd drops, stingers, and one-shots here. They appear in the host soundboard and moment cue controls.'
-                                                : 'Upload walk-in beds, reset music, and room loops here. They appear in Background choices and Auto BG rotation controls.'}
-                                        </div>
-                                    </div>
-                                    <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} cursor-pointer justify-center px-3 py-2 text-[10px]`}>
-                                        <input
-                                            type="file"
-                                            accept="audio/*"
-                                            multiple
-                                            className="hidden"
-                                            onChange={async (event) => {
-                                                await handleAudioLibraryFileSelection(event.target.files, activeAudioLane);
-                                                event.target.value = '';
-                                            }}
-                                        />
-                                        {mediaLibraryTab === 'sfx' ? 'Upload to Sound Effects' : 'Upload to Background'}
-                                    </label>
+                        <div data-feature-id="host-media-library-routing-status" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/22 px-4 py-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Playback mapping</div>
+                                <div className="mt-1 text-xs leading-5 text-zinc-400">
+                                    {mediaLibraryTab === 'sfx'
+                                        ? 'Sound Effects can appear on the live soundboard and optionally fire from a mapped moment cue.'
+                                        : 'Background tracks use the room player; Auto BG only rotates tracks marked eligible.'}
                                 </div>
                             </div>
-                            <div className="grid gap-3">
-                                <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4">
-                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Library Status</div>
-                                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
-                                        <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
-                                            {activeAudioLaneItems.length} in this tab
-                                        </span>
-                                        <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-zinc-300">
-                                            {inactiveAudioLaneItems.length} elsewhere
-                                        </span>
-                                        {mediaLibraryTab === 'sfx' ? (
-                                            <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-2.5 py-1 text-fuchsia-100">
-                                                {(Array.isArray(customSoundboardSounds) ? customSoundboardSounds : []).length} on board
-                                            </span>
-                                        ) : (
-                                            <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">
-                                                {(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg' && item?.bgAutoEligible !== false).length} auto-ready
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-zinc-300">
-                                    {mediaLibraryTab === 'sfx'
-                                        ? 'Custom cue assignments here override the default built-in host moment sounds, so donor beats and hype drops can match the room.'
-                                        : 'Starting a BG upload here hands it to the real host background player, not a one-off preview path, so the room hears the same source the automation uses.'}
-                                </div>
+                            <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.14em]">
+                                <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">{activeAudioLaneItems.length} here</span>
+                                <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-zinc-300">{inactiveAudioLaneItems.length} elsewhere</span>
+                                {mediaLibraryTab === 'sfx' ? (
+                                    <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-2.5 py-1 text-fuchsia-100">
+                                        {(Array.isArray(customSoundboardSounds) ? customSoundboardSounds : []).length} on soundboard
+                                    </span>
+                                ) : (
+                                    <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">
+                                        {(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg' && item?.bgAutoEligible !== false).length} auto-ready
+                                    </span>
+                                )}
                             </div>
                         </div>
                         {!visibleAudioLibraryItems.length ? (
@@ -5367,6 +5436,18 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                             className={`${STYLES.input} mt-3 h-10 px-3 text-sm font-black`}
                                                             placeholder="Audio title"
                                                         />
+                                                        {item.url || item.mediaUrl ? (
+                                                            <div data-feature-id="host-media-library-inline-audio-preview" className="mt-3 rounded-xl border border-white/10 bg-zinc-950/65 px-2 py-2">
+                                                                <audio
+                                                                    controls
+                                                                    controlsList="nodownload"
+                                                                    preload="none"
+                                                                    src={item.url || item.mediaUrl}
+                                                                    className="h-10 w-full accent-cyan-400"
+                                                                    aria-label={`Preview ${draft.title || item.fileName || 'audio upload'}`}
+                                                                />
+                                                            </div>
+                                                        ) : null}
                                                         <div className="mt-3 grid gap-3 md:grid-cols-2">
                                                             <label className="min-w-0">
                                                                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Library Lane</div>
@@ -5436,15 +5517,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                             </div>
                                                         )}
                                                         <div className="mt-3 flex flex-wrap gap-2">
-                                                            {mediaLibraryTab === 'sfx' ? (
-                                                                <button type="button" onClick={() => playSfxSafe(item.url || item.mediaUrl)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
-                                                                    Preview
-                                                                </button>
-                                                            ) : (
+                                                            {mediaLibraryTab === 'bg' ? (
                                                                 <button type="button" onClick={() => onStartBgTrack?.(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px]`}>
                                                                     Start Now
                                                                 </button>
-                                                            )}
+                                                            ) : null}
                                                             <button type="button" disabled={isSaving} onClick={() => saveAudioLibraryDraft(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] ${isSaving ? 'cursor-not-allowed opacity-60' : ''}`}>
                                                                 {isSaving ? 'Saving...' : 'Save'}
                                                             </button>
