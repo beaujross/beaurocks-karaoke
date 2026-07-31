@@ -17,7 +17,7 @@ test('host app lazy-loads heavy host surfaces behind React.lazy boundaries', () 
 test('host app wraps deferred host surfaces in suspense fallbacks', () => {
   assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading live queue\.\.\." \/>\}>[\s\S]*<HostQueueTab/);
   assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading room manager\.\.\." \/>\}>[\s\S]*<HostRoomLaunchPad/);
-  assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading show conveyor\.\.\." \/>\}>[\s\S]*<RunOfShowDirectorPanel/);
+  assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading tonight's flow\.\.\." \/>\}>[\s\S]*<RunOfShowDirectorPanel/);
   assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading branding tools\.\.\." \/>\}>[\s\S]*<HostLogoManager[\s\S]*<HostOrbSkinManager/);
   assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading audience store settings\.\.\." \/>\}>[\s\S]*<EventCreditsConfigPanel/);
   assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading chat settings\.\.\." \/>\}>[\s\S]*<ChatSettingsPanel/);

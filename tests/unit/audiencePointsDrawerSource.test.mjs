@@ -11,13 +11,13 @@ const source = [
 test('audience points sheet keeps a top close action for high zoom mobile users', () => {
   assert.match(
     source,
-    /aria-label="Close points sheet"/,
-    'Points sheet should expose a close control in the sticky header, not only after scrollable content',
+    /aria-label="Close audience wallet"/,
+    'Audience wallet should expose a close control in the sticky header, not only after scrollable content',
   );
   assert.match(
     source,
-    /sticky top-0 z-20[\s\S]*Fuel the show[\s\S]*Close points sheet/,
-    'Close action should live in the sticky points-sheet header',
+    /sticky top-0 z-20[\s\S]*Audience wallet[\s\S]*Close audience wallet/,
+    'Close action should live in the sticky audience-wallet header',
   );
 });
 
@@ -34,7 +34,7 @@ test('base audience points sheet uses room-configured point mechanics instead of
   );
   assert.match(
     source,
-    /Earn more/,
+    /data-feature-id="audience-points-earn-more"[\s\S]*Get more Points/,
     'Bonus area should be generic enough for normal rooms and event rooms',
   );
   assert.match(

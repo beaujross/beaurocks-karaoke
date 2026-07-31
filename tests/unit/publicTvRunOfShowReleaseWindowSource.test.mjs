@@ -50,5 +50,5 @@ test('public TV can render release-window votes as a glass overlay above active 
   assert.match(source, /timeProgressPct/);
   assert.match(source, /choiceLetter/);
   assert.match(source, /oneMinuteMicRoomModeActive/);
-  assert.match(source, /Crowd Decides At 1:00/);
+  assert.match(source, /Mic Checkpoint: \{oneMinuteMicModeStatusLabel\}/);
 });

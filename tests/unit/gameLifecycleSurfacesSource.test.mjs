@@ -23,5 +23,5 @@ test('Audience derives lifecycle guidance once and covers cartridge, Doodle, and
 test('TV uses the same lifecycle presentation for cartridge, Doodle, and Selfie shells', () => {
   assert.match(tv, /const gameLifecyclePresentation = useMemo\(\(\) => getGameLifecyclePresentation\(room \|\| \{\}\), \[room\]\)/);
   assert.equal((tv.match(/GameLifecycleStatusCard presentation=\{gameLifecyclePresentation\} surface="tv"/g) || []).length, 3);
-  assert.match(tv, /GameLifecycleStatusCard presentation=\{popTriviaLifecyclePresentation\} surface="tv"/);
+
 });

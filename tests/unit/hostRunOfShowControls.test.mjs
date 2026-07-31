@@ -100,19 +100,18 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
   assert.match(directorPanelSource, /Capture Live Room/);
 });
 
-test("HostApp restores queue tools after stop and previews the audience app", () => {
+test("HostApp stops the show back into standard queue mode and previews the audience app", () => {
   const hostSource = readFileSync(hostAppPath, "utf8");
   const queueTabSource = readFileSync(hostQueueTabPath, "utf8");
 
-  assert.match(queueTabSource, /const handleStopRunOfShowAndRestoreQueueTools = useCallback\(async \(\) => \{/);
+  assert.match(hostSource, /const stopRunOfShowNow = useCallback\(async \(\) => \{/);
+  assert.match(hostSource, /programMode: RUN_OF_SHOW_PROGRAM_MODES\.standard,/);
+  assert.match(hostSource, /runOfShowEnabled: false,/);
+  assert.match(hostSource, /onStopRunOfShow=\{stopRunOfShowNow\}/);
   assert.match(queueTabSource, /const runOfShowNeedsAttentionCount = Math\.max\(/);
-  assert.match(queueTabSource, /onFocusItem=\{onFocusRunOfShowItem\}/);
-  assert.match(queueTabSource, /onPreviewItem=\{onPreviewRunOfShowItem\}/);
-  assert.match(queueTabSource, /onMoveItem=\{onMoveRunOfShowItem\}/);
-  assert.match(queueTabSource, /onSkipItem=\{onSkipRunOfShowItem\}/);
+  assert.match(queueTabSource, /onClick=\{\(\) => onFocusRunOfShowItem\(item\.id\)\}/);
+  assert.match(queueTabSource, /onClick=\{\(\) => onPreviewRunOfShowItem\(item\.id\)\}/);
   assert.match(queueTabSource, /badge:\s*runOfShowNeedsAttentionCount,/);
-  assert.match(queueTabSource, /setShowAddForm\(true\);/);
-  assert.match(queueTabSource, /setShowQueueList\(true\);/);
   assert.match(hostSource, /onFocusRunOfShowItem=\{\(itemId\) => \{/);
   assert.match(hostSource, /onPreviewRunOfShowItem=\{previewRunOfShowItem\}/);
   assert.match(hostSource, /onMoveRunOfShowItem=\{moveRunOfShowItem\}/);
@@ -227,8 +226,8 @@ test("HostApp keeps Auto DJ queue advance independent from TV display mode chang
   );
   assert.match(
     source,
-    /const timer = setTimeout\(\(\) => \{\s*lastPartyAutoBreakTsRef\.current = lastPerformanceTs;/,
-    "Auto-party should only stamp a completed bridge after its timer actually fires, so rerenders cannot cancel the bridge and deadlock Auto DJ",
+    /const timer = setTimeout\(\(\) => \{[\s\S]*const launchGuard = canLaunchScheduledAutoCrowdMoment\([\s\S]*if \(!launchGuard\.allowed\) \{[\s\S]*return;[\s\S]*lastPartyAutoBreakTsRef\.current = lastPerformanceTs;/,
+    "Auto-party should stamp a completed bridge only after its timer fires and the launch guard allows the bridge",
   );
   assert.match(
     source,

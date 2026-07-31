@@ -172,12 +172,12 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
   );
   assert.match(
     source,
-    /Earn more/,
+    /data-feature-id="audience-points-earn-more"[\s\S]*Get more Points/,
     "SingerApp points modal should expose room bonus opportunities as a dedicated section",
   );
   assert.match(
     source,
-    /Fuel the show/,
+    /<span>\{supportCtaLabel\}<\/span>/,
     "SingerApp points modal should keep one primary host-configured support CTA instead of burying support across multiple cards",
   );
   assert.match(

@@ -49,7 +49,7 @@ test('audience app exposes run-of-show release-window controls for crowd and co-
   assert.match(source, /const isAudienceOneMinuteMicDecision = audienceReleaseSubjectType === 'continue_or_rotate';/);
   assert.match(source, /const isAudienceSkipPerformanceDecision = audienceReleaseSubjectType === 'skip_performance';/);
   assert.match(source, /performanceAudienceDecisionPresentation/);
-  assert.match(source, /One-Minute Mic/);
+  assert.match(source, /isAudienceOneMinuteMicDecision \? 'Keep Singing'/);
   assert.match(source, /Next Singer must win clearly; a tie keeps the singer/);
   assert.match(source, /Next Singer needs 55%. A tie keeps the singer/);
   assert.match(source, /isAudiencePerformanceProgressionDecision \? 'text-2xl'/);

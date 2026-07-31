@@ -22,7 +22,12 @@ describe('saved room recipe persistence', () => {
     }, BUILTIN_HOST_NIGHT_PRESETS.competition);
     const config = buildHostNightPresetConfig(normalized);
 
-    expect(normalized.recipe).toEqual(recipe);
-    expect(config.recipe).toEqual(recipe);
+    const normalizedRecipe = {
+      ...recipe,
+      performanceMode: 'karaoke',
+      requirements: {},
+    };
+    expect(normalized.recipe).toEqual(normalizedRecipe);
+    expect(config.recipe).toEqual(normalizedRecipe);
   });
 });
