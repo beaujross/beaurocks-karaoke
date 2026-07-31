@@ -190,8 +190,8 @@ const run = async () => {
       );
       await delay(450);
       const createAccountHost = [
-        page.getByRole("button", { name: /Host Sign In|Already Approved\? Sign In/i }).first(),
-        page.getByRole("link", { name: /Host Sign In|Already Approved\? Sign In/i }).first(),
+        page.getByRole("button", { name: /Host Sign In|Already (?:Approved|Invited|a Host)\? Sign In/i }).first(),
+        page.getByRole("link", { name: /Host Sign In|Already (?:Approved|Invited|a Host)\? Sign In/i }).first(),
       ];
       const visibleCta = await waitForAnyVisible(createAccountHost, 5000).catch(() => null);
       if (visibleCta) {
