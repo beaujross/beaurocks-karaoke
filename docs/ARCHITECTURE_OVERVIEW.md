@@ -211,3 +211,15 @@ Current flow:
 4. Questions resolve from cache, Gemini, or deterministic fallback.
 5. Audience (`SingerApp`) and TV (`PublicTV`) render the same active Pop Trivia state during `performing`.
 6. Round timing comes from `room.gameDefaults.triviaRoundSec` with client fallback defaults.
+
+## Host Access, Lifecycle, and Usage Reporting
+
+One Vite build supplies Marketing, Host, Audience, Public TV, Help, and Recap. When a release adds both a callable and its client caller, deploy Functions before Hosting.
+
+Host applications hold the authoritative applied, approved, workspace-activated, first-Room, and repeat-Room milestones. Successful server workflows write them; client page views do not create a parallel lifecycle event store.
+
+Room chat is a separate domain: Audience-to-Room and Audience-to-Host communication belongs to the live Room experience. Host-to-product support, onboarding, billing questions, and product feedback do not use Room chat.
+
+The admin report joins application milestones to existing organization usage meters. It reports funnel progress and usage units, not revenue, cost, contribution, or margin.
+
+See [Host Onboarding Milestones and Usage Exposure](./HOST_TELEMETRY_ONBOARDING_OPERATIONS_2026-07-28.md) for the data contract, deployment order, and production smoke test.

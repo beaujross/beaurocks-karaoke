@@ -2,7 +2,9 @@ export const EMPTY_HOST_ACCESS = Object.freeze({
   hasHostWorkspaceAccess: false,
   entitledHostAccess: false,
   hostApprovalEnabled: false,
+  applicationId: "",
   applicationStatus: "",
+  onboarding: null,
 });
 
 export const HOST_ACCESS_RETRY_DELAYS_MS = Object.freeze([0, 400, 1200, 2400]);
@@ -21,7 +23,9 @@ export const normalizeHostAccessPayload = (payload = {}) => ({
   hasHostWorkspaceAccess: !!payload?.hasHostWorkspaceAccess,
   entitledHostAccess: !!payload?.entitledHostAccess,
   hostApprovalEnabled: !!payload?.hostApprovalEnabled || !!payload?.privateHostAccessEnabled,
+  applicationId: String(payload?.applicationId || "").trim(),
   applicationStatus: String(payload?.applicationStatus || "").trim().toLowerCase(),
+  onboarding: payload?.onboarding && typeof payload.onboarding === "object" ? payload.onboarding : null,
 });
 
 export const isAppCheckWarmupError = (error) => {

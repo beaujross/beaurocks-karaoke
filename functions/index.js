@@ -4895,15 +4895,23 @@ const sanitizeWaitlistSource = (value = "") => {
   return safe;
 };
 
-const buildHostApplicationNextStepsMessage = ({ linePosition = 0, isNewSignup = false } = {}) => {
-  const safePosition = Number(linePosition);
-  const queueLine = Number.isFinite(safePosition) && safePosition > 0
-    ? ` Queue position: #${safePosition}.`
-    : "";
-  return isNewSignup
-    ? `Host access request received.${queueLine} Next steps: we notify BeauRocks admins, review the request by hand, and if approved this email/account can sign in on host.beaurocks.app to open Host Dashboard. No further action is needed right now.`
-    : `Host access request already on file.${queueLine} Next steps: BeauRocks admins review the request by hand, and if approved this email/account can sign in on host.beaurocks.app to open Host Dashboard. No further action is needed right now.`;
+const HOST_APPLICATION_HOST_TYPES = new Set(["home_party", "private_events", "venue_kj", "fundraiser_community", "testing_learning"]);
+
+const sanitizeHostApplicationChoice = (value = "", allowed = new Set()) => {
+  const token = String(value || "").trim().toLowerCase();
+  return allowed.has(token) ? token : "";
 };
+
+const sanitizeHostApplicationProfile = (payload = {}) => ({
+  hostType: sanitizeHostApplicationChoice(payload.hostType, HOST_APPLICATION_HOST_TYPES),
+  hostingGoal: String(payload.hostingGoal || "").trim().slice(0, 500),
+});
+
+const buildHostApplicationNextStepsMessage = ({ isNewSignup = false } = {}) => (
+  isNewSignup
+    ? "You are on the BeauRocks Host waitlist. We release only a few invitations at a time and will email you if a spot becomes available. No account is needed right now."
+    : "You are already on the BeauRocks Host waitlist. We will email you if an invitation becomes available. No account is needed right now."
+);
 
 const sanitizeHostApplicationStatus = (value = "", fallback = "pending") => {
   const token = String(value || "").trim().toLowerCase();
@@ -8562,9 +8570,115 @@ const resolveHostWorkspaceAccess = async (uid = "", email = "") => {
     planId: entitlements.planId,
     status: entitlements.status,
     role: entitlements.role,
+    applicationRecord: application,
   };
 };
 
+const recordHostApplicationMilestoneInternal = async ({
+  uid = "",
+  email = "",
+  milestone = "",
+  roomCode = "",
+  orgId = "",
+  planId = "",
+  planStatus = "",
+} = {}) => {
+  const safeUid = normalizeUidToken(uid);
+  const safeEmail = normalizeEmailToken(email);
+  const safeMilestone = String(milestone || "").trim().toLowerCase();
+  if (!safeUid || !["workspace_activated", "room_created"].includes(safeMilestone)) {
+    return { ok: false, reason: "invalid_milestone" };
+  }
+  const application = await resolveHostApplicationRecord({ uid: safeUid, email: safeEmail });
+  if (!application.id) return { ok: true, skipped: true, reason: "application_not_found" };
+
+  const db = admin.firestore();
+  const applicationRef = db.collection("host_access_applications").doc(application.id);
+  const now = admin.firestore.Timestamp.now();
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(applicationRef);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    const milestones = data.milestones && typeof data.milestones === "object"
+      ? { ...data.milestones }
+      : {};
+    const accountSnapshot = data.hostAccountSnapshot && typeof data.hostAccountSnapshot === "object"
+      ? { ...data.hostAccountSnapshot }
+      : {};
+
+    if (safeMilestone === "workspace_activated" && !milestones.workspaceActivatedAt) {
+      milestones.workspaceActivatedAt = now;
+    }
+    if (safeMilestone === "room_created" && safeRoomCode) {
+      const firstRoomCode = normalizeRoomCode(milestones.firstRoomCode || "");
+      const secondRoomCode = normalizeRoomCode(milestones.secondRoomCode || "");
+      if (!firstRoomCode) {
+        milestones.firstRoomAt = milestones.firstRoomAt || now;
+        milestones.firstRoomCode = safeRoomCode;
+      } else if (safeRoomCode !== firstRoomCode && !secondRoomCode) {
+        milestones.secondRoomAt = milestones.secondRoomAt || now;
+        milestones.secondRoomCode = safeRoomCode;
+      }
+      milestones.lastRoomAt = now;
+      milestones.lastRoomCode = safeRoomCode;
+    }
+
+    tx.set(applicationRef, {
+      milestones,
+      hostAccountSnapshot: {
+        ...accountSnapshot,
+        uid: safeUid,
+        orgId: String(orgId || accountSnapshot.orgId || "").trim(),
+        planId: String(planId || accountSnapshot.planId || "free").trim() || "free",
+        planStatus: String(planStatus || accountSnapshot.planStatus || "inactive").trim() || "inactive",
+        updatedAt: now,
+      },
+      updatedAt: now,
+    }, { merge: true });
+  });
+
+  return { ok: true, applicationId: application.id, milestone: safeMilestone };
+};
+
+const buildMyHostOnboardingStatus = ({ access = {}, applicationData = {} } = {}) => {
+  const milestones = applicationData?.milestones && typeof applicationData.milestones === "object"
+    ? applicationData.milestones
+    : {};
+  const applied = !!access.applicationId;
+  const approved = access.applicationStatus === "approved" || !!access.hasHostWorkspaceAccess;
+  const workspaceActivatedAtMs = valueToMillis(milestones.workspaceActivatedAt);
+  const firstRoomAtMs = valueToMillis(milestones.firstRoomAt);
+  const secondRoomAtMs = valueToMillis(milestones.secondRoomAt);
+  const workspaceActivated = workspaceActivatedAtMs > 0;
+  const firstRoomComplete = firstRoomAtMs > 0;
+  const repeatRoomComplete = secondRoomAtMs > 0;
+  return {
+    programLabel: approved ? "Host invitation" : "Host waitlist",
+    currentStage: repeatRoomComplete
+      ? "repeat_room_complete"
+      : firstRoomComplete
+        ? "first_room_complete"
+        : workspaceActivated
+          ? "workspace_ready"
+          : approved
+            ? "invited"
+            : applied
+              ? "under_review"
+              : "not_applied",
+    steps: [
+      { id: "application", label: "Application received", complete: applied },
+      { id: "review", label: "Invitation received", complete: approved },
+      { id: "workspace", label: "Set up your Host profile", complete: workspaceActivated },
+      { id: "first_room", label: "Run your first Room", complete: firstRoomComplete },
+    ],
+    workspaceActivatedAtMs,
+    firstRoomAtMs,
+    secondRoomAtMs,
+    hasRepeatRoom: repeatRoomComplete,
+  };
+};
 const resolveAiDemoBypassForRoomHost = async ({ request, uid }) => {
   const roomCode = normalizeRoomCode(request?.data?.roomCode || "");
   if (!roomCode) return { enabled: false, roomCode: "" };
@@ -16917,6 +17031,7 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
   const email = sanitizeWaitlistEmail(request.data?.email || "");
   const useCase = sanitizeWaitlistUseCase(request.data?.useCase || "");
   const source = sanitizeWaitlistSource(request.data?.source || "");
+  const hostProfile = sanitizeHostApplicationProfile(request.data || {});
   const now = admin.firestore.FieldValue.serverTimestamp();
   const uid = request.auth?.uid || null;
   const userAgent = String(request.rawRequest?.get?.("user-agent") || "").slice(0, 320);
@@ -16946,6 +17061,7 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
         email,
         useCase,
         source,
+        hostProfile,
         status: "active",
         linePosition,
         createdAt: now,
@@ -16968,6 +17084,7 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
         name,
         useCase,
         source,
+        hostProfile,
         updatedAt: now,
         lastUid: uid,
         lastIp: ip,
@@ -16987,8 +17104,12 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
         name,
         source,
         useCase,
+        hostProfile,
         linePosition,
         status,
+        milestones: {
+          appliedAt: applicationData?.milestones?.appliedAt || applicationData.submittedAt || now,
+        },
         submittedAt: applicationData.submittedAt || now,
         createdAt: applicationData.createdAt || now,
         updatedAt: now,
@@ -17028,8 +17149,8 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
     linePosition,
     isNewSignup,
     message: isNewSignup
-      ? buildHostApplicationNextStepsMessage({ linePosition, isNewSignup: true })
-      : buildHostApplicationNextStepsMessage({ linePosition, isNewSignup: false }),
+      ? buildHostApplicationNextStepsMessage({ isNewSignup: true })
+      : buildHostApplicationNextStepsMessage({ isNewSignup: false }),
   };
 });
 
@@ -17283,6 +17404,14 @@ exports.resolveHostApplication = onCall({ cors: true }, async (request) => {
       reviewNotes: notes,
       reviewedByUid: requesterUid,
       reviewedAt: now,
+      milestones: action === "approve"
+        ? {
+          approvedAt: appData?.milestones?.approvedAt || now,
+          inviteIssuedAt: appData?.milestones?.inviteIssuedAt || now,
+        }
+        : {
+          reviewedAt: now,
+        },
       updatedAt: now,
     }, { merge: true })
   ];
@@ -17337,13 +17466,137 @@ exports.getMyHostAccessStatus = onCall({ cors: true }, async (request) => {
   const uid = requireAuth(request, "Sign in required.");
   const email = String(request.auth?.token?.email || "").trim().toLowerCase();
   const access = await resolveHostWorkspaceAccess(uid, email);
+  const { applicationRecord, ...publicAccess } = access;
   return {
     ok: true,
-    ...access,
+    ...publicAccess,
+    onboarding: buildMyHostOnboardingStatus({
+      access,
+      applicationData: applicationRecord?.data || {},
+    }),
     privateHostAccessEnabled: !!access.hostApprovalEnabled,
   };
 });
 
+exports.getHostLifecycleReportingSummary = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "get_host_lifecycle_reporting_summary", { perMinute: 12, perHour: 80 });
+  enforceAppCheckIfEnabled(request, "get_host_lifecycle_reporting_summary");
+  await requireDirectoryAdmin(request, { deniedMessage: "Directory administrator role required." });
+  const period = normalizeUsagePeriodKey(request.data?.period || getUsagePeriodKey());
+  if (!period) throw new HttpsError("invalid-argument", "period must be in YYYYMM format.");
+
+  const db = admin.firestore();
+  const applicationSnap = await db.collection("host_access_applications").limit(200).get();
+  const applications = applicationSnap.docs.map((docSnap) => ({
+    applicationId: docSnap.id,
+    ...(docSnap.data() || {}),
+  }));
+  const orgIds = Array.from(new Set(
+    applications
+      .map((application) => String(application?.hostAccountSnapshot?.orgId || "").trim())
+      .filter(Boolean)
+  ));
+  const usageByOrgId = new Map();
+  for (let offset = 0; offset < orgIds.length; offset += 200) {
+    const chunk = orgIds.slice(offset, offset + 200);
+    const refs = chunk.map((orgId) => db.collection("organizations").doc(orgId).collection("usage").doc(period));
+    const snaps = refs.length ? await db.getAll(...refs) : [];
+    snaps.forEach((snap, index) => {
+      usageByOrgId.set(chunk[index], normalizeUsageDocumentData(snap.exists ? (snap.data() || {}) : {}));
+    });
+  }
+
+  const meterIds = Object.keys(USAGE_METER_DEFINITIONS);
+  const usageTotals = Object.fromEntries(meterIds.map((meterId) => [meterId, 0]));
+  const nowMsValue = Date.now();
+  const activeCutoffMs = nowMsValue - (30 * 86400000);
+  const statusCounts = { pending: 0, approved: 0, rejected: 0 };
+  const hostTypeCounts = {};
+  let activatedHosts = 0;
+  let firstRoomHosts = 0;
+  let repeatHosts = 0;
+  let activeHosts30 = 0;
+
+  const hosts = applications.map((application) => {
+    const status = sanitizeHostApplicationStatus(application.status || "", "");
+    if (statusCounts[status] !== undefined) statusCounts[status] += 1;
+    const hostType = sanitizeHostApplicationChoice(
+      application?.hostProfile?.hostType || "",
+      HOST_APPLICATION_HOST_TYPES
+    );
+    if (hostType) hostTypeCounts[hostType] = (hostTypeCounts[hostType] || 0) + 1;
+    const milestones = application?.milestones && typeof application.milestones === "object"
+      ? application.milestones
+      : {};
+    const account = application?.hostAccountSnapshot && typeof application.hostAccountSnapshot === "object"
+      ? application.hostAccountSnapshot
+      : {};
+    const orgId = String(account.orgId || "").trim();
+    const usage = usageByOrgId.get(orgId) || {};
+    const workspaceActivatedAtMs = valueToMillis(milestones.workspaceActivatedAt);
+    const firstRoomAtMs = valueToMillis(milestones.firstRoomAt);
+    const secondRoomAtMs = valueToMillis(milestones.secondRoomAt);
+    const lastRoomAtMs = valueToMillis(milestones.lastRoomAt || milestones.firstRoomAt);
+    if (workspaceActivatedAtMs > 0) activatedHosts += 1;
+    if (firstRoomAtMs > 0) firstRoomHosts += 1;
+    if (secondRoomAtMs > 0) repeatHosts += 1;
+    if (lastRoomAtMs >= activeCutoffMs) activeHosts30 += 1;
+    const usageMeters = {};
+    meterIds.forEach((meterId) => {
+      const meter = usage?.meters?.[meterId] && typeof usage.meters[meterId] === "object"
+        ? usage.meters[meterId]
+        : {};
+      const used = toWholeNumber(meter.settled ?? meter.used, 0);
+      usageMeters[meterId] = {
+        label: USAGE_METER_DEFINITIONS[meterId]?.label || meterId,
+        used,
+      };
+      usageTotals[meterId] += used;
+    });
+    return {
+      applicationId: application.applicationId,
+      uid: normalizeUidToken(application.uid || account.uid || ""),
+      email: String(application.email || "").trim().toLowerCase(),
+      name: String(application.name || "").trim(),
+      status,
+      hostType,
+      orgId,
+      planId: String(account.planId || "free").trim() || "free",
+      planStatus: String(account.planStatus || "inactive").trim() || "inactive",
+      workspaceActivatedAtMs,
+      firstRoomAtMs,
+      secondRoomAtMs,
+      lastRoomAtMs,
+      usageMeters,
+    };
+  }).sort((left, right) => right.lastRoomAtMs - left.lastRoomAtMs);
+
+  return {
+    ok: true,
+    period,
+    generatedAtMs: nowMsValue,
+    funnel: {
+      applications: applications.length,
+      ...statusCounts,
+      activatedHosts,
+      firstRoomHosts,
+      repeatHosts,
+      activeHosts30,
+    },
+    applicantCohorts: hostTypeCounts,
+    usageTotals,
+    hosts,
+    dataCoverage: {
+      applicationDocuments: applications.length,
+      usageOrganizations: usageByOrgId.size,
+      applicationLimit: 200,
+      accountingScope: "usage_units_and_subscription_snapshot_only",
+      paymentSettlementReconciled: false,
+      cloudBillingExportReconciled: false,
+      note: "This is a testing funnel and usage-exposure report. It does not calculate revenue, provider cost, contribution, or margin.",
+    },
+  };
+});
 exports.getMyDirectoryAccess = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "get_my_directory_access", { perMinute: 60, perHour: 480 });
   enforceAppCheckIfEnabled(request, "get_my_directory_access");
@@ -23147,55 +23400,47 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
     const targetEmail = sanitizeOptionalWaitlistEmail(data.targetEmail || data.email || "");
     const hostInfoUrl = normalizeDirectoryOptionalUrl(data.hostInfoUrl || "https://beaurocks.app/for-hosts") || "https://beaurocks.app/for-hosts";
     const name = sanitizeWaitlistName(data.name || "") || "there";
-    const safePosition = Math.max(0, Number(data.linePosition || 0) || 0);
     const isNewSignup = data.isNewSignup !== false;
-    const queueLabel = safePosition > 0 ? `#${safePosition}` : "active";
     const intro = isNewSignup
-      ? "Your BeauRocks host access request is in line for review."
-      : "Your BeauRocks host access request is still in line for review.";
+      ? "You are on the BeauRocks Host waitlist."
+      : "You are still on the BeauRocks Host waitlist.";
     const text = [
       `Hi ${name},`,
       "",
       intro,
-      safePosition > 0 ? `Queue position: ${queueLabel}` : "",
-      "We review host access requests by hand before approving dashboard access.",
-      "If approved, this email/account will be able to sign in on host.beaurocks.app and open Host Dashboard.",
-      "No further action is needed right now.",
+      "We release only a few private invitations at a time.",
+      "If an invitation becomes available, we will email this address with everything you need to get started.",
+      "Joining the waitlist is free. You do not need an account, card, or subscription right now.",
       `Host access info: ${hostInfoUrl}`,
-    ].filter(Boolean).join("\n");
+    ].join("\n");
     const html = `
       <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Hi ${escapeAlertHtml(name)},</p>
       <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">${escapeAlertHtml(intro)}</p>
-      ${safePosition > 0 ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Queue position:</strong> ${escapeAlertHtml(queueLabel)}</p>` : ""}
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">We review host access requests by hand before approving dashboard access.</p>
-      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">If approved, this email/account will be able to sign in on <strong>host.beaurocks.app</strong> and open Host Dashboard. No further action is needed right now.</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">We release only a few private invitations at a time. If a spot becomes available, we will email this address with everything you need to get started.</p>
+      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">Joining the waitlist is free. You do not need an account, card, or subscription right now.</p>
     `;
     return {
       eventType: isNewSignup ? "host_application_applicant_received" : "host_application_applicant_reconfirmed",
       to: [targetEmail],
       subject: isNewSignup
-        ? "Your BeauRocks host request is in line"
-        : "Your BeauRocks host request is still in line",
+        ? "You are on the BeauRocks Host waitlist"
+        : "You are still on the BeauRocks Host waitlist",
       text,
       html,
-      eyebrow: "Host Access Request",
-      title: isNewSignup ? "You are in the host review line" : "Your host request is still in line",
-      preheader: safePosition > 0
-        ? `Your BeauRocks host request is queued at ${queueLabel}.`
-        : "Your BeauRocks host request is queued for review.",
-      ctaLabel: "View Host Access Info",
+      eyebrow: "Host Waitlist",
+      title: isNewSignup ? "You are on the list" : "Your place is saved",
+      preheader: "A few private Host invitations are released at a time.",
+      ctaLabel: "Review Host Access",
       ctaUrl: hostInfoUrl,
       applicationId: safeDirectoryString(data.applicationId || "", 180),
     };
-  }
-  case "host_application_admin_alert": {
+  }  case "host_application_admin_alert": {
     const applicationId = safeDirectoryString(data.applicationId || "", 180);
     const name = sanitizeWaitlistName(data.name || "");
     const email = sanitizeOptionalWaitlistEmail(data.email || "");
     const uid = normalizeUidToken(data.uid || "");
     const source = sanitizeWaitlistSource(data.source || "unknown");
     const status = sanitizeHostApplicationStatus(data.status || "", "pending");
-    const linePosition = Math.max(0, Number(data.linePosition || 0) || 0);
     const submittedAtMs = valueToMillis(data.submittedAtMs || data.submittedAt || data.createdAt) || Date.now();
     const submittedAtIso = new Date(submittedAtMs).toISOString();
     const adminUrl = normalizeDirectoryOptionalUrl(data.adminUrl || "https://beaurocks.app/admin/moderation") || "https://beaurocks.app/admin/moderation";
@@ -23211,7 +23456,6 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       `Applicant: ${summaryLabel}`,
       email ? `Email: ${email}` : "",
       uid ? `UID: ${uid}` : "",
-      linePosition > 0 ? `Queue position: #${linePosition}` : "",
       `Status: ${status}`,
       `Source: ${source}`,
       `Submitted: ${submittedAtIso}`,
@@ -23222,7 +23466,6 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       <div style="display:grid;gap:10px;margin-bottom:18px">
         ${email ? `<div><strong>Email:</strong> ${escapeAlertHtml(email)}</div>` : ""}
         ${uid ? `<div><strong>UID:</strong> ${escapeAlertHtml(uid)}</div>` : ""}
-        ${linePosition > 0 ? `<div><strong>Queue position:</strong> #${linePosition}</div>` : ""}
         <div><strong>Status:</strong> ${escapeAlertHtml(status)}</div>
         <div><strong>Source:</strong> ${escapeAlertHtml(source)}</div>
         <div><strong>Submitted:</strong> ${escapeAlertHtml(submittedAtIso)}</div>
@@ -23256,20 +23499,20 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
     const text = [
       `Hi ${name},`,
       "",
-      "Welcome to BEAUROCKS hosting. Your host access request has been approved.",
-      "You can now sign in to Host Dashboard, start a room, and run the full host / audience / TV flow.",
+      "You have been selected for a limited BeauRocks Host testing cohort.",
+      "Your private Host invitation is active. Sign in to Host Dashboard and complete a guided first-Room rehearsal.",
       reviewLabel ? `Approved: ${reviewLabel}` : "",
       notes ? `Admin notes: ${notes}` : "",
       "",
-      "How testing works:",
-      "1. Sign in to Host Dashboard and start a room.",
-      "2. Open the public TV on a second screen and confirm the room code is visible.",
-      "3. Join from your phone as an audience member and test queue adds, reactions, selfies, vibe sync, and room controls.",
-      "4. Run at least one private test session before inviting a venue or a broader crowd.",
+      "Your onboarding checklist:",
+      "1. Sign in to Host Dashboard and review your workspace.",
+      "2. Create a private rehearsal Room.",
+      "3. Open Public TV on a second screen and confirm the Room code is visible.",
+      "4. Join from your phone as an audience member and move one request through the queue.",
       "",
-      "How monetization works:",
-      "BeauRocks is structured around recurring host access plans (Host Monthly / Host Annual) plus audience-side paid features where enabled.",
-      "For your testing window, the main goal is proving the room flow, TV experience, and repeat usage. Once you are close to live venue use, we can help map you onto the right paid setup.",
+      "Access and billing:",
+      "Applying did not start a subscription. Money > Billing & Usage shows your current plan, metered requests, limits, and available receipts.",
+      "Review that page before larger events so usage and available capacity stay transparent.",
       "",
       "Suggested next steps:",
       "- Run 1-2 private test nights with a second device for TV and at least one phone joining as a guest.",
@@ -23281,18 +23524,18 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
     ].filter(Boolean).join("\n");
     const html = `
       <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Hi ${escapeAlertHtml(name)},</p>
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Welcome to BEAUROCKS hosting.</strong> Your host access request has been approved, and you can now sign in to Host Dashboard, start a room, and run the full host / audience / TV flow.</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>You have been selected for a limited BeauRocks Host testing cohort.</strong> Your private Host invitation is active. Sign in to Host Dashboard and complete a guided first-Room rehearsal.</p>
       ${reviewLabel ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Approved:</strong> ${escapeAlertHtml(reviewLabel)}</p>` : ""}
       ${notes ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Admin notes:</strong> ${escapeAlertHtml(notes)}</p>` : ""}
-      <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>How testing works</strong></p>
+      <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>Your onboarding checklist</strong></p>
       <ol style="margin:0 0 18px 22px;padding:0;color:#d6d9e5;font-size:16px;line-height:1.8">
-        <li style="margin:0 0 8px">Sign in to Host Dashboard and start a room.</li>
-        <li style="margin:0 0 8px">Open the public TV on a second screen and confirm the room code is visible.</li>
-        <li style="margin:0 0 8px">Join from your phone as an audience member and test queue adds, reactions, selfies, vibe sync, and room controls.</li>
-        <li style="margin:0">Run at least one private test session before inviting a venue or a broader crowd.</li>
+        <li style="margin:0 0 8px">Sign in to Host Dashboard and review your workspace.</li>
+        <li style="margin:0 0 8px">Create a private rehearsal Room.</li>
+        <li style="margin:0 0 8px">Open Public TV on a second screen and confirm the Room code is visible.</li>
+        <li style="margin:0">Join from your phone as an audience member and move one request through the queue.</li>
       </ol>
-      <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>How monetization works</strong></p>
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">BeauRocks is structured around recurring host access plans (<strong>Host Monthly</strong> / <strong>Host Annual</strong>) plus audience-side paid features where enabled. For your testing window, the main goal is proving the room flow, TV experience, and repeat usage. Once you are close to live venue use, we can help map you onto the right paid setup.</p>
+      <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>Access and billing</strong></p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Applying did not start a subscription. In Host Dashboard, <strong>Money &gt; Billing &amp; Usage</strong> shows your current plan, metered requests, limits, and available receipts. Review it before larger events so usage and capacity stay transparent.</p>
       <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>Suggested next steps</strong></p>
       <ul style="margin:0 0 18px 22px;padding:0;color:#d6d9e5;font-size:16px;line-height:1.8">
         <li style="margin:0 0 8px">Run 1-2 private test nights with a second device for TV and at least one phone joining as a guest.</li>
@@ -23304,12 +23547,12 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
     return {
       eventType: "host_application_applicant_approved",
       to: [targetEmail],
-      subject: "Welcome to BEAUROCKS hosting",
+      subject: "Your private BeauRocks Host invitation",
       text,
       html,
       eyebrow: "Host Access Approved",
-      title: "Your host account is live",
-      preheader: "You are approved for BeauRocks hosting and ready to test the full room flow.",
+      title: "Your Host invitation is ready",
+      preheader: "You were selected for a limited BeauRocks Host testing cohort.",
       ctaLabel: "Open Host Dashboard",
       ctaUrl: hostUrl,
       applicationId: safeDirectoryString(data.applicationId || "", 180),
@@ -23344,7 +23587,7 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       eyebrow: "Host Access Update",
       title: "Your application is not approved yet",
       preheader: "Here is the latest decision on your BeauRocks host access request.",
-      ctaLabel: "View Host Access Info",
+      ctaLabel: "Review Host Access",
       ctaUrl: infoUrl,
       applicationId: safeDirectoryString(data.applicationId || "", 180),
     };
@@ -24229,6 +24472,16 @@ exports.bootstrapOnboardingWorkspace = onCall({ cors: true }, async (request) =>
     updatedAt: now,
   }, { merge: true });
   const entitlements = await resolveUserEntitlements(uid);
+  await recordHostApplicationMilestoneInternal({
+    uid,
+    email: String(request.auth?.token?.email || "").trim().toLowerCase(),
+    milestone: "workspace_activated",
+    orgId: ensured.orgId,
+    planId: entitlements.planId,
+    planStatus: entitlements.status,
+  }).catch((error) => {
+    console.warn("Host application workspace milestone failed", error?.message || error);
+  });
   return {
     ok: true,
     orgId: ensured.orgId,
@@ -25134,7 +25387,17 @@ exports.provisionHostRoom = onCall(
       planId: roomCreationEntitlements.planId || "free",
       status: roomCreationEntitlements.status || "inactive",
     });
-    const launchUrls = buildProvisionLaunchUrls({
+    await recordHostApplicationMilestoneInternal({
+      uid: callerUid,
+      email: String(request.auth?.token?.email || "").trim().toLowerCase(),
+      milestone: "room_created",
+      roomCode,
+      orgId: ensured.orgId,
+      planId: roomCreationEntitlements.planId,
+      planStatus: roomCreationEntitlements.status,
+    }).catch((error) => {
+      console.warn("Host application Room milestone failed", error?.message || error);
+    });    const launchUrls = buildProvisionLaunchUrls({
       origin: launchOrigin,
       roomCode,
     });

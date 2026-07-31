@@ -505,6 +505,12 @@ const getMyHostAccessStatus = async (payload = {}) => {
   return data || null;
 };
 
+const getHostLifecycleReportingSummary = async (payload = {}) => {
+  await requireAppCheckToken("getHostLifecycleReportingSummary");
+  const data = await callFunction("getHostLifecycleReportingSummary", payload || {});
+  return data || null;
+};
+
 const getMyDirectoryAccess = async (payload = {}) => {
   await requireAppCheckToken("getMyDirectoryAccess");
   const data = await callFunction("getMyDirectoryAccess", payload || {});
@@ -1316,6 +1322,7 @@ export {
   listHostApplications,
   resolveHostApplication,
   getMyHostAccessStatus,
+  getHostLifecycleReportingSummary,
   getMyDirectoryAccess,
   setMyVipAccountStatus,
   claimAudienceCommunityBoost,

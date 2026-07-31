@@ -46,8 +46,32 @@ test("hostAccessState.test", async () => {
     hasHostWorkspaceAccess: true,
     entitledHostAccess: true,
     hostApprovalEnabled: true,
+    applicationId: "",
     applicationStatus: "approved",
+    onboarding: null,
   });
+
+  assert.deepEqual(
+    normalizeHostAccessPayload({
+      applicationId: "application-123",
+      applicationStatus: "PENDING",
+      onboarding: {
+        currentStage: "approved",
+        steps: [{ id: "dashboard", label: "Open the Host Dashboard", complete: true }],
+      },
+    }),
+    {
+      hasHostWorkspaceAccess: false,
+      entitledHostAccess: false,
+      hostApprovalEnabled: false,
+      applicationId: "application-123",
+      applicationStatus: "pending",
+      onboarding: {
+        currentStage: "approved",
+        steps: [{ id: "dashboard", label: "Open the Host Dashboard", complete: true }],
+      },
+    }
+  );
 
   await assert.rejects(
     fetchHostAccessStatusWithRetry(async () => {

@@ -51,6 +51,13 @@ Functions or Firestore rules changes:
 npm run validate:backend
 npm run deploy:backend
 ```
+Functions plus client callers:
+
+1. Run `npm run validate:functions`.
+2. Deploy Functions first with `npm run deploy:functions`.
+3. Run `npm run deploy:hosting`.
+
+This order prevents a newly hosted client from depending on callable endpoints that are not deployed yet.
 
 Expected success:
 - Firebase Hosting release completes for `beaurocks-karaoke-v2` when hosting is deployed.
@@ -103,6 +110,17 @@ These are useful, but they do not outrank the core-night gate:
   - unauthenticated `https://host.beaurocks.app/?mode=host...` redirects to `/host-access`
   - authenticated user can enter host control surface and see create-room UI
 
+If Host application, invitation, milestone, or usage-exposure reporting changed:
+
+1. Submit an application and confirm receipt without a numerical queue claim.
+2. Confirm the admin can see Host type and testing goal.
+3. Approve it and confirm the private invitation enters the outbound email pipeline.
+4. Complete Host workspace setup and confirm the application activation milestone.
+5. Create two distinct test Rooms and confirm first/repeat milestones.
+6. Refresh the admin Host Funnel & Usage Exposure report.
+7. Confirm it shows request units without revenue, cost, contribution, or margin claims.
+
+Full operating details: `docs/HOST_TELEMETRY_ONBOARDING_OPERATIONS_2026-07-28.md`.
 Deterministic marketing release gate:
 
 ```powershell

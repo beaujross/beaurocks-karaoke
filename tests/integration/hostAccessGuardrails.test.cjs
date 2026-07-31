@@ -7,6 +7,9 @@ const {
   geminiGenerate,
   createAppleMusicToken,
   getMyUsageSummary,
+  getMyHostAccessStatus,
+  getHostLifecycleReportingSummary,
+  submitMarketingWaitlist,
   setHostApprovalStatus,
 } = require("../../functions/index.js");
 
@@ -172,15 +175,55 @@ async function run() {
         "permission-denied"
       );
     }],
-    ["approved host access can provision host room", async () => {
+    ["approved Host application records workspace, first-Room, and repeat-Room milestones", async () => {
+      await submitMarketingWaitlist.run(requestFor(USER_UID, {
+        name: "Guardrail Host",
+        email: `${USER_UID}@test.local`,
+        useCase: "host_application",
+        source: "integration_test",
+        hostType: "home_party",
+        hostingGoal: "Validate the simplified Host cohort funnel.",
+      }));
       await grantPrivateHostAccess(USER_UID);
-      const result = await provisionHostRoom.run(
-        requestFor(USER_UID, { requestId: "guardrail-room-ok", hostName: "Guardrail Host" })
+      const workspace = await bootstrapOnboardingWorkspace.run(
+        requestFor(USER_UID, { orgName: "Guardrail Org", hostName: "Guardrail Host" })
       );
-      assert.equal(result.ok, true);
-      assert.ok(String(result.roomCode || "").trim().length > 0);
-    }],
-    ["approved host override receives a capped internal usage profile", async () => {
+      assert.equal(workspace.ok, true);
+      const first = await provisionHostRoom.run(
+        requestFor(USER_UID, { requestId: "guardrail-room-first", hostName: "Guardrail Host" })
+      );
+      const second = await provisionHostRoom.run(
+        requestFor(USER_UID, { requestId: "guardrail-room-second", hostName: "Guardrail Host" })
+      );
+      assert.equal(first.ok, true);
+      assert.equal(second.ok, true);
+      assert.notEqual(first.roomCode, second.roomCode);
+      const applicationSnap = await db.collection("host_access_applications")
+        .where("uid", "==", USER_UID)
+        .limit(1)
+        .get();
+      assert.equal(applicationSnap.size, 1);
+      const application = applicationSnap.docs[0].data();
+      assert.ok(application.milestones?.workspaceActivatedAt);
+      assert.equal(application.milestones?.firstRoomCode, first.roomCode);
+      assert.equal(application.milestones?.secondRoomCode, second.roomCode);
+      assert.equal(application.hostAccountSnapshot?.orgId, workspace.orgId);
+      const access = await getMyHostAccessStatus.run(requestFor(USER_UID));
+      assert.equal(access.onboarding.currentStage, "repeat_room_complete");
+      await expectHttpsError(
+        () => getHostLifecycleReportingSummary.run(requestFor(USER_UID, { period: "202607" })),
+        "permission-denied"
+      );
+      const report = await getHostLifecycleReportingSummary.run(
+        requestFor(ADMIN_UID, { period: "202607" })
+      );
+      assert.equal(report.ok, true);
+      assert.equal(report.funnel.activatedHosts, 1);
+      assert.equal(report.funnel.firstRoomHosts, 1);
+      assert.equal(report.funnel.repeatHosts, 1);
+      assert.equal(report.dataCoverage.accountingScope, "usage_units_and_subscription_snapshot_only");
+      assert.equal("breakpoints" in report, false);
+    }],    ["approved host override receives a capped internal usage profile", async () => {
       await grantPrivateHostAccess(USER_UID);
       const summary = await getMyUsageSummary.run(requestFor(USER_UID));
       assert.equal(summary.planId, "free", "public plan must remain unchanged");

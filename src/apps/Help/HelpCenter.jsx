@@ -1,5 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { ASSETS } from '../../lib/assets';
+import { HOST_SUBSCRIPTION_PLAN_CATALOG } from '../../billing/hostPlans';
+
+const monthlyHostPlan = HOST_SUBSCRIPTION_PLAN_CATALOG.host_monthly;
+const annualHostPlan = HOST_SUBSCRIPTION_PLAN_CATALOG.host_annual;
 
 const HELP_SECTIONS = Object.freeze([
     {
@@ -42,18 +46,22 @@ const HELP_SECTIONS = Object.freeze([
         id: 'host',
         label: 'Host',
         eyebrow: 'Control panel',
-        title: 'Run the room from one control surface.',
-        summary: 'The host panel should answer the live questions fast: who is next, what is playing, what needs approval, and what should happen after this performance.',
+        title: 'From invitation to a confident first Room.',
+        summary: 'Join the waitlist with your name and email. If invited, follow the email to sign in, set up your Host profile, rehearse privately, and learn where live Room messages and product-support questions belong.',
         steps: [
-            ['Launch surfaces', 'Open the audience app and public TV from Quick Launch. Use Incognito or a separate browser profile for public display windows.'],
-            ['Keep the queue moving', 'Use the persistent Next strip, Queue tab, and Auto-DJ controls to avoid dead air between performances.'],
-            ['Manage media', 'Use Audio for background music, Apple Music playlists, and mix controls. Use queue search and review tools for backing tracks.'],
-            ['Use automation carefully', 'Flow controls can help with pacing, but the host still owns final stage decisions and guest experience.']
+            ['Accept the invitation', 'Use the link and email in your invitation. You do not need to create an account while you are waiting.'],
+            ['Set up your Host profile', 'Confirm your Host name, choose your access option, and set the defaults you want to reuse for new Rooms.'],
+            ['Run a private rehearsal', 'Create a Room before your event. Open Audience and Public TV on separate devices, join as a guest, request a song, and move it through the queue.'],
+            ['Launch all three surfaces', 'Host Dashboard controls the night, Audience App is for guests, and Public TV is the intentionally public projection. Use Incognito or a separate browser profile for the display.'],
+            ['Use the Host Inbox live', 'Room lounge messages, DM Host, and Tell Host belong to the active Room. They are not a product-support channel. Keep private operator messages off Public TV.'],
+            ['Know what access costs', `The waitlist is free. Standard Host access is ${monthlyHostPlan.priceLabel} or ${annualHostPlan.priceLabel} and includes Room creation, Host controls, and provider-powered tools within visible usage limits. Your invitation explains any temporary testing access before you begin.`],
         ],
         tips: [
-            'Connect Apple Music before the room gets busy if you plan to use it for background playback.',
-            'Use YouTube search intentionally on event days because API quota is limited.',
-            'Keep the TV display simple: current performer, next-up context, and audience moments.'
+            'Complete one full phone-to-TV rehearsal before inviting guests.',
+            'Connect Apple Music and test any YouTube-powered feature before the Room gets busy.',
+            'Host plans stop limited provider-powered tools before an unexpected usage charge. Hardware, venue costs, and separate third-party subscriptions are not included.',
+            'Public TV should show only content you intentionally project.',
+            'Include your Room code, device, browser, build label, and exact step when reporting a problem.'
         ]
     }
 ]);
@@ -86,6 +94,7 @@ const HelpCenter = () => {
     const audienceHref = roomCode ? `/?room=${encodeURIComponent(roomCode)}` : '/join';
     const hostHref = roomCode ? `/host?room=${encodeURIComponent(roomCode)}` : '/host';
     const tvHref = roomCode ? `/?room=${encodeURIComponent(roomCode)}&mode=tv` : '/?mode=tv';
+
 
     const selectRole = (role) => {
         setActiveRole(role);
@@ -166,9 +175,13 @@ const HelpCenter = () => {
                             ))}
                         </ul>
                         <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-4 print:border-zinc-200 print:bg-zinc-50">
-                            <div className="text-sm font-black text-white print:text-zinc-950">Best default explanation</div>
+                            <div className="text-sm font-black text-white print:text-zinc-950">
+                                {activeRole === 'host' ? 'Where each question belongs' : 'Best default explanation'}
+                            </div>
                             <p className="mt-2 text-sm leading-6 text-cyan-50/82 print:text-zinc-700">
-                                Join the room, search for a song, request it, and keep your phone open so you know when you are close to the stage.
+                                {activeRole === 'host'
+                                    ? 'Use the Host Inbox for this Room tonight. Use BeauRocks support for access, onboarding, billing questions, bugs, and product feedback.'
+                                    : 'Join the room, search for a song, request it, and keep your phone open so you know when you are close to the stage.'}
                             </p>
                         </div>
                     </aside>

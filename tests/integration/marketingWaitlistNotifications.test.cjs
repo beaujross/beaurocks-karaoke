@@ -106,6 +106,10 @@ async function run() {
       assert.equal(message.get("eventType"), "host_application_applicant_received");
       assert.deepEqual(message.get("to"), [email]);
       assert.equal(message.get("meta.applicationId"), applicationDoc.id);
+      assert.match(String(message.get("text") || ""), /Host waitlist/i);
+      assert.match(String(message.get("text") || ""), /few private invitations|few invitations/i);
+      assert.doesNotMatch(String(message.get("text") || ""), /host\.beaurocks\.app|small testing cohorts/i);
+      assert.doesNotMatch(String(message.get("text") || ""), /queue position|#[0-9]+/i);
     }],
 
     ["notifyOnHostApplicationCreated queues admin alert email and writes notification log", async () => {

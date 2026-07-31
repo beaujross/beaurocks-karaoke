@@ -309,8 +309,6 @@ const MarketingSite = () => {
   const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "" });
   const [authLocalError, setAuthLocalError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
-  const [hostApplicationBusy, setHostApplicationBusy] = useState(false);
-  const [hostApplicationNotice, setHostApplicationNotice] = useState("");
   const [pendingHostApplicationsCount, setPendingHostApplicationsCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -722,43 +720,12 @@ const MarketingSite = () => {
     });
   }, [openHostAuthGate, route.params, withCampaignParams]);
 
-  const applyForHostAccess = useCallback(async (source = "marketing_host_apply") => {
-    if (!hasFullAccount) {
-      requireFullAuth({
-        intent: "host_apply",
-        targetType: "session",
-        returnRoute: {
-          page: MARKETING_ROUTE_PAGES.hostAccess,
-          params: withCampaignParams({ utm_content: source }),
-        },
-        preferHostSurface: true,
-      });
-      return;
-    }
-    setHostApplicationBusy(true);
-    setHostApplicationNotice("");
-    try {
-      const payload = await directoryActions.submitMarketingWaitlist({
-        name: session.email || session.uid || "BeauRocks Host Applicant",
-        email: session.email || "",
-        useCase: "host_application",
-        source,
-      });
-      setHostApplicationNotice(String(payload?.message || "Application submitted. We will review your host request."));
-      trackEvent("mk_host_application_submitted", { source });
-    } catch (error) {
-      setHostApplicationNotice(String(error?.message || "Could not submit host application right now."));
-    } finally {
-      setHostApplicationBusy(false);
-    }
-  }, [hasFullAccount, requireFullAuth, session.email, session.uid, withCampaignParams]);
-
   const hostApplicationStatus = String(session?.applicationStatus || "").trim().toLowerCase();
   const hostAccessLoading = !!session?.hostAccessLoading;
   const hostAccessRetryRequired = !!session?.hostAccessRetryRequired;
 
   const refreshPendingHostApplicationsCount = useCallback(async () => {
-    if (!session?.isAdmin) {
+    if (!session.isAdmin) {
       setPendingHostApplicationsCount(0);
       return 0;
     }
@@ -773,7 +740,7 @@ const MarketingSite = () => {
     } catch {
       return 0;
     }
-  }, [session?.isAdmin]);
+  }, [session.isAdmin]);
 
   useEffect(() => {
     if (!isHostAccessPage) return;
@@ -813,7 +780,7 @@ const MarketingSite = () => {
   ]);
 
   useEffect(() => {
-    if (!session?.isAdmin) {
+    if (!session.isAdmin) {
       setPendingHostApplicationsCount(0);
       return () => {};
     }
@@ -822,7 +789,7 @@ const MarketingSite = () => {
       refreshPendingHostApplicationsCount();
     }, 60000);
     return () => clearInterval(timer);
-  }, [refreshPendingHostApplicationsCount, session?.isAdmin]);
+  }, [refreshPendingHostApplicationsCount, session.isAdmin]);
 
   const onAuthSubmit = async (event) => {
     event.preventDefault();
@@ -916,17 +883,22 @@ const MarketingSite = () => {
   }, [hasFullAccount, openMarketingHostAccess]);
 
   const postAuthHint = useMemo(() => {
+    if (isHostAccessPage) {
+      return authMode === "signup"
+        ? "Create an account only after you receive a Host invitation. Use the email from that invitation."
+        : "Sign in with the email connected to your Host invitation.";
+    }
     if (authMode === "signup") {
       return "Create your BeauRocks account in under a minute.";
     }
     if (route.params?.intent) {
-      return "Log in with your BeauRocks account and we will return you to your flow.";
+      return "Sign in and we will bring you back here.";
     }
     if (activePage === MARKETING_ROUTE_PAGES.profile) {
       return "After sign in, you will land back on your dashboard.";
     }
-    return "Create or log in with your BeauRocks account to save follows, RSVPs, and check-ins.";
-  }, [activePage, authMode, route.params?.intent]);
+    return "Create or sign in to your BeauRocks account to save follows, RSVPs, and check-ins.";
+  }, [activePage, authMode, isHostAccessPage, route.params?.intent]);
   const pageNode = useMemo(() => {
     const pageProps = {
       id: route.id,
@@ -1116,22 +1088,22 @@ const MarketingSite = () => {
 
           {!!route.params?.intent && (!session?.isAuthed || session?.isAnonymous) && (
             <div className="mk3-status mk3-status-warning">
-              <strong>Log in with your BeauRocks account to keep going.</strong>
-              <span>We will bounce you right back to the action you picked.</span>
+              <strong>Sign in to continue.</strong>
+              <span>After you sign in, we will bring you back here.</span>
             </div>
           )}
 
           {isHostAccessPage ? (
           <section className="mk3-auth-panel mk3-host-canon-surface" ref={authPanelRef}>
             <div>
-              <h1 className="mk3-host-canon-title is-xl">Host Login And Applications</h1>
+              <h1 className="mk3-host-canon-title is-xl">Host access</h1>
               <p className="mk3-host-canon-copy">
-                Approved hosts sign in here to open Host Dashboard. New hosts can apply for access, and every application is reviewed before approval.
+                Already invited? Sign in to open the Host Dashboard. New here? Join the waitlist with your name and email—no account is needed to apply.
               </p>
               <div className="mk3-private-pill-row mk3-host-canon-chip-row">
-                <span className="mk3-private-pill mk3-host-canon-chip">BeauRocks account required</span>
-                <span className="mk3-private-pill mk3-host-canon-chip">Application review</span>
-                <span className="mk3-private-pill mk3-host-canon-chip">Direct Host Dashboard access</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">Invite-only access</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">Free to join the waitlist</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">A few invitations at a time</span>
               </div>
               {heroStats?.total > 0 && (
                 <div className="mk3-status mk3-hero-proof">
@@ -1140,9 +1112,9 @@ const MarketingSite = () => {
                 </div>
               )}
               <div className="mk3-value-points">
-                <span>Guests can still join with a room code, but hosting always stays account-backed.</span>
-                <span>Host access is granted through application review, not self-serve unlock codes.</span>
-                <span>Once approved, you create rooms and run the night from Host Dashboard.</span>
+                <span>Anyone can join the waitlist with a name and email.</span>
+                <span>We review the line and release invitations as testing space opens.</span>
+                <span>Your invitation explains when to sign in, what access includes, and any cost before you begin.</span>
               </div>
               {hasFullAccount && session.hasHostWorkspaceAccess && (
                 <div className="mk3-auth-cta-row">
@@ -1167,11 +1139,11 @@ const MarketingSite = () => {
                   ) : (hostAccessLoading || hostAccessRetryRequired) ? (
                     <>
                       <div className="mk3-status">
-                        <strong>{hostAccessLoading ? "Checking host access" : "Secure sign-in still settling"}</strong>
+                        <strong>{hostAccessLoading ? "Checking your invitation" : "Sign-in needs another moment"}</strong>
                         <span>
                           {hostAccessLoading
-                            ? "We are confirming your host approval before showing application actions."
-                            : "Your secure sign-in is still finishing. Check again in a moment instead of reapplying."}
+                            ? "We are checking whether an invitation is connected to this email."
+                            : "Wait a moment, then check again. You do not need to rejoin the waitlist."}
                         </span>
                       </div>
                       <div className="mk3-actions-inline">
@@ -1181,7 +1153,7 @@ const MarketingSite = () => {
                           onClick={() => actions.refreshHostAccessStatus?.()}
                           disabled={session.authLoading || session.hostAccessLoading}
                         >
-                          {session.hostAccessLoading ? "Checking..." : "Check Host Access Again"}
+                          {session.hostAccessLoading ? "Checking..." : "Check Invitation Again"}
                         </button>
                       </div>
                     </>
@@ -1190,34 +1162,47 @@ const MarketingSite = () => {
                       <div className="mk3-status mk3-status-warning">
                         <strong>
                           {hostApplicationStatus === "approved"
-                            ? "Host approval complete"
+                            ? "Your invitation is being activated"
                             : hostApplicationStatus === "rejected"
-                              ? "Host application not approved"
+                              ? "This application is closed"
                               : hostApplicationStatus === "pending"
-                                ? "Host application pending review"
-                                : "Apply for host access"}
+                                ? "You are on the Host waitlist"
+                                : "Want to become a Host?"}
                         </strong>
                         <span>
                           {hostApplicationStatus === "approved"
-                            ? "Refresh or reopen Host Dashboard if approval was granted very recently."
+                            ? "This can take a moment after we send an invitation. Check again to open your Host Dashboard."
                             : hostApplicationStatus === "rejected"
-                              ? "This application is currently closed. Reach out if you need another review."
+                              ? "If you think this was a mistake, contact BeauRocks support before submitting another application."
                               : hostApplicationStatus === "pending"
-                                ? "Your request is in review. BeauRocks admins were notified, the application is reviewed by hand, and this same email/account will unlock host sign-in if approved."
-                                : "Apply now. We notify BeauRocks admins, review the request by hand, and unlock host sign-in on this same email/account if approved."}
+                                ? "We will email you if an invitation becomes available. There is nothing else you need to do."
+                                : "Join the waitlist with your name and email. You do not need an account to apply."}
                         </span>
                       </div>
                       <div className="mk3-actions-inline">
-                        <button
-                          className="mk3-host-canon-button is-primary"
-                          type="button"
-                          onClick={() => applyForHostAccess("host_access_signed_in_apply")}
-                          disabled={hostApplicationBusy || hostApplicationStatus === "pending"}
-                        >
-                          {hostApplicationBusy ? "Saving..." : (hostApplicationStatus === "pending" ? "Request Submitted" : "Join Early Host Queue")}
-                        </button>
+                        {hostApplicationStatus === "approved" ? (
+                          <button
+                            className="mk3-host-canon-button is-primary"
+                            type="button"
+                            onClick={() => actions.refreshHostAccessStatus?.()}
+                            disabled={session.hostAccessLoading}
+                          >
+                            {session.hostAccessLoading ? "Checking..." : "Check Invitation Again"}
+                          </button>
+                        ) : hostApplicationStatus === "pending" ? (
+                          <button className="mk3-host-canon-button" type="button" disabled>
+                            On the Host Waitlist
+                          </button>
+                        ) : (
+                          <button
+                            className="mk3-host-canon-button is-primary"
+                            type="button"
+                            onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "host_access_waitlist" }))}
+                          >
+                            {hostApplicationStatus === "rejected" ? "View Host Waitlist" : "Join the Host Waitlist"}
+                          </button>
+                        )}
                       </div>
-                      {!!hostApplicationNotice && <div className="mk3-status">{hostApplicationNotice}</div>}
                     </>
                   )}
                   <div className="mk3-auth-support-row">
@@ -1229,8 +1214,8 @@ const MarketingSite = () => {
               ) : !isHostSurface ? (
                 <div className="mk3-auth-state">
                   <div className="mk3-status mk3-status-warning">
-                    <strong>Host sign-in continues on the host app.</strong>
-                    <span>The marketing site explains the flow, but host authentication finishes on `host.beaurocks.app` so your session can open the real dashboard correctly.</span>
+                    <strong>Already invited?</strong>
+                    <span>Continue to secure sign-in. After you sign in, we will take you to the Host Dashboard.</span>
                   </div>
                   <div className="mk3-actions-inline">
                     <button
@@ -1238,14 +1223,21 @@ const MarketingSite = () => {
                       type="button"
                       onClick={() => continueToHostLogin("host_access_root_handoff_manual")}
                     >
-                      Continue To Host Login
+                      Continue to Sign In
+                    </button>
+                    <button
+                      className="mk3-host-canon-button"
+                      type="button"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "host_access_waitlist" }))}
+                    >
+                      Join the Host Waitlist
                     </button>
                   </div>
-                  <div className="mk3-auth-hint">If you already have host access, sign in there and you will land in Host Dashboard.</div>
+                  <div className="mk3-auth-hint">Not invited yet? Join the waitlist first. You do not need an account to apply.</div>
                 </div>
               ) : (
                 <form onSubmit={onAuthSubmit}>
-                  <div className="mk3-auth-mode-label">Account mode</div>
+                  <div className="mk3-auth-mode-label">Host sign-in</div>
                   <div className="mk3-toggle-row mk3-auth-mode-tabs" role="tablist" aria-label="Account mode">
                     <button
                       type="button"
@@ -1273,7 +1265,7 @@ const MarketingSite = () => {
                         actions.clearAuthError?.();
                       }}
                     >
-                      Create BeauRocks Account
+                      Create Account
                     </button>
                   </div>
                   <label>
@@ -1332,7 +1324,7 @@ const MarketingSite = () => {
                     {session.authLoading
                       ? "Working..."
                       : authMode === "signup"
-                        ? "Create BeauRocks Account"
+                        ? "Create Account"
                         : "Log In"}
                   </button>
                   {authMode === "signin" && (
@@ -1348,6 +1340,15 @@ const MarketingSite = () => {
                     </div>
                   )}
                   <div className="mk3-auth-hint">{postAuthHint}</div>
+                  <div className="mk3-auth-support-row">
+                    <button
+                      type="button"
+                      className="mk3-auth-link"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "host_signin_waitlist" }))}
+                    >
+                      Not invited? Join the Host Waitlist
+                    </button>
+                  </div>
                   {authNotice && <div className="mk3-status">{authNotice}</div>}
                   {authLocalError && <div className="mk3-status mk3-status-error">{authLocalError}</div>}
                   {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}

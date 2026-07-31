@@ -49,6 +49,13 @@ const AdminModerationPage = ({ session, pendingHostApplicationsCount = 0, onHost
   const [hostApplications, setHostApplications] = useState([]);
   const [hostApplicationFilter, setHostApplicationFilter] = useState("pending");
   const [hostApplicationLoading, setHostApplicationLoading] = useState(false);
+  const [hostLifecyclePeriod, setHostLifecyclePeriod] = useState(() => {
+    const now = new Date();
+    return `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+  const [hostLifecycleLoading, setHostLifecycleLoading] = useState(false);
+  const [hostLifecycleStatus, setHostLifecycleStatus] = useState("");
+  const [hostLifecycleSummary, setHostLifecycleSummary] = useState(null);
   const [chartResultId, setChartResultId] = useState("");
   const [chartRepairReason, setChartRepairReason] = useState("");
   const [chartOperationBusy, setChartOperationBusy] = useState(false);
@@ -126,6 +133,28 @@ const AdminModerationPage = ({ session, pendingHostApplicationsCount = 0, onHost
     refreshHostApplications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManageHostAccess, hostApplicationFilter]);
+  const refreshHostLifecycleReporting = async () => {
+    if (!canManageHostAccess) return;
+    setHostLifecycleLoading(true);
+    setHostLifecycleStatus("");
+    try {
+      const payload = await directoryActions.getHostLifecycleReportingSummary({
+        period: hostLifecyclePeriod,
+      });
+      setHostLifecycleSummary(payload || null);
+      trackEvent("mk_admin_host_lifecycle_refresh", { period: hostLifecyclePeriod });
+    } catch (error) {
+      setHostLifecycleStatus(String(error?.message || "Could not load Host lifecycle reporting."));
+      setHostLifecycleSummary(null);
+    } finally {
+      setHostLifecycleLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshHostLifecycleReporting();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageHostAccess, hostLifecyclePeriod]);
 
   useEffect(() => {
     if (!canModerate || !marketingFlags.claimFlowEnabled) {
@@ -479,7 +508,67 @@ const AdminModerationPage = ({ session, pendingHostApplicationsCount = 0, onHost
         </p>
         {canManageHostAccess ? (
           <>
-            <div className="mk3-filter-row">
+            <div className="mk3-actions-block">
+              <h3>Host Testing Funnel & Usage Exposure</h3>
+              <p>Server-owned application milestones show cohort progress. Usage comes from the existing organization meters; this view does not calculate revenue, cost, contribution, or margin.</p>
+              <div className="mk3-filter-row">
+                <input
+                  value={hostLifecyclePeriod}
+                  onChange={(event) => setHostLifecyclePeriod(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  inputMode="numeric"
+                  aria-label="Usage period in YYYYMM format"
+                  placeholder="YYYYMM"
+                />
+                <button type="button" onClick={refreshHostLifecycleReporting} disabled={hostLifecycleLoading || hostLifecyclePeriod.length !== 6}>
+                  {hostLifecycleLoading ? "Refreshing..." : "Refresh Host Report"}
+                </button>
+              </div>
+              {hostLifecycleSummary && (
+                <>
+                  <div className="mk3-metric-row">
+                    <article className="mk3-metric"><span>Applications</span><strong>{numberFmt.format(Number(hostLifecycleSummary?.funnel?.applications || 0))}</strong></article>
+                    <article className="mk3-metric"><span>Approved</span><strong>{numberFmt.format(Number(hostLifecycleSummary?.funnel?.approved || 0))}</strong></article>
+                    <article className="mk3-metric"><span>Workspace Ready</span><strong>{numberFmt.format(Number(hostLifecycleSummary?.funnel?.activatedHosts || 0))}</strong></article>
+                    <article className="mk3-metric"><span>First Room</span><strong>{numberFmt.format(Number(hostLifecycleSummary?.funnel?.firstRoomHosts || 0))}</strong></article>
+                    <article className="mk3-metric"><span>Repeat Hosts</span><strong>{numberFmt.format(Number(hostLifecycleSummary?.funnel?.repeatHosts || 0))}</strong></article>
+                    <article className="mk3-metric"><span>Room-Active (30d)</span><strong>{numberFmt.format(Number(hostLifecycleSummary?.funnel?.activeHosts30 || 0))}</strong></article>
+                  </div>
+                  <div className="mk3-metric-row">
+                    <article className="mk3-metric"><span>AI requests</span><strong>{numberFmt.format(Number(hostLifecycleSummary?.usageTotals?.ai_generate_content || 0))}</strong></article>
+                    <article className="mk3-metric"><span>YouTube requests</span><strong>{numberFmt.format(Number(hostLifecycleSummary?.usageTotals?.youtube_data_request || 0))}</strong></article>
+                    <article className="mk3-metric"><span>Apple Music requests</span><strong>{numberFmt.format(Number(hostLifecycleSummary?.usageTotals?.apple_music_request || 0))}</strong></article>
+                  </div>
+                  <div className="mk3-status mk3-status-warning">
+                    <strong>Usage exposure only</strong>
+                    <span>{hostLifecycleSummary?.dataCoverage?.note || "Payment settlement and cloud billing are intentionally outside this report."}</span>
+                  </div>
+                  <div className="mk3-sub-list compact">
+                    <h3>Cohort Hosts</h3>
+                    {(hostLifecycleSummary?.hosts || []).slice(0, 25).map((host) => (
+                      <article key={host.applicationId || host.uid} className="mk3-review-card">
+                        <div className="mk3-review-head">
+                          <strong>{host.name || host.email || host.uid || "Host"}</strong>
+                          <span className="mk3-chip">{host.status || "unknown"}</span>
+                        </div>
+                        <div className="mk3-detail-meta">
+                          {host.planId || "free"} / {host.planStatus || "inactive"} | {host.orgId || "workspace not initialized"}
+                        </div>
+                        <div className="mk3-detail-meta">
+                          Workspace {host.workspaceActivatedAtMs ? "ready" : "not started"} | First Room {host.firstRoomAtMs ? "complete" : "not yet"} | Repeat {host.secondRoomAtMs ? "yes" : "no"}
+                        </div>
+                        <div className="mk3-report-grid">
+                          <div><span>AI</span><strong>{numberFmt.format(Number(host?.usageMeters?.ai_generate_content?.used || 0))}</strong></div>
+                          <div><span>YouTube</span><strong>{numberFmt.format(Number(host?.usageMeters?.youtube_data_request?.used || 0))}</strong></div>
+                          <div><span>Apple Music</span><strong>{numberFmt.format(Number(host?.usageMeters?.apple_music_request?.used || 0))}</strong></div>
+                        </div>
+                      </article>
+                    ))}
+                    {!(hostLifecycleSummary?.hosts || []).length && <div className="mk3-status">No Host applications are available yet.</div>}
+                  </div>
+                </>
+              )}
+              {hostLifecycleStatus && <div className="mk3-status mk3-status-error">{hostLifecycleStatus}</div>}
+            </div>            <div className="mk3-filter-row">
               <select value={hostApplicationFilter} onChange={(e) => setHostApplicationFilter(e.target.value)}>
                 <option value="pending">pending</option>
                 <option value="approved">approved</option>
@@ -504,6 +593,10 @@ const AdminModerationPage = ({ session, pendingHostApplicationsCount = 0, onHost
                   <div className="mk3-detail-meta">
                     {application.email || "no-email"} | {application.source || "unknown source"} | {formatDateTime(application.submittedAtMs || application.createdAtMs)}
                   </div>
+                  <div className="mk3-detail-meta">
+                    Host type: {String(application?.hostProfile?.hostType || "not supplied").replace(/_/g, " ")}
+                  </div>
+                  {application?.hostProfile?.hostingGoal && <p>{application.hostProfile.hostingGoal}</p>}
                   <textarea
                     value={notesById[application.applicationId] || application.reviewNotes || ""}
                     onChange={(e) => setNotesById((prev) => ({ ...prev, [application.applicationId]: e.target.value }))}

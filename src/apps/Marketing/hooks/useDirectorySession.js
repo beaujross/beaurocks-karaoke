@@ -18,9 +18,7 @@ import {
   fetchHostAccessStatusWithRetry,
   isAppCheckWarmupError,
 } from "./hostAccessState";
-
-const normalizeAuthError = (error) =>
-  String(error?.message || error?.code || "Auth failed.").replace(/^Firebase:\s*/i, "");
+import { getDirectoryAuthErrorMessage } from "./directoryAuthErrors";
 
 export const useDirectorySession = () => {
   const [user, setUser] = useState(() => auth.currentUser || null);
@@ -120,7 +118,7 @@ export const useDirectorySession = () => {
       }
       return { ok: true, user: credential.user };
     } catch (error) {
-      setAuthError(normalizeAuthError(error));
+      setAuthError(getDirectoryAuthErrorMessage(error));
       return { ok: false, error };
     } finally {
       setAuthLoading(false);
@@ -144,7 +142,7 @@ export const useDirectorySession = () => {
       await ensureProfile(createdUser, email.split("@")[0] || "BeauRocks User");
       return { ok: true, user: createdUser };
     } catch (error) {
-      setAuthError(normalizeAuthError(error));
+      setAuthError(getDirectoryAuthErrorMessage(error));
       return { ok: false, error };
     } finally {
       setAuthLoading(false);
@@ -158,7 +156,7 @@ export const useDirectorySession = () => {
       await signOut(auth);
       return { ok: true };
     } catch (error) {
-      setAuthError(normalizeAuthError(error));
+      setAuthError(getDirectoryAuthErrorMessage(error));
       return { ok: false, error };
     } finally {
       setAuthLoading(false);
@@ -181,7 +179,7 @@ export const useDirectorySession = () => {
       if (code.includes("user-not-found")) {
         return { ok: true };
       }
-      setAuthError(normalizeAuthError(error));
+      setAuthError(getDirectoryAuthErrorMessage(error));
       return { ok: false, error };
     } finally {
       setAuthLoading(false);
@@ -198,7 +196,9 @@ export const useDirectorySession = () => {
     hasHostWorkspaceAccess: !!hostAccess.hasHostWorkspaceAccess,
     entitledHostAccess: !!hostAccess.entitledHostAccess,
     hostApprovalEnabled: !!hostAccess.hostApprovalEnabled,
+    applicationId: hostAccess.applicationId || "",
     applicationStatus: hostAccess.applicationStatus || "",
+    hostOnboarding: hostAccess.onboarding || null,
     hostAccessLoading: !!hostAccess.loading,
     hostAccessRetryRequired: !!hostAccess.needsRetry,
     isModerator: !!modAccess.isModerator,

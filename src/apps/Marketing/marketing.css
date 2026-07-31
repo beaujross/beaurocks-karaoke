@@ -17259,7 +17259,9 @@
   letter-spacing: 0.03em;
 }
 
-.mk3-host-application-form input {
+.mk3-host-application-form input,
+.mk3-host-application-form select,
+.mk3-host-application-form textarea {
   width: 100%;
   min-height: 54px;
   border-radius: 18px;
@@ -17274,14 +17276,58 @@
     0 10px 24px rgba(0, 0, 0, 0.22);
 }
 
-.mk3-host-application-form input::placeholder {
+.mk3-host-application-form input::placeholder,
+.mk3-host-application-form textarea::placeholder {
   color: #9da8ba;
 }
 
-.mk3-host-application-form input:focus-visible {
+.mk3-host-application-form input:focus-visible,
+.mk3-host-application-form select:focus-visible,
+.mk3-host-application-form textarea:focus-visible {
   outline: 2px solid rgba(64, 233, 255, 0.5);
   outline-offset: 2px;
   border-color: rgba(64, 233, 255, 0.42);
+}
+
+.mk3-host-application-form select {
+  appearance: auto;
+}
+
+.mk3-host-application-form textarea {
+  min-height: 108px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.mk3-host-application-form option {
+  background: #0a0c18;
+  color: #f3f7ff;
+}
+
+.mk3-host-application-form .mk3-optional {
+  color: #9da8ba;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.mk3-host-onboarding-steps {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.mk3-host-onboarding-steps span {
+  display: block;
+  border-left: 2px solid rgba(255, 255, 255, 0.18);
+  padding-left: 9px;
+  color: #c8d2e3;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.mk3-host-onboarding-steps span.is-complete {
+  border-left-color: #45e6b0;
+  color: #bff7e4;
 }
 
 .mk3-host-application-form .mk3-rebuild-button {
@@ -17499,6 +17545,52 @@
   padding: clamp(8px, 1vw, 12px) 0 clamp(10px, 1.4vw, 18px);
 }
 
+.mk3-persona-simple-band-intro {
+  display: grid;
+  gap: 10px;
+  max-width: 900px;
+}
+
+.mk3-persona-simple-band-intro h2 {
+  margin: 0;
+  color: #fff4ea;
+  font-size: clamp(1.7rem, 3vw, 2.6rem);
+  line-height: 1.08;
+}
+
+.mk3-persona-simple-band-intro p {
+  margin: 0;
+  color: #cad2e2;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.mk3-host-pricing-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mk3-host-pricing-details article {
+  display: grid;
+  gap: 7px;
+  padding: 16px 18px;
+  border-left: 2px solid rgba(64, 233, 255, 0.34);
+  background: rgba(4, 7, 14, 0.42);
+}
+
+.mk3-host-pricing-details strong {
+  color: #fff4ea;
+  font-size: 0.98rem;
+}
+
+.mk3-host-pricing-details p {
+  margin: 0;
+  color: #cad2e2;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
 .mk3-persona-simple-band-tight {
   padding-bottom: 0;
 }
@@ -17605,6 +17697,10 @@
 @media (max-width: 640px) {
   .mk3-persona-simple-copy h1 {
     font-size: clamp(2.4rem, 13vw, 4rem);
+  }
+
+  .mk3-host-pricing-details {
+    grid-template-columns: 1fr;
   }
 
   .mk3-persona-simple-card-grid.is-three,
