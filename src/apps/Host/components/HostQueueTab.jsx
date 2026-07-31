@@ -13,7 +13,6 @@ import {
 } from '../../../lib/playbackSelection';
 import HostLiveOpsPanel from './HostLiveOpsPanel';
 import StageNowPlayingPanel from './StageNowPlayingPanel';
-import RunOfShowQueueHud from './RunOfShowQueueHud';
 import useQueueTabState from '../hooks/useQueueTabState';
 import useQueueDerivedState from '../hooks/useQueueDerivedState';
 import useQueueSurfaceController from '../hooks/useQueueSurfaceController';
@@ -578,7 +577,7 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onFocusRunOfShowItem, onPreviewRunOfShowItem, onAddQuickRunOfShowMoment, onPromotePreparedRunOfShowItems, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -4154,14 +4153,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const allowHostPanelPageScroll = isMobileLayout || compactViewport || mediumViewport;
     const sectionPaddingClass = isDenseLayout ? 'px-3 py-3' : 'px-4 py-4';
     const activeEditingSong = editingSongId ? songs.find((song) => song.id === editingSongId) || null : null;
-    const hasRunOfShowPlan = Array.isArray(runOfShowDirector?.items) && runOfShowDirector.items.length > 0;
-    const preparedMomentCount = (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
-        .filter((item) => (
-            item?.destination === 'planner'
-            && item?.type !== 'performance'
-            && !['complete', 'skipped'].includes(String(item?.status || '').trim().toLowerCase())
-        )).length;
-    const hasRunOfShowQueueHud = runOfShowEnabled || hasRunOfShowPlan;
+    const preparedMoments = useMemo(
+        () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
+            .filter((item) => (
+                item?.destination === 'planner'
+                && item?.type !== 'performance'
+                && !['complete', 'skipped'].includes(String(item?.status || '').trim().toLowerCase())
+            ))
+            .sort((a, b) => Number(a?.sequence || 0) - Number(b?.sequence || 0)),
+        [runOfShowDirector?.items]
+    );
+    const preparedMomentCount = preparedMoments.length;
     const hasRunOfShowQueueWork = runOfShowEnabled && (reviewQueueItems.length > 0 || pending.length > 0 || queue.length > 0 || assigned.length > 0);
     const runOfShowNeedsAttentionCount = Math.max(
         0,
@@ -4376,13 +4378,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             autoCollapsedRunOfShowAddFormRef.current = false;
         }
     }, [addToQueueWorkspaceActive, hasRunOfShowQueueWork, queueSurface.isCompactQueueSurface, runOfShowEnabled, setShowAddForm, showAddForm]);
-    const handleStopRunOfShowAndRestoreQueueTools = useCallback(async () => {
-        const result = await onStopRunOfShow?.();
-        autoCollapsedRunOfShowAddFormRef.current = false;
-        setShowAddForm(true);
-        setShowQueueList(true);
-        return result;
-    }, [onStopRunOfShow, setShowAddForm, setShowQueueList]);
+
     const startNextPerformanceFromShell = useCallback(async () => {
         if (current?.id) {
             await handleEndPerformance(current.id);
@@ -4466,82 +4462,190 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </div>
     );
 
-    const runOfShowQueueHudSection = hasRunOfShowQueueHud ? (
-        <div className={`${compactViewport ? 'p-2.5' : 'p-3'}`}>
-            <RunOfShowQueueHud
-                enabled={runOfShowEnabled}
-                director={runOfShowDirector}
-                liveItem={runOfShowLiveItem}
-                stagedItem={runOfShowStagedItem}
-                nextItem={runOfShowNextItem}
-                preflightReport={runOfShowPreflightReport}
-                onOpenShowWorkspace={onOpenRunOfShow}
-                onOpenIssue={onOpenRunOfShowIssue}
-                onFocusItem={onFocusRunOfShowItem}
-                onPreviewItem={onPreviewRunOfShowItem}
-                onMoveItem={onMoveRunOfShowItem}
-                onSkipItem={onSkipRunOfShowItem}
-                onStartShow={onStartRunOfShow}
-                onAdvance={onAdvanceRunOfShow}
-                onRewind={onRewindRunOfShow}
-                onStop={handleStopRunOfShowAndRestoreQueueTools}
-                onClear={onClearRunOfShow}
-                onToggleAutomationPause={onToggleRunOfShowPause}
-                styles={STYLES}
-            />
-        </div>
-    ) : null;
-    const plannerWorkspaceSection = runOfShowQueueHudSection ? (
-        <div className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar">
-            <div data-feature-id="host-moment-prep-header" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-300/18 bg-violet-500/8 px-3 py-2.5">
-                <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-200">Moment Prep</div>
-                    <div className="mt-0.5 text-sm text-zinc-300">Prepare announcements, trivia, games, and TV moments before committing them.</div>
+    const momentPrepTemplates = [
+        { id: 'host_update', label: 'Host Update', detail: 'A quick room announcement', duration: '30 sec', icon: 'fa-bullhorn', tone: 'cyan' },
+        { id: 'how_to_join', label: 'How To Join', detail: 'Bring new guests into the app', duration: '30 sec', icon: 'fa-qrcode', tone: 'cyan' },
+        { id: 'trivia_break', label: 'Trivia', detail: 'One full-screen question', duration: '55 sec', icon: 'fa-circle-question', tone: 'violet' },
+        { id: 'would_you_rather', label: 'Would You Rather', detail: 'A fast audience vote', duration: '65 sec', icon: 'fa-scale-balanced', tone: 'emerald' },
+        { id: 'applause_meter', label: 'Applause Meter', detail: 'Measure the room together', duration: '35 sec', icon: 'fa-volume-high', tone: 'amber' },
+        { id: 'selfie_cam', label: 'Selfie Cam', detail: 'Hand the screen to the crowd', duration: '45 sec', icon: 'fa-camera-retro', tone: 'rose' },
+        { id: 'leaderboard_flash', label: 'Leaderboard', detail: 'Flash the room standings', duration: '30 sec', icon: 'fa-ranking-star', tone: 'cyan' },
+        { id: 'support_the_show', label: 'Support The Show', detail: 'A sponsor or support beat', duration: '35 sec', icon: 'fa-heart', tone: 'pink' },
+    ];
+    const getPreparedMomentTypeLabel = (item = {}) => String(item?.type || 'moment')
+        .trim()
+        .replaceAll('_', ' ')
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const plannerWorkspaceSection = (
+        <div data-feature-id="host-moment-prep-workbench" className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar sm:p-4">
+            <div data-feature-id="host-moment-prep-header" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300/18 bg-emerald-500/8 px-4 py-3">
+                <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200">Moment Prep</div>
+                    <div className="mt-1 text-base font-black text-white">Build the beats between performances</div>
+                    <div className="mt-1 text-sm text-zinc-300">Prepare, preview, and place room moments without leaving the live workspace.</div>
                 </div>
-                <span className="rounded-full border border-violet-300/25 bg-violet-500/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-violet-100">
-                    {preparedMomentCount} saved for later
-                </span>
-            </div>
-            {runOfShowQueueHudSection}
-        </div>
-    ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 custom-scrollbar">
-            <div className="mx-auto w-full max-w-3xl rounded-2xl border border-emerald-300/16 bg-emerald-500/8 px-5 py-6">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-300/22 bg-emerald-500/12 text-emerald-100">
-                    <i className="fa-solid fa-clapperboard"></i>
-                </div>
-                <div className="mt-4 text-center text-lg font-black text-white">Prepare moments for tonight</div>
-                <div className="mt-2 text-center text-sm leading-6 text-zinc-400">
-                    Save moments for later, or add them to Tonight&apos;s Flow when their content and timing are ready.
-                </div>
-                <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                    {[
-                        ['trivia_break', 'Add Trivia', 'One full-screen question', 'fa-circle-question'],
-                        ['would_you_rather', 'Add Would You Rather', 'A fast room vote', 'fa-scale-balanced'],
-                        ['host_update', 'Add Host Update', 'A planned announcement', 'fa-bullhorn'],
-                        ['leaderboard_flash', 'Add Leaderboard', 'A quick room status beat', 'fa-ranking-star']
-                    ].map(([id, label, detail, icon]) => (
-                        <button
-                            key={id}
-                            type="button"
-                            disabled={typeof onAddQuickRunOfShowMoment !== 'function'}
-                            onClick={() => onAddQuickRunOfShowMoment?.(id)}
-                            className="min-h-[72px] rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-left transition hover:border-emerald-300/35 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            <div className="font-black text-white"><i className={`fa-solid ${icon} mr-2 text-emerald-200`}></i>{label}</div>
-                            <div className="mt-1 text-xs text-zinc-400">{detail}</div>
-                        </button>
-                    ))}
-                </div>
-                <div className="mt-4 flex justify-center">
-                    <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4 py-2 text-[11px]`}>
-                        Open Moment Prep
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-violet-300/25 bg-violet-500/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-violet-100">
+                        {preparedMomentCount} prepared
+                    </span>
+                    <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px]`}>
+                        Full Planner
                     </button>
                 </div>
             </div>
+
+            <div data-feature-id="moment-prep-live-queue-handoff" className="mb-3 rounded-2xl border border-cyan-300/16 bg-cyan-500/[0.06] p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">Live Queue handoff</div>
+                        <div className="mt-1 text-xs text-zinc-400">This mirrors the singer lane used by Live Queue. Reorder singers there.</div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setDesktopQueueSurfaceTab('queue');
+                            queueSurface.activateCompactTab('queue');
+                        }}
+                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[10px]`}
+                    >
+                        Open Live Queue
+                    </button>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
+                        <div className="text-[9px] font-black uppercase tracking-[0.16em] text-rose-200">On stage</div>
+                        <div className="mt-1 truncate text-sm font-black text-white">{current?.singerName || 'Stage is open'}</div>
+                        <div className="truncate text-xs text-zinc-400">{current?.songTitle || current?.title || 'Ready for the next performance or moment'}</div>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
+                        <div className="text-[9px] font-black uppercase tracking-[0.16em] text-cyan-200">Next singer</div>
+                        <div className="mt-1 truncate text-sm font-black text-white">{nextQueueSong?.singerName || 'No singer waiting'}</div>
+                        <div className="truncate text-xs text-zinc-400">{nextQueueSong?.songTitle || nextQueueSong?.title || 'Add a performance in Performance Prep'}</div>
+                    </div>
+                </div>
+            </div>
+
+            {runOfShowEnabled ? (
+                <div data-feature-id="moment-prep-running-show-status" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300/18 bg-amber-500/[0.07] px-4 py-3">
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Tonight&apos;s Flow is running</div>
+                        <div className="mt-1 truncate text-sm text-zinc-200">
+                            {runOfShowLiveItem?.title || runOfShowStagedItem?.title || runOfShowNextItem?.title || 'Waiting for the next planned beat'}
+                        </div>
+                    </div>
+                    <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[10px]`}>
+                        Open run controls
+                    </button>
+                </div>
+            ) : null}
+
+            <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
+                <section data-feature-id="moment-prep-builder" className="rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-4">
+                    <div className="flex flex-wrap items-end justify-between gap-2">
+                        <div>
+                            <div className="text-sm font-black text-white">Quick Moment Builder</div>
+                            <div className="mt-1 text-xs text-zinc-400">Prepare a draft, or place a ready-made beat directly into Tonight&apos;s Flow.</div>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">8 starting points</span>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {momentPrepTemplates.map((template) => (
+                            <div key={template.id} className="rounded-2xl border border-white/10 bg-zinc-950/70 p-3 transition hover:border-emerald-300/25">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-300/15 bg-emerald-500/10 text-emerald-100">
+                                        <i className={`fa-solid ${template.icon}`}></i>
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="font-black text-white">{template.label}</div>
+                                            <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-500">{template.duration}</span>
+                                        </div>
+                                        <div className="mt-0.5 text-xs text-zinc-400">{template.detail}</div>
+                                    </div>
+                                </div>
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        disabled={typeof onAddQuickRunOfShowMoment !== 'function'}
+                                        onClick={() => onAddQuickRunOfShowMoment?.(template.id, { destination: 'planner' })}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1.5 text-[10px] disabled:opacity-50`}
+                                    >
+                                        Prepare
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={typeof onAddQuickRunOfShowMoment !== 'function'}
+                                        onClick={() => onAddQuickRunOfShowMoment?.(template.id, { destination: 'queue' })}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1.5 text-[10px] disabled:opacity-50`}
+                                    >
+                                        Add to Flow
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
+                <section data-feature-id="moment-prep-prepared-hopper" className="rounded-2xl border border-violet-300/16 bg-violet-500/[0.05] p-3 sm:p-4">
+                    <div className="flex items-center justify-between gap-2">
+                        <div>
+                            <div className="text-sm font-black text-white">Prepared Moments</div>
+                            <div className="mt-1 text-xs text-zinc-400">Drafts stay off the live screen until you place them.</div>
+                        </div>
+                        <span className="rounded-full border border-violet-300/20 bg-violet-500/10 px-2 py-1 text-[10px] font-black text-violet-100">{preparedMomentCount}</span>
+                    </div>
+                    {preparedMoments.length ? (
+                        <div className="mt-3 space-y-2">
+                            {preparedMoments.slice(0, 8).map((item) => (
+                                <div key={item.id} className="rounded-xl border border-white/10 bg-black/25 p-3">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <div className="truncate text-sm font-black text-white">{item?.title || getPreparedMomentTypeLabel(item)}</div>
+                                            <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-violet-200">
+                                                {getPreparedMomentTypeLabel(item)} · {Math.max(0, Math.round(Number(item?.plannedDurationSec || 0) || 0)) || 'TBD'}{Number(item?.plannedDurationSec || 0) ? ' sec' : ''}
+                                            </div>
+                                        </div>
+                                        <span className="rounded-full border border-white/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-400">Prepared</span>
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            disabled={typeof onPromotePreparedRunOfShowItems !== 'function'}
+                                            onClick={() => onPromotePreparedRunOfShowItems?.([item.id])}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2.5 py-1.5 text-[10px] disabled:opacity-50`}
+                                        >
+                                            Add to Flow
+                                        </button>
+                                        {typeof onPreviewRunOfShowItem === 'function' ? (
+                                            <button type="button" onClick={() => onPreviewRunOfShowItem(item.id)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2.5 py-1.5 text-[10px]`}>
+                                                Preview
+                                            </button>
+                                        ) : null}
+                                        {typeof onFocusRunOfShowItem === 'function' ? (
+                                            <button type="button" onClick={() => onFocusRunOfShowItem(item.id)} className="px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 hover:text-white">
+                                                Edit
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            ))}
+                            {preparedMoments.length > 8 ? (
+                                <button type="button" onClick={onOpenRunOfShow} className="w-full py-2 text-[10px] font-black uppercase tracking-[0.14em] text-violet-200 hover:text-white">
+                                    View all {preparedMoments.length} in Planner
+                                </button>
+                            ) : null}
+                        </div>
+                    ) : (
+                        <div className="mt-3 rounded-xl border border-dashed border-violet-300/18 bg-black/20 px-4 py-5 text-center">
+                            <i className="fa-solid fa-layer-group text-violet-200"></i>
+                            <div className="mt-2 text-sm font-black text-white">Your moment shelf is empty</div>
+                            <div className="mt-1 text-xs leading-5 text-zinc-400">Use Prepare on any builder card. Nothing goes live until you choose Add to Flow.</div>
+                        </div>
+                    )}
+                </section>
+            </div>
         </div>
-    );
-    const activeMediaScene = room?.announcement?.active && String(room?.announcement?.type || '').trim().toLowerCase() === 'media_scene'
+    );    const activeMediaScene = room?.announcement?.active && String(room?.announcement?.type || '').trim().toLowerCase() === 'media_scene'
         ? room.announcement
         : null;
     const [backgroundAudioObservedAtMs, setBackgroundAudioObservedAtMs] = useState(() => Date.now());

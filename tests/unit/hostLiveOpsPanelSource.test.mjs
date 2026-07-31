@@ -39,6 +39,9 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostAppSource, /window\.dispatchEvent\(new CustomEvent\('beaurocks:focus-queue-live-controls'\)\)/);
   assert.match(hostAppSource, /querySelector\('\[data-feature-id="deck-queue-menu-toggle"\]'\)/);
   assert.match(hostAppSource, /window\.dispatchEvent\(new CustomEvent\('beaurocks:focus-host-inbox'\)\)/);
+  assert.match(hostAppSource, /autoCrowdMomentLaunchTimerRef\.current = timer/);
+  assert.match(hostAppSource, /stageActivationPending: stageActivationPendingRef\.current/);
+  assert.match(hostAppSource, /Autopilot crowd check canceled before launch/);
   assert.match(hostQueueTabSource, /import HostLiveOpsPanel from '\.\/HostLiveOpsPanel';/);
   assert.match(hostQueueTabSource, /import HostInboxPanel from '\.\/HostInboxPanel';/);
   assert.match(hostQueueTabSource, /<HostLiveOpsPanel[\s\S]*current=\{current\}/);
@@ -57,7 +60,7 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /featureId: 'queue-surface-tab-catalog-desktop'/, 'Desktop queue workspace should expose Catalog as a first-class tab');
   assert.match(hostQueueTabSource, /featureId: 'queue-surface-tab-catalog'/, 'Compact queue workspace should expose Catalog as a first-class tab');
   assert.match(hostQueueTabSource, /featureId: 'queue-surface-tab-show'/, 'Compact queue workspace should expose Moment Prep as a first-class tab');
-  assert.match(hostQueueTabSource, /const plannerWorkspaceSection = runOfShowQueueHudSection \?/, 'Moment Prep should remain available even before a plan exists');
+  assert.match(hostQueueTabSource, /const plannerWorkspaceSection = \(/, 'Moment Prep should remain available even before a plan exists');
   assert.doesNotMatch(hostQueueTabSource, /!hasRunOfShowQueueHud && desktopQueueSurfaceTab === 'show'/, 'Moment Prep should not redirect back to Queue just because the plan is empty');
   assert.match(hostQueueTabSource, /data-feature-id="panel-catalog"/, 'Catalog tab should render a dedicated workspace panel');
   assert.match(hostQueueTabSource, /desktopQueueSurfaceTab === 'catalog'[\s\S]*\? catalogWorkspaceSection/, 'Desktop Catalog tab should route to the shared catalog panel');

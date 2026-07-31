@@ -308,6 +308,7 @@ import {
 } from './missionControl';
 import { resolveRoomSetupEffectiveBehavior } from './roomSetupEffectiveBehavior';
 import {
+    canLaunchScheduledAutoCrowdMoment,
     normalizeMissionParty,
     recordCompletedPerformance,
     recordGroupMoment,
@@ -7554,6 +7555,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const lastPartyAutoBreakTsRef = useRef(null);
     const seededPartyPolicyRoomRef = useRef('');
     const readyCheckTimerRef = useRef(null);
+    const autoCrowdMomentLaunchTimerRef = useRef(null);
     const autoCrowdMomentTimerRef = useRef(null);
     const hostVolleyVoiceLastWriteRef = useRef(0);
     const hostVolleyVoiceInactiveSentRef = useRef(true);
@@ -10357,6 +10359,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [isMarketingDemoFixture, roomCode, runOfShowTemplateMeta, toast, updateRoom]);
     const holdAutoBgDuringStageActivation = useCallback((durationMs = 2500) => {
         stageActivationPendingRef.current = true;
+        if (autoCrowdMomentLaunchTimerRef.current) {
+            clearTimeout(autoCrowdMomentLaunchTimerRef.current);
+            autoCrowdMomentLaunchTimerRef.current = null;
+        }
         if (stageActivationTimerRef.current) {
             clearTimeout(stageActivationTimerRef.current);
         }
@@ -14191,6 +14197,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const bridgeDelayMs = Math.max(Number(recommendedMoment.delayMs || 0) || 0, recapBridgeReadyDelayMs);
 
         const timer = setTimeout(() => {
+            autoCrowdMomentLaunchTimerRef.current = null;
+            const currentRoom = roomRef.current || {};
+            const currentSongs = Array.isArray(songsRef.current) ? songsRef.current : [];
+            const launchGuard = canLaunchScheduledAutoCrowdMoment({
+                scheduledLastPerformanceTs: lastPerformanceTs,
+                currentLastPerformanceTs: getTimestampMs(currentRoom?.lastPerformance?.timestamp),
+                stageActivationPending: stageActivationPendingRef.current,
+                hasCurrentSinger: currentSongs.some((song) => String(song?.status || '').trim().toLowerCase() === 'performing'),
+                activeMode: currentRoom?.activeMode,
+                readyCheckActive: currentRoom?.readyCheck?.active === true,
+                autoMomentStatus: currentRoom?.missionControl?.autoMoment?.status
+            });
+            if (!launchGuard.allowed) {
+                hostLogger.debug('Autopilot crowd check canceled before launch', launchGuard.reason);
+                return;
+            }
             lastPartyAutoBreakTsRef.current = lastPerformanceTs;
             const momentKey = `${recommendedMoment.type}_${lastPerformanceTs}`;
             startAutoCrowdMoment({
@@ -14216,8 +14238,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostLogger.debug('Autopilot crowd check skipped', error);
             });
         }, bridgeDelayMs);
+        autoCrowdMomentLaunchTimerRef.current = timer;
 
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            if (autoCrowdMomentLaunchTimerRef.current === timer) {
+                autoCrowdMomentLaunchTimerRef.current = null;
+            }
+        };
     }, [
         roomCode,
         room,
@@ -14248,6 +14276,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         appleMusicAuthorized
     ]);
     useEffect(() => () => {
+        if (autoCrowdMomentLaunchTimerRef.current) {
+            clearTimeout(autoCrowdMomentLaunchTimerRef.current);
+            autoCrowdMomentLaunchTimerRef.current = null;
+        }
         if (autoCrowdMomentTimerRef.current) {
             clearTimeout(autoCrowdMomentTimerRef.current);
             autoCrowdMomentTimerRef.current = null;
@@ -22444,6 +22476,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onStopRunOfShow: stopRunOfShowNow,
         onClearRunOfShow: clearRunOfShowNow,
         onAddQuickRunOfShowMoment: addQuickRunOfShowMoment,
+        onPromotePreparedRunOfShowItems: promotePreparedRunOfShowItems,
         scenePresets,
         scenePresetUploading,
         scenePresetUploadProgress,

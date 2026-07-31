@@ -21,7 +21,18 @@ describe("marketing page source", () => {
     const source = readSource("src/apps/Marketing/pages/ForHostsPage.jsx");
     expect(source).toContain("Host karaoke your way.");
     expect(source).toContain("Run the queue, TV, and guest phones");
-    expect(source).toContain("<b>Join the waitlist</b>");
+    expect(source).toContain("<b>Limited invitation release</b>");
+    expect(source).toContain("mk3-host-golden-ticket");
+    expect(source).toContain("Invitations are selected in small batches—not first come, first served.");
+  });
+
+  it("separates room access from the highlighted Host waitlist call to action", () => {
+    const navSource = readSource("src/apps/Marketing/iaModel.js");
+    const siteSource = readSource("src/apps/Marketing/MarketingSite.jsx");
+    expect(navSource).toContain('navItem(MARKETING_ROUTE_PAGES.join, "Room Access")');
+    expect(siteSource).toContain("mk3-waitlist-ticket-cta");
+    expect(siteSource).toContain("Join Host Waitlist");
+    expect(siteSource).toContain("Room Access");
   });
 
   it("keeps public persona copy free of internal strategy language", () => {

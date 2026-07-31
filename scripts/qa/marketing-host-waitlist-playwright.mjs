@@ -86,9 +86,9 @@ const main = async () => {
       await form.getByLabel(/^name$/i).fill("QA Host Waitlist");
       const emailInput = form.getByLabel(/email address/i);
       await emailInput.fill("qa-host-waitlist@beaurocks.app");
-      const submitButton = form.getByRole("button", { name: /^Join the Host Waitlist$/i });
+      const submitButton = form.getByRole("button", { name: /^Submit My Host Application$/i });
       await submitButton.click();
-      await form.getByText(/on the BeauRocks Host waitlist/i).waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator(".mk3-host-ticket-confirmation").getByText(/application is in the invitation pool/i).waitFor({ state: "visible", timeout: timeoutMs });
       if (!interceptedPayload) throw new Error("Waitlist callable payload was not captured.");
       if (String(interceptedPayload.email || "").toLowerCase() !== "qa-host-waitlist@beaurocks.app") {
         throw new Error(`Expected submitted email to match; got "${interceptedPayload.email || ""}".`);
@@ -102,19 +102,15 @@ const main = async () => {
       return JSON.stringify(interceptedPayload);
     });
 
-    await runCheck(checks, "host_waitlist_form_recovers_after_submit", async () => {
+    await runCheck(checks, "host_waitlist_ticket_confirms_after_submit", async () => {
       await delay(150);
-      const buttonLabel = await page.locator(".mk3-host-application-form").first()
-        .getByRole("button", { name: /^Join the Host Waitlist$/i })
-        .textContent();
-      if (!/join the host waitlist/i.test(String(buttonLabel || ""))) {
-        throw new Error(`Expected submit button to return to idle label, got "${buttonLabel || ""}".`);
-      }
+      await page.locator(".mk3-host-golden-ticket.is-held").waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText(/not first come, first served/i).waitFor({ state: "visible", timeout: timeoutMs });
       const bodyText = await page.locator("body").innerText();
       if (/host authentication finishes|marketing site explains the flow|host\.beaurocks\.app/i.test(bodyText)) {
         throw new Error("Internal Host routing language leaked into the public waitlist page.");
       }
-      return "submit button returned to idle and public copy stayed customer-facing";
+      return "golden-ticket confirmation appeared and public copy stayed customer-facing";
     });
 
     await runCheck(checks, "host_access_handoff_uses_customer_language", async () => {

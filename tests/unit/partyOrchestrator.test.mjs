@@ -8,7 +8,8 @@ import {
     recordCompletedPerformance,
     recordGroupMoment,
     getSingingSharePct,
-    recommendAutoCrowdMoment
+    recommendAutoCrowdMoment,
+    canLaunchScheduledAutoCrowdMoment
 } from '../../src/apps/Host/partyOrchestrator.js';
 
 test("partyOrchestrator.test", () => {
@@ -158,4 +159,27 @@ test("partyOrchestrator.test", () => {
     });
     assert.equal(disabledAuto.allowed, false);
     assert.equal(disabledAuto.reason, 'disabled');
+});
+test('scheduled crowd moments yield when the next performance starts', () => {
+    const idleBreak = canLaunchScheduledAutoCrowdMoment({
+        scheduledLastPerformanceTs: 1000,
+        currentLastPerformanceTs: 1000,
+        activeMode: 'karaoke'
+    });
+    assert.deepEqual(idleBreak, { allowed: true, reason: 'ok' });
+
+    assert.equal(canLaunchScheduledAutoCrowdMoment({
+        scheduledLastPerformanceTs: 1000,
+        currentLastPerformanceTs: 1000,
+        stageActivationPending: true
+    }).reason, 'stage_activation_pending');
+    assert.equal(canLaunchScheduledAutoCrowdMoment({
+        scheduledLastPerformanceTs: 1000,
+        currentLastPerformanceTs: 1000,
+        hasCurrentSinger: true
+    }).reason, 'singer_live');
+    assert.equal(canLaunchScheduledAutoCrowdMoment({
+        scheduledLastPerformanceTs: 1000,
+        currentLastPerformanceTs: 2000
+    }).reason, 'performance_changed');
 });

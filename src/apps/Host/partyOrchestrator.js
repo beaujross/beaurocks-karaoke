@@ -154,6 +154,30 @@ export const getSingingSharePct = (state = {}) => {
     return Math.round((flow.singingMs / total) * 100);
 };
 
+export const canLaunchScheduledAutoCrowdMoment = ({
+    scheduledLastPerformanceTs = 0,
+    currentLastPerformanceTs = 0,
+    stageActivationPending = false,
+    hasCurrentSinger = false,
+    activeMode = 'karaoke',
+    readyCheckActive = false,
+    autoMomentStatus = ''
+} = {}) => {
+    if (stageActivationPending) return { allowed: false, reason: 'stage_activation_pending' };
+    if (!scheduledLastPerformanceTs || scheduledLastPerformanceTs !== currentLastPerformanceTs) {
+        return { allowed: false, reason: 'performance_changed' };
+    }
+    if (hasCurrentSinger) return { allowed: false, reason: 'singer_live' };
+    if (String(activeMode || 'karaoke').trim().toLowerCase() !== 'karaoke') {
+        return { allowed: false, reason: 'mode_live' };
+    }
+    if (readyCheckActive) return { allowed: false, reason: 'ready_check_live' };
+    if (String(autoMomentStatus || '').trim().toLowerCase() === 'live') {
+        return { allowed: false, reason: 'auto_moment_live' };
+    }
+    return { allowed: true, reason: 'ok' };
+};
+
 export const isHeavyGroupMode = (mode = '') =>
     HEAVY_GROUP_MODES.has(String(mode || '').trim().toLowerCase());
 

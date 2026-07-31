@@ -1024,6 +1024,17 @@ const MarketingSite = () => {
               </nav>
             </div>
             <div className="mk3-account">
+              <a
+                className={`mk3-waitlist-ticket-cta ${activePage === MARKETING_ROUTE_PAGES.forHosts ? "active" : ""}`}
+                href={buildHref(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "nav_host_waitlist" }))}
+                onClick={(event) => {
+                  collapseNavMenus();
+                  onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "nav_host_waitlist" }));
+                }}
+              >
+                <span className="mk3-waitlist-ticket-spark" aria-hidden="true">✦</span>
+                <span><small>Limited Host invites</small><strong>Join Waitlist</strong></span>
+              </a>
               <button
                 type="button"
                 className="mk3-account-action"
@@ -1070,6 +1081,17 @@ const MarketingSite = () => {
                   {renderNavItemLabel(item)}
                 </a>
               ))}
+              <a
+                className="mk3-waitlist-ticket-cta mk3-mobile-waitlist-cta"
+                href={buildHref(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "mobile_host_waitlist" }))}
+                onClick={(event) => {
+                  collapseNavMenus();
+                  onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "mobile_host_waitlist" }));
+                }}
+              >
+                <span className="mk3-waitlist-ticket-spark" aria-hidden="true">✦</span>
+                <span><small>Limited Host invites</small><strong>Join Host Waitlist</strong></span>
+              </a>
               <button
                 type="button"
                 className="mk3-account-action mk3-mobile-host-access"
@@ -1404,7 +1426,7 @@ const MarketingSite = () => {
                   href={buildHref(MARKETING_ROUTE_PAGES.join, "", withCampaignParams({ utm_content: "footer_join" }))}
                   onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.join, "", withCampaignParams({ utm_content: "footer_join" }))}
                 >
-                  Join
+                  Room Access
                 </a>
                 {OFFICIAL_BEAUROCKS_SOCIAL_LINKS.map((social) => (
                   <a

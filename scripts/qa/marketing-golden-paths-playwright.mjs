@@ -173,8 +173,8 @@ const run = async () => {
 
     await runCheck(checks, "rail_join_route", async () => {
       await loadGoldenPathRail(page, baseUrl, timeoutMs);
-      const inviteCode = page.locator(".mk3-golden-rail").getByRole("button", { name: /^Join By Code$/i }).first();
-      const inviteLink = page.locator(".mk3-golden-rail").getByRole("link", { name: /^Join By Code$/i }).first();
+      const inviteCode = page.locator(".mk3-golden-rail").getByRole("button", { name: /^Room Access$/i }).first();
+      const inviteLink = page.locator(".mk3-golden-rail").getByRole("link", { name: /^Room Access$/i }).first();
       await clickFirstMarketingCta(page, [inviteCode, inviteLink], timeoutMs);
       await delay(350);
       assertRoute(page.url(), { pathIncludes: "/join", legacyPage: "join" });

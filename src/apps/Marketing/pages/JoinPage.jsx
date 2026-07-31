@@ -55,6 +55,16 @@ const JoinPage = ({ navigate, id = "" }) => {
     window.location.href = buildSurfaceUrl({ surface: "app", params: { room: code } }, window.location);
   };
 
+  const openPublicTv = () => {
+    const code = normalizeJoinEntryCode(resolvedJoinCode || "");
+    if (!code) {
+      setStatus(`Enter a room code first. Standard codes are ${STANDARD_ROOM_CODE_LENGTH} characters.`);
+      setStatusTone("error");
+      return;
+    }
+    window.location.href = buildSurfaceUrl({ surface: "tv", params: { room: code } }, window.location);
+  };
+
   const onSubmit = (event) => {
     event.preventDefault();
     const token = normalizeJoinEntryCode(roomCode || "");
@@ -116,7 +126,7 @@ const JoinPage = ({ navigate, id = "" }) => {
       <article className="mk3-detail-card">
         {hasJoinCodeInRoute && !showManualEntry ? (
           <>
-            <div className="mk3-chip">{previewHasPublicRecap ? "event recap" : "live room"}</div>
+            <div className="mk3-chip">{previewHasPublicRecap ? "event recap" : "room access"}</div>
             <h2>{loading ? "Getting the room ready..." : previewHasPublicRecap ? `${heroTitle} Recap` : `Join ${heroTitle}`}</h2>
             <p>
               {loading
@@ -147,9 +157,10 @@ const JoinPage = ({ navigate, id = "" }) => {
                 {previewHasPublicRecap
                   ? "View Public Recap"
                   : resolvedJoinCode
-                    ? `Join ${resolvedJoinCode} Now`
-                    : "Join Room Now"}
+                    ? `Enter ${resolvedJoinCode} as Audience`
+                    : "Enter Audience App"}
               </button>
+              {!previewHasPublicRecap ? <button type="button" onClick={openPublicTv}>Open Public TV</button> : null}
               <button type="button" onClick={() => setShowManualEntry(true)}>
                 Use Different Room Code
               </button>
@@ -162,9 +173,9 @@ const JoinPage = ({ navigate, id = "" }) => {
           </>
         ) : (
           <>
-            <div className="mk3-chip">join private room</div>
-            <h2>Enter Room Code</h2>
-            <p>Private rooms stay off public pages. The room code locates an unlisted room; a host can also require a separate guest passcode before a new guest is admitted. Most BeauRocks room codes use 4 characters.</p>
+            <div className="mk3-chip">audience + screen access</div>
+            <h2>Open a Room</h2>
+            <p>Enter the code shown by the host, then choose the Audience App for your phone or Public TV for the shared room screen. Most BeauRocks room codes use 4 characters.</p>
             <form className="mk3-actions-block" onSubmit={onSubmit}>
               <label>
                 Room Code
@@ -180,10 +191,11 @@ const JoinPage = ({ navigate, id = "" }) => {
                 />
               </label>
               <div className="mk3-field-hint">Standard room codes are 4 characters and use letters or numbers.</div>
-              <button type="submit">Open Join Page</button>
+              <button type="submit">Find This Room</button>
               <button type="button" onClick={joinOnMobile}>
-                Join On Mobile
+                Enter Audience App
               </button>
+              <button type="button" onClick={openPublicTv}>Open Public TV</button>
             </form>
             {loading && <div className="mk3-status">Checking that room code...</div>}
             {status && <div className={statusTone === "warning" ? "mk3-status mk3-status-warning" : "mk3-status mk3-status-error"}>{status}</div>}
@@ -198,14 +210,23 @@ const JoinPage = ({ navigate, id = "" }) => {
                       Open Session Details
                     </button>
                   ) : null}
-                  <button type="button" onClick={joinOnMobile}>Join On Mobile</button>
+                  <button type="button" onClick={joinOnMobile}>Enter Audience App</button>
+                  <button type="button" onClick={openPublicTv}>Open Public TV</button>
                 </div>
               </div>
             )}
           </>
         )}
       </article>
-      <aside className="mk3-actions-card">
+      <aside className="mk3-actions-card mk3-room-access-guide">
+        <div className="mk3-room-access-choice">
+          <span>Audience App</span>
+          <strong>Join, request songs, vote, and chat from your phone.</strong>
+        </div>
+        <div className="mk3-room-access-choice is-tv">
+          <span>Public TV</span>
+          <strong>Put the shared room screen on a TV or display.</strong>
+        </div>
         <h4>{hasJoinCodeInRoute && !showManualEntry ? "Need To Switch Rooms?" : "Looking For Public Nights?"}</h4>
         <p>
           {hasJoinCodeInRoute && !showManualEntry

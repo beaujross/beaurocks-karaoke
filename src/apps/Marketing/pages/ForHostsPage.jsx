@@ -49,19 +49,36 @@ const ForHostsPage = ({
   const intakeFormRef = useRef(null);
   const [requestBusy, setRequestBusy] = useState(false);
   const [requestNotice, setRequestNotice] = useState("");
+  const [requestSubmitted, setRequestSubmitted] = useState(false);
   const [requestEmail, setRequestEmail] = useState(() => String(session?.email || "").trim().toLowerCase());
   const [requestName, setRequestName] = useState(() => String(session?.user?.displayName || "").trim());
   const [requestHostType, setRequestHostType] = useState("home_party");
 
   const [requestGoal, setRequestGoal] = useState("");
   const hostApplicationStatus = String(session?.applicationStatus || "").trim().toLowerCase();
+  const waitlistConfirmed = requestSubmitted || hostApplicationStatus === "pending";
+  const goldenTicketState = session?.hasHostWorkspaceAccess
+    ? "issued"
+    : waitlistConfirmed
+      ? "held"
+      : "open";
+  const goldenTicketTitle = goldenTicketState === "issued"
+    ? "Host Access Granted"
+    : goldenTicketState === "held"
+      ? "Application Received"
+      : "Invitation Request";
+  const goldenTicketStamp = goldenTicketState === "issued"
+    ? "Admit One"
+    : goldenTicketState === "held"
+      ? "In Review"
+      : "Apply";
   const onboardingSteps = Array.isArray(session?.hostOnboarding?.steps) ? session.hostOnboarding.steps : [];
   const liveListingsCount = Math.max(0, Number(heroStats?.total || 0));
   const heroSignals = [
     {
       label: "At home",
       title: "Run it yourself",
-      copy: "Manage the queue, TV, and guest phones from one place.",
+      copy: "Run the queue, TV, and guest phones from one place.",
     },
     {
       label: "Private events",
@@ -208,6 +225,7 @@ const ForHostsPage = ({
         hostingGoal: requestGoal,
       });
       setRequestNotice(String(payload?.message || "You are on the Host waitlist. We will email you if an invitation becomes available."));
+      setRequestSubmitted(true);
       onHostApplicationsChanged?.();
       trackEvent("mk_host_application_submitted", {
         source: "for_hosts_early_access_2026",
@@ -241,7 +259,7 @@ const ForHostsPage = ({
           <div className="mk3-rebuild-kicker">Invite-only Host access</div>
           <h1>Host karaoke your way.</h1>
           <p>
-            Apply with your name and email. No account is needed to join the waitlist, and there is no charge to apply.
+            Apply for a limited Host invitation. If selected, the invitation in your email is your golden ticket into Host access. No account or payment is needed to apply.
           </p>
           <div className="mk3-demand-pill-row" aria-label="Host access signals">
             <span>No account to apply</span>
@@ -257,7 +275,7 @@ const ForHostsPage = ({
                 scrollToIntake();
               }}
             >
-              Join the Waitlist
+              Join Host Waitlist
             </button>
             <button
               type="button"
@@ -275,7 +293,34 @@ const ForHostsPage = ({
         <article ref={intakeFormRef} className="mk3-persona-simple-form-card">
           <div className="mk3-persona-simple-form-topline">
             <span>Next invitation batch</span>
-            <b>Join the Host waitlist</b>
+            <b>Limited invitation release</b>
+          </div>
+
+          <div className={`mk3-host-golden-ticket is-${goldenTicketState}`} aria-label={`BeauRocks Host ${goldenTicketTitle}`}>
+            <span className="mk3-host-ticket-notch is-left" aria-hidden="true" />
+            <span className="mk3-host-ticket-notch is-right" aria-hidden="true" />
+            <div className="mk3-host-ticket-kicker">
+              <span>BeauRocks Karaoke</span>
+              <b>Host invitation series</b>
+            </div>
+            <div className="mk3-host-ticket-main">
+              <div>
+                <small>Neon golden ticket</small>
+                <strong>{goldenTicketTitle}</strong>
+                <p>
+                  {goldenTicketState === "issued"
+                    ? "Your invitation unlocks the Host Dashboard and Room setup."
+                    : goldenTicketState === "held"
+                      ? "Your application is in the pool for a future invitation batch."
+                      : "Apply below to be considered for one of the next limited invitations."}
+                </p>
+              </div>
+              <span className="mk3-host-ticket-stamp">{goldenTicketStamp}</span>
+            </div>
+            <div className="mk3-host-ticket-footer">
+              <span>{requestName || session?.user?.displayName || "Future Host"}</span>
+              <b>BR · HOST · 2026</b>
+            </div>
           </div>
 
           <div className="mk3-status">
@@ -283,12 +328,6 @@ const ForHostsPage = ({
             <span>We are accepting applicants now and releasing only a few invitations at a time. Join the waitlist to be considered for a future opening.</span>
           </div>
 
-          {hostApplicationStatus === "pending" && (
-            <div className="mk3-status">
-              <strong>You are on the Host waitlist.</strong>
-              <span>We will email you if an invitation becomes available. You do not need to create an account or keep checking this page.</span>
-            </div>
-          )}
 
           {session?.hasHostWorkspaceAccess ? (
             <div className="mk3-status">
@@ -303,6 +342,19 @@ const ForHostsPage = ({
                   ))}
                 </div>
               )}
+            </div>
+          ) : waitlistConfirmed ? (
+            <div className="mk3-host-ticket-confirmation" aria-live="polite">
+              <strong>Your application is in the invitation pool.</strong>
+              <span>Invitations are selected in small batches—not first come, first served. We will email you if there is a fit for an upcoming opening.</span>
+              {!!requestNotice && <span>{requestNotice}</span>}
+              <button
+                className="mk3-rebuild-button is-ghost"
+                type="button"
+                onClick={openHostLogin}
+              >
+                Already Invited? Sign In
+              </button>
             </div>
           ) : (
             <form className="mk3-auth-state mk3-host-application-form" onSubmit={requestEarlyHostAccess}>
@@ -362,7 +414,7 @@ const ForHostsPage = ({
                 Joining is free and does not start a subscription. If invited, you will see the access terms before you begin.
               </div>
               <button className="mk3-rebuild-button is-primary" type="submit" disabled={requestBusy}>
-                {requestBusy ? "Joining..." : "Join the Host Waitlist"}
+                {requestBusy ? "Submitting..." : "Submit My Host Application"}
               </button>
               {!!requestNotice && <div className="mk3-status" aria-live="polite">{requestNotice}</div>}
               <button

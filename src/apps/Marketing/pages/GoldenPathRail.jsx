@@ -62,7 +62,7 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
         navigate(MARKETING_ROUTE_PAGES.join);
       }}
     >
-      Join By Code
+      Room Access
     </button>
   </aside>
 );

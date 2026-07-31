@@ -8,7 +8,9 @@ test("join page becomes a direct room-entry surface when a room code already exi
   assert.match(source, /const \[showManualEntry, setShowManualEntry\] = useState\(false\);/);
   assert.match(source, /const hasJoinCodeInRoute = !!normalizeJoinEntryCode\(id\);/);
   assert.match(source, /hasJoinCodeInRoute && !showManualEntry \?/);
-  assert.match(source, /Join Room Now/);
+  assert.match(source, /Enter Audience App/);
+  assert.match(source, /surface: "tv", params: \{ room: code \}/);
+  assert.match(source, /Open Public TV/);
   assert.match(source, /Use Different Room Code/);
 });
 

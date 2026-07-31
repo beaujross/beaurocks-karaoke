@@ -10,7 +10,12 @@ test('Queue workspace separates performance and moment preparation without addin
   assert.match(queueSource, /data-feature-id="host-performance-prep-header"/);
   assert.match(queueSource, /data-feature-id="host-moment-prep-header"/);
   assert.match(queueSource, /Choose the singer, song, and backing before it reaches the Live Queue\./);
-  assert.match(queueSource, /Prepare announcements, trivia, games, and TV moments before committing them\./);
+  assert.match(queueSource, /Build the beats between performances/);
+  assert.match(queueSource, /data-feature-id="moment-prep-live-queue-handoff"/);
+  assert.match(queueSource, /This mirrors the singer lane used by Live Queue\. Reorder singers there\./);
+  assert.match(queueSource, /destination: 'planner'/);
+  assert.match(queueSource, /onPromotePreparedRunOfShowItems\?\.\(\[item\.id\]\)/);
+  assert.notMatch(queueSource, /<RunOfShowQueueHud/);
 });
 
 test('compact Queue navigation uses short performance and moment labels', () => {

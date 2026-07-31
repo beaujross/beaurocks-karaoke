@@ -84,9 +84,9 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   if (context === EMPTY_STATE_CONTEXT.SESSION_MISSING) {
     return {
       title: "Session not found.",
-      description: "Try Join By Code, or browse public sessions in Discover.",
+      description: "Try Room Access, or browse public sessions in Discover.",
       actions: [
-        { id: "join", label: "Join by code", intent: "join" },
+        { id: "join", label: "Room Access", intent: "join" },
         { id: "discover", label: "Open discover", intent: "discover" },
       ],
     };
