@@ -4164,6 +4164,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         [runOfShowDirector?.items]
     );
     const preparedMomentCount = preparedMoments.length;
+    const momentPrepTimelineItems = useMemo(
+        () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
+            .filter((item) => !['complete', 'skipped'].includes(String(item?.status || '').trim().toLowerCase()))
+            .sort((a, b) => Number(a?.sequence || 0) - Number(b?.sequence || 0)),
+        [runOfShowDirector?.items]
+    );
     const hasRunOfShowQueueWork = runOfShowEnabled && (reviewQueueItems.length > 0 || pending.length > 0 || queue.length > 0 || assigned.length > 0);
     const runOfShowNeedsAttentionCount = Math.max(
         0,
@@ -4178,6 +4184,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const addToQueueWorkspaceActive = queueSurface.isCompactQueueSurface
         ? queueSurface.activeCompactTab === 'add'
         : desktopQueueSurfaceTab === 'add';
+    const momentPrepWorkspaceActive = queueSurface.isCompactQueueSurface
+        ? queueSurface.activeCompactTab === 'show'
+        : desktopQueueSurfaceTab === 'show';
     const addToQueueSectionOpen = addToQueueWorkspaceActive || showAddForm;
 
     useEffect(() => {
@@ -4477,7 +4486,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         .replaceAll('_', ' ')
         .replace(/\b\w/g, (letter) => letter.toUpperCase());
     const plannerWorkspaceSection = (
-        <div data-feature-id="host-moment-prep-workbench" className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar sm:p-4">
+        <div data-feature-id="host-moment-prep-workbench" data-moment-prep-scroll-owner="true" className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3 custom-scrollbar sm:p-4">
             <div data-feature-id="host-moment-prep-header" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300/18 bg-emerald-500/8 px-4 py-3">
                 <div className="min-w-0">
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200">Moment Prep</div>
@@ -4488,57 +4497,76 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     <span className="rounded-full border border-violet-300/25 bg-violet-500/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-violet-100">
                         {preparedMomentCount} prepared
                     </span>
-                    <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px]`}>
-                        Full Planner
-                    </button>
+
                 </div>
             </div>
 
-            <div data-feature-id="moment-prep-live-queue-handoff" className="mb-3 rounded-2xl border border-cyan-300/16 bg-cyan-500/[0.06] p-3">
+            <section
+                data-feature-id="moment-prep-timeline"
+                aria-label="Tonight's timeline"
+                className="mb-3 overflow-hidden rounded-2xl border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.1),transparent_36%),linear-gradient(145deg,rgba(10,20,32,0.94),rgba(18,13,30,0.94))] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.22)] sm:p-4"
+            >
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">Live Queue handoff</div>
-                        <div className="mt-1 text-xs text-zinc-400">This mirrors the singer lane used by Live Queue. Reorder singers there.</div>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setDesktopQueueSurfaceTab('queue');
-                            queueSurface.activateCompactTab('queue');
-                        }}
-                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[10px]`}
-                    >
-                        Open Live Queue
-                    </button>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
-                        <div className="text-[9px] font-black uppercase tracking-[0.16em] text-rose-200">On stage</div>
-                        <div className="mt-1 truncate text-sm font-black text-white">{current?.singerName || 'Stage is open'}</div>
-                        <div className="truncate text-xs text-zinc-400">{current?.songTitle || current?.title || 'Ready for the next performance or moment'}</div>
-                    </div>
-                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
-                        <div className="text-[9px] font-black uppercase tracking-[0.16em] text-cyan-200">Next singer</div>
-                        <div className="mt-1 truncate text-sm font-black text-white">{nextQueueSong?.singerName || 'No singer waiting'}</div>
-                        <div className="truncate text-xs text-zinc-400">{nextQueueSong?.songTitle || nextQueueSong?.title || 'Add a performance in Performance Prep'}</div>
-                    </div>
-                </div>
-            </div>
-
-            {runOfShowEnabled ? (
-                <div data-feature-id="moment-prep-running-show-status" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300/18 bg-amber-500/[0.07] px-4 py-3">
                     <div className="min-w-0">
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Tonight&apos;s Flow is running</div>
-                        <div className="mt-1 truncate text-sm text-zinc-200">
-                            {runOfShowLiveItem?.title || runOfShowStagedItem?.title || runOfShowNextItem?.title || 'Waiting for the next planned beat'}
-                        </div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Run of experience</div>
+                        <div className="mt-1 text-base font-black text-white">Tonight&apos;s Timeline</div>
+                        <div className="mt-1 max-w-2xl text-xs leading-5 text-zinc-400">See the planned arc of the night here, then use the builder below to prepare the next audience beat.</div>
                     </div>
-                    <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[10px]`}>
-                        Open run controls
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${runOfShowEnabled ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-400'}`}>
+                            {runOfShowEnabled ? 'Flow active' : 'Draft mode'}
+                        </span>
+                        <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[10px]`}>
+                            Open Timeline Builder
+                        </button>
+                    </div>
                 </div>
-            ) : null}
-
+                {momentPrepTimelineItems.length ? (
+                    <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1 custom-scrollbar" data-feature-id="moment-prep-timeline-track">
+                        {momentPrepTimelineItems.slice(0, 6).map((item, index) => {
+                            const status = String(item?.status || 'planned').trim().toLowerCase();
+                            const live = status === 'live' || item?.id === runOfShowLiveItem?.id;
+                            const staged = status === 'staged' || item?.id === runOfShowStagedItem?.id;
+                            const prepared = item?.destination === 'planner' || status === 'prepared';
+                            const statusLabel = live ? 'Live now' : staged ? 'On deck' : prepared ? 'Prepared' : status === 'ready' ? 'Ready' : 'Planned';
+                            const statusClass = live
+                                ? 'border-rose-300/35 bg-rose-500/12 text-rose-100'
+                                : staged
+                                    ? 'border-amber-300/30 bg-amber-500/10 text-amber-100'
+                                    : prepared
+                                        ? 'border-violet-300/28 bg-violet-500/10 text-violet-100'
+                                        : 'border-cyan-300/22 bg-cyan-500/[0.07] text-cyan-100';
+                            const durationSec = Math.max(0, Math.round(Number(item?.plannedDurationSec || 0) || 0));
+                            return (
+                                <button
+                                    key={item.id || `moment-prep-timeline-${index}`}
+                                    type="button"
+                                    onClick={() => onFocusRunOfShowItem?.(item.id)}
+                                    disabled={!item?.id || typeof onFocusRunOfShowItem !== 'function'}
+                                    className={`min-w-[210px] snap-start rounded-xl border p-3 text-left transition hover:border-cyan-200/40 disabled:cursor-default ${statusClass}`}
+                                    aria-label={`Open ${item?.title || getPreparedMomentTypeLabel(item)} in Timeline Builder`}
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[9px] font-black uppercase tracking-[0.16em] opacity-75">{index + 1} · {getPreparedMomentTypeLabel(item)}</span>
+                                        <span className="rounded-full border border-current/20 bg-black/20 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em]">{statusLabel}</span>
+                                    </div>
+                                    <div className="mt-2 truncate text-sm font-black text-white">{item?.title || getPreparedMomentTypeLabel(item)}</div>
+                                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] opacity-65">{durationSec ? `${durationSec} sec` : 'Timing open'}</div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="mt-3 rounded-xl border border-dashed border-cyan-300/18 bg-black/20 px-4 py-4 text-sm text-zinc-400">
+                        Your timeline is open. Prepare a moment below to start shaping tonight&apos;s experience.
+                    </div>
+                )}
+                {momentPrepTimelineItems.length > 6 ? (
+                    <button type="button" onClick={onOpenRunOfShow} className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200 hover:text-white">
+                        View all {momentPrepTimelineItems.length} timeline items
+                    </button>
+                ) : null}
+            </section>
             <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
                 <section data-feature-id="moment-prep-builder" className="rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-4">
                     <div className="flex flex-wrap items-end justify-between gap-2">
@@ -6418,7 +6446,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </div>
     ) : null;
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
-        <div className={`${STYLES.panel} ${activeQueueWorkspaceTone.shellClass} min-h-0 flex flex-col overflow-hidden min-w-0`}>
+        <div className={`${STYLES.panel} ${activeQueueWorkspaceTone.shellClass} min-h-0 flex flex-1 flex-col overflow-hidden min-w-0`}>
             <div className={queueWorkspaceTabListClass}>
                 {renderQueueWorkspaceTabButton({
                     id: 'queue',
@@ -6489,7 +6517,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             </div>
             {queueWorkspaceHeader}
             {desktopQueueSurfaceTab === 'show'
-                ? <div className="flex-1 min-h-0 overflow-hidden bg-emerald-500/[0.03]">{plannerWorkspaceSection}</div>
+                ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-emerald-500/[0.03]">{plannerWorkspaceSection}</div>
                 : desktopQueueSurfaceTab === 'inbox'
                     ? inboxWorkspaceSection
                 : desktopQueueSurfaceTab === 'catalog'
@@ -6580,7 +6608,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             ) : queueSurface.activeCompactTab === 'catalog' ? (
                 catalogWorkspaceSection
             ) : queueSurface.activeCompactTab === 'show' ? (
-                <div className="flex-1 min-h-0 overflow-hidden bg-emerald-500/[0.03]">{plannerWorkspaceSection}</div>
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-emerald-500/[0.03]">{plannerWorkspaceSection}</div>
             ) : queueSurface.activeCompactTab === 'add' ? (
                 <div className="min-h-0 flex-1 overflow-hidden bg-fuchsia-500/[0.03]">
                     {addToQueueSection}
@@ -6617,7 +6645,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     ) : null;
 
     return (
-        <div className={`${allowHostPanelPageScroll ? 'min-h-full overflow-visible' : 'h-full overflow-hidden'} flex flex-col ${compactViewport ? 'gap-2' : 'gap-3'} relative`}>
+        <div className={`${momentPrepWorkspaceActive || !allowHostPanelPageScroll ? 'h-full min-h-0 overflow-hidden' : 'min-h-full overflow-visible'} flex flex-col ${compactViewport ? 'gap-2' : 'gap-3'} relative`}>
             {ytSearchOpen ? (
                 <React.Suspense fallback={null}>
                     <QueueYouTubeSearchModal
@@ -6861,15 +6889,15 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     utilityPanel={legacySoundboardSection}
                 />
             ) : (
-                <div className={`flex-1 ${allowHostPanelPageScroll ? 'min-h-full' : 'min-h-0'} ${
+                <div className={`flex-1 ${momentPrepWorkspaceActive ? 'flex min-h-0 flex-col overflow-hidden' : `${allowHostPanelPageScroll ? 'min-h-full' : 'min-h-0'} ${
                     isMobileLayout
                         ? 'flex flex-col gap-3'
                         : isTightLayout
                             ? 'grid grid-cols-[minmax(280px,0.72fr)_minmax(0,1.42fr)] gap-4'
                             : 'grid grid-cols-[minmax(260px,0.82fr)_minmax(780px,1.9fr)] gap-5'
-                } ${allowHostPanelPageScroll ? 'overflow-visible' : 'overflow-hidden'}`}>
+                } ${allowHostPanelPageScroll ? 'overflow-visible' : 'overflow-hidden'}`}`}>
                 {/* LEFT CONTROLS */}
-                <div className={`w-full flex flex-col ${
+                <div className={`w-full flex flex-col ${momentPrepWorkspaceActive ? 'hidden' :
                     isMobileLayout
                         ? (allowHostPanelPageScroll ? 'min-h-0' : 'min-h-0 max-h-[38vh] pr-1.5')
                         : isTightLayout

@@ -173,7 +173,12 @@ test('admin navigation keeps core config sections wired into the workspace regis
   assert.match(
     hostAppSource,
     /const slimAdminRail = tab !== 'admin' && viewportWidth <= 900;/,
-    'Full Admin should not collapse into the slim icon-only rail',
+    'Embedded settings can still use the viewport-aware slim rail',
+  );
+  assert.match(
+    hostAppSource,
+    /const compactAdminRail = slimAdminRail \|\| tab === 'admin';/,
+    'Full Admin should use the same compact navigation density as the Host workspace',
   );
   assert.match(
     hostAppSource,
@@ -182,7 +187,7 @@ test('admin navigation keeps core config sections wired into the workspace regis
   );
   assert.match(
     hostAppSource,
-    /\$\{\(inAdminWorkspace \|\| settingsNavOpen\) \? 'block' : 'hidden'\} md:block border-b md:border-b-0 md:border-r border-white\/10 bg-zinc-950 overflow-y-auto custom-scrollbar/,
+    /\$\{\(inAdminWorkspace \|\| settingsNavOpen\) \? 'block' : 'hidden'\} md:block border-b md:border-b-0 md:border-r border-white\/10 bg-zinc-950 custom-scrollbar/,
     'The full Admin workspace should keep the settings rail visible instead of hiding it behind the drawer state',
   );
   assert.match(
@@ -212,13 +217,23 @@ test('admin navigation keeps core config sections wired into the workspace regis
   );
   assert.match(
     hostAppSource,
-    /tab === 'admin'\s*\?\s*settingsNavigationGroups\s*:\s*settingsNavigationGroups\.filter\(\(section\) => section\.id === activeWorkspaceView\)/,
-    'Full Admin should show the complete grouped settings directory instead of scoping the rail to the active workspace only',
+    /const navigationGroupsForRail = settingsNavQuery\.trim\(\)\s*\? settingsNavigationGroups\s*:\s*settingsNavigationGroups\.filter\(\(section\) => section\.id === activeWorkspaceView\);/,
+    'The rail should scope itself to the selected top-level workspace unless the host is searching',
   );
   assert.match(
     hostAppSource,
-    /tab === 'admin' \? 'All Settings' : `Sections In \$\{activeWorkspaceMeta\?\.label \|\| 'Workspace'\}`/,
-    'The admin rail should clearly indicate when it is showing the full settings directory',
+    /data-admin-rail-density=\{compactAdminRail \? 'compact' : 'full'\}/,
+    'The Admin shell should expose its compact density contract for responsive verification',
+  );
+  assert.match(
+    hostAppSource,
+    /compactAdminRail \? 'flex divide-x divide-zinc-900 overflow-x-auto md:block md:divide-x-0 md:divide-y'/,
+    'Compact Admin sections should become a horizontal strip on mobile instead of consuming the viewport vertically',
+  );
+  assert.match(
+    hostAppSource,
+    /data-admin-settings-search="true"[\s\S]*placeholder="Find a setting\.\.\."/,
+    'Full Admin should retain cross-workspace settings search in its header',
   );
   assert.match(
     hostAppSource,
