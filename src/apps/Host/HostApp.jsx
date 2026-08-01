@@ -5583,6 +5583,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const hostStageLayoutMode = compactHostViewport ? 'mobile' : (tightHostViewport ? 'laptop-tight' : 'desktop');
     const compactPreviewDock = viewportWidth <= 1100;
     const slimAdminRail = tab !== 'admin' && viewportWidth <= 900;
+    const compactAdminRail = slimAdminRail || tab === 'admin';
     const [audioPanelOpen, setAudioPanelOpen] = useState(() => {
         if (typeof window === 'undefined') return true;
         return window.innerHeight > 900;
@@ -21660,15 +21661,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     })).filter((section) => section.items.length > 0);
     const navigationGroupsForRail = settingsNavQuery.trim()
         ? settingsNavigationGroups
-        : tab === 'admin'
-            ? settingsNavigationGroups
-            : settingsNavigationGroups.filter((section) => section.id === activeWorkspaceView);
+        : settingsNavigationGroups.filter((section) => section.id === activeWorkspaceView);
     const visibleNavigationGroups = navigationGroupsForRail.length > 0
         ? navigationGroupsForRail
         : settingsNavigationGroups;
     const navigationItemsForRail = visibleNavigationGroups.flatMap((section) => section.items);
     const settingsNavigationContent = (
-        <div className="space-y-3" data-admin-sections-nav>
+        <div className={compactAdminRail ? 'space-y-0' : 'space-y-3'} data-admin-sections-nav>
             {tab !== 'admin' && (
                 <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 px-3 py-3">
                     <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">You Are Here</div>
@@ -21683,17 +21682,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
             <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-                <div className={`text-xs uppercase tracking-[0.18em] text-zinc-400 border-b border-zinc-900 ${slimAdminRail ? 'px-2 py-2 text-center' : 'px-3 py-2'}`}>
-                    {slimAdminRail ? 'Sections' : tab === 'admin' ? 'All Settings' : `Sections In ${activeWorkspaceMeta?.label || 'Workspace'}`}
+                <div className={`text-xs uppercase tracking-[0.18em] text-zinc-400 border-b border-zinc-900 ${compactAdminRail ? 'hidden px-2 py-2 text-center md:block' : 'px-3 py-2'}`}>
+                    {compactAdminRail ? 'Sections' : tab === 'admin' ? 'All Settings' : `Sections In ${activeWorkspaceMeta?.label || 'Workspace'}`}
                 </div>
-                <div className={slimAdminRail ? 'divide-y divide-zinc-900' : 'space-y-3 p-3'}>
+                <div className={compactAdminRail ? 'flex divide-x divide-zinc-900 overflow-x-auto md:block md:divide-x-0 md:divide-y' : 'space-y-3 p-3'}>
                     {visibleNavigationGroups.map((section) => (
                         <div
                             key={`settings-section-group-${section.id}`}
                             data-admin-section-group={section.id}
-                            className={slimAdminRail ? '' : `rounded-xl border overflow-hidden ${section.id === activeWorkspaceView ? 'border-cyan-400/25 bg-cyan-500/[0.03]' : 'border-zinc-900 bg-zinc-950/70'}`}
+                            className={compactAdminRail ? 'shrink-0 md:block' : `rounded-xl border overflow-hidden ${section.id === activeWorkspaceView ? 'border-cyan-400/25 bg-cyan-500/[0.03]' : 'border-zinc-900 bg-zinc-950/70'}`}
                         >
-                            {!slimAdminRail ? (
+                            {!compactAdminRail ? (
                                 <div className={`flex items-center justify-between gap-2 border-b px-3 py-2 ${section.id === activeWorkspaceView ? 'border-cyan-400/20 bg-cyan-500/[0.05]' : 'border-zinc-900 bg-zinc-950/80'}`}>
                                     <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{section.label}</div>
                                     <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">
@@ -21701,7 +21700,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </span>
                                 </div>
                             ) : null}
-                            <div className={slimAdminRail ? '' : 'divide-y divide-zinc-900'}>
+                            <div className={compactAdminRail ? 'flex md:block md:divide-y md:divide-zinc-900' : 'divide-y divide-zinc-900'}>
                                 {section.items.map((item) => {
                                     const isActive = settingsTab === item.key;
                                     const badge = settingsNavBadges[item.key];
@@ -21710,11 +21709,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             key={`settings-item-${item.key}`}
                                             data-admin-section-item={item.key}
                                             onClick={() => handleSettingsNavSelect(item.key)}
-                                            className={`w-full transition-colors ${slimAdminRail ? 'px-2 py-2.5 text-center' : 'px-3 py-3 text-left'} ${
+                                            className={`w-full transition-colors ${compactAdminRail ? 'min-w-[112px] px-2 py-2.5 text-center md:min-w-0' : 'px-3 py-3 text-left'} ${
                                                 isActive ? 'bg-cyan-500/10 text-cyan-100' : 'bg-transparent text-zinc-200 hover:bg-zinc-900/80 hover:text-white'
                                             }`}
                                         >
-                                            {slimAdminRail ? (
+                                            {compactAdminRail ? (
                                                 <div className="flex flex-col items-center gap-1.5">
                                                     <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${isActive ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-700 bg-zinc-900/80 text-zinc-400'}`}>
                                                         <i className={`fa-solid ${item.icon} text-sm`}></i>
@@ -21762,7 +21761,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     )}
                 </div>
             </div>
-            {recentSettingsNavItems.length > 0 && (
+            {!compactAdminRail && recentSettingsNavItems.length > 0 && (
                 <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
                     <div className="text-xs uppercase tracking-[0.18em] text-zinc-400">Recent</div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -24199,6 +24198,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-zinc-400 flex-wrap">
+                                    {inAdminWorkspace && (
+                                        <label className="relative hidden min-w-[210px] lg:block" data-admin-settings-search="true">
+                                            <span className="sr-only">Find a setting</span>
+                                            <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
+                                            <input
+                                                type="search"
+                                                value={settingsNavQuery}
+                                                onChange={(e) => setSettingsNavQuery(e.target.value)}
+                                                className="h-9 w-full rounded-xl border border-white/10 bg-zinc-900/80 pl-8 pr-3 text-xs text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-cyan-400/35 focus:ring-2 focus:ring-cyan-500/10"
+                                                placeholder="Find a setting..."
+                                            />
+                                        </label>
+                                    )}
                                     {!inAdminWorkspace && (
                                         <button
                                             data-admin-sections-toggle
@@ -24276,14 +24288,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             showContext={!inAdminWorkspace}
                             fullBleed={inAdminWorkspace}
                         >
-                            <div className={`h-full min-h-0 grid grid-cols-1 ${slimAdminRail ? 'md:grid-cols-[112px_minmax(0,1fr)] xl:grid-cols-[124px_minmax(0,1fr)]' : 'md:grid-cols-[248px_minmax(0,1fr)] xl:grid-cols-[264px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]'}`}>
-                                <aside className={`${(inAdminWorkspace || settingsNavOpen) ? 'block' : 'hidden'} md:block border-b md:border-b-0 md:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar ${slimAdminRail ? 'p-2 md:p-2.5' : 'p-3 md:p-4'}`}>
+                            <div
+                                className={`h-full min-h-0 grid grid-cols-1 ${compactAdminRail ? 'md:grid-cols-[112px_minmax(0,1fr)] xl:grid-cols-[124px_minmax(0,1fr)]' : 'md:grid-cols-[248px_minmax(0,1fr)] xl:grid-cols-[264px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]'}`}
+                                data-admin-rail-density={compactAdminRail ? 'compact' : 'full'}
+                            >
+                                <aside className={`${(inAdminWorkspace || settingsNavOpen) ? 'block' : 'hidden'} md:block border-b md:border-b-0 md:border-r border-white/10 bg-zinc-950 custom-scrollbar ${compactAdminRail ? 'overflow-x-auto p-2 md:overflow-y-auto md:p-2.5' : 'overflow-y-auto p-3 md:p-4'}`}>
                                     <div data-admin-sections-rail>
-                                    <div className="mb-2 flex items-center justify-between md:hidden">
-                                        <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
-                                        <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
-                                    </div>
-                                    {inAdminWorkspace && !slimAdminRail && (
+                                    {!inAdminWorkspace && (
+                                        <div className="mb-2 flex items-center justify-between md:hidden">
+                                            <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
+                                            <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
+                                        </div>
+                                    )}
+                                    {inAdminWorkspace && !compactAdminRail && (
                                         <div className="mb-3">
                                             <label className="relative block">
                                                 <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
@@ -24322,6 +24339,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </span>
                                         )}
                                     </div>
+                                    {inAdminWorkspace && (
+                                        <div className="mt-0.5 line-clamp-1 text-xs text-zinc-400">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
+                                    )}
                                     {!inAdminWorkspace && (
                                         <>
                                             <div className="text-sm text-zinc-300 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
@@ -24361,7 +24381,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {(settingsTab === 'general' || settingsTab === 'audience_setup') && (
                         <>
                         <div className="mb-5 grid grid-cols-1 gap-5">
-                        <div className={`rounded-xl border border-white/10 bg-black/20 p-3 ${settingsTab === 'audience_setup' ? 'hidden' : ''}`}>
+                        <div data-room-setup-overview="true" className={`rounded-2xl border border-cyan-300/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(9,9,11,0.72)_48%,rgba(217,70,239,0.07))] p-3.5 shadow-[0_16px_38px_rgba(0,0,0,0.18)] ${settingsTab === 'audience_setup' ? 'hidden' : ''}`}>
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
                                     <span className="rounded-full border border-white/15 px-2.5 py-1">Mode: {room?.activeMode || 'karaoke'}</span>

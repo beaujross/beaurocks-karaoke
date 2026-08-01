@@ -57,6 +57,11 @@ test("host room setup keeps quick actions compact instead of repeating the Night
     /Quick Actions/,
     "HostApp Night Setup should use a compact quick-actions strip",
   );
+  assert.match(
+    hostAppSource,
+    /data-room-setup-overview="true"/,
+    "Night Setup should present its room status and primary actions as a polished overview surface",
+  );
   assert.doesNotMatch(
     hostAppSource,
     /text-sm uppercase tracking-widest text-cyan-300">Run Tonight/,
