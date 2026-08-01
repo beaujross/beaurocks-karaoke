@@ -917,10 +917,10 @@ const buildDurableRateLimitDocId = ({
   sanitizeSecurityToken(actor, 120) || "unknown",
 ].join("__").slice(0, 220);
 
-const checkDurableRateLimit = async (req, scope, limits = DEFAULT_LIMITS) => {
+const checkDurableRateLimit = async (req, scope, limits = DEFAULT_LIMITS, actorOverride = "") => {
   const now = nowMs();
   const safeScope = sanitizeSecurityToken(scope, 48) || "unknown";
-  const actor = sanitizeSecurityToken(getClientIp(req), 120) || "unknown";
+  const actor = sanitizeSecurityToken(actorOverride || getClientIp(req), 120) || "unknown";
   const minuteStartMs = Math.floor(now / 60000) * 60000;
   const hourStartMs = Math.floor(now / 3600000) * 3600000;
   const db = admin.firestore();
@@ -17346,8 +17346,8 @@ exports.listHostApplications = onCall({ cors: true }, async (request) => {
   enforceAppCheckIfEnabled(request, "list_host_applications");
   const requesterUid = requireAuth(request, "Sign in required.");
   const requesterAccess = await getDirectoryModeratorAccess(requesterUid);
-  if (!requesterAccess.isModerator) {
-    throw new HttpsError("permission-denied", "Directory moderator role required.");
+  if (!requesterAccess.isAdmin) {
+    throw new HttpsError("permission-denied", "Directory administrator role required.");
   }
   const payload = request.data && typeof request.data === "object" ? request.data : {};
   const statusFilter = sanitizeHostApplicationStatus(payload.status || "", "");
@@ -17361,7 +17361,19 @@ exports.listHostApplications = onCall({ cors: true }, async (request) => {
     .sort((a, b) => (valueToMillis(b.updatedAt || b.createdAt) - valueToMillis(a.updatedAt || a.createdAt)))
     .slice(0, maxItems)
     .map((item) => ({
-      ...item,
+      applicationId: String(item.applicationId || "").trim(),
+      uid: normalizeUidToken(item.uid || ""),
+      email: String(item.email || "").trim().toLowerCase(),
+      name: safeDirectoryString(item.name || "", 120),
+      status: sanitizeHostApplicationStatus(item.status || "", "pending"),
+      source: sanitizeWaitlistSource(item.source || ""),
+      hostProfile: item.hostProfile && typeof item.hostProfile === "object"
+        ? {
+          hostType: sanitizeHostApplicationChoice(item.hostProfile.hostType || "", HOST_APPLICATION_HOST_TYPES),
+          hostingGoal: normalizeDirectoryTextBlock(item.hostProfile.hostingGoal || "", 1200),
+        }
+        : {},
+      reviewNotes: normalizeDirectoryTextBlock(item.reviewNotes || "", 500),
       createdAtMs: valueToMillis(item.createdAt),
       submittedAtMs: valueToMillis(item.submittedAt || item.createdAt),
       reviewedAtMs: valueToMillis(item.reviewedAt),
@@ -17597,6 +17609,19 @@ exports.getHostLifecycleReportingSummary = onCall({ cors: true }, async (request
     },
   };
 });
+const { createHostCommunicationCallables } = require("./hostCommunications");
+Object.assign(exports, createHostCommunicationCallables({
+  admin,
+  onCall,
+  HttpsError,
+  requireAuth,
+  getDirectoryModeratorAccess,
+  resolveHostWorkspaceAccess,
+  checkRateLimit,
+  checkDurableRateLimit,
+  enforceAppCheckIfEnabled,
+  requireAppCheck,
+}));
 exports.getMyDirectoryAccess = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "get_my_directory_access", { perMinute: 60, perHour: 480 });
   enforceAppCheckIfEnabled(request, "get_my_directory_access");
@@ -23443,7 +23468,7 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
     const status = sanitizeHostApplicationStatus(data.status || "", "pending");
     const submittedAtMs = valueToMillis(data.submittedAtMs || data.submittedAt || data.createdAt) || Date.now();
     const submittedAtIso = new Date(submittedAtMs).toISOString();
-    const adminUrl = normalizeDirectoryOptionalUrl(data.adminUrl || "https://beaurocks.app/admin/moderation") || "https://beaurocks.app/admin/moderation";
+    const adminUrl = normalizeDirectoryOptionalUrl(data.adminUrl || "https://host.beaurocks.app/ops/hosts?tab=applications") || "https://host.beaurocks.app/ops/hosts?tab=applications";
     const safeEventType = safeDirectoryString(data.eventType || "host_application_created", 80) || "host_application_created";
     const isResubmission = safeEventType === "host_application_resubmitted";
     const headline = isResubmission ? "Host application resubmitted" : "New host application received";
@@ -24019,7 +24044,7 @@ const dispatchHostApplicationAlert = async ({ applicationId = "", application = 
       status: application?.status || "pending",
       linePosition: application?.linePosition || 0,
       submittedAtMs: application?.lastSubmittedAt || application?.submittedAt || application?.createdAt || Date.now(),
-      adminUrl: "https://beaurocks.app/admin/moderation",
+      adminUrl: `https://host.beaurocks.app/ops/hosts?tab=applications&applicationId=${encodeURIComponent(applicationId)}`,
     }),
     { source: "host_application_alert" },
   );

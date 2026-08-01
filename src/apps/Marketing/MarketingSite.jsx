@@ -159,6 +159,7 @@ const resolveHostDashboardReturnHref = (returnToHref = "", locationLike = null) 
     const sameOrigin = parsed.origin === locationLike.origin;
     const targetSurface = inferSurfaceFromHostname(parsed.hostname, locationLike);
     const targetsHostApp = String(params.get("mode") || "").trim().toLowerCase() === "host"
+      || ["/hub", "/host-hub", "/ops/hosts", "/host-operations"].includes(normalizedPathname)
       || !!String(params.get("view") || "").trim()
       || !!String(params.get("tab") || "").trim()
       || !!String(params.get("game") || "").trim();
