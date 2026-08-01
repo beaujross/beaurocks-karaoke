@@ -13,6 +13,7 @@ const AudienceQaHarness = lazy(() => import('./apps/Mobile/AudienceQaHarness'));
 const VoiceGamesQaHarness = lazy(() => import('./apps/Mobile/VoiceGamesQaHarness'));
 const RecapView = lazy(() => import('./apps/Recap/RecapView'));
 const HostApp = lazy(() => import('./apps/Host/HostApp'));
+const HostRelationsApp = lazy(() => import('./apps/HostRelations/HostRelationsApp'));
 const HostRunOfShowQaHarness = lazy(() => import('./apps/Host/HostRunOfShowQaHarness'));
 const MarketingSite = lazy(() => import('./apps/Marketing/MarketingSite'));
 const HelpCenter = lazy(() => import('./apps/Help/HelpCenter'));
@@ -106,7 +107,9 @@ const getCanonicalInteractiveSurfaceRedirectUrl = (locationLike = null) => {
     const mode = String(params.get('mode') || '').trim().toLowerCase();
 
     let expectedSurface = '';
-    if (mode === 'host' || normalizedPathname === '/host' || normalizedPathname === '/host-dashboard') {
+    if (mode === 'host' || normalizedPathname === '/host' || normalizedPathname === '/host-dashboard'
+        || normalizedPathname === '/hub' || normalizedPathname === '/host-hub'
+        || normalizedPathname === '/ops/hosts' || normalizedPathname === '/host-operations') {
         expectedSurface = 'host';
     } else if (mode === 'tv') {
         expectedSurface = 'tv';
@@ -148,6 +151,12 @@ const getInitialRouteState = () => {
     }
     if (m === 'voice-games-qa') {
         return { view: 'voice_games_qa', roomCode: r ? r.toUpperCase() : '' };
+    }
+    if (pathname === '/hub' || pathname === '/host-hub') {
+        return { view: 'host_hub', roomCode: '' };
+    }
+    if (pathname === '/ops/hosts' || pathname === '/host-operations') {
+        return { view: 'host_ops', roomCode: '' };
     }
     if (pathname === '/help' || pathname.startsWith('/help/')) {
         return { view: 'help', roomCode: r ? r.toUpperCase() : '' };
@@ -443,7 +452,7 @@ const App = () => {
     }, []);
 
     useEffect(() => {
-        if (view !== 'host') return;
+        if (!['host', 'host_hub', 'host_ops'].includes(view)) return;
         if (!authReady || hasBeauRocksAccount || isDemoHostEmbed || typeof window === 'undefined') return;
 
         const resumeIntent = 'host_dashboard_resume';
@@ -485,6 +494,17 @@ const App = () => {
             setAuthError(res.error);
         }
     };
+
+    if (view === 'host_hub' || view === 'host_ops') {
+        if (!authReady || !hasBeauRocksAccount) return <ViewLoader />;
+        return (
+            <Suspense fallback={<ViewLoader />}>
+                <ToastProvider>
+                    <HostRelationsApp mode={view === 'host_ops' ? 'ops' : 'hub'} />
+                </ToastProvider>
+            </Suspense>
+        );
+    }
 
     if (view === 'host') {
         if (!authReady || (!hasBeauRocksAccount && !isDemoHostEmbed)) return <ViewLoader />;

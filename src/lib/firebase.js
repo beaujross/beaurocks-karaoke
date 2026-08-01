@@ -172,15 +172,7 @@ let appCheckDisabledReason = "";
 const shouldEnableAppCheckClient = () => {
   if (typeof window !== "undefined") {
     const forcedOff = window.__app_check_force_disable === true;
-    const host = String(window.location?.hostname || "").trim().toLowerCase();
-    const isProdHost = (
-      host === "beaurocks.app"
-      || host === "app.beaurocks.app"
-      || host === "host.beaurocks.app"
-      || host === "tv.beaurocks.app"
-      || host.endsWith(".beaurocks.app")
-    );
-    if (forcedOff || isProdHost) return false;
+    if (forcedOff) return false;
   }
   const explicit = parseOptionalBool(readEnv("VITE_APP_CHECK_ENABLED"));
   if (explicit !== null) return explicit;
@@ -419,6 +411,15 @@ const requireAppCheckToken = async (scope = "callable") => {
   throw err;
 };
 
+const requireStrictAppCheckToken = async (scope = "callable") => {
+  const warmToken = await ensureAppCheckToken(false);
+  if (warmToken) return true;
+  const refreshedToken = await ensureAppCheckToken(true);
+  if (refreshedToken) return true;
+  const err = new Error(`App Check token required for ${scope}. Refresh the page and try again.`);
+  err.code = "failed-precondition";
+  throw err;
+};
 const callFunction = async (name, data = {}) => {
   initializeAppCheckClient();
   const fn = httpsCallable(functions, name);
@@ -511,6 +512,46 @@ const getHostLifecycleReportingSummary = async (payload = {}) => {
   return data || null;
 };
 
+const listHostAnnouncements = async (payload = {}) => {
+  await requireAppCheckToken("listHostAnnouncements");
+  return (await callFunction("listHostAnnouncements", payload || {})) || null;
+};
+const upsertHostAnnouncement = async (payload = {}) => {
+  await requireStrictAppCheckToken("upsertHostAnnouncement");
+  return (await callFunction("upsertHostAnnouncement", payload || {})) || null;
+};
+const listHostAnnouncementComments = async (payload = {}) => {
+  await requireAppCheckToken("listHostAnnouncementComments");
+  return (await callFunction("listHostAnnouncementComments", payload || {})) || null;
+};
+const postHostAnnouncementComment = async (payload = {}) => {
+  await requireStrictAppCheckToken("postHostAnnouncementComment");
+  return (await callFunction("postHostAnnouncementComment", payload || {})) || null;
+};
+const moderateHostAnnouncementComment = async (payload = {}) => {
+  await requireStrictAppCheckToken("moderateHostAnnouncementComment");
+  return (await callFunction("moderateHostAnnouncementComment", payload || {})) || null;
+};
+const listHostSupportThreads = async (payload = {}) => {
+  await requireAppCheckToken("listHostSupportThreads");
+  return (await callFunction("listHostSupportThreads", payload || {})) || null;
+};
+const createHostSupportThread = async (payload = {}) => {
+  await requireStrictAppCheckToken("createHostSupportThread");
+  return (await callFunction("createHostSupportThread", payload || {})) || null;
+};
+const getHostSupportThread = async (payload = {}) => {
+  await requireAppCheckToken("getHostSupportThread");
+  return (await callFunction("getHostSupportThread", payload || {})) || null;
+};
+const postHostSupportMessage = async (payload = {}) => {
+  await requireStrictAppCheckToken("postHostSupportMessage");
+  return (await callFunction("postHostSupportMessage", payload || {})) || null;
+};
+const setHostSupportThreadStatus = async (payload = {}) => {
+  await requireStrictAppCheckToken("setHostSupportThreadStatus");
+  return (await callFunction("setHostSupportThreadStatus", payload || {})) || null;
+};
 const getMyDirectoryAccess = async (payload = {}) => {
   await requireAppCheckToken("getMyDirectoryAccess");
   const data = await callFunction("getMyDirectoryAccess", payload || {});
@@ -1323,6 +1364,16 @@ export {
   resolveHostApplication,
   getMyHostAccessStatus,
   getHostLifecycleReportingSummary,
+  listHostAnnouncements,
+  upsertHostAnnouncement,
+  listHostAnnouncementComments,
+  postHostAnnouncementComment,
+  moderateHostAnnouncementComment,
+  listHostSupportThreads,
+  createHostSupportThread,
+  getHostSupportThread,
+  postHostSupportMessage,
+  setHostSupportThreadStatus,
   getMyDirectoryAccess,
   setMyVipAccountStatus,
   claimAudienceCommunityBoost,

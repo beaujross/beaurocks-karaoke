@@ -257,6 +257,7 @@ const HostTopChrome = ({
     const audienceHelpHref = buildPrintHref(`/help/audience${roomCode ? `?room=${encodeURIComponent(roomCode)}` : ''}`);
     const coHostHelpHref = buildPrintHref(`/help/cohost${roomCode ? `?room=${encodeURIComponent(roomCode)}` : ''}`);
     const hostHelpHref = buildPrintHref(`/help/host${roomCode ? `?room=${encodeURIComponent(roomCode)}` : ''}`);
+    const hostHubHref = buildPrintHref('/hub');
     const clampNumber = (value, min, max, fallback = min) => {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return fallback;
@@ -1285,6 +1286,15 @@ const HostTopChrome = ({
                         {!minimalRuntimeChrome && !adminWorkspaceChrome ? <span className="hidden sm:inline">Room Manager</span> : null}
                     </button>
                 )}
+                <a
+                    href={hostHubHref}
+                    className={`${styles.btnStd} ${styles.btnNeutral} ${minimalRuntimeChrome || adminWorkspaceChrome ? 'px-2 text-[11px]' : 'px-2.5 text-xs'}`}
+                    title="Open approved Host updates and support"
+                    data-feature-id="host-hub-link"
+                >
+                    <i className="fa-solid fa-sparkles"></i>
+                    {!minimalRuntimeChrome && !adminWorkspaceChrome ? <span className="hidden xl:inline">Host Hub</span> : null}
+                </a>
                 <div className="relative" ref={launchMenuRef}>
                     <button
                         onClick={() => {
@@ -1509,6 +1519,14 @@ const HostTopChrome = ({
                                 <div className="mt-0.5 text-[11px] leading-4 text-zinc-500">Primary destinations for running the Room.</div>
                             </div>
                             <div className="grid gap-1">
+                                <a
+                                    href={hostHubHref}
+                                    data-feature-id="host-hub-quick-nav-link"
+                                    className="flex min-h-[58px] w-full items-center gap-3 rounded-xl border border-cyan-300/20 bg-cyan-500/8 px-3 py-2.5 text-left text-cyan-50 transition hover:border-cyan-200/40 hover:bg-cyan-500/14"
+                                >
+                                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-500/12 text-cyan-200"><i className="fa-solid fa-sparkles" aria-hidden="true"></i></span>
+                                    <span><span className="block text-[15px] font-black leading-5">Host Hub</span><span className="block text-[11px] font-medium leading-4 text-cyan-100/60">Product updates and team support</span></span>
+                                </a>
                                 {typeof onOpenHostDashboard === 'function' && (
                                     <button
                                         onClick={() => {
