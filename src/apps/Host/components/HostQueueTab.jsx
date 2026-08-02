@@ -574,11 +574,186 @@ const isDirectChatMessage = (message = {}) => (
 
 const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 
+const momentDraftInputClass = 'mt-1.5 w-full rounded-xl border border-violet-300/20 bg-zinc-950/85 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-300/50 focus:ring-2 focus:ring-violet-300/15';
+const getMomentDraftOptions = (item = {}, minimum = 0) => {
+  const launchConfig = item?.modeLaunchPlan?.launchConfig || {};
+  const options = Array.isArray(launchConfig.options)
+    ? launchConfig.options.map((entry) => String(entry || ''))
+    : String(launchConfig.optionsCsv || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+  while (options.length < minimum) options.push('');
+  return options;
+};
+
+const InlineMomentDraftEditor = ({
+  item: itemProp = {},
+  onUpdateItem,
+  onOpenAdvanced,
+}) => {
+  const item = itemProp || {};
+  const itemType = String(item.type || '').trim().toLowerCase();
+  const modeKey = String(item?.modeLaunchPlan?.modeKey || '').trim().toLowerCase();
+  const launchConfig = item?.modeLaunchPlan?.launchConfig || {};
+  const isWouldYouRather = itemType === 'would_you_rather_break' || modeKey === 'wyr';
+  const isTrivia = itemType === 'trivia_break' || modeKey === 'trivia_pop';
+  const isInteractive = Boolean(modeKey) || ['would_you_rather_break', 'trivia_break', 'game_break'].includes(itemType);
+  const options = getMomentDraftOptions(item, isWouldYouRather ? 2 : 0);
+  const [draft, setDraft] = useState(() => ({
+    title: String(item.title || ''),
+    plannedDurationSec: Math.max(5, Number(item.plannedDurationSec || launchConfig.durationSec || 30)),
+    question: String(launchConfig.question || ''),
+    options,
+    points: Math.max(0, Number(launchConfig.points ?? (isTrivia ? 100 : 50))),
+    autoReveal: launchConfig.autoReveal !== false,
+    headline: String(item?.presentationPlan?.headline || ''),
+    subhead: String(item?.presentationPlan?.subhead || ''),
+  }));
+  const [saveState, setSaveState] = useState('idle');
+  if (!item.id || typeof onUpdateItem !== 'function') return null;
+  const updateDraft = (patch = {}) => {
+    setDraft((current) => ({ ...current, ...patch }));
+    setSaveState('idle');
+  };
+  const saveDraft = async ({ openAdvanced = false } = {}) => {
+    setSaveState('saving');
+    try {
+      const plannedDurationSec = Math.min(3600, Math.max(5, Number(draft.plannedDurationSec || 0) || 5));
+      const patch = {
+        title: draft.title,
+        plannedDurationSec,
+        plannedDurationSource: 'manual',
+      };
+      if (isInteractive) {
+        const nextOptions = (Array.isArray(draft.options) ? draft.options : [])
+          .map((entry) => String(entry || '').trim());
+        patch.modeLaunchPlan = {
+          ...(item.modeLaunchPlan || {}),
+          modeKey: modeKey || (isWouldYouRather ? 'wyr' : isTrivia ? 'trivia_pop' : ''),
+          launchConfig: {
+            ...launchConfig,
+            question: draft.question,
+            durationSec: plannedDurationSec,
+            ...((isWouldYouRather || isTrivia || itemType === 'game_break') ? {
+              options: nextOptions,
+              optionsCsv: nextOptions.filter(Boolean).join(', '),
+            } : {}),
+            ...((isWouldYouRather || isTrivia) ? {
+              points: Math.min(500, Math.max(0, Number(draft.points || 0))),
+              autoReveal: draft.autoReveal === true,
+            } : {}),
+          },
+        };
+      } else {
+        patch.presentationPlan = {
+          ...(item.presentationPlan || {}),
+          headline: draft.headline,
+          subhead: draft.subhead,
+        };
+      }
+      await onUpdateItem(item.id, patch);
+      setSaveState('saved');
+      if (openAdvanced) onOpenAdvanced?.(item.id);
+    } catch {
+      setSaveState('error');
+    }
+  };
+
+  return (
+    <details data-feature-id="moment-draft-inline-editor" className="group mt-3 overflow-hidden rounded-xl border border-violet-300/18 bg-violet-500/[0.055]">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-violet-100 transition hover:bg-violet-500/10">
+        <span className="inline-flex items-center gap-2"><i className="fa-solid fa-pen-to-square"></i>Edit draft here</span>
+        <i className="fa-solid fa-chevron-down text-[9px] transition group-open:rotate-180"></i>
+      </summary>
+      <div className="space-y-3 border-t border-violet-300/15 p-3">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
+          <label className="text-xs font-bold text-zinc-300">
+            Moment title
+            <input value={draft.title} onChange={(event) => updateDraft({ title: event.target.value })} className={momentDraftInputClass} placeholder="Name this moment" />
+          </label>
+          <label className="text-xs font-bold text-zinc-300">
+            Length (seconds)
+            <input type="number" min="5" max="3600" step="1" value={draft.plannedDurationSec} onChange={(event) => updateDraft({ plannedDurationSec: event.target.value })} className={momentDraftInputClass} />
+          </label>
+        </div>
+        {isInteractive ? (
+          <>
+            <label className="block text-xs font-bold text-zinc-300">
+              {isWouldYouRather ? 'Question for the Room' : isTrivia ? 'Trivia question' : 'Prompt or instruction'}
+              <textarea value={draft.question} onChange={(event) => updateDraft({ question: event.target.value })} className={`${momentDraftInputClass} min-h-[82px] resize-y`} placeholder={isWouldYouRather ? 'Would you rather…?' : 'What should guests see?'} />
+            </label>
+            {isWouldYouRather ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {['Choice A', 'Choice B'].map((label, optionIndex) => (
+                  <label key={label} className="text-xs font-bold text-zinc-300">
+                    {label}
+                    <input
+                      value={draft.options[optionIndex] || ''}
+                      onChange={(event) => {
+                        const nextOptions = [...draft.options];
+                        nextOptions[optionIndex] = event.target.value;
+                        updateDraft({ options: nextOptions });
+                      }}
+                      className={momentDraftInputClass}
+                      placeholder={label}
+                    />
+                  </label>
+                ))}
+              </div>
+            ) : (isTrivia || itemType === 'game_break') ? (
+              <label className="block text-xs font-bold text-zinc-300">
+                Answer or choice options
+                <input value={draft.options.join(', ')} onChange={(event) => updateDraft({ options: event.target.value.split(',') })} className={momentDraftInputClass} placeholder="Option one, Option two" />
+              </label>
+            ) : null}
+            {(isWouldYouRather || isTrivia) ? (
+              <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)] sm:items-end">
+                <label className="text-xs font-bold text-zinc-300">
+                  Reward Points
+                  <input type="number" min="0" max="500" step="1" value={draft.points} onChange={(event) => updateDraft({ points: event.target.value })} className={momentDraftInputClass} />
+                </label>
+                <label className="flex min-h-[44px] items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-200">
+                  <input type="checkbox" checked={draft.autoReveal} onChange={(event) => updateDraft({ autoReveal: event.target.checked })} />
+                  <span>Reveal automatically when the timer ends</span>
+                </label>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="grid gap-3">
+            <label className="block text-xs font-bold text-zinc-300">
+              On-screen headline
+              <input value={draft.headline} onChange={(event) => updateDraft({ headline: event.target.value })} className={momentDraftInputClass} placeholder="What should Public TV show?" />
+            </label>
+            <label className="block text-xs font-bold text-zinc-300">
+              Supporting message
+              <textarea value={draft.subhead} onChange={(event) => updateDraft({ subhead: event.target.value })} className={`${momentDraftInputClass} min-h-[72px] resize-y`} placeholder="Add the detail guests need." />
+            </label>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
+          <span className={`text-xs ${saveState === 'error' ? 'text-rose-200' : saveState === 'saved' ? 'text-emerald-200' : 'text-violet-100/58'}`}>
+            {saveState === 'error' ? 'Could not save. Try again.' : saveState === 'saved' ? 'Draft saved.' : 'Save changes before adding this draft to the lineup.'}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={saveState === 'saving'} onClick={() => saveDraft()} className="rounded-lg border border-violet-300/30 bg-violet-500/14 px-3 py-2 text-[10px] font-black uppercase tracking-[0.13em] text-violet-50 disabled:opacity-50">
+              {saveState === 'saving' ? 'Saving…' : 'Save changes'}
+            </button>
+            {typeof onOpenAdvanced === 'function' ? (
+              <button type="button" disabled={saveState === 'saving'} onClick={() => saveDraft({ openAdvanced: true })} className="rounded-lg border border-cyan-300/22 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.13em] text-cyan-200 hover:text-white disabled:opacity-50">
+                More settings
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </details>
+  );
+};
+
 const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onFocusRunOfShowItem, onPreviewRunOfShowItem, onAddQuickRunOfShowMoment, onPromotePreparedRunOfShowItems, runOfShowDirectorPanel = null, onTriggerRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onToggleRunOfShowPause, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onFocusRunOfShowItem, onPreviewRunOfShowItem, onUpdateRunOfShowItem, onAddQuickRunOfShowMoment, onPromotePreparedRunOfShowItems, runOfShowDirectorPanel = null, onTriggerRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onToggleRunOfShowPause, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -4167,7 +4342,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const preparedMomentCount = preparedMoments.length;
     const momentPrepTimelineItems = useMemo(
         () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
-            .filter((item) => !['complete', 'skipped'].includes(String(item?.status || '').trim().toLowerCase()))
+            .filter((item) => (
+                item?.destination !== 'planner'
+                && String(item?.status || '').trim().toLowerCase() !== 'prepared'
+                && !['complete', 'skipped'].includes(String(item?.status || '').trim().toLowerCase())
+            ))
             .sort((a, b) => Number(a?.sequence || 0) - Number(b?.sequence || 0)),
         [runOfShowDirector?.items]
     );
@@ -4570,7 +4749,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     <div className="min-w-0">
                         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Lineup overview</div>
                         <div className="mt-1 text-base font-black text-white">{HOST_LIVE_OPS_LANGUAGE.lineup}</div>
-                        <div className="mt-1 max-w-2xl text-xs leading-5 text-zinc-400">See the planned arc of the night here, then use the builder below to prepare the next audience beat.</div>
+                        <div className="mt-1 max-w-2xl text-xs leading-5 text-zinc-400">Committed performances and moments appear here. Drafts stay in the editable tray below until you add them.</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${runOfShowEnabled ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-400'}`}>
@@ -4587,15 +4766,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             const status = String(item?.status || 'planned').trim().toLowerCase();
                             const live = status === 'live' || item?.id === runOfShowLiveItem?.id;
                             const staged = status === 'staged' || item?.id === runOfShowStagedItem?.id;
-                            const prepared = item?.destination === 'planner' || status === 'prepared';
-                            const statusLabel = getHostLineupStateLabel({ status: live ? 'live' : staged ? 'staged' : status, isDraft: prepared });
+                            const statusLabel = getHostLineupStateLabel({ status: live ? 'live' : staged ? 'staged' : status, isDraft: false });
                             const statusClass = live
                                 ? 'border-rose-300/35 bg-rose-500/12 text-rose-100'
                                 : staged
                                     ? 'border-amber-300/30 bg-amber-500/10 text-amber-100'
-                                    : prepared
-                                        ? 'border-violet-300/28 bg-violet-500/10 text-violet-100'
-                                        : 'border-cyan-300/22 bg-cyan-500/[0.07] text-cyan-100';
+                                    : 'border-cyan-300/22 bg-cyan-500/[0.07] text-cyan-100';
                             const durationSec = Math.max(0, Math.round(Number(item?.plannedDurationSec || 0) || 0));
                             return (
                                 <button
@@ -4618,7 +4794,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     </div>
                 ) : (
                     <div className="mt-3 rounded-xl border border-dashed border-cyan-300/18 bg-black/20 px-4 py-4 text-sm text-zinc-400">
-                        Your timeline is open. Prepare a moment below to start shaping tonight&apos;s experience.
+                        Nothing is committed to {HOST_LIVE_OPS_LANGUAGE.lineup} yet. Create or edit a draft below, then choose {HOST_LIVE_OPS_LANGUAGE.addToLineup}.
                     </div>
                 )}
                 {momentPrepTimelineItems.length > 6 ? (
@@ -4678,7 +4854,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     <div className="flex items-center justify-between gap-2">
                         <div>
                             <div className="text-sm font-black text-white">{HOST_LIVE_OPS_LANGUAGE.momentDrafts}</div>
-                            <div className="mt-1 text-xs text-zinc-400">Drafts stay off the live screen until you place them.</div>
+                            <div className="mt-1 text-xs text-zinc-400">Edit drafts here. They stay off the live screen until you place them.</div>
                         </div>
                         <span className="rounded-full border border-violet-300/20 bg-violet-500/10 px-2 py-1 text-[10px] font-black text-violet-100">{preparedMomentCount}</span>
                     </div>
@@ -4709,12 +4885,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                 Preview
                                             </button>
                                         ) : null}
-                                        {typeof onFocusRunOfShowItem === 'function' ? (
-                                            <button type="button" onClick={() => onFocusRunOfShowItem(item.id)} className="px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 hover:text-white">
-                                                Edit
-                                            </button>
-                                        ) : null}
                                     </div>
+                                    <InlineMomentDraftEditor
+                                        item={item}
+                                        onUpdateItem={onUpdateRunOfShowItem}
+                                        onOpenAdvanced={onFocusRunOfShowItem}
+                                    />
                                 </div>
                             ))}
                             {preparedMoments.length > 8 ? (

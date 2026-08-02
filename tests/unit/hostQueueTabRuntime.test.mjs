@@ -600,3 +600,59 @@ test('Show Plan keeps Stage visible and exposes the TV handoff plus detailed dir
   assert.match(markup, /data-feature-id="moment-prep-full-director"/);
   assert.match(markup, /Detailed director controls/);
 });
+
+test('Show Plan keeps drafts out of Lineup Overview and exposes the inline WYR editor', async () => {
+  mockHostQueueTabDependencies();
+  mockDesktopQueueSurfaceTab('show');
+
+  const markup = await renderQueueTabMarkup({
+    runOfShowDirector: {
+      items: [
+        {
+          id: 'lineup-1',
+          type: 'announcement',
+          title: 'Committed Welcome',
+          status: 'ready',
+          destination: 'queue',
+          sequence: 1,
+          plannedDurationSec: 30,
+        },
+        {
+          id: 'draft-wyr-1',
+          type: 'would_you_rather_break',
+          title: 'Draft Crowd Vote',
+          status: 'prepared',
+          destination: 'planner',
+          sequence: 2,
+          plannedDurationSec: 65,
+          modeLaunchPlan: {
+            modeKey: 'wyr',
+            launchConfig: {
+              question: 'Would you rather sing solo or as a duet?',
+              options: ['Solo', 'Duet'],
+              points: 50,
+              autoReveal: true,
+            },
+          },
+        },
+      ],
+    },
+    onUpdateRunOfShowItem: noop,
+    onFocusRunOfShowItem: noop,
+    onPreviewRunOfShowItem: noop,
+    onPromotePreparedRunOfShowItems: noop,
+  });
+
+  const timelineStart = markup.indexOf('data-feature-id="moment-prep-timeline-track"');
+  const draftTrayStart = markup.indexOf('data-feature-id="moment-prep-prepared-hopper"');
+  const lineupMarkup = markup.slice(timelineStart, draftTrayStart);
+
+  assert.match(lineupMarkup, /Committed Welcome/);
+  assert.doesNotMatch(lineupMarkup, /Draft Crowd Vote/);
+  assert.match(markup, /data-feature-id="moment-draft-inline-editor"/);
+  assert.match(markup, /Edit draft here/);
+  assert.match(markup, /Question for the Room/);
+  assert.match(markup, /Choice A/);
+  assert.match(markup, /Choice B/);
+  assert.match(markup, /More settings/);
+});

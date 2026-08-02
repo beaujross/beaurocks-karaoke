@@ -23,8 +23,14 @@ test('AAHF launch flow defaults the requested room code and exposes join poster 
   const workspaceStateSource = readFileSync('src/apps/Host/hooks/useHostWorkspaceState.js', 'utf8');
   assert.match(
     workspaceStateSource,
-    /const \[rawLaunchRoomName, setLaunchRoomName\] = useState\(\(\) => \{[\s\S]*if \(rawLaunchRoomName !== null\) return rawLaunchRoomName;/,
+    /const \[rawLaunchRoomName, setRawLaunchRoomName\] = useState\(\(\) => \{[\s\S]*if \(rawLaunchRoomName !== null\) return rawLaunchRoomName;/,
     'Room name drafts should distinguish untouched defaults from an intentionally empty input',
+  );
+  const launchFlowSource = readFileSync('src/apps/Host/hooks/useHostLaunchFlow.js', 'utf8');
+  assert.match(
+    launchFlowSource,
+    /setLaunchRoomName\?\.\(null\);/,
+    'A successful Room creation should seed a fresh timestamped name for the next draft',
   );
   assert.match(
     source,
@@ -143,10 +149,9 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
 
   assert.match(source, /data-launch-core-setup="true"/);
   assert.match(source, /data-room-create-premium="true"/);
-  assert.match(source, /Build the room guests will enter/);
-  assert.match(source, /Name it, choose the night, then set the front door\./);
+  assert.doesNotMatch(source, /Build the room guests will enter/);
+  assert.match(source, /Set the essentials, then launch\./);
   assert.match(source, /data-launch-create-header="true"/);
-  assert.match(source, /data-launch-create-summary="true"/);
   assert.match(source, /data-launch-readiness="true"/);
   assert.match(source, /data-launch-room-identity="true"/);
   assert.match(source, /data-launch-access-details="true"/);
@@ -160,6 +165,13 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /data-launch-guest-access="true"/);
   assert.match(source, /data-launch-room-privacy="true"/);
   assert.match(source, /data-launch-media-readiness="true"/);
+  assert.match(source, /data-launch-points-setup="true"/);
+  assert.match(source, /Set how Points build/);
+  assert.match(source, /Starting Points/);
+  assert.match(source, /Automatic refill/);
+  assert.match(source, /fa-door-open/);
+  assert.match(source, /fa-user-lock/);
+  assert.match(source, /fa-key/);
   assert.match(source, /Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
   assert.match(source, /openNightSetup: false, launchTarget: 'stage'/);
   assert.match(source, /Create \+ Open Host Panel/);

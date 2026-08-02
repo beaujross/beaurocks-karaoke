@@ -7,6 +7,7 @@ import {
     loadHostLaunchDraftPart,
     persistHostLaunchDraftPart,
 } from '../hostLaunchDraftStorage';
+import { buildDefaultHostRoomName } from '../roomNameDefaults';
 
 const useHostWorkspaceState = ({
     audienceBase,
@@ -32,7 +33,8 @@ const useHostWorkspaceState = ({
     });
     const [entryError, setEntryError] = useState('');
     const [landingLaunchMode, setLandingLaunchMode] = useState('start');
-    const [rawLaunchRoomName, setLaunchRoomName] = useState(() => {
+    const [defaultRoomNameSeed, setDefaultRoomNameSeed] = useState(() => Date.now());
+    const [rawLaunchRoomName, setRawLaunchRoomName] = useState(() => {
         const recovered = loadHostLaunchDraftPart(launchIdentityDraftKey, {
             roomName: null,
         });
@@ -47,12 +49,19 @@ const useHostWorkspaceState = ({
     const [workspaceOperatorLoading, setWorkspaceOperatorLoading] = useState(false);
     const [workspaceOperatorError, setWorkspaceOperatorError] = useState('');
 
+    const setLaunchRoomName = useCallback((nextValue) => {
+        if (nextValue === null) {
+            setDefaultRoomNameSeed(Date.now());
+            setRawLaunchRoomName(null);
+            return;
+        }
+        setRawLaunchRoomName(nextValue);
+    }, []);
+
     const launchRoomName = useMemo(() => {
         if (rawLaunchRoomName !== null) return rawLaunchRoomName;
-        const seededHost = String(hostName || '').trim();
-        if (!seededHost) return '';
-        return `${seededHost} Room`;
-    }, [hostName, rawLaunchRoomName]);
+        return buildDefaultHostRoomName(hostName, defaultRoomNameSeed);
+    }, [defaultRoomNameSeed, hostName, rawLaunchRoomName]);
 
     useEffect(() => {
         if (rawLaunchRoomName === null) {

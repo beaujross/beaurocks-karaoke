@@ -109,7 +109,8 @@ test("HostApp stops the show back into standard queue mode and previews the audi
   assert.match(hostSource, /runOfShowEnabled: false,/);
   assert.match(hostSource, /onStopRunOfShow=\{stopRunOfShowNow\}/);
   assert.match(queueTabSource, /const runOfShowNeedsAttentionCount = Math\.max\(/);
-  assert.match(queueTabSource, /onClick=\{\(\) => onFocusRunOfShowItem\(item\.id\)\}/);
+  assert.match(queueTabSource, /onOpenAdvanced=\{onFocusRunOfShowItem\}/);
+  assert.match(queueTabSource, /onUpdateItem=\{onUpdateRunOfShowItem\}/);
   assert.match(queueTabSource, /onClick=\{\(\) => onPreviewRunOfShowItem\(item\.id\)\}/);
   assert.match(queueTabSource, /badge:\s*runOfShowNeedsAttentionCount,/);
   assert.match(hostSource, /onFocusRunOfShowItem=\{\(itemId\) => \{/);
