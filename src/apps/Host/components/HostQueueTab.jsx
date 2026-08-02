@@ -4814,7 +4814,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     </div>
                     <div className="mt-3 grid gap-2 md:grid-cols-2">
                         {momentPrepTemplates.map((template) => (
-                            <div key={template.id} className="rounded-2xl border border-white/10 bg-zinc-950/70 p-3 transition hover:border-emerald-300/25">
+                            <div key={template.id} data-moment-prep-template={template.id} className="rounded-2xl border border-white/10 bg-zinc-950/70 p-3 transition hover:border-emerald-300/25">
                                 <div className="flex items-start gap-3">
                                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-300/15 bg-emerald-500/10 text-emerald-100">
                                         <i className={`fa-solid ${template.icon}`}></i>
@@ -4830,6 +4830,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 <div className="mt-3 grid grid-cols-2 gap-2">
                                     <button
                                         type="button"
+                                        data-moment-prep-action="save-draft"
                                         disabled={typeof onAddQuickRunOfShowMoment !== 'function'}
                                         onClick={() => onAddQuickRunOfShowMoment?.(template.id, { destination: 'planner' })}
                                         className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1.5 text-[10px] disabled:opacity-50`}
@@ -4838,6 +4839,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     </button>
                                     <button
                                         type="button"
+                                        data-moment-prep-action="add-to-lineup"
                                         disabled={typeof onAddQuickRunOfShowMoment !== 'function'}
                                         onClick={() => onAddQuickRunOfShowMoment?.(template.id, { destination: 'queue' })}
                                         className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1.5 text-[10px] disabled:opacity-50`}
@@ -4861,7 +4863,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     {preparedMoments.length ? (
                         <div className="mt-3 space-y-2">
                             {preparedMoments.slice(0, 8).map((item) => (
-                                <div key={item.id} className="rounded-xl border border-white/10 bg-black/25 p-3">
+                                <div key={item.id} data-moment-draft-id={item.id} className="rounded-xl border border-white/10 bg-black/25 p-3">
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="min-w-0">
                                             <div className="truncate text-sm font-black text-white">{item?.title || getPreparedMomentTypeLabel(item)}</div>
@@ -4874,6 +4876,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     <div className="mt-3 flex flex-wrap gap-2">
                                         <button
                                             type="button"
+                                            data-moment-draft-action="add-to-lineup"
                                             disabled={typeof onPromotePreparedRunOfShowItems !== 'function'}
                                             onClick={() => onPromotePreparedRunOfShowItems?.([item.id])}
                                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2.5 py-1.5 text-[10px] disabled:opacity-50`}
