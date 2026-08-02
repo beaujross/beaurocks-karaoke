@@ -5,6 +5,8 @@ const DIST_DIR = path.resolve(process.cwd(), "dist");
 const ASSETS_DIR = path.join(DIST_DIR, "assets");
 
 const LEGACY_INDEX_ALIASES = [
+  'index-1pP0wgeV.js',
+  'index-Ch-L3ULK.js',
   "index-BbrHeXcI.js",
   "index-BMypM57O.js",
   "index-Dt77l75Z.js",
@@ -16,7 +18,7 @@ const LEGACY_FIREBASE_ALIASES = [
 
 const readCurrentIndexFile = async () => {
   const indexHtml = await fs.readFile(path.join(DIST_DIR, "index.html"), "utf8");
-  const match = indexHtml.match(/\/assets\/(index-[A-Za-z0-9_-]+\.js)/);
+  const match = indexHtml.match(/\/assets\/(index(?:-[A-Za-z0-9_-]+)?\.js)/);
   if (!match?.[1]) {
     throw new Error("Could not determine the current index asset from dist/index.html.");
   }
