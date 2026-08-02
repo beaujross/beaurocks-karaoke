@@ -25,6 +25,22 @@ test("HostApp clears run of show state back to straight queue mode", () => {
   assert.match(source, /runOfShowItemId:\s*null,/);
 });
 
+test("HostApp stages a ready Moment before activating and starting it", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+  const startHandlerStart = source.indexOf("const startRunOfShowItem = useCallback");
+  const startHandlerEnd = source.indexOf("const completeRunOfShowItem = useCallback", startHandlerStart);
+  const startHandler = source.slice(startHandlerStart, startHandlerEnd);
+
+  assert.match(source, /const runOfShowDirectorStateRef = useRef\(runOfShowDirectorState\);/);
+  assert.match(source, /runOfShowDirectorStateRef\.current = normalizedDirector;\s*setRunOfShowDirectorState\(normalizedDirector\);/);
+  assert.match(startHandler, /preparedDirector = await prepareRunOfShowItem\(itemId, \{ \.\.\.options, silent: true \}\);/);
+  assert.ok(
+    startHandler.indexOf("preparedDirector = await prepareRunOfShowItem")
+      < startHandler.indexOf("result = await executeRunOfShowAction"),
+    "A ready item must be staged before the server start transition runs",
+  );
+});
+
 test("HostApp reset and media deletes reconcile run-of-show TV state", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
