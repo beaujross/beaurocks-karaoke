@@ -22,7 +22,7 @@ import {
 } from '../hostLaunchDraftStorage';
 
 const inputClass = 'mt-2 w-full rounded-xl border border-cyan-400/20 bg-black/25 px-3 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45';
-const launchInputClass = 'mt-2 min-h-[50px] w-full rounded-[0.95rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-[15px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] outline-none transition placeholder:text-cyan-100/28 hover:border-cyan-300/20 focus:border-cyan-300/55 focus:bg-slate-950/78 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08),inset_0_1px_0_rgba(255,255,255,0.05)]';
+const launchInputClass = 'mt-2 min-h-[52px] w-full rounded-[0.95rem] border border-white/10 bg-slate-950/60 px-4 py-3 text-base font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] outline-none transition placeholder:text-cyan-100/28 hover:border-cyan-300/20 focus:border-cyan-300/55 focus:bg-slate-950/78 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08),inset_0_1px_0_rgba(255,255,255,0.05)]';
 const REQUEST_POLICY_OPTIONS = [
     { id: REQUEST_MODES.canonicalOpen, label: 'Host Review First' },
     { id: REQUEST_MODES.guestBackingOptional, label: 'Guest Picks Backing' },
@@ -549,6 +549,24 @@ const HostRoomLaunchPadBrowser = ({
                 };
             }
             return applyEventCreditsPreset('custom_event_credits', prev);
+        });
+    };
+    const updateLaunchPointSettings = (patch = {}) => {
+        setEventCreditsConfig((prev) => {
+            const current = prev && typeof prev === 'object' ? prev : {};
+            const hasActiveEconomy = current.enabled === true && String(current.presetId || '') !== 'off';
+            return {
+                ...current,
+                enabled: true,
+                presetId: hasActiveEconomy ? current.presetId : 'custom_event_credits',
+                eventLabel: String(current.eventLabel || '').trim() || `${launchRoomSummaryName} Points`,
+                generalAdmissionPoints: Math.max(0, Number(current.generalAdmissionPoints || 0)),
+                timedLobbyEnabled: current.timedLobbyEnabled === true,
+                timedLobbyPoints: Math.max(0, Number(current.timedLobbyPoints || 0)),
+                timedLobbyIntervalMin: Math.max(1, Number(current.timedLobbyIntervalMin || 10)),
+                timedLobbyMaxPerGuest: Math.max(0, Number(current.timedLobbyMaxPerGuest || 0)),
+                ...patch,
+            };
         });
     };
     const applyLaunchNightType = (nightTypeId = 'party_karaoke') => {
@@ -1115,41 +1133,20 @@ const HostRoomLaunchPadBrowser = ({
                         ) : null}
 
                         <div className="relative overflow-hidden rounded-[1.45rem] border border-white/10 bg-black/24 shadow-[0_18px_50px_rgba(0,0,0,0.28)]" data-launch-core-setup="true">
-                            <div className="relative overflow-hidden border-b border-white/10 bg-[linear-gradient(115deg,rgba(236,72,153,0.13),rgba(9,20,31,0.3)_48%,rgba(34,211,238,0.10))] px-4 py-4 sm:px-5" data-launch-create-header="true">
-                                <div aria-hidden="true" className="absolute -right-14 -top-20 h-44 w-44 rounded-full border border-cyan-200/10 shadow-[0_0_60px_rgba(34,211,238,0.16)]" />
-                                <div className="relative grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-                                    <div className="grid h-12 w-12 place-items-center rounded-2xl border border-cyan-200/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.19),rgba(236,72,153,0.16))] text-lg text-white shadow-[0_12px_26px_rgba(0,0,0,0.22)]">
-                                        <i className="fa-solid fa-microphone-lines" />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-100/72">
-                                            <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_14px_rgba(244,114,182,0.95)]" />
-                                            New room
-                                        </div>
-                                        <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                                            <h2 className="text-2xl font-black leading-tight tracking-[-0.03em] text-white">Build the room guests will enter</h2>
-                                            <span className="text-sm text-cyan-50/58">Name it, choose the night, then set the front door.</span>
-                                        </div>
-                                        <div className="mt-3 flex flex-wrap gap-2" data-launch-create-summary="true">
-                                            <span className="rounded-full border border-fuchsia-300/18 bg-fuchsia-500/8 px-2.5 py-1 text-[10px] text-fuchsia-50/78">{selectedNightType.label}</span>
-                                            <span className="rounded-full border border-cyan-300/18 bg-cyan-500/8 px-2.5 py-1 text-[10px] text-cyan-50/78">{discoveryListingEnabled ? 'Listed in Discover' : 'Private room'}</span>
-                                            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] text-cyan-50/68">{getLaunchMediaSourceLabels(launchMediaSources).length} media sources</span>
-                                        </div>
-                                    </div>
-                                    <div className={`flex min-w-[170px] items-center gap-3 rounded-2xl border px-3 py-3 ${launchDisabled ? 'border-amber-300/24 bg-amber-500/9' : 'border-emerald-300/24 bg-emerald-500/9'}`} data-launch-readiness="true">
-                                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${launchDisabled ? 'bg-amber-400/14 text-amber-100' : 'bg-emerald-400/14 text-emerald-100'}`}>
-                                            <i className={`fa-solid ${launchDisabled ? 'fa-pen-to-square' : 'fa-check'}`} />
-                                        </span>
-                                        <span>
-                                            <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-cyan-100/45">Launch readiness</span>
-                                            <span className={`mt-0.5 block text-sm font-black ${launchDisabled ? 'text-amber-50' : 'text-emerald-50'}`}>{launchDisabled ? 'Needs input' : 'Ready to create'}</span>
-                                        </span>
-                                    </div>
+                            <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[linear-gradient(115deg,rgba(236,72,153,0.11),rgba(9,20,31,0.28)_52%,rgba(34,211,238,0.08))] px-4 py-2.5 sm:px-5" data-launch-create-header="true">
+                                <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-fuchsia-50/78">
+                                    <span className="grid h-7 w-7 place-items-center rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/10 text-fuchsia-100"><i className="fa-solid fa-sparkles" /></span>
+                                    New Room
+                                    <span className="font-semibold normal-case tracking-normal text-cyan-50/52">Set the essentials, then launch.</span>
+                                </div>
+                                <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${launchDisabled ? 'border-amber-300/24 bg-amber-500/9 text-amber-50' : 'border-emerald-300/24 bg-emerald-500/9 text-emerald-50'}`} data-launch-readiness="true">
+                                    <i className={`fa-solid ${launchDisabled ? 'fa-pen-to-square' : 'fa-circle-check'}`} />
+                                    {launchDisabled ? 'Needs input' : 'Ready to create'}
                                 </div>
                             </div>
                             <div className="bg-[linear-gradient(150deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-4 sm:p-5 lg:p-6">
                                 {launchDraftRecovered ? (
-                                    <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-50" role="status">
+                                    <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs uppercase tracking-[0.14em] text-emerald-50" role="status">
                                         <i className="fa-solid fa-rotate-left"></i>
                                         Saved choices restored
                                     </div>
@@ -1157,15 +1154,15 @@ const HostRoomLaunchPadBrowser = ({
                                 <div className="grid gap-4 lg:grid-cols-12">
                                     <label className="block rounded-2xl border border-white/10 bg-black/18 p-4 lg:col-span-12" data-launch-room-identity="true">
                                         <span className="flex flex-wrap items-center justify-between gap-2">
-                                            <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><span className="grid h-6 w-6 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[9px] text-cyan-100">1</span><i className="fa-solid fa-signature text-cyan-300/72" /> Name the room</span>
-                                            <span className="text-[11px] text-cyan-100/44">This is what guests and hosts will recognize.</span>
+                                            <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70"><span className="grid h-7 w-7 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[10px] text-cyan-100">1</span><i className="fa-solid fa-signature text-cyan-300/72" /> Name the Room</span>
+                                            <span className="text-sm text-cyan-100/52">This is what guests and hosts will recognize.</span>
                                         </span>
                                         <input value={launchRoomName} onChange={(e) => setLaunchRoomName(e.target.value)} placeholder="Friday Karaoke" autoFocus className={`${launchInputClass} max-w-3xl`} />
                                     </label>
                                     <div className="rounded-2xl border border-fuchsia-300/14 bg-fuchsia-500/[0.045] p-4 lg:col-span-12" data-launch-room-control="true">
                                         <div className="flex flex-wrap items-end justify-between gap-2">
-                                            <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-100/70"><span className="grid h-6 w-6 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-500/10 text-[9px] text-fuchsia-100">2</span><i className="fa-solid fa-layer-group text-fuchsia-300/78" /> Choose the kind of night</span>
-                                            <span className="text-[11px] text-fuchsia-100/48">Sets sensible defaults for pacing, automation, and rewards.</span>
+                                            <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100/78"><span className="grid h-7 w-7 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-500/10 text-[10px] text-fuchsia-100">2</span><i className="fa-solid fa-layer-group text-fuchsia-300/78" /> Choose the kind of night</span>
+                                            <span className="text-sm text-fuchsia-100/56">Sets sensible defaults for pacing, automation, and rewards.</span>
                                         </div>
                                         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                                             {LAUNCH_NIGHT_TYPE_OPTIONS.map((option) => {
@@ -1181,11 +1178,11 @@ const HostRoomLaunchPadBrowser = ({
                                                     >
                                                         <span className="flex items-start justify-between gap-2">
                                                             <span className="inline-flex items-center gap-2 text-sm font-black"><i className={`fa-solid ${option.icon}`} />{option.label}</span>
-                                                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[8px] uppercase tracking-[0.13em]">{option.eyebrow}</span>
+                                                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]">{option.eyebrow}</span>
                                                         </span>
-                                                        <span className="mt-1.5 block text-[11px] leading-4 opacity-75">{option.summary}</span>
+                                                        <span className="mt-1.5 block text-xs leading-5 opacity-78">{option.summary}</span>
                                                         <span className="mt-2 flex flex-wrap gap-1">
-                                                            {option.effects.map((effect) => <span key={effect} className="rounded-full border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[9px]">{effect}</span>)}
+                                                            {option.effects.map((effect) => <span key={effect} className="rounded-full border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10px]">{effect}</span>)}
                                                         </span>
                                                     </button>
                                                 );
@@ -1193,27 +1190,30 @@ const HostRoomLaunchPadBrowser = ({
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-cyan-300/14 bg-cyan-500/[0.04] p-4 lg:col-span-8" data-launch-guest-access="true">
-                                        <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/68"><span className="grid h-6 w-6 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[9px] text-cyan-100">3</span><i className="fa-solid fa-user-group text-cyan-300/72" /> Choose the front door</span>
-                                        <div className="mt-1 text-[11px] text-cyan-100/46">Control what guests need before they can enter and request songs.</div>
+                                        <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/76"><span className="grid h-7 w-7 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[10px] text-cyan-100">3</span><i className="fa-solid fa-user-group text-cyan-300/72" /> Choose the front door</span>
+                                        <div className="mt-1 text-sm text-cyan-100/54">Control what guests need before they can enter and request songs.</div>
                                         <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
                                             {AUDIENCE_JOIN_ACCESS_OPTIONS.map((option) => {
                                                 const selected = launchJoinAccessMode === option.id;
                                                 const label = option.id === AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed ? 'Open to guests' : option.id === AUDIENCE_JOIN_ACCESS_MODES.accountRequired ? 'Accounts only' : 'Private passcode';
                                                 const helper = option.id === AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed ? 'Name + emoji' : option.id === AUDIENCE_JOIN_ACCESS_MODES.accountRequired ? 'Sign-in required' : 'Code + passcode';
+                                                const icon = option.id === AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed ? 'fa-door-open' : option.id === AUDIENCE_JOIN_ACCESS_MODES.accountRequired ? 'fa-user-lock' : 'fa-key';
                                                 return (
-                                                    <button key={option.id} type="button" aria-pressed={selected} onClick={() => setLaunchJoinAccessMode(option.id)} className={`min-h-[58px] rounded-xl border px-3 py-2 text-left transition ${selected ? 'border-cyan-300/42 bg-cyan-500/14 text-white' : 'border-white/10 bg-black/18 text-cyan-100/68 hover:border-cyan-300/24'}`}>
-                                                        <span className="block text-xs font-black">{label}</span>
-                                                        <span className="mt-0.5 block text-[10px] opacity-60">{helper}</span>
+                                                    <button key={option.id} type="button" aria-pressed={selected} onClick={() => setLaunchJoinAccessMode(option.id)} className={`min-h-[68px] rounded-xl border px-3 py-2.5 text-left transition ${selected ? 'border-cyan-300/42 bg-cyan-500/14 text-white' : 'border-white/10 bg-black/18 text-cyan-100/68 hover:border-cyan-300/24'}`}>
+                                                        <span className="flex items-center gap-2.5">
+                                                            <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${selected ? 'border-cyan-200/40 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/[0.05] text-cyan-100'}`}><i className={`fa-solid ${icon}`} /></span>
+                                                            <span><span className="block text-sm font-black">{label}</span><span className="mt-0.5 block text-xs opacity-65">{helper}</span></span>
+                                                        </span>
                                                     </button>
                                                 );
                                             })}
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-white/10 bg-black/18 p-4 lg:col-span-4" data-launch-room-privacy="true">
-                                        <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><i className="fa-solid fa-eye text-cyan-300/72" /> Who can find it?</span>
+                                        <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70"><i className="fa-solid fa-eye text-cyan-300/72" /> Who can find it?</span>
                                         <div className="mt-2 inline-flex min-h-[50px] w-full rounded-[0.95rem] border border-white/10 bg-slate-950/60 p-1">
-                                            <button type="button" onClick={() => setDiscoveryListingMode(false)} aria-pressed={!discoveryListingEnabled} className={`flex-1 rounded-xl px-3 py-2 text-xs font-bold transition ${!discoveryListingEnabled ? 'bg-white text-slate-950' : 'text-cyan-100/62 hover:text-white'}`}>Private</button>
-                                            <button type="button" onClick={() => setDiscoveryListingMode(true)} aria-pressed={discoveryListingEnabled} className={`flex-1 rounded-xl px-3 py-2 text-xs font-bold transition ${discoveryListingEnabled ? 'bg-gradient-to-r from-cyan-300 to-fuchsia-300 text-slate-950' : 'text-cyan-100/62 hover:text-white'}`}>Discover</button>
+                                            <button type="button" onClick={() => setDiscoveryListingMode(false)} aria-pressed={!discoveryListingEnabled} className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold transition ${!discoveryListingEnabled ? 'bg-white text-slate-950' : 'text-cyan-100/62 hover:text-white'}`}>Private</button>
+                                            <button type="button" onClick={() => setDiscoveryListingMode(true)} aria-pressed={discoveryListingEnabled} className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold transition ${discoveryListingEnabled ? 'bg-gradient-to-r from-cyan-300 to-fuchsia-300 text-slate-950' : 'text-cyan-100/62 hover:text-white'}`}>Discover</button>
                                         </div>
                                         <div className="mt-2 text-xs leading-5 text-cyan-100/52">{discoveryListingEnabled ? 'List this Room in Discover. You can add venue and schedule details later.' : 'Only people with the Room code or Audience App link can find it.'}</div>
                                     </div>
@@ -1221,13 +1221,13 @@ const HostRoomLaunchPadBrowser = ({
                                 <div className={`mt-4 grid gap-3 ${launchNeedsPasscode ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`} data-launch-access-details="true">
                                 {launchNeedsPasscode ? (
                                     <label className="block rounded-2xl border border-fuchsia-300/16 bg-fuchsia-500/[0.045] p-4">
-                                        <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><i className="fa-solid fa-lock text-fuchsia-300/78" /> Guest passcode</span>
+                                        <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70"><i className="fa-solid fa-lock text-fuchsia-300/78" /> Guest passcode</span>
                                         <input type="password" value={launchJoinPasscode} onChange={(e) => setLaunchJoinPasscode(String(e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24))} placeholder="4-24 letters or numbers" minLength={4} maxLength={24} autoComplete="new-password" className={launchInputClass} />
                                         {!launchPasscodeValid ? <div className="mt-2 text-xs text-amber-200">Use at least 4 letters or numbers.</div> : null}
                                     </label>
                                 ) : null}
                                 <details className="group rounded-2xl border border-white/[0.08] bg-black/18 px-4 py-3 transition open:border-cyan-300/15 open:bg-cyan-500/[0.035]">
-                                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold text-cyan-50/68 transition hover:text-white">
+                                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-cyan-50/72 transition hover:text-white">
                                         <span className="inline-flex items-center gap-2"><i className="fa-solid fa-hashtag text-cyan-300/58" /> Custom room code <span className="font-normal text-cyan-100/34">Optional</span></span>
                                         <i className="fa-solid fa-chevron-down text-[9px] text-cyan-100/42 transition group-open:rotate-180" />
                                     </summary>
@@ -1239,37 +1239,100 @@ const HostRoomLaunchPadBrowser = ({
                                 </div>
                                 <div className="mt-4 rounded-2xl border border-cyan-300/18 bg-cyan-500/[0.07] px-4 py-4" data-launch-media-readiness="true">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/74"><span className="grid h-6 w-6 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[9px] text-cyan-100">4</span><i className="fa-solid fa-music" /> Choose where song search looks</span>
-                                        <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.15em] text-cyan-50">{getLaunchMediaSourceLabels(launchMediaSources).length} enabled</span>
+                                        <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/78"><span className="grid h-7 w-7 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[10px] text-cyan-100">4</span><i className="fa-solid fa-music" /> Choose where song search looks</span>
+                                        <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-cyan-50">{getLaunchMediaSourceLabels(launchMediaSources).length} enabled</span>
                                     </div>
-                                    <div className="mt-2 text-xs leading-5 text-cyan-50/66">Choose where Host and Audience searches may look. This sets guardrails, not a catalog lock; every performance still needs playable backing.</div>
+                                    <div className="mt-2 text-sm leading-6 text-cyan-50/66">Choose where Host and Audience searches may look. This sets guardrails, not a catalog lock; every performance still needs playable backing.</div>
                                     <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                                         {LAUNCH_MEDIA_SOURCE_OPTIONS.map((option) => {
                                             const selected = !option.disabled && launchMediaSources?.[option.id] !== false;
                                             return (
                                                 <button key={option.id} type="button" disabled={option.disabled} aria-pressed={selected} onClick={() => toggleLaunchMediaSource(option.id)} className={`min-h-[58px] rounded-xl border px-3 py-2 text-left transition ${option.disabled ? 'cursor-not-allowed border-white/6 bg-black/15 text-zinc-500' : selected ? 'border-cyan-300/40 bg-cyan-400/12 text-white' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/25'}`}>
                                                     <span className="flex items-center justify-between gap-2"><span className="inline-flex items-center gap-2 text-sm font-black"><i className={`${option.icon.startsWith('fa-brands') ? '' : 'fa-solid '}${option.icon}`} />{option.label}</span><span className="text-[9px] font-black uppercase tracking-[0.14em]">{option.disabled ? 'Coming soon' : selected ? 'Included' : 'Off'}</span></span>
-                                                    <span className="mt-1 block text-[11px] leading-4 opacity-65">{option.helper}</span>
+                                                    <span className="mt-1 block text-xs leading-5 opacity-68">{option.helper}</span>
                                                 </button>
                                             );
                                         })}
                                     </div>
                                 </div>
+                                <div className="mt-4 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-500/[0.055] p-4" data-launch-points-setup="true">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100/80"><span className="grid h-7 w-7 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-500/10 text-[10px] text-fuchsia-100">5</span><i className="fa-solid fa-coins text-fuchsia-300/82" /> Set how Points build</span>
+                                            <div className="mt-1 text-sm leading-6 text-fuchsia-50/62">Set the welcome balance and optional automatic refill. Games, reactions, and Host awards can still add Points during the Room.</div>
+                                        </div>
+                                        <div className="inline-flex rounded-xl border border-white/10 bg-black/22 p-1">
+                                            <button type="button" aria-pressed={!eventCreditsEnabled} onClick={() => applyLaunchEconomy('standard')} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${!eventCreditsEnabled ? 'bg-white text-slate-950' : 'text-fuchsia-100/66 hover:text-white'}`}>Activities only</button>
+                                            <button type="button" aria-pressed={eventCreditsEnabled} onClick={() => !eventCreditsEnabled && updateLaunchPointSettings({ generalAdmissionPoints: 100 })} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${eventCreditsEnabled ? 'bg-fuchsia-300 text-slate-950' : 'text-fuchsia-100/66 hover:text-white'}`}>Room balance</button>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(190px,0.7fr)_minmax(0,1.7fr)]">
+                                        <label className="rounded-xl border border-white/10 bg-black/20 p-3">
+                                            <span className="block text-sm font-black text-white">Starting Points</span>
+                                            <span className="mt-0.5 block text-xs leading-5 text-fuchsia-100/52">Given once when each guest joins.</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100000"
+                                                step="1"
+                                                value={Math.max(0, Number(eventCreditsConfig?.generalAdmissionPoints || 0))}
+                                                onChange={(event) => updateLaunchPointSettings({ generalAdmissionPoints: Math.min(100000, Math.max(0, Number(event.target.value || 0))) })}
+                                                className={launchInputClass}
+                                                aria-label="Starting Points per guest"
+                                            />
+                                        </label>
+                                        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-sm font-black text-white">Automatic refill</div>
+                                                    <div className="mt-0.5 text-xs leading-5 text-fuchsia-100/52">Reward guests for staying active in the Room.</div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    role="switch"
+                                                    aria-checked={eventCreditsConfig?.timedLobbyEnabled === true}
+                                                    onClick={() => {
+                                                        const nextEnabled = eventCreditsConfig?.timedLobbyEnabled !== true;
+                                                        updateLaunchPointSettings({
+                                                            timedLobbyEnabled: nextEnabled,
+                                                            timedLobbyPoints: nextEnabled ? Math.max(25, Number(eventCreditsConfig?.timedLobbyPoints || 0)) : Math.max(0, Number(eventCreditsConfig?.timedLobbyPoints || 0)),
+                                                            timedLobbyIntervalMin: Math.max(1, Number(eventCreditsConfig?.timedLobbyIntervalMin || 10)),
+                                                            timedLobbyMaxPerGuest: nextEnabled ? Math.max(150, Number(eventCreditsConfig?.timedLobbyMaxPerGuest || 0)) : Math.max(0, Number(eventCreditsConfig?.timedLobbyMaxPerGuest || 0)),
+                                                        });
+                                                    }}
+                                                    className={`relative h-7 w-12 rounded-full border transition ${eventCreditsConfig?.timedLobbyEnabled === true ? 'border-fuchsia-200/50 bg-fuchsia-400' : 'border-white/15 bg-slate-800'}`}
+                                                >
+                                                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${eventCreditsConfig?.timedLobbyEnabled === true ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                                                    <span className="sr-only">Toggle automatic Points refill</span>
+                                                </button>
+                                            </div>
+                                            {eventCreditsConfig?.timedLobbyEnabled === true ? (
+                                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                    <label><span className="text-xs font-bold text-fuchsia-50/72">Points each time</span><input type="number" min="0" max="1000" step="1" value={Math.max(0, Number(eventCreditsConfig?.timedLobbyPoints || 0))} onChange={(event) => updateLaunchPointSettings({ timedLobbyPoints: Math.min(1000, Math.max(0, Number(event.target.value || 0))) })} className={launchInputClass} /></label>
+                                                    <label><span className="text-xs font-bold text-fuchsia-50/72">Every (minutes)</span><input type="number" min="1" max="120" step="1" value={Math.max(1, Number(eventCreditsConfig?.timedLobbyIntervalMin || 10))} onChange={(event) => updateLaunchPointSettings({ timedLobbyIntervalMin: Math.min(120, Math.max(1, Number(event.target.value || 1))) })} className={launchInputClass} /></label>
+                                                    <label><span className="text-xs font-bold text-fuchsia-50/72">Refill cap per guest</span><input type="number" min="0" max="10000" step="1" value={Math.max(0, Number(eventCreditsConfig?.timedLobbyMaxPerGuest || 0))} onChange={(event) => updateLaunchPointSettings({ timedLobbyMaxPerGuest: Math.min(10000, Math.max(0, Number(event.target.value || 0))) })} className={launchInputClass} /><span className="mt-1 block text-xs text-fuchsia-100/46">0 means no cap.</span></label>
+                                                </div>
+                                            ) : (
+                                                <div className="mt-3 rounded-lg border border-white/[0.07] bg-black/18 px-3 py-2 text-xs text-fuchsia-100/52">Off — guests earn more through Room activities and Host awards.</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
                                 <div className="mt-4 grid gap-4 rounded-2xl border border-emerald-300/18 bg-[linear-gradient(110deg,rgba(16,185,129,0.09),rgba(8,16,27,0.78)_46%,rgba(236,72,153,0.08))] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.55fr)] lg:items-center" data-launch-primary-bar="true">
                                     <div className="min-w-0">
-                                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100/62">Review and launch</div>
+                                        <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-100/68">Review and launch</div>
                                         <div className="mt-1 text-lg font-black text-white">{launchRoomName.trim() || 'Name your room to continue'}</div>
                                         <div className="mt-2 flex flex-wrap gap-1.5">
-                                            {launchSummaryItems.slice(0, 4).map((item) => <span key={item} className="rounded-full border border-white/10 bg-black/22 px-2.5 py-1 text-[10px] text-cyan-50/72">{item}</span>)}
+                                            {launchSummaryItems.slice(0, 4).map((item) => <span key={item} className="rounded-full border border-white/10 bg-black/22 px-2.5 py-1 text-xs text-cyan-50/72">{item}</span>)}
                                         </div>
                                     </div>
                                     <div>
-                                        <button type="button" data-host-create-room-primary="true" aria-busy={creatingRoom} onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`group/launch flex min-h-[56px] w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(100deg,#db2777_0%,#ec4899_35%,#14b8a6_78%,#22d3ee_100%)] px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_14px_34px_rgba(236,72,153,0.18),0_0_28px_rgba(34,211,238,0.1)] transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(236,72,153,0.24),0_0_34px_rgba(34,211,238,0.16)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:brightness-100 ${roomLaunchDisabled ? 'cursor-not-allowed opacity-45' : ''}`}>
+                                        <button type="button" data-host-create-room-primary="true" aria-busy={creatingRoom} onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`group/launch flex min-h-[56px] w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(100deg,#db2777_0%,#ec4899_35%,#14b8a6_78%,#22d3ee_100%)] px-5 py-3 text-sm font-black uppercase tracking-[0.14em] text-white shadow-[0_14px_34px_rgba(236,72,153,0.18),0_0_28px_rgba(34,211,238,0.1)] transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(236,72,153,0.24),0_0_34px_rgba(34,211,238,0.16)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:brightness-100 ${roomLaunchDisabled ? 'cursor-not-allowed opacity-45' : ''}`}>
                                             {creatingRoom ? <i className="fa-solid fa-circle-notch animate-spin" /> : <i className="fa-solid fa-wand-magic-sparkles" />}
                                             <span>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</span>
                                             {!creatingRoom ? <i className="fa-solid fa-arrow-right text-[10px] transition-transform group-hover/launch:translate-x-1" /> : null}
                                         </button>
-                                        <div className="mt-2 flex items-center justify-center gap-2 text-center text-[10px] text-cyan-100/42"><i className="fa-solid fa-shield-check text-[9px]" /> You can fine-tune everything later in Room Settings.</div>
+                                        <div className="mt-2 flex items-center justify-center gap-2 text-center text-xs text-cyan-100/48"><i className="fa-solid fa-shield-check text-[10px]" /> You can fine-tune everything later in Room Settings.</div>
                                     </div>
                                 </div>
                             </div>

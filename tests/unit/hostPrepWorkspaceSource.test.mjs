@@ -19,6 +19,11 @@ test('Queue workspace separates performance and moment preparation without addin
   assert.match(queueSource, /data-feature-id="moment-prep-timeline"/);
   assert.match(queueSource, /HOST_LIVE_OPS_LANGUAGE\.lineup/);
   assert.match(queueSource, /momentPrepTimelineItems\.slice\(0, 6\)/);
+  assert.match(
+    queueSource,
+    /item\?\.destination !== 'planner'[\s\S]*status \|\| ''\)\.trim\(\)\.toLowerCase\(\) !== 'prepared'/,
+    'Lineup overview should exclude drafts that already appear in the Moment Drafts tray',
+  );
   assert.match(queueSource, /HOST_LIVE_OPS_LANGUAGE\.advancedShowControls/);
   assert.match(queueSource, /data-feature-id="moment-prep-live-handoff"/);
   assert.match(queueSource, /HOST_LIVE_OPS_LANGUAGE\.startNext/);
@@ -26,6 +31,12 @@ test('Queue workspace separates performance and moment preparation without addin
   assert.notMatch(queueSource, /Live Queue|Moment Prep|Performance Prep|Take Next Live|Add to Flow/);
   assert.match(queueSource, /destination: 'planner'/);
   assert.match(queueSource, /onPromotePreparedRunOfShowItems\?\.\(\[item\.id\]\)/);
+  assert.match(queueSource, /data-feature-id="moment-draft-inline-editor"/);
+  assert.match(queueSource, /Edit draft here/);
+  assert.match(queueSource, /Question for the Room/);
+  assert.match(queueSource, /Choice A/);
+  assert.match(queueSource, /Choice B/);
+  assert.match(queueSource, /onUpdateRunOfShowItem/);
   assert.match(queueSource, /data-moment-prep-scroll-owner="true"[\s\S]*overflow-y-auto overscroll-y-contain/);
   assert.equal(
     [...queueSource.matchAll(/className="flex min-h-0 flex-1 flex-col overflow-hidden bg-emerald-500\/\[0\.03\]"/g)].length,

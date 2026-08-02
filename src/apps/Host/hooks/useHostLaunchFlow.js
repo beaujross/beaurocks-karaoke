@@ -57,6 +57,7 @@ const useHostLaunchFlow = ({
     setQuickStartChecklistRoomCode,
     setQuickStartChecklistProgress,
     setEntryError,
+    setLaunchRoomName,
     toast,
     trackEvent,
     hostRoomProvisionDeploymentWarning,
@@ -209,6 +210,7 @@ const useHostLaunchFlow = ({
             setLaunchRequestedRoomCode('');
             setQuickLaunchDiscovery(createQuickLaunchDiscoveryDraft());
             setEventCreditsConfig(createEventCreditsDraft());
+            setLaunchRoomName?.(null);
             roomProvisionRequestIdRef.current = '';
             if (Array.isArray(result?.warnings) && result.warnings.includes('discovery_sync_failed')) {
                 toast(`Room ${nextRoomCode} created. Discovery listing sync needs retry.`);
@@ -286,6 +288,7 @@ const useHostLaunchFlow = ({
         setEntryError,
         setHostName,
         setLastProvisionedLaunchUrls,
+        setLaunchRoomName,
         setLogoUrl,
         setRoomCode,
         setRoomCodeInput,
