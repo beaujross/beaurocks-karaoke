@@ -157,6 +157,7 @@ export const getSingingSharePct = (state = {}) => {
 export const canLaunchScheduledAutoCrowdMoment = ({
     scheduledLastPerformanceTs = 0,
     currentLastPerformanceTs = 0,
+    eligibleLastPerformanceTs = null,
     stageActivationPending = false,
     hasCurrentSinger = false,
     activeMode = 'karaoke',
@@ -166,6 +167,10 @@ export const canLaunchScheduledAutoCrowdMoment = ({
     if (stageActivationPending) return { allowed: false, reason: 'stage_activation_pending' };
     if (!scheduledLastPerformanceTs || scheduledLastPerformanceTs !== currentLastPerformanceTs) {
         return { allowed: false, reason: 'performance_changed' };
+    }
+    if (eligibleLastPerformanceTs != null
+        && Number(eligibleLastPerformanceTs || 0) !== Number(scheduledLastPerformanceTs || 0)) {
+        return { allowed: false, reason: 'performance_not_eligible' };
     }
     if (hasCurrentSinger) return { allowed: false, reason: 'singer_live' };
     if (String(activeMode || 'karaoke').trim().toLowerCase() !== 'karaoke') {

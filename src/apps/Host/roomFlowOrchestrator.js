@@ -129,6 +129,7 @@ export const getRoomFlowSnapshot = ({
     party = {},
     assistLevel = '',
     lastPerformanceTs = 0,
+    autoPartyEligiblePerformanceTs = null,
     queuedCount = 0,
     performingCount = 0,
     fallbackDeadAirSongs = [],
@@ -222,6 +223,9 @@ export const getRoomFlowSnapshot = ({
     };
     const explicitAutoPartyEnabled = party?.autoCrowdMomentsEnabled === true;
     const normalizedAssistLevel = normalizeKey(assistLevel);
+    const effectiveAutoPartyEligiblePerformanceTs = autoPartyEligiblePerformanceTs == null
+        ? Number(lastPerformanceTs || 0)
+        : Number(autoPartyEligiblePerformanceTs || 0);
     if (!safeRoomCode) {
         autoPartyIntent = { shouldStart: false, reason: 'missing_room', moment: null };
     } else if (!autoDjEnabled) {
@@ -236,6 +240,8 @@ export const getRoomFlowSnapshot = ({
         autoPartyIntent = { shouldStart: false, reason: 'disabled', moment: null };
     } else if (!Number(lastPerformanceTs || 0)) {
         autoPartyIntent = { shouldStart: false, reason: 'no_last_performance', moment: null };
+    } else if (effectiveAutoPartyEligiblePerformanceTs !== Number(lastPerformanceTs || 0)) {
+        autoPartyIntent = { shouldStart: false, reason: 'performance_not_eligible', moment: null };
     } else if (effectiveQueuedCount <= 0) {
         autoPartyIntent = { shouldStart: false, reason: 'empty_queue', moment: null };
     } else if (!nextQueuedSong?.id) {

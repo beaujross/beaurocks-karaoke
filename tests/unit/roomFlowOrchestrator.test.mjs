@@ -102,6 +102,41 @@ test('roomFlowOrchestrator arms between-singer bridge before auto dj when a real
     assert.equal(flow.autoDjIntent.songId, 'song_real');
 });
 
+test('roomFlowOrchestrator does not treat a stale performance as the first Auto Party break', () => {
+    const flow = getRoomFlowSnapshot({
+        roomCode: 'ROOM2',
+        room: {
+            activeMode: 'karaoke',
+            autoDjDelaySec: 10,
+            autoDj: true
+        },
+        songs: [{
+            id: 'first_song',
+            status: 'requested',
+            mediaUrl: 'https://youtube.com/watch?v=first123',
+            playbackReady: true,
+            priorityScore: 1
+        }],
+        autoDjEnabled: true,
+        party: {
+            autoCrowdMomentsEnabled: true,
+            autoCrowdMomentPreferredTypes: ['volley'],
+            state: recordCompletedPerformance({}, { durationSec: 180 })
+        },
+        assistLevel: 'autopilot_first',
+        lastPerformanceTs: 1000,
+        autoPartyEligiblePerformanceTs: 0,
+        queuedCount: 1,
+        performingCount: 0,
+        now: 12000
+    });
+
+    assert.equal(flow.autoPartyIntent.shouldStart, false);
+    assert.equal(flow.autoPartyIntent.reason, 'performance_not_eligible');
+    assert.equal(flow.autoDjIntent.shouldStart, true);
+    assert.equal(flow.autoDjIntent.songId, 'first_song');
+});
+
 test('roomFlowOrchestrator suppresses auto party when the next queued item is dead-air autofill', () => {
     const flow = getRoomFlowSnapshot({
         roomCode: 'ROOM3',

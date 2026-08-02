@@ -17,7 +17,7 @@ import { getBackingSourceLabel } from '../../../lib/playbackSource';
 
 const baseResultsCardClass = 'rounded-2xl border border-cyan-400/25 bg-zinc-950/98';
 
-const resultMetaChipBaseClass = 'inline-flex h-5 items-center rounded-full border px-2 text-[9px] font-black uppercase tracking-[0.12em]';
+const resultMetaChipBaseClass = 'inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-full border px-2 text-[9px] font-black uppercase leading-none tracking-[0.1em]';
 
 const resultMetaChipToneClasses = Object.freeze({
     neutral: 'border-white/10 bg-white/5 text-zinc-200',

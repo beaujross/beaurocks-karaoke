@@ -164,6 +164,7 @@ test('scheduled crowd moments yield when the next performance starts', () => {
     const idleBreak = canLaunchScheduledAutoCrowdMoment({
         scheduledLastPerformanceTs: 1000,
         currentLastPerformanceTs: 1000,
+        eligibleLastPerformanceTs: 1000,
         activeMode: 'karaoke'
     });
     assert.deepEqual(idleBreak, { allowed: true, reason: 'ok' });
@@ -182,4 +183,9 @@ test('scheduled crowd moments yield when the next performance starts', () => {
         scheduledLastPerformanceTs: 1000,
         currentLastPerformanceTs: 2000
     }).reason, 'performance_changed');
+    assert.equal(canLaunchScheduledAutoCrowdMoment({
+        scheduledLastPerformanceTs: 1000,
+        currentLastPerformanceTs: 1000,
+        eligibleLastPerformanceTs: 0
+    }).reason, 'performance_not_eligible');
 });

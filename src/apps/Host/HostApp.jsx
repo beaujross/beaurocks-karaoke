@@ -1741,6 +1741,8 @@ const MISSION_DEFAULT_ASSIST_LEVEL = 'smart_assist';
 const MISSION_FLOW_RULE_OPTIONS = Object.freeze(Object.values(MISSION_FLOW_RULES));
 const AUTO_CROWD_ORDER_PRESETS = Object.freeze({
     variety_mix: ['trivia', 'would_you_rather', 'ready_check', 'volley'],
+    trivia_only: ['trivia'],
+    choice_only: ['would_you_rather'],
     trivia_first: ['trivia', 'would_you_rather', 'ready_check'],
     choice_first: ['would_you_rather', 'trivia', 'ready_check'],
     volley_first: ['volley', 'ready_check'],
@@ -7576,6 +7578,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     });
     const doodleTimerRef = useRef(null);
     const lastPartyFlowPerfTsRef = useRef(null);
+    const partyFlowBaselineRoomRef = useRef('');
+    const lastPartyAutoEligiblePerfTsRef = useRef(0);
     const lastPartyAutoBreakTsRef = useRef(null);
     const seededPartyPolicyRoomRef = useRef('');
     const readyCheckTimerRef = useRef(null);
@@ -11737,19 +11741,53 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updateRoom({ lightMode: 'off' });
         }
     }, [room?.lightMode, room?.strobeEndsAt, updateRoom]);
-    const startNextFromQueue = useCallback(async () => {
-        const activeRoom = roomRef.current;
+    const startNextFromQueue = useCallback(async (options = {}) => {
+        const completedAutoMomentKey = String(options?.completedAutoMomentKey || '').trim();
+        const activeRoom = roomRef.current || {};
+        const activeAutoMoment = activeRoom?.missionControl?.autoMoment;
+        const activeAutoMomentKey = String(activeAutoMoment?.key || '').trim();
+        const autoMomentHandoff = !!completedAutoMomentKey
+            && (!activeAutoMomentKey || activeAutoMomentKey === completedAutoMomentKey);
+        const activeMode = String(activeRoom?.activeMode || '').trim().toLowerCase();
+        const activeLightMode = String(activeRoom?.lightMode || '').trim().toLowerCase();
+        const flowRoom = autoMomentHandoff
+            ? {
+                ...activeRoom,
+                ...(activeMode === 'trivia_pop' || activeMode === 'wyr' ? { activeMode: 'karaoke' } : {}),
+                ...(activeLightMode === 'volley' ? { lightMode: 'off', lobbyVolleyEnabled: false } : {}),
+                readyCheck: {
+                    ...(isPlainObject(activeRoom?.readyCheck) ? activeRoom.readyCheck : {}),
+                    active: false
+                },
+                missionControl: {
+                    ...(isPlainObject(activeRoom?.missionControl) ? activeRoom.missionControl : {}),
+                    autoMoment: {
+                        ...(isPlainObject(activeAutoMoment) ? activeAutoMoment : {}),
+                        key: completedAutoMomentKey,
+                        status: 'completed'
+                    }
+                }
+            }
+            : activeRoom;
         const list = songsRef.current || [];
         if (runOfShowReleaseWindowPending) return;
+        const lastPerformanceTs = getTimestampMs(flowRoom?.lastPerformance?.timestamp);
+        const autoPartyEligiblePerformanceTs = partyFlowBaselineRoomRef.current === roomCode
+            && lastPartyAutoBreakTsRef.current !== lastPerformanceTs
+            && (lastPartyAutoEligiblePerfTsRef.current === lastPerformanceTs
+                || lastPartyFlowPerfTsRef.current !== lastPerformanceTs)
+            ? lastPerformanceTs
+            : 0;
         const flow = getRoomFlowSnapshot({
             roomCode,
-            room: activeRoom,
+            room: flowRoom,
             songs: list,
-            autoDjEnabled: !!(activeRoom?.autoDj || autoDj),
+            autoDjEnabled: !!(flowRoom?.autoDj || autoDj),
             appleMusicEnabled: !!appleMusicAuthorized,
-            party: buildMissionPartyFromRoom(activeRoom),
-            assistLevel: activeRoom?.missionControl?.setupDraft?.assistLevel || '',
-            lastPerformanceTs: getTimestampMs(activeRoom?.lastPerformance?.timestamp),
+            party: buildMissionPartyFromRoom(flowRoom),
+            assistLevel: flowRoom?.missionControl?.setupDraft?.assistLevel || '',
+            lastPerformanceTs,
+            autoPartyEligiblePerformanceTs,
             queuedCount: list.filter((song) => song?.status === 'requested').length,
             performingCount: list.filter((song) => song?.status === 'performing').length,
             runOfShowLiveItem,
@@ -11757,19 +11795,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowNextItem,
             runOfShowPolicy,
             runOfShowPendingCountsById,
-            autoDjDelaySec: activeRoom?.autoDjDelaySec,
+            autoDjDelaySec: flowRoom?.autoDjDelaySec,
             postPerformanceHoldMs: performanceRecapAutoDjHoldMs,
             now: nowMs(),
             isQueueEntryPlayable
         });
-        if (flow.autoPartyIntent.shouldStart) return;
+        if (flow.autoPartyIntent.shouldStart && !autoMomentHandoff) return;
         if (!flow.autoDjIntent.shouldStart) return;
         const next = flow.autoDjIntent.song || flow.nextQueuedSong;
         if (!next?.id) return;
         await startQueueSongOnStage({
             songId: next.id,
             songs: list,
-            room: activeRoom,
+            room: flowRoom,
             roomCode,
             resolveDurationForUrl: resolveHostDurationForUrl,
             isAudioUrl,
@@ -11787,6 +11825,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
 
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        const autoPartyEligiblePerformanceTs = partyFlowBaselineRoomRef.current === roomCode
+            && lastPartyAutoBreakTsRef.current !== lastPerformanceTs
+            && (lastPartyAutoEligiblePerfTsRef.current === lastPerformanceTs
+                || lastPartyFlowPerfTsRef.current !== lastPerformanceTs)
+            ? lastPerformanceTs
+            : 0;
         const flow = getRoomFlowSnapshot({
             roomCode,
             room,
@@ -11796,6 +11840,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             party: buildMissionPartyFromRoom(room),
             assistLevel: room?.missionControl?.setupDraft?.assistLevel || '',
             lastPerformanceTs,
+            autoPartyEligiblePerformanceTs,
             queuedCount,
             performingCount,
             runOfShowLiveItem,
@@ -11899,11 +11944,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         startNextFromQueue
     ]);
     useEffect(() => {
-        if (!roomCode) return;
+        if (!roomCode || !room) return;
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        if (partyFlowBaselineRoomRef.current !== roomCode) {
+            partyFlowBaselineRoomRef.current = roomCode;
+            lastPartyFlowPerfTsRef.current = lastPerformanceTs || 0;
+            lastPartyAutoEligiblePerfTsRef.current = 0;
+            lastPartyAutoBreakTsRef.current = null;
+            return;
+        }
         if (!lastPerformanceTs) return;
         if (lastPartyFlowPerfTsRef.current === lastPerformanceTs) return;
         lastPartyFlowPerfTsRef.current = lastPerformanceTs;
+        lastPartyAutoEligiblePerfTsRef.current = lastPerformanceTs;
 
         const partyConfig = buildMissionPartyFromRoom(room);
         const durationSec = Math.max(30, Number(room?.lastPerformance?.duration || 180));
@@ -13976,6 +14029,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const autoMomentSource = String(options?.source || '').trim().toLowerCase();
         const autoMomentTitle = String(options?.title || '').trim();
         const autoMomentDetail = String(options?.detail || '').trim();
+        const partyPatch = isPlainObject(options?.partyPatch) ? options.partyPatch : null;
+        const missionControlBase = partyPatch
+            ? mergeMissionControlParty(room?.missionControl, partyPatch)
+            : (isPlainObject(room?.missionControl) ? room.missionControl : {});
         const roomPatch = {
             readyCheck: {
                 active: true,
@@ -13988,7 +14045,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
         if (autoMomentSource === 'autopilot') {
             roomPatch.missionControl = {
-                ...(isPlainObject(room?.missionControl) ? room.missionControl : {}),
+                ...missionControlBase,
                 autoMoment: {
                     key: autoMomentKey || `ready_check_${nowMs()}`,
                     source: 'autopilot',
@@ -14019,15 +14076,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     }
                 };
             }
-            updateRoom(nextPatch);
+            Promise.resolve(updateRoom(nextPatch)).then(() => {
+                if (shouldClearAutoMoment) {
+                    return startNextFromQueue({ completedAutoMomentKey: autoMomentKey });
+                }
+                return null;
+            }).catch((error) => {
+                hostLogger.debug('Failed to complete auto ready check', error);
+            }).finally(() => {
+                readyCheckTimerRef.current = null;
+            });
         }, durationSec * 1000);
-    }, [readyCheckDurationSec, readyCheckRewardPoints, room?.missionControl, updateRoom]);
+    }, [readyCheckDurationSec, readyCheckRewardPoints, room?.missionControl, startNextFromQueue, updateRoom]);
     const startAutoCrowdMoment = useCallback(async (moment = {}) => {
         const type = String(moment?.type || '').trim().toLowerCase();
         const durationSec = Math.max(3, Number(moment?.durationSec ?? moment?.breakDurationSec ?? 6) || 6);
         const momentKey = String(moment?.key || `${type || 'auto'}_${nowMs()}`).trim();
         const title = String(moment?.title || '').trim();
         const detail = String(moment?.detail || '').trim();
+        const partyPatch = isPlainObject(moment?.partyPatch) ? moment.partyPatch : null;
+        const missionControlBase = partyPatch
+            ? mergeMissionControlParty(room?.missionControl, partyPatch)
+            : (isPlainObject(room?.missionControl) ? room.missionControl : {});
         if (type === 'trivia' || type === 'would_you_rather') {
             if (autoCrowdMomentTimerRef.current) {
                 clearTimeout(autoCrowdMomentTimerRef.current);
@@ -14038,7 +14108,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const hash = Array.from(momentKey).reduce((total, char) => total + char.charCodeAt(0), 0);
             const roomPatch = {
                 missionControl: {
-                    ...(isPlainObject(room?.missionControl) ? room.missionControl : {}),
+                    ...missionControlBase,
                     autoMoment: {
                         key: momentKey,
                         source: 'autopilot',
@@ -14090,8 +14160,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await updateRoom(roomPatch);
             autoCrowdMomentTimerRef.current = setTimeout(() => {
                 const activeAutoMoment = roomRef.current?.missionControl?.autoMoment;
-                if (String(activeAutoMoment?.key || '').trim() !== momentKey) return;
-                updateRoom({
+                if (String(activeAutoMoment?.key || '').trim() !== momentKey) {
+                    autoCrowdMomentTimerRef.current = null;
+                    return;
+                }
+                Promise.resolve(updateRoom({
                     activeMode: 'karaoke',
                     triviaQuestion: null,
                     wyrData: null,
@@ -14099,8 +14172,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         ...(isPlainObject(roomRef.current?.missionControl) ? roomRef.current.missionControl : {}),
                         autoMoment: { ...activeAutoMoment, status: 'completed', endedAt: nowMs() }
                     }
-                }).catch((error) => hostLogger.debug('Failed to clear auto question moment', error));
-                autoCrowdMomentTimerRef.current = null;
+                })).then(() => startNextFromQueue({ completedAutoMomentKey: momentKey }))
+                    .catch((error) => hostLogger.debug('Failed to clear auto question moment', error))
+                    .finally(() => {
+                        autoCrowdMomentTimerRef.current = null;
+                    });
             }, durationSec * 1000);
             return;
         }
@@ -14113,7 +14189,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 lightMode: 'volley',
                 lobbyVolleyEnabled: true,
                 missionControl: {
-                    ...(isPlainObject(room?.missionControl) ? room.missionControl : {}),
+                    ...missionControlBase,
                     autoMoment: {
                         key: momentKey,
                         source: 'autopilot',
@@ -14128,14 +14204,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
             autoCrowdMomentTimerRef.current = setTimeout(() => {
                 const activeAutoMoment = roomRef.current?.missionControl?.autoMoment;
-                const isSameMoment = activeAutoMoment?.status === 'live'
-                    && String(activeAutoMoment?.key || '').trim() === momentKey;
-                if (!isSameMoment) return;
+                const activeAutoMomentKey = String(activeAutoMoment?.key || '').trim();
+                if (activeAutoMomentKey && activeAutoMomentKey !== momentKey) {
+                    autoCrowdMomentTimerRef.current = null;
+                    return;
+                }
                 const nextPatch = {
+                    lobbyVolleyEnabled: false,
                     missionControl: {
                         ...(isPlainObject(roomRef.current?.missionControl) ? roomRef.current.missionControl : {}),
                         autoMoment: {
-                            ...activeAutoMoment,
+                            ...(isPlainObject(activeAutoMoment) ? activeAutoMoment : {}),
+                            key: momentKey,
+                            source: 'autopilot',
+                            type: 'volley',
                             status: 'completed',
                             endedAt: nowMs()
                         }
@@ -14144,10 +14226,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 if (String(roomRef.current?.lightMode || '').trim().toLowerCase() === 'volley') {
                     nextPatch.lightMode = 'off';
                 }
-                updateRoom(nextPatch).catch((error) => {
-                    hostLogger.debug('Failed to clear auto volley moment', error);
-                });
-                autoCrowdMomentTimerRef.current = null;
+                Promise.resolve(updateRoom(nextPatch))
+                    .then(() => startNextFromQueue({ completedAutoMomentKey: momentKey }))
+                    .catch((error) => {
+                        hostLogger.debug('Failed to clear auto volley moment', error);
+                    })
+                    .finally(() => {
+                        autoCrowdMomentTimerRef.current = null;
+                    });
             }, durationSec * 1000);
             return;
         }
@@ -14156,9 +14242,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             source: 'autopilot',
             momentKey,
             title,
-            detail
+            detail,
+            partyPatch
         });
-    }, [room?.missionControl, startReadyCheck, updateRoom]);
+    }, [room?.missionControl, startNextFromQueue, startReadyCheck, updateRoom]);
     const updateAutoPartyConfig = useCallback(async (patch = {}) => {
         const currentParty = buildMissionPartyFromRoom(room);
         const nextParty = {
@@ -14169,6 +14256,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             missionControl: mergeMissionControlParty(room?.missionControl, nextParty)
         });
     }, [room, updateRoom]);
+    const setAutoPartyOrderPresetQuick = useCallback(async (nextPreset = 'variety_mix') => {
+        const safePreset = Object.prototype.hasOwnProperty.call(AUTO_CROWD_ORDER_PRESETS, nextPreset)
+            ? nextPreset
+            : 'variety_mix';
+        const previousPreset = autoCrowdMomentOrderPreset;
+        setAutoCrowdMomentOrderPreset(safePreset);
+        try {
+            await updateAutoPartyConfig({
+                autoCrowdMomentPreferredTypes: AUTO_CROWD_ORDER_PRESETS[safePreset]
+            });
+        } catch (error) {
+            setAutoCrowdMomentOrderPreset(previousPreset);
+            toast('Could not change the between-performance activity.');
+            throw error;
+        }
+    }, [autoCrowdMomentOrderPreset, toast, updateAutoPartyConfig]);
     const toggleAutoPartyEnabled = useCallback(async () => {
         const next = !autoCrowdMomentsEnabled;
         setAutoCrowdMomentsEnabled(next);
@@ -14199,10 +14302,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             autoCrowdMomentsEnabled: explicitAutoPartyEnabled
         });
         const durationSec = Math.max(30, Number(room?.lastPerformance?.duration || 180));
+        const autoPartyEligiblePerformanceTs = partyFlowBaselineRoomRef.current === roomCode
+            && lastPartyAutoBreakTsRef.current !== lastPerformanceTs
+            && (lastPartyAutoEligiblePerfTsRef.current === lastPerformanceTs
+                || lastPartyFlowPerfTsRef.current !== lastPerformanceTs)
+            ? lastPerformanceTs
+            : 0;
         const hasTrackedPerformance = Number(partyRaw?.lastPerformanceAtMs || 0) === lastPerformanceTs;
         const flowStateForGuard = hasTrackedPerformance
             ? partyConfig.state
-            : recordCompletedPerformance(partyConfig.state, { durationSec });
+            : autoPartyEligiblePerformanceTs
+                ? recordCompletedPerformance(partyConfig.state, { durationSec })
+                : partyConfig.state;
         const flow = getRoomFlowSnapshot({
             roomCode,
             room,
@@ -14215,6 +14326,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             },
             assistLevel,
             lastPerformanceTs,
+            autoPartyEligiblePerformanceTs,
             queuedCount,
             performingCount,
             runOfShowLiveItem,
@@ -14236,9 +14348,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             autoCrowdMomentLaunchTimerRef.current = null;
             const currentRoom = roomRef.current || {};
             const currentSongs = Array.isArray(songsRef.current) ? songsRef.current : [];
+            const currentLastPerformanceTs = getTimestampMs(currentRoom?.lastPerformance?.timestamp);
+            const eligibleLastPerformanceTs = partyFlowBaselineRoomRef.current === roomCode
+                && lastPartyAutoBreakTsRef.current !== currentLastPerformanceTs
+                && (lastPartyAutoEligiblePerfTsRef.current === currentLastPerformanceTs
+                    || lastPartyFlowPerfTsRef.current !== currentLastPerformanceTs)
+                ? currentLastPerformanceTs
+                : 0;
             const launchGuard = canLaunchScheduledAutoCrowdMoment({
                 scheduledLastPerformanceTs: lastPerformanceTs,
-                currentLastPerformanceTs: getTimestampMs(currentRoom?.lastPerformance?.timestamp),
+                currentLastPerformanceTs,
+                eligibleLastPerformanceTs,
                 stageActivationPending: stageActivationPendingRef.current,
                 hasCurrentSinger: currentSongs.some((song) => String(song?.status || '').trim().toLowerCase() === 'performing'),
                 activeMode: currentRoom?.activeMode,
@@ -14251,27 +14371,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             lastPartyAutoBreakTsRef.current = lastPerformanceTs;
             const momentKey = `${recommendedMoment.type}_${lastPerformanceTs}`;
+            const nextFlowState = recordGroupMoment(flowStateForGuard, {
+                mode: recommendedMoment.type,
+                durationSec: recommendedMoment.breakDurationSec
+            });
             startAutoCrowdMoment({
                 ...recommendedMoment,
-                key: momentKey
-            }).then(() => {
-                const nextFlowState = recordGroupMoment(flowStateForGuard, {
-                    mode: recommendedMoment.type,
-                    durationSec: recommendedMoment.breakDurationSec
-                });
-                return updateRoom({
-                    missionControl: mergeMissionControlParty(room?.missionControl, {
-                        state: nextFlowState,
-                        lastGroupMode: recommendedMoment.type,
-                        lastGroupDurationSec: recommendedMoment.breakDurationSec,
-                        lastGroupTriggeredAt: nowMs(),
-                        lastSuggestedAction: 'hype_moment'
-                    })
-                });
+                key: momentKey,
+                partyPatch: {
+                    state: nextFlowState,
+                    lastGroupMode: recommendedMoment.type,
+                    lastGroupDurationSec: recommendedMoment.breakDurationSec,
+                    lastGroupTriggeredAt: nowMs(),
+                    lastSuggestedAction: 'hype_moment'
+                }
             }).then(() => {
                 logActivity(roomCode, hostName || 'Host', recommendedMoment.activityLog, EMOJI.sparkle);
             }).catch((error) => {
-                hostLogger.debug('Autopilot crowd check skipped', error);
+                if (lastPartyAutoBreakTsRef.current === lastPerformanceTs) {
+                    lastPartyAutoBreakTsRef.current = null;
+                }
+                hostLogger.debug('Autopilot crowd check skipped; returning control to the queue', error);
+                startNextFromQueue({ completedAutoMomentKey: momentKey }).catch((queueError) => {
+                    hostLogger.warn('Queue recovery after Auto Party failure failed', queueError);
+                });
             });
         }, bridgeDelayMs);
         autoCrowdMomentLaunchTimerRef.current = timer;
@@ -14306,6 +14429,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowStagedItem,
         songs,
         startAutoCrowdMoment,
+        startNextFromQueue,
         updateRoom,
         logActivity,
         hostName,
@@ -18363,6 +18487,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
 
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        const autoPartyEligiblePerformanceTs = partyFlowBaselineRoomRef.current === roomCode
+            && lastPartyAutoBreakTsRef.current !== lastPerformanceTs
+            && (lastPartyAutoEligiblePerfTsRef.current === lastPerformanceTs
+                || lastPartyFlowPerfTsRef.current !== lastPerformanceTs)
+            ? lastPerformanceTs
+            : 0;
         const flow = getRoomFlowSnapshot({
             roomCode,
             room,
@@ -18372,6 +18502,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             party: buildMissionPartyFromRoom(room),
             assistLevel: room?.missionControl?.setupDraft?.assistLevel || '',
             lastPerformanceTs,
+            autoPartyEligiblePerformanceTs,
             queuedCount,
             performingCount,
             fallbackDeadAirSongs: missionDeadAirFillerSongs,
@@ -19196,7 +19327,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const browsePanel = (
-                    <div data-feature-id="host-catalog-scroll-region" className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain pb-4 pr-1.5 custom-scrollbar touch-scroll-y">
+                    <div data-feature-id="host-catalog-scroll-region" className={`flex h-full min-h-0 flex-1 flex-col gap-3 overscroll-y-contain pb-4 pr-1.5 custom-scrollbar touch-scroll-y ${activeBrowseList ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                         <div data-feature-id="host-catalog-source-filter" className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#0b0b10]/95 px-3 py-2 shadow-[0_12px_28px_rgba(0,0,0,0.24)] backdrop-blur-xl">
                             <div className="flex min-w-0 items-center gap-2.5">
                                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-300/18 bg-violet-500/10 text-violet-100">
@@ -19546,8 +19677,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         )}
                         </>)}
                         {activeBrowseList && (
-                            <section data-feature-id="host-catalog-category-detail" className={`overflow-hidden rounded-3xl border text-white ${catalogueOnly ? 'border-yellow-300/18 bg-[linear-gradient(155deg,rgba(120,53,15,0.10),rgba(8,13,24,0.96))]' : 'border-cyan-400/15 bg-[#0b0b10]'}`}>
-                                    <div className={`sticky top-0 z-10 border-b px-4 py-4 sm:px-6 ${catalogueOnly ? 'border-yellow-300/16 bg-[#0b0b10]/95' : 'border-zinc-800 bg-[#0b0b10]/95'} backdrop-blur-xl`}>
+                            <section data-feature-id="host-catalog-category-detail" className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border text-white ${catalogueOnly ? 'border-yellow-300/18 bg-[linear-gradient(155deg,rgba(120,53,15,0.10),rgba(8,13,24,0.96))]' : 'border-cyan-400/15 bg-[#0b0b10]'}`}>
+                                    <div className={`z-10 shrink-0 border-b px-4 py-4 sm:px-6 ${catalogueOnly ? 'border-yellow-300/16 bg-[#0b0b10]/95' : 'border-zinc-800 bg-[#0b0b10]/95'} backdrop-blur-xl`}>
                                         <div className="flex flex-wrap items-center justify-between gap-3">
                                             <div className="min-w-0">
                                                 <button data-feature-id="host-catalog-back-to-discover" onClick={() => setActiveBrowseList(null)} className="mb-2 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-200 hover:text-white">
@@ -19579,7 +19710,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             ))}
                                         </div>
                                     </div>
-                                <div className="p-4 sm:p-6">
+                                <div data-feature-id="host-catalog-category-scroll-content" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 custom-scrollbar touch-scroll-y">
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                                         {activeBrowseSongs.map((song, idx) => (
                                                 <div
@@ -19618,7 +19749,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </section>
                         )}
-                        <div className={`${STYLES.panel} p-4 border border-zinc-700`}>
+                        {!activeBrowseList && (<div className={`${STYLES.panel} p-4 border border-zinc-700`}>
                             <div className="flex items-center justify-between mb-3">
                                 <div>
                                     <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Top 100</div>
@@ -19635,7 +19766,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 ))}
                             </div>
                             <div className="text-sm text-zinc-500 mt-3">Open the full Top 100 to queue faster.</div>
-                        </div>
+                        </div>)}
                         {showTop100 && (
                             <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
                                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
@@ -22319,6 +22450,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onToggleAutoBonus: toggleAutoBonusQuick,
         onToggleAutoLyricsOnQueue: toggleAutoLyricsOnQueueQuick,
         onToggleAutoParty: toggleAutoPartyEnabled,
+        onSetAutoPartyOrderPreset: setAutoPartyOrderPresetQuick,
         onTogglePopTrivia: togglePopTriviaQuick,
     };
 
@@ -26153,6 +26285,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 className={`${STYLES.input} mt-1`}
                                             >
                                                 <option value="variety_mix">Trivia + choices + games</option>
+                                                <option value="trivia_only">Trivia only</option>
+                                                <option value="choice_only">Would You Rather only</option>
                                                 <option value="trivia_first">Trivia first</option>
                                                 <option value="choice_first">Would You Rather first</option>
                                                 <option value="volley_first">Volley first</option>
@@ -26530,6 +26664,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 className={`${STYLES.input} mt-1`}
                                             >
                                                 <option value="variety_mix">Trivia + choices + games</option>
+                                                <option value="trivia_only">Trivia only</option>
+                                                <option value="choice_only">Would You Rather only</option>
                                                 <option value="trivia_first">Trivia first</option>
                                                 <option value="choice_first">Would You Rather first</option>
                                                 <option value="volley_first">Volley first</option>

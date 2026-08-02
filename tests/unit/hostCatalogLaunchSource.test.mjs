@@ -240,8 +240,18 @@ test('host catalog owns its scroll region and keeps its header compact', () => {
   );
   assert.match(
     hostAppSource,
-    /data-feature-id="host-catalog-scroll-region"[^>]*h-full min-h-0 flex-1[^>]*overflow-y-auto/,
-    'The catalog list should be the real vertical scroll owner',
+    /data-feature-id="host-catalog-scroll-region"[^>]*h-full min-h-0 flex-1[^>]*activeBrowseList \? 'overflow-hidden' : 'overflow-y-auto'/,
+    'The catalog workspace should hand scroll ownership to an open collection',
+  );
+  assert.match(
+    hostAppSource,
+    /data-feature-id="host-catalog-category-detail"[^>]*flex min-h-0 flex-1 flex-col overflow-hidden/,
+    'An open collection should fill the remaining catalog height without clipping its contents',
+  );
+  assert.match(
+    hostAppSource,
+    /data-feature-id="host-catalog-category-scroll-content"[^>]*min-h-0 flex-1 overflow-y-auto overscroll-contain/,
+    'Long collection contents should have a dedicated vertical scroll container',
   );
   assert.match(
     hostAppSource,

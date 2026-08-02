@@ -71,6 +71,13 @@ const ROOM_CONTROL_MODEL_OPTIONS = Object.freeze([
         summary: 'Mic Checkpoint plus Auto-DJ for self-service parties.',
     },
 ]);
+const AUTO_PARTY_QUICK_OPTIONS = Object.freeze([
+    { id: 'variety_mix', label: 'Mix', icon: 'fa-shuffle', detail: 'Trivia, choices, and games' },
+    { id: 'trivia_only', label: 'Trivia', icon: 'fa-circle-question', detail: 'Trivia between singers' },
+    { id: 'choice_only', label: 'Would You Rather', icon: 'fa-code-compare', detail: 'Audience choices only' },
+    { id: 'volley_only', label: 'Volley Orb', icon: 'fa-volleyball', detail: 'Volley Orb only' },
+    { id: 'ready_only', label: 'Ready Check', icon: 'fa-hand', detail: 'Quick audience check-in' },
+]);
 const getRunOfShowDurationSec = (item = {}) => Math.max(
     0,
     Math.round(Number(
@@ -1174,6 +1181,11 @@ const HostTopChrome = ({
             : 'host_led';
     const activeRoomControlModelOption = ROOM_CONTROL_MODEL_OPTIONS.find((option) => option.id === activeRoomControlModel) || ROOM_CONTROL_MODEL_OPTIONS[0];
     const autoPartyPlanLabel = {
+        variety_mix: 'Trivia, choices, and games',
+        trivia_only: 'Trivia only',
+        choice_only: 'Would You Rather only',
+        trivia_first: 'Trivia-first mix',
+        choice_first: 'Would You Rather-first mix',
         volley_first: 'Volley Orb, then Ready Check',
         ready_first: 'Ready Check, then Volley Orb',
         ready_only: 'Ready Check only',
@@ -1947,6 +1959,39 @@ const HostTopChrome = ({
                                         ))}
                                     </div>
                                 </div>
+                                {typeof quickAutomationControls?.onSetAutoPartyOrderPreset === 'function' ? (
+                                    <div data-feature-id="host-auto-party-activity-picker" className={`${quickMenuCardClass} mt-2 space-y-3 border-fuchsia-300/15 bg-fuchsia-500/[0.06]`}>
+                                        <div className="flex flex-wrap items-start justify-between gap-2">
+                                            <div>
+                                                <div className={`${quickMenuEyebrowClass} text-fuchsia-200`}>Between-performance activity</div>
+                                                <div className={quickMenuBodyClass}>Choose what Auto Party puts on the TV after an eligible performance.</div>
+                                            </div>
+                                            <span className={`${quickMenuBadgeClass} border-fuchsia-300/20 bg-fuchsia-500/10 text-fuchsia-100`}>
+                                                {quickAutomationControls?.autoPartyEnabled ? 'Active' : 'Ready when enabled'}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                            {AUTO_PARTY_QUICK_OPTIONS.map((option) => {
+                                                const selected = quickAutomationControls?.autoPartyOrderPreset === option.id;
+                                                return (
+                                                    <button
+                                                        key={option.id}
+                                                        type="button"
+                                                        data-auto-party-activity={option.id}
+                                                        onClick={() => { void quickAutomationControls.onSetAutoPartyOrderPreset(option.id); }}
+                                                        aria-pressed={selected}
+                                                        className={`${styles.btnStd} ${selected ? styles.btnHighlight : styles.btnNeutral} min-h-[62px] min-w-0 items-start justify-start whitespace-normal px-3 py-2 text-left normal-case tracking-normal`}
+                                                    >
+                                                        <span className="flex min-w-0 flex-col items-start">
+                                                            <span className="inline-flex items-center gap-2 text-xs font-black leading-tight"><i className={`fa-solid ${option.icon}`}></i>{option.label}</span>
+                                                            <span className="mt-1 text-[11px] leading-4 text-zinc-400">{option.detail}</span>
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ) : null}
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`} data-host-room-control-model>
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>

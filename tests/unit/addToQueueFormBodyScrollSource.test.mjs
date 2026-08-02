@@ -70,6 +70,11 @@ test('AddToQueueFormBody autocomplete rows stay dense and metadata-forward', () 
   assert.match(source, /line-clamp-1 font-black/);
   assert.match(source, /durationLabel \? \([\s\S]*\{durationLabel\}/);
   assert.match(source, /const resultMetaChipBaseClass = /);
+  assert.match(
+    source,
+    /const resultMetaChipBaseClass = 'inline-flex h-5 shrink-0 items-center whitespace-nowrap[^']*leading-none/,
+    'Autocomplete source and category pills should stay on one compact line',
+  );
   assert.match(source, /className=\{getResultMetaChipClass\(getSourceChipTone\(r\.source\)\)\}/);
   assert.match(source, /playbackState\?\.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES\.notEmbeddable/);
   assert.doesNotMatch(source, /\? 'External' : 'TV'/);

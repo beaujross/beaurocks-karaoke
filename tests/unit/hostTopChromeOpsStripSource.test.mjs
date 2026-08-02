@@ -148,6 +148,11 @@ test('host flow dropdown exposes room control model choices above detailed pacin
   assert.match(source, /Start the next singer automatically/);
   assert.match(source, /Start backing media automatically/);
   assert.match(source, /Fill breaks with audience activities/);
+  assert.match(source, /data-feature-id="host-auto-party-activity-picker"/);
+  assert.match(source, /Between-performance activity/);
+  assert.match(source, /AUTO_PARTY_QUICK_OPTIONS = Object\.freeze\(\[[\s\S]*Trivia[\s\S]*Would You Rather[\s\S]*Volley Orb[\s\S]*Ready Check/);
+  assert.match(source, /quickAutomationControls\.onSetAutoPartyOrderPreset\(option\.id\)/);
+  assert.match(hostAppSource, /onSetAutoPartyOrderPreset: setAutoPartyOrderPresetQuick/);
   assert.match(source, /Let the crowd extend or rotate singers/);
   assert.match(source, /Direct changes here override any preset or starting point/);
   assert.match(source, /activeRoomControlModel = quickRoomControls\?\.oneMinuteMicEnabled[\s\S]*'crowd_driven'[\s\S]*quickAutomationControls\?\.autoDj[\s\S]*'assisted_host'[\s\S]*'host_led'/);
