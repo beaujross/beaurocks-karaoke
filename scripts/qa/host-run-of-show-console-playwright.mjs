@@ -64,9 +64,9 @@ const main = async () => {
 
     await runCheck(checks, "host_run_of_show_panel_visible", async () => {
       await page.locator('[data-host-qa-ready="true"]').waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("SHOW CONVEYOR").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("CONVEYOR STATUS").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "show conveyor surface visible";
+      await page.locator('[data-run-of-show-director-surface="true"]').waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("ADVANCED SHOW CONTROLS").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "advanced show controls surface visible";
     });
 
     await runCheck(checks, "host_event_profile_branding_loaded", async () => {
@@ -91,7 +91,7 @@ const main = async () => {
     await runCheck(checks, "host_timeline_strip_opens", async () => {
       await page.getByRole("button", { name: /OPEN BOARD/i }).click({ force: true });
       await page.getByRole("button", { name: /COLLAPSE BOARD/i }).waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("CONVEYOR ACTIONS").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator('[data-compact-timeline-item-id="intro_live"]').waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("FEATURE SLOT 1").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("AUDIENCE SPOTLIGHT").first().waitFor({ state: "visible", timeout: timeoutMs });
       return "conveyor strip expands with live and on-deck scenes";
@@ -133,8 +133,8 @@ const main = async () => {
     });
 
     await runCheck(checks, "host_assignment_rail_fills_empty_slot", async () => {
-      await page.getByRole("button", { name: /STOP SHOW/i }).click({ force: true });
-      await page.getByRole("button", { name: /^PREFLIGHT$/i }).click({ force: true });
+      await page.getByRole("button", { name: /TURN OFF AUTO-ADVANCE/i }).click({ force: true });
+      await page.getByRole("button", { name: /^REVIEW$/i }).click({ force: true });
       await page.getByText("Slot Assignment").first().waitFor({ state: "visible", timeout: timeoutMs });
       const fillButton = page.getByRole("button", { name: /Fill Empty Slots/i }).first();
       await fillButton.waitFor({ state: "visible", timeout: timeoutMs });

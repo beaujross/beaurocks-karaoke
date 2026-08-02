@@ -1,4 +1,4 @@
-import reactionCatalog from '../../functions/lib/reactionCatalog.json';
+import reactionCatalog from '../../functions/lib/reactionCatalog.json' with { type: 'json' };
 
 const token = (value = '') => String(value || '').trim().toLowerCase();
 const buildEmoji = (codePoints = []) => String.fromCodePoint(...(Array.isArray(codePoints) ? codePoints : []));

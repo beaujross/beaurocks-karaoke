@@ -457,6 +457,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         const majoritySide = wyrVoteSummary.winningSide;
         const rewardPoints = wyrVoteSummary.rewardPoints;
         const myVoteWonMajority = hasVoted && majoritySide && myVote === majoritySide;
+        const wyrPrompt = String(gameState?.question || '').trim();
         if (isPlayer) {
             return (
                 <div data-prompt-vote-player-view="wyr" className="h-full min-h-0 overflow-y-auto flex flex-col justify-start sm:justify-center p-4 sm:p-6 bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
@@ -466,6 +467,11 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                             <i className="fa-regular fa-clock"></i>
                             {timerSecRemaining}s left
                         </div>
+                    )}
+                    {wyrPrompt && (
+                        <h1 data-prompt-vote-question="wyr" className="mb-5 text-[clamp(1.2rem,5.5vw,1.8rem)] font-black leading-tight text-white sm:mb-6">
+                            {wyrPrompt}
+                        </h1>
                     )}
 
                     {hasVoted || isReveal ? (
@@ -526,8 +532,6 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         }
 
         // TV View
-        const wyrPrompt = String(gameState?.question || '').trim();
-
         const topRailPadding = wyrPrompt ? 'clamp(150px, 24vh, 280px)' : 'clamp(105px, 17vh, 190px)';
 
         return (

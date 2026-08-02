@@ -51,7 +51,7 @@ const captureHostComparison = async ({ browser, baseUrl, fixtureId, roomCode, ou
     }
     const board = page.locator('[data-run-of-show-director-surface="true"]').first();
     await board.screenshot({ path: path.join(OUTPUT_DIR, outputName) });
-    const boardHeadingPx = await page.getByText("SHOW CONVEYOR").first().evaluate((node) => {
+    const boardHeadingPx = await page.getByText("ADVANCED SHOW CONTROLS").first().evaluate((node) => {
       return Number.parseFloat(window.getComputedStyle(node).fontSize || "0");
     });
     const issueHeadingPx = await page.getByText("OPEN ISSUES").first().evaluate((node) => {
