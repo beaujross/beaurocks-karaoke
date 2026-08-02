@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ASSETS } from '../../lib/assets';
+import { HostHelpGuide } from '../Help/HelpCenter';
 import {
   createHostSupportThread,
   getHostLifecycleReportingSummary,
@@ -19,16 +20,17 @@ import {
 } from '../../lib/firebase';
 
 const OPS_TABS = [
-  { id: 'overview', label: 'Overview', icon: 'fa-chart-line' },
-  { id: 'applications', label: 'Applications', icon: 'fa-ticket' },
-  { id: 'hosts', label: 'Active Hosts', icon: 'fa-users' },
-  { id: 'updates', label: 'Updates', icon: 'fa-bullhorn' },
-  { id: 'support', label: 'Support', icon: 'fa-inbox' },
+  { id: 'overview', label: 'Overview', description: 'Testing health', icon: 'fa-chart-line' },
+  { id: 'applications', label: 'Applications', description: 'Review the waitlist', icon: 'fa-ticket' },
+  { id: 'hosts', label: 'Active Hosts', description: 'Usage snapshots', icon: 'fa-users' },
+  { id: 'updates', label: 'Updates', description: 'Publish to Hosts', icon: 'fa-bullhorn' },
+  { id: 'support', label: 'Host Support', description: 'Private conversations', icon: 'fa-inbox' },
 ];
 const HUB_TABS = [
-  { id: 'updates', label: 'Updates', icon: 'fa-sparkles' },
-  { id: 'getting_started', label: 'Getting Started', icon: 'fa-route' },
-  { id: 'support', label: 'Support', icon: 'fa-comments' },
+  { id: 'updates', label: 'Updates', description: 'What changed', icon: 'fa-sparkles' },
+  { id: 'getting_started', label: 'Start Here', description: 'Your first-Room path', icon: 'fa-route' },
+  { id: 'help', label: 'Host Guide', description: 'How BeauRocks works', icon: 'fa-circle-question' },
+  { id: 'support', label: 'Message the Team', description: 'Private product support', icon: 'fa-comments' },
 ];
 const CATEGORY_LABELS = {
   product_update: 'Product Update',
@@ -386,7 +388,7 @@ const ApplicationsWorkspace = ({ onChanged, focusApplicationId = '' }) => {
   return <div className="space-y-4"><Panel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:justify-between"><div><Eyebrow tone="pink">Invite Desk</Eyebrow><h2 className="mt-1 text-xl font-black text-white">Host applications</h2><p className="mt-1 text-sm text-zinc-400">Approve selectively and keep onboarding tied to a verified Host identity.</p></div><select className={`${inputClass} sm:max-w-[220px]`} value={filter} onChange={(event) => setFilter(event.target.value)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></Panel><div className="grid gap-3 xl:grid-cols-2">{items.map((item) => <div id={`host-application-${item.applicationId}`} key={item.applicationId}><Panel className={`p-4 ${focusApplicationId === item.applicationId ? 'border-cyan-200/50 ring-2 ring-cyan-300/15' : ''}`}><div className="flex items-start justify-between gap-3"><div><strong className="text-lg text-white">{item.name || item.email}</strong><div className="mt-1 text-xs text-zinc-500">{item.email} · {formatDate(item.submittedAtMs || item.createdAtMs)}</div></div><StatusChip tone={item.status === 'pending' ? 'amber' : item.status === 'approved' ? 'emerald' : 'rose'}>{item.status}</StatusChip></div><div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3"><Eyebrow>Hosting Goal</Eyebrow><p className="mt-2 text-sm leading-6 text-zinc-300">{item.hostProfile?.hostingGoal || 'No testing goal supplied.'}</p><div className="mt-2 text-xs text-zinc-500">{item.hostProfile?.hostType?.replace(/_/g, ' ') || 'Host type not supplied'}</div></div>{item.status === 'pending' ? <><textarea className={`${inputClass} mt-3 min-h-[88px]`} value={notes[item.applicationId] || ''} onChange={(event) => setNotes((current) => ({ ...current, [item.applicationId]: event.target.value }))} placeholder="Private approval notes" /><div className="mt-3 flex gap-2"><button className={primaryButton} disabled={busy === item.applicationId} onClick={() => decide(item, 'approve')}>Approve Host</button><button className={dangerButton} disabled={busy === item.applicationId} onClick={() => decide(item, 'reject')}>Reject</button></div></> : null}</Panel></div>)}</div>{!items.length ? <EmptyState icon="fa-ticket" title={`No ${filter} applications`} body="Applications will appear here as people join the selective Host testing line." /> : null}{notice ? <div className="rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-sm text-amber-100">{notice}</div> : null}</div>;
 };
 
-const GettingStarted = ({ onboarding }) => {
+const GettingStarted = ({ onboarding, onOpenHelp, onOpenSupport }) => {
   const steps = [
     { id: 'approved', label: 'Private invitation active', complete: onboarding?.approved },
     { id: 'workspace', label: 'Host workspace ready', complete: onboarding?.workspaceActivated },
@@ -394,7 +396,7 @@ const GettingStarted = ({ onboarding }) => {
     { id: 'repeat', label: 'Second Room created', complete: onboarding?.repeatRoomComplete },
   ];
   const complete = steps.filter((step) => step.complete).length;
-  return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]"><Panel className="p-5"><Eyebrow>First-Night Path</Eyebrow><h2 className="mt-1 text-2xl font-black text-white">Build confidence before guests arrive</h2><div className="mt-5 space-y-3">{steps.map((step, index) => <div key={step.id} className={`flex items-center gap-3 rounded-2xl border p-4 ${step.complete ? 'border-emerald-300/20 bg-emerald-500/8' : index === complete ? 'border-cyan-300/25 bg-cyan-500/8' : 'border-white/10 bg-black/20'}`}><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${step.complete ? 'border-emerald-300/25 bg-emerald-500/12 text-emerald-200' : 'border-white/10 bg-white/5 text-zinc-500'}`}><i className={`fa-solid ${step.complete ? 'fa-check' : 'fa-circle'}`} /></span><div><strong className="text-sm text-white">{step.label}</strong><div className="mt-1 text-xs text-zinc-500">{step.complete ? 'Complete' : index === complete ? 'Your next step' : 'Comes next'}</div></div></div>)}</div></Panel><Panel className="p-5"><Eyebrow tone="pink">Rehearsal Checklist</Eyebrow><h3 className="mt-1 text-lg font-black text-white">Test all three surfaces</h3><ol className="mt-4 space-y-3 text-sm leading-6 text-zinc-300"><li>1. Create a private Room.</li><li>2. Open Public TV on a second screen.</li><li>3. Join from your phone as an audience member.</li><li>4. Request a song and move it through the queue.</li><li>5. Send product questions through Support—not Room chat.</li></ol><a href="/help/host" className={`${secondaryButton} mt-5 w-full`}>Open Host Guide</a></Panel></div>;
+  return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]"><Panel className="p-5"><Eyebrow>First-Night Path</Eyebrow><h2 className="mt-1 text-2xl font-black text-white">Build confidence before guests arrive</h2><div className="mt-5 space-y-3">{steps.map((step, index) => <div key={step.id} className={`flex items-center gap-3 rounded-2xl border p-4 ${step.complete ? 'border-emerald-300/20 bg-emerald-500/8' : index === complete ? 'border-cyan-300/25 bg-cyan-500/8' : 'border-white/10 bg-black/20'}`}><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${step.complete ? 'border-emerald-300/25 bg-emerald-500/12 text-emerald-200' : 'border-white/10 bg-white/5 text-zinc-500'}`}><i className={`fa-solid ${step.complete ? 'fa-check' : 'fa-circle'}`} /></span><div><strong className="text-sm text-white">{step.label}</strong><div className="mt-1 text-xs text-zinc-500">{step.complete ? 'Complete' : index === complete ? 'Your next step' : 'Comes next'}</div></div></div>)}</div></Panel><Panel className="p-5"><Eyebrow tone="pink">Rehearsal Checklist</Eyebrow><h3 className="mt-1 text-lg font-black text-white">Test all three surfaces</h3><ol className="mt-4 space-y-3 text-sm leading-6 text-zinc-300"><li>1. Create a private Room.</li><li>2. Open Public TV on a second screen.</li><li>3. Join from your phone as an audience member.</li><li>4. Request a song and move it through the queue.</li><li>5. Send product questions through Message the Team—not Room chat.</li></ol><div className="mt-5 grid gap-2"><button type="button" onClick={onOpenHelp} className={`${primaryButton} w-full`}>Open Host Guide</button><button type="button" onClick={onOpenSupport} className={`${secondaryButton} w-full`}>Message the Team</button></div></Panel></div>;
 };
 
 const AccessGate = ({ mode, access, error }) => <div className="grid min-h-screen place-items-center bg-black p-6 text-white"><Panel className="max-w-xl p-8 text-center"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-amber-300/25 bg-amber-500/10 text-amber-200"><i className="fa-solid fa-lock text-xl" /></div><h1 className="mt-5 text-2xl font-black">{mode === 'ops' ? 'Super admin access required' : 'Approved Host access required'}</h1><p className="mt-3 text-sm leading-6 text-zinc-400">{error || (mode === 'ops' ? 'Sign in with a verified BeauRocks super-admin account to open Host Operations.' : 'The Host Hub becomes available after your private Host invitation is approved.')}</p><div className="mt-6 flex flex-wrap justify-center gap-2"><a className={primaryButton} href="/host-access">Sign In</a><a className={secondaryButton} href="/?mode=host">Host Dashboard</a></div>{access?.email ? <div className="mt-4 text-xs text-zinc-600">Signed in as {access.email}</div> : null}</Panel></div>;
@@ -443,13 +445,14 @@ const HostRelationsApp = ({ mode = 'hub' }) => {
   return (
     <div className="h-screen overflow-hidden bg-black font-saira text-white" data-host-relations-mode={mode}>
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.16),transparent_34%),radial-gradient(circle_at_90%_0%,rgba(244,114,182,0.14),transparent_34%),linear-gradient(180deg,#0a0a0d,#050507)]" />
-      <header className="relative z-20 flex min-h-[76px] items-center justify-between gap-3 border-b border-cyan-200/20 bg-[linear-gradient(105deg,rgba(20,42,66,0.98),rgba(37,31,67,0.98)_52%,rgba(61,25,59,0.97))] px-3 py-2.5 shadow-[0_16px_45px_rgba(8,15,34,0.38)] sm:px-5">
-        <div className="flex min-w-0 items-center gap-3"><img src={ASSETS.logo} alt="BeauRocks" className="h-11 w-11 rounded-xl border border-white/10 bg-black/30 object-contain p-0.5 shadow-xl" /><div className="min-w-0"><Eyebrow>{isOps ? 'Super Admin Workspace' : 'Approved Host Workspace'}</Eyebrow><h1 className="truncate text-lg font-black tracking-tight sm:text-xl">{isOps ? 'Host Operations' : 'Host Hub'}</h1></div></div>
-        <div className="flex items-center gap-2">{access?.isSuperAdmin ? <a href={isOps ? '/hub' : '/ops/hosts'} className={secondaryButton}><i className={`fa-solid ${isOps ? 'fa-sparkles' : 'fa-shield-halved'}`} /><span className="hidden sm:inline">{isOps ? 'View Host Hub' : 'Host Operations'}</span></a> : null}<a href="/?mode=host" className={secondaryButton}><i className="fa-solid fa-arrow-left" /><span className="hidden sm:inline">Host Dashboard</span></a></div>
+      <header className="relative z-20 flex min-h-[76px] items-center justify-between gap-3 border-b border-cyan-200/20 bg-[linear-gradient(105deg,rgba(20,42,66,0.98),rgba(37,31,67,0.98)_52%,rgba(61,25,59,0.97))] px-3 py-2.5 shadow-[0_16px_45px_rgba(8,15,34,0.38)] sm:px-5" data-host-panel-shell="true">
+        <div className="flex min-w-0 items-center gap-3"><img src={ASSETS.logo} alt="BeauRocks" className="h-11 w-11 rounded-xl border border-white/10 bg-black/30 object-contain p-0.5 shadow-xl" /><div className="min-w-0"><Eyebrow>{isOps ? 'Super Admin · Host Panel' : 'Approved Host · Host Panel'}</Eyebrow><h1 className="truncate text-lg font-black tracking-tight sm:text-xl">{isOps ? 'Host Operations' : 'Host Hub'}</h1><p className="hidden truncate text-xs text-cyan-50/55 sm:block">{isOps ? 'Applications, Host activity, updates, and support' : 'Updates, guides, onboarding, and private team support'}</p></div></div>
+        <div className="flex items-center gap-2">{access?.isSuperAdmin ? <a href={isOps ? '/hub' : '/ops/hosts'} className={secondaryButton}><i className={`fa-solid ${isOps ? 'fa-sparkles' : 'fa-shield-halved'}`} /><span className="hidden sm:inline">{isOps ? 'View Host Hub' : 'Host Operations'}</span></a> : null}<a href="/?mode=host" className={secondaryButton}><i className="fa-solid fa-arrow-left" /><span className="hidden sm:inline">Back to Host Panel</span></a></div>
       </header>
       <div className="relative z-10 flex h-[calc(100vh-76px)] min-h-0 flex-col md:flex-row">
-        <nav className="shrink-0 overflow-x-auto border-b border-white/10 bg-zinc-950/82 p-2 md:w-[152px] md:overflow-y-auto md:border-b-0 md:border-r custom-scrollbar" aria-label={isOps ? 'Host Operations' : 'Host Hub'}>
-          <div className="flex min-w-max gap-1 md:min-w-0 md:flex-col">{tabs.map((item) => <button key={item.id} type="button" onClick={() => switchTab(item.id)} className={`flex min-h-[58px] min-w-[116px] items-center gap-2 rounded-xl border px-3 py-2 text-left transition md:min-w-0 md:flex-col md:items-start ${tab === item.id ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-50' : 'border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/5 hover:text-white'}`}><span className={`grid h-8 w-8 place-items-center rounded-lg ${tab === item.id ? 'bg-cyan-400/15 text-cyan-200' : 'bg-white/5 text-zinc-500'}`}><i className={`fa-solid ${item.icon}`} /></span><span className="text-xs font-black leading-4">{item.label}</span></button>)}</div>
+        <nav className="shrink-0 overflow-x-auto border-b border-white/10 bg-zinc-950/86 p-2 md:w-[232px] md:overflow-y-auto md:border-b-0 md:border-r md:p-3 custom-scrollbar" aria-label={isOps ? 'Host Operations' : 'Host Hub'}>
+          <div className="hidden px-2 pb-3 pt-1 md:block"><div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">{isOps ? 'Team workspace' : 'Host resources'}</div><p className="mt-1 text-xs leading-5 text-zinc-500">{isOps ? 'Manage the testing program.' : 'Catch up, learn, or reach the team.'}</p></div>
+          <div className="flex min-w-max gap-1 md:min-w-0 md:flex-col">{tabs.map((item) => <button key={item.id} type="button" onClick={() => switchTab(item.id)} className={`flex min-h-[58px] min-w-[132px] items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition md:min-w-0 ${tab === item.id ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-50 shadow-[0_10px_28px_rgba(6,182,212,0.08)]' : 'border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/5 hover:text-white'}`}><span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${tab === item.id ? 'bg-cyan-400/15 text-cyan-200' : 'bg-white/5 text-zinc-500'}`}><i className={`fa-solid ${item.icon}`} /></span><span className="min-w-0"><span className="block text-sm font-black leading-4">{item.label}</span><span className="mt-1 hidden text-[11px] leading-4 text-zinc-500 md:block">{item.description}</span></span></button>)}</div>
         </nav>
         <main className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar sm:p-4 lg:p-5">
           <div className="mx-auto max-w-[1500px]">
@@ -459,7 +462,8 @@ const HostRelationsApp = ({ mode = 'hub' }) => {
             {isOps && tab === 'hosts' ? <HostRoster summary={summary} /> : null}
             {tab === 'updates' ? <UpdatesWorkspace admin={isOps} /> : null}
             {tab === 'support' ? <SupportWorkspace admin={isOps} /> : null}
-            {!isOps && tab === 'getting_started' ? <GettingStarted onboarding={access?.host?.onboarding} /> : null}
+            {!isOps && tab === 'getting_started' ? <GettingStarted onboarding={access?.host?.onboarding} onOpenHelp={() => switchTab('help')} onOpenSupport={() => switchTab('support')} /> : null}
+            {!isOps && tab === 'help' ? <HostHelpGuide onOpenSupport={() => switchTab('support')} /> : null}
           </div>
         </main>
       </div>

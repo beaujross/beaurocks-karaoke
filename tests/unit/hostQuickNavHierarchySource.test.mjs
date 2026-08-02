@@ -17,6 +17,7 @@ test("Host quick navigation uses one touch target size and a clear text hierarch
   assert.match(menu, /text-\[15px\] font-black leading-5/);
   assert.match(menu, /text-\[11px\] font-medium leading-4 text-zinc-500/);
   assert.match(menu, /Queue[\s\S]*Run singers and song order/);
-  assert.match(menu, /Show[\s\S]*Plan moments between songs/);
+  assert.match(menu, /Host Guide[\s\S]*Setup, rehearsal, and show-night help/);
+  assert.doesNotMatch(menu, /label: 'Show'/);
   assert.doesNotMatch(menu, /text-sm font-bold uppercase tracking-widest/);
 });

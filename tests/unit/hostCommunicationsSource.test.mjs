@@ -7,6 +7,7 @@ const callableSource = readFileSync('functions/hostCommunications.js', 'utf8');
 const indexSource = readFileSync('functions/index.js', 'utf8');
 const appSource = readFileSync('src/App.jsx', 'utf8');
 const relationsSource = readFileSync('src/apps/HostRelations/HostRelationsApp.jsx', 'utf8');
+const helpSource = readFileSync('src/apps/Help/HelpCenter.jsx', 'utf8');
 const topChromeSource = readFileSync('src/apps/Host/components/HostTopChrome.jsx', 'utf8');
 const firebaseSource = readFileSync('src/lib/firebase.js', 'utf8');
 const indexesSource = readFileSync('firestore.indexes.json', 'utf8');
@@ -49,6 +50,7 @@ test('the Host Hub and Operations surfaces are lazy, canonical, and discoverable
   assert.match(appSource, /<HostRelationsApp mode=\{view === 'host_ops' \? 'ops' : 'hub'\}/);
   assert.match(topChromeSource, /data-feature-id="host-hub-link"/);
   assert.match(topChromeSource, /data-feature-id="host-hub-quick-nav-link"/);
+  assert.match(topChromeSource, /data-feature-id="host-guide-quick-nav-link"/);
   assert.match(indexSource, /https:\/\/host\.beaurocks\.app\/ops\/hosts\?tab=applications&applicationId=/);
   assert.match(relationsSource, /focusApplicationId=\{focusApplicationId\}/);
   assert.match(relationsSource, /scrollIntoView/);
@@ -60,9 +62,13 @@ test('Host Relations exposes the approved-host operating workspaces and honest a
   assert.match(relationsSource, /data-host-support-workspace/);
   assert.match(relationsSource, /data-active-host-roster/);
   assert.match(relationsSource, /Room activity reflects provisioning milestones/);
-  assert.match(relationsSource, /Send product questions through Support—not Room chat\./);
-  assert.match(relationsSource, /Approved Host Workspace/);
-  assert.match(relationsSource, /Super Admin Workspace/);
+  assert.match(relationsSource, /Send product questions through Message the Team—not Room chat\./);
+  assert.match(relationsSource, /Approved Host · Host Panel/);
+  assert.match(relationsSource, /Super Admin · Host Panel/);
+  assert.match(relationsSource, /id: 'help', label: 'Host Guide'/);
+  assert.match(relationsSource, /data-host-panel-shell="true"/);
+  assert.match(helpSource, /data-host-help-guide/);
+  assert.match(helpSource, /Host Inbox is for the live Room\. Host Hub messages are private conversations with the BeauRocks product team\./);
 });
 
 test('Host application records are administrator-only and explicitly serialized', () => {
