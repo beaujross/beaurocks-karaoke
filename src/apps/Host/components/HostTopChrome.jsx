@@ -259,6 +259,7 @@ const HostTopChrome = ({
     const coHostHelpHref = buildPrintHref(`/help/cohost${roomCode ? `?room=${encodeURIComponent(roomCode)}` : ''}`);
     const hostHelpHref = buildPrintHref(`/help/host${roomCode ? `?room=${encodeURIComponent(roomCode)}` : ''}`);
     const hostHubHref = buildPrintHref('/hub');
+    const hostHubHelpHref = buildPrintHref('/hub?tab=help');
     const clampNumber = (value, min, max, fallback = min) => {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return fallback;
@@ -1405,7 +1406,6 @@ const HostTopChrome = ({
                     <div data-host-top-tabs="primary" className="host-brand-tabs host-brand-tabs--compact relative z-10 shrink-0" role="tablist" aria-label="Host workspace">
                         {[
                             { key: 'stage', label: 'Queue' },
-                            { key: 'run_of_show', label: 'Show' },
                             { key: 'games', label: 'Games' },
                             { key: 'lobby', label: 'Audience' }
                         ].map(t => (
@@ -1526,7 +1526,15 @@ const HostTopChrome = ({
                                     className="flex min-h-[58px] w-full items-center gap-3 rounded-xl border border-cyan-300/20 bg-cyan-500/8 px-3 py-2.5 text-left text-cyan-50 transition hover:border-cyan-200/40 hover:bg-cyan-500/14"
                                 >
                                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-500/12 text-cyan-200"><i className="fa-solid fa-sparkles" aria-hidden="true"></i></span>
-                                    <span><span className="block text-[15px] font-black leading-5">Host Hub</span><span className="block text-[11px] font-medium leading-4 text-cyan-100/60">Product updates and team support</span></span>
+                                    <span><span className="block text-[15px] font-black leading-5">Host Hub</span><span className="block text-[11px] font-medium leading-4 text-cyan-100/60">Updates, guides, and team messages</span></span>
+                                </a>
+                                <a
+                                    href={hostHubHelpHref}
+                                    data-feature-id="host-guide-quick-nav-link"
+                                    className="flex min-h-[58px] w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-zinc-200 transition hover:bg-zinc-900 hover:text-white"
+                                >
+                                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-400"><i className="fa-solid fa-circle-question" aria-hidden="true"></i></span>
+                                    <span><span className="block text-[15px] font-black leading-5">Host Guide</span><span className="block text-[11px] font-medium leading-4 text-zinc-500">Setup, rehearsal, and show-night help</span></span>
                                 </a>
                                 {typeof onOpenHostDashboard === 'function' && (
                                     <button
@@ -1543,7 +1551,6 @@ const HostTopChrome = ({
                                 )}
                                 {[
                                     { key: 'stage', label: 'Queue', description: 'Run singers and song order', icon: 'fa-list-ol' },
-                                    { key: 'run_of_show', label: 'Show', description: 'Plan moments between songs', icon: 'fa-clapperboard' },
                                     { key: 'games', label: 'Games', description: 'Launch crowd activities', icon: 'fa-gamepad' },
                                     { key: 'lobby', label: 'Audience', description: 'See and manage the crowd', icon: 'fa-users' },
                                     { key: 'admin', label: 'Admin', description: 'Room setup and controls', icon: 'fa-sliders' }
@@ -3607,4 +3614,3 @@ const HostTopChrome = ({
 };
 
 export default HostTopChrome;
-

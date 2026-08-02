@@ -87,6 +87,62 @@ const buildHref = (path, roomCode = '') => {
     return `${safePath}${query}`;
 };
 
+export const HostHelpGuide = ({ onOpenSupport = null }) => {
+    const section = HELP_SECTIONS.find((item) => item.id === 'host') || HELP_SECTIONS[0];
+    return (
+        <div className="space-y-4" data-host-help-guide>
+            <section className="overflow-hidden rounded-2xl border border-cyan-300/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.13),rgba(236,72,153,0.08),rgba(9,9,11,0.92))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="max-w-3xl">
+                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">Host Guide</div>
+                        <h2 className="mt-1 text-2xl font-black tracking-tight text-white">Answers for setup, rehearsal, and show night</h2>
+                        <p className="mt-2 text-sm leading-6 text-zinc-300">Use this guide for how the product works. When you need help with your account, billing, a bug, or product feedback, start a private conversation with the BeauRocks team.</p>
+                    </div>
+                    {typeof onOpenSupport === 'function' ? (
+                        <button type="button" onClick={onOpenSupport} className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-xl border border-cyan-200/35 bg-cyan-400/15 px-4 py-2 text-sm font-black text-cyan-50 transition hover:border-cyan-100/60 hover:bg-cyan-400/25">
+                            <i className="fa-solid fa-comments" /> Message the Team
+                        </button>
+                    ) : null}
+                </div>
+            </section>
+            <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]">
+                <article className="rounded-2xl border border-white/10 bg-zinc-950/72 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+                    <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">{section.eyebrow}</div>
+                    <h3 className="mt-1 text-xl font-black text-white">{section.title}</h3>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">{section.summary}</p>
+                    <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                        {section.steps.map(([title, copy], index) => (
+                            <div key={title} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                                <div className="flex items-center gap-3">
+                                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-500/10 text-xs font-black text-cyan-100">{index + 1}</span>
+                                    <h4 className="text-sm font-black text-white">{title}</h4>
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-zinc-400">{copy}</p>
+                            </div>
+                        ))}
+                    </div>
+                </article>
+                <aside className="rounded-2xl border border-white/10 bg-zinc-950/72 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+                    <div className="text-[10px] font-black uppercase tracking-[0.24em] text-pink-300">Keep Handy</div>
+                    <h3 className="mt-1 text-lg font-black text-white">Show-night notes</h3>
+                    <ul className="mt-4 space-y-3">
+                        {section.tips.map((tip) => (
+                            <li key={tip} className="flex gap-3 text-sm leading-6 text-zinc-300">
+                                <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-cyan-300" />
+                                <span>{tip}</span>
+                            </li>
+                        ))}
+                    </ul>
+                    <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-500/8 p-4">
+                        <div className="text-sm font-black text-white">Room messages or product support?</div>
+                        <p className="mt-2 text-sm leading-6 text-cyan-50/75">Host Inbox is for the live Room. Host Hub messages are private conversations with the BeauRocks product team.</p>
+                    </div>
+                </aside>
+            </section>
+        </div>
+    );
+};
+
 const HelpCenter = () => {
     const [activeRole, setActiveRole] = useState(getInitialRole);
     const roomCode = getRoomCode();
@@ -119,6 +175,7 @@ const HelpCenter = () => {
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-2 print:hidden">
+                            {activeRole === 'host' ? <a href="/hub?tab=help" className="rounded-full border border-cyan-300/30 bg-cyan-500/14 px-4 py-2 text-sm font-black uppercase tracking-[0.16em] text-cyan-50 hover:border-cyan-200/55">Host Hub</a> : null}
                             <a href={hostHref} className="rounded-full border border-white/12 bg-black/30 px-4 py-2 text-sm font-black uppercase tracking-[0.16em] text-zinc-100 hover:border-cyan-300/50">Host</a>
                             <a href={audienceHref} className="rounded-full border border-white/12 bg-black/30 px-4 py-2 text-sm font-black uppercase tracking-[0.16em] text-zinc-100 hover:border-cyan-300/50">Audience</a>
                             <a href={tvHref} className="rounded-full border border-white/12 bg-black/30 px-4 py-2 text-sm font-black uppercase tracking-[0.16em] text-zinc-100 hover:border-cyan-300/50">TV</a>
