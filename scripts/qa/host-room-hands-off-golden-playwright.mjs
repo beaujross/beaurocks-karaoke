@@ -812,7 +812,14 @@ const extractAudienceJoinUrl = async ({ hostPage, roomCode, fallbackAudienceOrig
 };
 
 const readTvQueueCount = async (tvPage) => {
+  const queueMetric = tvPage.locator('[data-tv-queue-count]:visible').first();
+  if (await queueMetric.isVisible().catch(() => false)) {
+    const metricValue = Number(await queueMetric.getAttribute('data-tv-queue-count'));
+    if (Number.isFinite(metricValue) && metricValue >= 0) return metricValue;
+  }
   const bodyText = String(await tvPage.locator("body").innerText().catch(() => ""));
+  const queuedSongsMatch = bodyText.match(/Queued Songs\s*(\d+)/i);
+  if (queuedSongsMatch?.[1]) return Number(queuedSongsMatch[1]);
   const queueMatch = bodyText.match(/Queue:\s*(\d+)\s*songs/i);
   if (queueMatch?.[1]) return Number(queueMatch[1]);
   const fullMatch = bodyText.match(/FULL QUEUE\s*\((\d+)\)/i);
@@ -836,7 +843,7 @@ const waitForTvSongOrQueueState = async ({ tvPage, minimumQueueCount, songTitle,
     await delay(700);
   }
   throw new Error(
-    `TV did not surface "${songTitle}" or reach queue count ${minimumQueueCount} within timeout (lastQueue=${lastCount}).`
+    `TV did not surface "${songTitle}" or reach queue count ${minimumQueueCount} within timeout (lastQueue=${lastCount}, body="${String(await tvPage.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 500)}").`
   );
 };
 

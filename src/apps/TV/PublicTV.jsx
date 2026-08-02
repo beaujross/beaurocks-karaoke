@@ -1824,7 +1824,7 @@ const SelfServeAttractOverlay = ({
                             </div>
                             <div className="rounded-[1.7rem] border border-fuchsia-300/18 bg-fuchsia-500/10 px-5 py-5">
                                 <div className="text-[0.82rem] uppercase tracking-[0.24em] text-fuchsia-100/70">Queued Songs</div>
-                                <div className="mt-3 text-6xl font-black leading-none text-white">{queueCount}</div>
+                                <div data-tv-queue-count={queueCount} className="mt-3 text-6xl font-black leading-none text-white">{queueCount}</div>
                             </div>
                             <div className="rounded-[1.7rem] border border-amber-300/18 bg-amber-500/10 px-5 py-5">
                                 <div className="text-[0.82rem] uppercase tracking-[0.24em] text-amber-100/70">Room Flow</div>
@@ -9571,7 +9571,7 @@ const PublicTV = ({ roomCode }) => {
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div>
                                                                 <div className="text-[10px] md:text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Queued Songs</div>
-                                                                <div className="mt-2 text-4xl md:text-[2.9rem] 2xl:text-[3.25rem] font-black leading-none text-white tabular-nums">{allQueue.length}</div>
+                                                                <div data-tv-queue-count={allQueue.length} className="mt-2 text-4xl md:text-[2.9rem] 2xl:text-[3.25rem] font-black leading-none text-white tabular-nums">{allQueue.length}</div>
                                                             </div>
                                                             <i className="fa-solid fa-list-music text-xl md:text-2xl text-cyan-200/85"></i>
                                                         </div>
