@@ -656,3 +656,33 @@ test('Show Plan keeps drafts out of Lineup Overview and exposes the inline WYR e
   assert.match(markup, /Choice B/);
   assert.match(markup, /More settings/);
 });
+
+test('Moment Prep offers manual Start Next before Auto Advance is enabled', async () => {
+  mockHostQueueTabDependencies();
+  mockDesktopQueueSurfaceTab('show');
+
+  const markup = await renderQueueTabMarkup({
+    runOfShowEnabled: false,
+    runOfShowDirector: {
+      items: [
+        {
+          id: 'moment-manual-1',
+          destination: 'queue',
+          type: 'would_you_rather_break',
+          title: 'Manual Moment',
+          status: 'ready',
+          sequence: 1,
+        },
+      ],
+    },
+    runOfShowNextItem: null,
+    runOfShowStagedItem: null,
+    onAdvanceRunOfShow: noop,
+    onStartRunOfShow: noop,
+  });
+
+  assert.match(markup, /data-moment-live-action="start-next"/);
+  assert.match(markup, /Start Next/);
+  assert.match(markup, /data-moment-live-action="enable-auto-advance"/);
+  assert.match(markup, /Turn On Auto-Advance/);
+});

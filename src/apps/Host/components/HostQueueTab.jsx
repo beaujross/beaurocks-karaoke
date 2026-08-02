@@ -4724,11 +4724,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             {HOST_LIVE_OPS_LANGUAGE.finishAndStartNext}
                         </button>
                     ) : (runOfShowStagedItem?.id || runOfShowNextItem?.id) ? (
-                        <button type="button" onClick={() => onTriggerRunOfShowItem?.((runOfShowStagedItem || runOfShowNextItem).id)} disabled={typeof onTriggerRunOfShowItem !== 'function'} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] disabled:opacity-50`}>
+                        <button type="button" data-moment-live-action="start-next" onClick={() => onTriggerRunOfShowItem?.((runOfShowStagedItem || runOfShowNextItem).id)} disabled={typeof onTriggerRunOfShowItem !== 'function'} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] disabled:opacity-50`}>
                             <i className="fa-solid fa-tower-broadcast mr-1.5"></i>{HOST_LIVE_OPS_LANGUAGE.startNext}
                         </button>
                     ) : momentPrepTimelineItems.length ? (
-                        <button type="button" onClick={onStartRunOfShow} disabled={typeof onStartRunOfShow !== 'function'} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] disabled:opacity-50`}>
+                        <button type="button" data-moment-live-action="start-next" onClick={onAdvanceRunOfShow} disabled={typeof onAdvanceRunOfShow !== 'function'} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] disabled:opacity-50`}>
+                            <i className="fa-solid fa-tower-broadcast mr-1.5"></i>{HOST_LIVE_OPS_LANGUAGE.startNext}
+                        </button>
+                    ) : null}
+                    {!runOfShowEnabled && momentPrepTimelineItems.length ? (
+                        <button type="button" data-moment-live-action="enable-auto-advance" onClick={onStartRunOfShow} disabled={typeof onStartRunOfShow !== 'function'} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px] disabled:opacity-50`}>
                             {HOST_LIVE_OPS_LANGUAGE.turnOnAutoAdvance}
                         </button>
                     ) : null}

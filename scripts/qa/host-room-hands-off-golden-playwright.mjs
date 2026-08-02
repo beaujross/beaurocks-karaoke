@@ -1186,7 +1186,7 @@ const run = async () => {
     await runCheck(checks, "host_starts_moment_on_audience_and_public_tv", async () => {
       await ensureHostShowPlanWorkspaceOpen({ page: hostPage, timeoutMs });
       const handoff = hostPage.locator('[data-feature-id="moment-prep-live-handoff"]:visible').first();
-      const startNext = handoff.getByRole("button", { name: /^Start Next$/i }).first();
+      const startNext = handoff.locator('[data-moment-live-action="start-next"]').first();
       await startNext.waitFor({ state: "visible", timeout: timeoutMs });
       await startNext.click({ force: true });
 
