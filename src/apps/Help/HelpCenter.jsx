@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ASSETS } from '../../lib/assets';
 import { HOST_SUBSCRIPTION_PLAN_CATALOG } from '../../billing/hostPlans';
+import { HOST_LIVE_OPS_LANGUAGE } from '../Host/hostLiveOpsLanguage';
 
 const monthlyHostPlan = HOST_SUBSCRIPTION_PLAN_CATALOG.host_monthly;
 const annualHostPlan = HOST_SUBSCRIPTION_PLAN_CATALOG.host_annual;
@@ -52,6 +53,8 @@ const HELP_SECTIONS = Object.freeze([
             ['Accept the invitation', 'Use the link and email in your invitation. You do not need to create an account while you are waiting.'],
             ['Set up your Host profile', 'Confirm your Host name, choose your access option, and set the defaults you want to reuse for new Rooms.'],
             ['Run a private rehearsal', 'Create a Room before your event. Open Audience and Public TV on separate devices, join as a guest, request a song, and move it through the queue.'],
+            [`Build ${HOST_LIVE_OPS_LANGUAGE.lineup}`, `Use ${HOST_LIVE_OPS_LANGUAGE.addPerformance} for singers and songs. Use ${HOST_LIVE_OPS_LANGUAGE.showPlan} for moments and timing. Drafts stay private until you choose ${HOST_LIVE_OPS_LANGUAGE.addToLineup}.`],
+            ['Choose the right automation', `${HOST_LIVE_OPS_LANGUAGE.autoDj} runs performances only. ${HOST_LIVE_OPS_LANGUAGE.autoAdvance} runs the full lineup, including moments. You can always use ${HOST_LIVE_OPS_LANGUAGE.startNext} manually.`],
             ['Launch all three surfaces', 'Host Dashboard controls the night, Audience App is for guests, and Public TV is the intentionally public projection. Use Incognito or a separate browser profile for the display.'],
             ['Use the Host Inbox live', 'Room lounge messages, DM Host, and Tell Host belong to the active Room. They are not a product-support channel. Keep private operator messages off Public TV.'],
             ['Know what access costs', `The waitlist is free. Standard Host access is ${monthlyHostPlan.priceLabel} or ${annualHostPlan.priceLabel} and includes Room creation, Host controls, and provider-powered tools within visible usage limits. Your invitation explains any temporary testing access before you begin.`],

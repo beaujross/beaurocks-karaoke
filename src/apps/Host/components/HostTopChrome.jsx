@@ -1,3 +1,4 @@
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 import React from 'react';
 import { CROWD_OBJECTIVE_MODES, getCrowdObjectiveModeFromLightMode } from '../../../lib/crowdObjectiveModes';
 import {
@@ -2169,9 +2170,9 @@ const HostTopChrome = ({
                                     <div className={`${quickMenuCardClass} mt-3`}>
                                         <div className="flex items-center justify-between gap-2">
                                             <div>
-                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-zinc-100">Run Of Show</div>
+                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-zinc-100">{HOST_LIVE_OPS_LANGUAGE.autoAdvance}</div>
                                                 <div className="mt-1 text-[11px] text-zinc-400">
-                                                    Conveyor automation can be paused here without opening the show workspace.
+                                                    Runs the full lineup, including performances and moments.
                                                 </div>
                                             </div>
                                             <button
@@ -2179,7 +2180,7 @@ const HostTopChrome = ({
                                                 onClick={() => onToggleRunOfShowAutomationPause?.(!runOfShowAutomationPaused)}
                                                 className={`${styles.btnStd} ${runOfShowAutomationPaused ? styles.btnSecondary : styles.btnHighlight} px-3 py-1.5 text-[11px]`}
                                             >
-                                                {runOfShowAutomationPaused ? 'Resume Show Auto' : 'Pause Show Auto'}
+                                                {runOfShowAutomationPaused ? HOST_LIVE_OPS_LANGUAGE.resumeAutoAdvance : HOST_LIVE_OPS_LANGUAGE.pauseAutoAdvance}
                                             </button>
                                         </div>
                                     </div>
@@ -2217,7 +2218,7 @@ const HostTopChrome = ({
                         {showQueueQuickMenu && (
                             <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(560px,95vw)] max-h-[74vh] p-3.5`}>
                                 <div className={quickMenuSectionTitleClass}>Queue Management</div>
-                                <div className={quickMenuSectionHintClass}>Live queue rules, guest requests, and ready checks for tonight.</div>
+                                <div className={quickMenuSectionHintClass}>{HOST_LIVE_OPS_LANGUAGE.lineup} rules, guest requests, and ready checks.</div>
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`}>
                                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                         <label className={quickMenuFieldClass}>
@@ -3274,7 +3275,7 @@ const HostTopChrome = ({
                         <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} right-0 w-[min(560px,95vw)] max-h-[78vh] p-3.5`}>
                             <div className={quickMenuSectionTitleClass}>Scenes + Moments</div>
                             <div className={quickMenuSectionHintClass}>
-                                Launch campaign visuals now, line them up next, or drop them into the run of show without leaving the deck.
+                                Launch campaign visuals now, set them Up Next, or add them to {HOST_LIVE_OPS_LANGUAGE.showPlan} without leaving the deck.
                             </div>
                             <div className={`${quickMenuCardClass} mt-2 space-y-2`}>
                                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] uppercase tracking-[0.16em]">

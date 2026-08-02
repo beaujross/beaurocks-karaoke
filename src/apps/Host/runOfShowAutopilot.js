@@ -98,7 +98,7 @@ export const buildRunOfShowBufferPlan = ({
         return {
             title: index > 1 ? `Dead-Air Bridge ${index}` : 'Dead-Air Bridge',
             plannedDurationSec,
-            notes: `Autopilot bridge using known-good browse songs if the planned timeline or live queue needs cover.${songLine}`,
+            notes: `Autopilot bridge using known-good browse songs if the planned lineup needs cover.${songLine}`,
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 headline: 'Dead-Air Bridge',

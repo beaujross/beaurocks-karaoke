@@ -84,7 +84,7 @@ const getRunOfShowCoverageState = ({
             shouldHoldRoom: false,
             blocked: true,
             allowQueueFill: false,
-            detail: 'Run of Show is active, but there is no next planned item ready to take the room.',
+            detail: 'Auto-Advance is on, but there is no next lineup item ready to start.',
             candidateItem: null,
         };
     }

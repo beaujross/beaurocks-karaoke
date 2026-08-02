@@ -1,4 +1,5 @@
 import React from 'react';
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 import {
     getRunOfShowHudActionKey,
     getRunOfShowHudState,
@@ -222,7 +223,7 @@ export default function RunOfShowQueueHud({
     const primaryAction = (() => {
         if (hudActionKey === 'open_show') {
             return {
-                label: 'Planner',
+                label: HOST_LIVE_OPS_LANGUAGE.showPlan,
                 onClick: onOpenShowWorkspace,
                 className: styles?.btnNeutral,
                 disabled: typeof onOpenShowWorkspace !== 'function'
@@ -356,7 +357,7 @@ export default function RunOfShowQueueHud({
                         <span>Plan {formatTotalDuration(actualTotalDurationSec)}</span>
                         <span>{hudItems.length} item{hudItems.length === 1 ? '' : 's'}</span>
                         {issueHorizonCount > 0 ? <span>{issueHorizonCount} issue{issueHorizonCount === 1 ? '' : 's'}</span> : null}
-                        {enabled ? <span>Live queue runs the room</span> : <span>Ready</span>}
+                        {enabled ? <span>{HOST_LIVE_OPS_LANGUAGE.autoAdvance} runs the full lineup</span> : <span>Ready</span>}
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -380,7 +381,7 @@ export default function RunOfShowQueueHud({
                             }}
                             className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
                         >
-                            Planner
+                            {HOST_LIVE_OPS_LANGUAGE.showPlan}
                         </button>
                     ) : null}
                     <button

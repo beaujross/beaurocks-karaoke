@@ -31,7 +31,7 @@ export const ROOM_EVENT_PROFILE_OPTIONS = Object.freeze([
         setupHighlights: Object.freeze([
             'Loads the AAHF logo and streamlined audience theme.',
             'Turns off marquee messages and pop-up trivia.',
-            'Seeds a run of show with full-screen WYR and trivia breaks.'
+            'Seeds a Show Plan with full-screen WYR and trivia breaks.'
         ]),
     }),
 ]);

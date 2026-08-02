@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 import HostCandidatePool from './HostCandidatePool';
 import HostPerformerRing from './HostPerformerRing';
 import HostPlaybackDock from './HostPlaybackDock';
@@ -133,7 +134,7 @@ function FlowRail({
                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-200">Show Beats</div>
                     <div className="flex items-center gap-1.5">
                         <button type="button" onClick={onOpenPlanner} className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-200 transition hover:border-fuchsia-300/30 hover:bg-fuchsia-500/8">
-                            <i className="fa-solid fa-clapperboard mr-1"></i>Planner
+                            <i className="fa-solid fa-clapperboard mr-1"></i>{HOST_LIVE_OPS_LANGUAGE.showPlan}
                         </button>
                         <button type="button" onClick={onOpenSceneLibrary} className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-200 transition hover:border-fuchsia-300/30 hover:bg-fuchsia-500/8">
                             <i className="fa-solid fa-photo-film mr-1"></i>Scenes
@@ -404,7 +405,7 @@ export default function HostStageConsoleExperimental({
         },
         {
             id: 'planner',
-            label: 'Planner',
+            label: HOST_LIVE_OPS_LANGUAGE.showPlan,
             icon: 'fa-clapperboard',
             onClick: openPlannerWorkspace,
         },
@@ -771,7 +772,7 @@ export default function HostStageConsoleExperimental({
                     </div>
                     {supportView === 'collapsed' ? (
                         <div className="px-4 py-2.5 text-[11px] text-zinc-400">
-                            Deeper queue, planner, inbox, and tools stay collapsed until you call for them.
+                            Deeper lineup, {HOST_LIVE_OPS_LANGUAGE.showPlan}, inbox, and tools stay collapsed until you call for them.
                         </div>
                     ) : (
                     <div className={`${workspaceFocusActive ? 'flex min-h-0 flex-1 flex-col p-1.5' : 'min-h-0 overflow-hidden p-2.5'}`}>
@@ -797,7 +798,7 @@ export default function HostStageConsoleExperimental({
                                             Inbox
                                         </button>
                                         <button type="button" onClick={openPlannerWorkspace} className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} px-3 py-2 text-[11px]`}>
-                                            Planner
+                                            {HOST_LIVE_OPS_LANGUAGE.showPlan}
                                         </button>
                                     </div>
                                 </div>

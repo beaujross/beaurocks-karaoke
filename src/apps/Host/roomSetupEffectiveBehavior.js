@@ -271,7 +271,7 @@ const buildDomains = ({ effective, sourceById, provenance, exceptionCount = 0, c
             details: [
                 { label: 'Overrides', value: explicitExceptions > 0 ? `${explicitExceptions} active` : 'None' },
                 { label: 'Event profile', value: eventProfileLabel || 'None' },
-                { label: 'Run of show', value: effective?.runOfShowEnabled ? 'Enabled' : 'Not required' },
+                { label: 'Show Plan', value: effective?.runOfShowEnabled ? 'Enabled' : 'Not required' },
             ],
         },
     };

@@ -1,4 +1,5 @@
 import React from 'react';
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 import HostCandidatePool from './HostCandidatePool';
 import HostPerformerRing from './HostPerformerRing';
 import HostPlaybackDock from './HostPlaybackDock';
@@ -130,7 +131,7 @@ export default function HostRuntimeShellExperimental({
         },
         {
             id: 'planner',
-            label: 'Planner',
+            label: HOST_LIVE_OPS_LANGUAGE.showPlan,
             icon: 'fa-clapperboard',
             onClick: () => onOpenPlanner?.(),
         },
@@ -223,7 +224,7 @@ export default function HostRuntimeShellExperimental({
                                         Add
                                     </button>
                                     <button type="button" onClick={onOpenPlanner} className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} px-3 py-2 text-[11px]`}>
-                                        Planner
+                                        {HOST_LIVE_OPS_LANGUAGE.showPlan}
                                     </button>
                                 </div>
                             </div>

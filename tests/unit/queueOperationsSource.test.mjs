@@ -34,7 +34,7 @@ test('queue list routes selection to a responsive inspector without a duplicate 
   assert.match(queueListPanelSource, /Fill All Suggested/);
   assert.match(queueListPanelSource, /Awaiting Approval/);
   assert.match(queueListPanelSource, /QueueSectionHeader/);
-  assert.match(queueListPanelSource, /Live Queue Order/);
+  assert.match(queueListPanelSource, /HOST_LIVE_OPS_LANGUAGE\.lineup\} Order/);
   assert.match(queueListPanelSource, /getReadyQueuePositionLabel/);
   assert.match(queueListPanelSource, /queuePositionLabel=\{getReadyQueuePositionLabel\(i\)\}/);
   assert.doesNotMatch(queueListPanelSource, /QueueSectionToggle/);

@@ -1,4 +1,5 @@
 import React from 'react';
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 import { deleteDoc, doc, db } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
 import { getQueueEntryPerformanceReadiness } from '../../../lib/playbackSource';
@@ -164,7 +165,7 @@ export const QueueSummaryBar = ({
                 }
                 : runOfShowOpenSlots.length > 0 && readyCount > 0
                     ? {
-                        eyebrow: 'Run of show ready',
+                        eyebrow: 'Show Plan ready',
                         title: `${runOfShowOpenSlots.length} open slot${runOfShowOpenSlots.length === 1 ? '' : 's'} can pull from queue`,
                         detail: runOfShowOpenSlots.length === 1
                             ? 'One tap can drop the next ready song straight into the open performance slot.'
@@ -183,13 +184,13 @@ export const QueueSummaryBar = ({
                             accentClass: 'text-emerald-100'
                         }
                         : {
-                            eyebrow: heldCount > 0 ? 'Singers held' : 'Run of show linked',
+                            eyebrow: heldCount > 0 ? 'Singers held' : 'Show Plan linked',
                             title: heldCount > 0
                                 ? `${heldCount} singer${heldCount === 1 ? '' : 's'} temporarily held`
                                 : `${assignedCount} song${assignedCount === 1 ? '' : 's'} already assigned`,
                             detail: heldCount > 0
                                 ? 'Held singers stay recoverable but will not be picked by Start Next or Auto-DJ.'
-                                : 'These songs are tied to show slots and will move through the run-of-show lane.',
+                                : `These performances are tied to Show Plan slots and will move through ${HOST_LIVE_OPS_LANGUAGE.lineup}.`,
                             toneClass: heldCount > 0 ? 'border-zinc-300/20 bg-zinc-500/10 text-zinc-200' : 'border-violet-300/25 bg-violet-500/10 text-violet-100',
                             accentClass: heldCount > 0 ? 'text-zinc-100' : 'text-violet-100'
                         };
@@ -488,7 +489,7 @@ const QueueListPanel = ({
             ? 'Fair Queue'
             : selfServeFormat === SELF_SERVE_FORMATS.openStage
                 ? 'Open Stage Queue'
-                : 'Live Queue Order';
+                : `${HOST_LIVE_OPS_LANGUAGE.lineup} Order`;
     const readyQueueHeaderDetail = lineupHasCurrentPerformer
         ? 'On Stage is separate. The first row here is Next, followed by Then and the rest of the queue.'
         : 'No one is on stage. The first row is the next performance to start.';
@@ -637,7 +638,7 @@ const QueueListPanel = ({
                         label="Awaiting Approval"
                         count={pending.length}
                         toneClass="text-orange-300"
-                        detail="Approve or review these before they enter the live queue."
+                        detail={`Approve or review these before they enter ${HOST_LIVE_OPS_LANGUAGE.lineup}.`}
                         open={expandedSections.pending}
                         onToggle={() => toggleSection('pending')}
                         featureId="queue-section-pending-toggle"
@@ -687,7 +688,7 @@ const QueueListPanel = ({
                         label="Tied To Show"
                         count={assigned.length}
                         toneClass="text-violet-200"
-                        detail="Linked songs are controlled by run-of-show slots, not the live queue order."
+                        detail={`Linked performances are controlled by Show Plan slots, not the order in ${HOST_LIVE_OPS_LANGUAGE.lineup}.`}
                         open={expandedSections.assigned}
                         onToggle={() => toggleSection('assigned')}
                         featureId="queue-section-assigned-toggle"

@@ -48,7 +48,7 @@ const MODE_PROFILES = Object.freeze({
   },
   [HOST_SETTINGS_MODE_PROFILE_IDS.runOfShowShowcase]: {
     id: "run_of_show_showcase",
-    label: "Run of Show Showcase",
+    label: "Show Plan Showcase",
     requiredSetupQuestions: ["run_of_show_template", "operator_roles", "automation_policy"],
     allowedLiveBundles: ["crowd_mode"],
     hiddenDefaults: ["queue_rotation_shortcuts"],

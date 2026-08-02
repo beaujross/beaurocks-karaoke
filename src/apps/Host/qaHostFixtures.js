@@ -25,12 +25,12 @@ export const QA_HOST_SCENARIOS = Object.freeze([
     {
         id: 'run-of-show-console-generic',
         roomCode: 'DEMOBR',
-        expectedTexts: ['Run Of Show Director', 'Now', 'Next', 'Apply For A Slot']
+        expectedTexts: ['Advanced Show Controls', 'Now', 'Next', 'Apply For A Slot']
     },
     {
         id: 'run-of-show-console',
         roomCode: 'DEMOAAHF',
-        expectedTexts: ['Run Of Show Director', 'Now', 'Next', 'Apply For A Slot']
+        expectedTexts: ['Advanced Show Controls', 'Now', 'Next', 'Apply For A Slot']
     },
     {
         id: 'run-of-show-stage-live',
@@ -60,7 +60,7 @@ export const QA_HOST_SCENARIOS = Object.freeze([
     {
         id: 'queue-overview-density',
         roomCode: 'DEMOAAHF',
-        expectedTexts: ['Live Queue', 'Reorder']
+        expectedTexts: ["Tonight's Lineup", 'Reorder']
     },
     {
         id: 'cohost-helper-catalog',

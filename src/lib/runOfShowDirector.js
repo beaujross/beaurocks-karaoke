@@ -1736,7 +1736,7 @@ export const buildRunOfShowQueueDocId = (roomCode = '', itemId = '') => {
 
 export const getRunOfShowItemLabel = (type = '') => {
     const safeType = cleanText(type).toLowerCase();
-    if (!safeType) return 'Run Of Show';
+    if (!safeType) return 'Show Plan';
     if (safeType === 'winner_declaration') return 'Declare Winner';
     return safeType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 };

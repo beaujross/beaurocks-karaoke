@@ -225,7 +225,7 @@ test('HostQueueTab renders the extracted queue runtime shell with a TV library l
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.doesNotMatch(markup, /data-feature-id="panel-tv-moments"/);
   assert.doesNotMatch(markup, /data-feature-id="panel-tv-moments-toggle"/);
-  assert.match(markup, /Live Queue/);
+  assert.match(markup, /Tonight&#x27;s Lineup/);
 });
 
 test('HostQueueTab still renders the runtime shell when its UI is hidden', async () => {
@@ -267,7 +267,7 @@ test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', a
     },
   });
 
-  assert.match(markup, /Moment Prep|Planned Moments Hopper/);
+  assert.match(markup, /Show Plan|Planned Moments Hopper/);
   assert.match(markup, />3</);
 });
 
@@ -291,13 +291,13 @@ test('HostQueueTab renders one unified desktop content rail with queue add inbox
   });
 
   assert.match(markup, /data-feature-id="queue-surface-tab-add-desktop"/);
-  assert.match(markup, /Performance Prep/);
+  assert.match(markup, /Add Performance/);
   assert.match(markup, /data-feature-id="queue-surface-tab-queue-desktop"/);
-  assert.match(markup, /Live Queue/);
+  assert.match(markup, /Tonight&#x27;s Lineup/);
   assert.match(markup, /data-feature-id="queue-surface-tab-inbox-desktop"/);
   assert.match(markup, />Inbox</);
   assert.match(markup, /data-feature-id="queue-surface-tab-show-desktop"/);
-  assert.match(markup, /Moment Prep/);
+  assert.match(markup, /Show Plan/);
   assert.doesNotMatch(markup, /Moment Plan/);
 });
 
@@ -467,7 +467,7 @@ test('HostQueueTab keeps add-to-queue search controls visible inside the dedicat
   assert.doesNotMatch(markup, /More YouTube|Open YouTube search/);
   assert.match(markup, /Manual/);
   assert.match(markup, /Results/);
-  assert.match(markup, /Add to Queue/);
+  assert.match(markup, /Add to Lineup/);
   assert.doesNotMatch(markup, /Enter a Song Title/);
 });
 
@@ -482,8 +482,8 @@ test('HostQueueTab keeps performance creation append-only even when show slots a
     ],
   });
 
-  assert.match(markup, /Performance Prep/);
-  assert.match(markup, /Add to Queue/);
+  assert.match(markup, /Add Performance/);
+  assert.match(markup, /Add to Lineup/);
   assert.doesNotMatch(markup, /Next: #2 Performance Slot/);
   assert.doesNotMatch(markup, /Later target/);
   assert.doesNotMatch(markup, /Queue Only/);
@@ -554,4 +554,49 @@ test('HostQueueTab keeps the stage rail ahead of the queue workspace in compact 
   assert.notStrictEqual(stageIndex, -1, 'Stage panel should still render in compact layouts');
   assert.notStrictEqual(queueIndex, -1, 'Queue workspace tabs should still render in compact layouts');
   assert.ok(stageIndex < queueIndex, 'Compact layouts should keep the stage rail ahead of the queue workspace');
+});
+
+test('Show Plan keeps Stage visible and exposes the TV handoff plus detailed director', async () => {
+  mockHostQueueTabDependencies();
+  mockDesktopQueueSurfaceTab('show');
+
+  const markup = await renderQueueTabMarkup({
+    autoDj: true,
+    runOfShowEnabled: false,
+    runOfShowDirector: {
+      items: [
+        {
+          id: 'moment-1',
+          type: 'announcement',
+          title: 'Welcome New Guests',
+          status: 'ready',
+          sequence: 1,
+          plannedDurationSec: 30,
+        },
+      ],
+    },
+    runOfShowNextItem: {
+      id: 'moment-1',
+      type: 'announcement',
+      title: 'Welcome New Guests',
+      status: 'ready',
+    },
+    onTriggerRunOfShowItem: noop,
+    runOfShowDirectorPanel: React.createElement(
+      'div',
+      { 'data-testid': 'embedded-run-of-show-director' },
+      'Detailed director controls',
+    ),
+  });
+
+  const stageIndex = markup.indexOf('data-feature-id="panel-now-playing"');
+  const momentPrepIndex = markup.indexOf('data-feature-id="host-moment-prep-workbench"');
+  assert.notStrictEqual(stageIndex, -1, 'Stage should remain rendered beside Show Plan');
+  assert.notStrictEqual(momentPrepIndex, -1, 'Show Plan should render in its own queue workspace section');
+  assert.ok(stageIndex < momentPrepIndex, 'Stage should remain ahead of the contained Show Plan section');
+  assert.match(markup, /data-feature-id="moment-prep-live-handoff"/);
+  assert.match(markup, /Start Next/);
+  assert.match(markup, /Auto DJ runs performances only/);
+  assert.match(markup, /data-feature-id="moment-prep-full-director"/);
+  assert.match(markup, /Detailed director controls/);
 });

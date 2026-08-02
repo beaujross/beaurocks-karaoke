@@ -47,7 +47,7 @@ const openHostTab = async (page, tabKey, timeoutMs) => {
   if (tabKey === "stage" && currentTab === "admin") {
     button = page.getByRole("button", { name: /Open Queue Workspace/i }).first();
   } else if (tabKey === "stage") {
-    button = page.getByRole("button", { name: /Open Live Queue/i }).first();
+    button = page.getByRole("button", { name: /Open Tonight's Lineup/i }).first();
   } else {
     button = page.locator(`[data-host-tab="${tabKey}"]:visible`).first();
   }
@@ -140,7 +140,7 @@ const main = async () => {
       await singerButton.click({ force: true });
       const selectedRow = page.locator('[data-queue-id="queue_1"][data-queue-selected="true"]').first();
       await selectedRow.waitFor({ state: "visible", timeout: timeoutMs });
-      return "Jordan opens in Live Queue as the selected performance";
+      return "Jordan opens in Tonight's Lineup as the selected performance";
     });
 
     await runCheck(checks, "horizon_on_stage_focuses_transport", async () => {

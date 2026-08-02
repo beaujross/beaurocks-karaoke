@@ -1,7 +1,8 @@
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 export const HOST_WORKSPACE_VIEWS = Object.freeze([
     { id: 'ops', label: 'Tonight', icon: 'fa-sliders', defaultSection: 'ops.room_setup' },
     { id: 'queue', label: 'Queue & Performances', icon: 'fa-list-check', defaultSection: 'queue.live_run' },
-    { id: 'show', label: 'Run Of Show', icon: 'fa-clapperboard', defaultSection: 'show.timeline' },
+    { id: 'show', label: HOST_LIVE_OPS_LANGUAGE.showPlan, icon: 'fa-clapperboard', defaultSection: 'show.timeline' },
     { id: 'audience', label: 'People', icon: 'fa-users', defaultSection: 'audience.roster' },
     { id: 'media', label: 'Library', icon: 'fa-folder-music', defaultSection: 'media.playback' },
     { id: 'games', label: 'Games', icon: 'fa-gamepad', defaultSection: 'games.live_controls' },
@@ -16,7 +17,7 @@ export const HOST_WORKSPACE_SECTIONS = Object.freeze([
     { id: 'audience.chat', view: 'audience', label: 'Chat Policy', legacyTab: 'chat' },
     { id: 'queue.live_run', view: 'queue', label: 'Live Run', hostTab: 'stage' },
     { id: 'queue.catalog', view: 'queue', label: 'Catalog', hostTab: 'browse' },
-    { id: 'show.timeline', view: 'show', label: 'Run Of Show', hostTab: 'run_of_show' },
+    { id: 'show.timeline', view: 'show', label: HOST_LIVE_OPS_LANGUAGE.advancedShowControls, hostTab: 'run_of_show' },
     { id: 'audience.roster', view: 'audience', label: 'Roster', hostTab: 'lobby' },
     { id: 'audience.moderation', view: 'audience', label: 'Moderation', legacyTab: 'moderation' },
     { id: 'audience.monetization', view: 'billing', label: 'Tips + Boosts', legacyTab: 'monetization' },

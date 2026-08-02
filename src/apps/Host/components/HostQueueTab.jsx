@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { HOST_LIVE_OPS_LANGUAGE, getHostLineupStateLabel } from '../hostLiveOpsLanguage';
 import AddToQueueFormBody from './AddToQueueFormBody';
 import SoundboardControls from './SoundboardControls';
 import HostInboxPanel from './HostInboxPanel';
@@ -577,7 +578,7 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onFocusRunOfShowItem, onPreviewRunOfShowItem, onAddQuickRunOfShowMoment, onPromotePreparedRunOfShowItems, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onFocusRunOfShowItem, onPreviewRunOfShowItem, onAddQuickRunOfShowMoment, onPromotePreparedRunOfShowItems, runOfShowDirectorPanel = null, onTriggerRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onToggleRunOfShowPause, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -4188,6 +4189,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         ? queueSurface.activeCompactTab === 'show'
         : desktopQueueSurfaceTab === 'show';
     const addToQueueSectionOpen = addToQueueWorkspaceActive || showAddForm;
+    const [momentPrepDirectorOpen, setMomentPrepDirectorOpen] = useState(false);
+    const openDetailedMomentPlanner = () => {
+        setMomentPrepDirectorOpen(true);
+        if (typeof window === 'undefined') return;
+        window.requestAnimationFrame(() => {
+            document.querySelector('[data-feature-id="moment-prep-full-director"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    };
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
@@ -4197,6 +4206,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         };
         const focusInbox = () => {
             focusInboxWorkspace();
+        };
+        const focusMomentPrep = () => {
+            setDesktopQueueSurfaceTab('show');
+            queueSurface.activateCompactTab('show');
         };
         const focusCurrentPerformance = () => {
             setDesktopQueueSurfaceTab('queue');
@@ -4210,10 +4223,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         };
         window.addEventListener('beaurocks:focus-queue-live-controls', focusQueueControls);
         window.addEventListener('beaurocks:focus-host-inbox', focusInbox);
+        window.addEventListener('beaurocks:focus-moment-prep', focusMomentPrep);
         window.addEventListener('beaurocks:focus-current-performance', focusCurrentPerformance);
         return () => {
             window.removeEventListener('beaurocks:focus-queue-live-controls', focusQueueControls);
             window.removeEventListener('beaurocks:focus-host-inbox', focusInbox);
+            window.removeEventListener('beaurocks:focus-moment-prep', focusMomentPrep);
             window.removeEventListener('beaurocks:focus-current-performance', focusCurrentPerformance);
         };
     }, [focusInboxWorkspace, queueSurface]);
@@ -4402,8 +4417,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             {addToQueueWorkspaceActive ? (
                 <div data-feature-id="host-performance-prep-header" className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-2.5">
                     <div className="min-w-0">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200">Performance Prep</div>
-                        <div className="mt-0.5 text-sm text-zinc-300">Choose the singer, song, and backing before it reaches the Live Queue.</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200">{HOST_LIVE_OPS_LANGUAGE.addPerformance}</div>
+                        <div className="mt-0.5 text-sm text-zinc-300">Choose the singer, song, and backing before adding the performance to {HOST_LIVE_OPS_LANGUAGE.lineup}.</div>
                     </div>
                     <div className="flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-[0.14em]">
                         <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-1 text-amber-100">{pending.length + reviewQueueItems.length} need review</span>
@@ -4489,35 +4504,80 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         <div data-feature-id="host-moment-prep-workbench" data-moment-prep-scroll-owner="true" className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3 custom-scrollbar sm:p-4">
             <div data-feature-id="host-moment-prep-header" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300/18 bg-emerald-500/8 px-4 py-3">
                 <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200">Moment Prep</div>
-                    <div className="mt-1 text-base font-black text-white">Build the beats between performances</div>
-                    <div className="mt-1 text-sm text-zinc-300">Prepare, preview, and place room moments without leaving the live workspace.</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-200">{HOST_LIVE_OPS_LANGUAGE.showPlan}</div>
+                    <div className="mt-1 text-base font-black text-white">Build moments and arrange tonight&apos;s lineup</div>
+                    <div className="mt-1 text-sm text-zinc-300">Save drafts, preview moments, and decide exactly when they join the lineup.</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full border border-violet-300/25 bg-violet-500/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-violet-100">
-                        {preparedMomentCount} prepared
+                        {preparedMomentCount} draft{preparedMomentCount === 1 ? '' : 's'}
                     </span>
 
                 </div>
             </div>
 
+            <div data-feature-id="moment-prep-live-handoff" className="mb-3 grid gap-3 rounded-2xl border border-amber-300/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.11),rgba(9,9,11,0.78)_48%,rgba(16,185,129,0.08))] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-4">
+                <div className="flex min-w-0 items-start gap-3">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-amber-300/25 bg-amber-500/10 text-amber-100">
+                        <i className="fa-solid fa-tv"></i>
+                    </div>
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Lineup controls</div>
+                        <div className="mt-1 text-sm font-black text-white">
+                            {runOfShowLiveItem?.title || runOfShowLiveItem?.type
+                                ? `Live now: ${runOfShowLiveItem?.title || getPreparedMomentTypeLabel(runOfShowLiveItem)}`
+                                : runOfShowStagedItem?.title || runOfShowNextItem?.title
+                                    ? `Next: ${runOfShowStagedItem?.title || runOfShowNextItem?.title}`
+                                    : 'Nothing is waiting to go live'}
+                        </div>
+                        <div className="mt-1 max-w-3xl text-xs leading-5 text-zinc-300">
+                            {runOfShowEnabled
+                                ? `${HOST_LIVE_OPS_LANGUAGE.autoAdvance} runs the full lineup and sends each moment's scene or media to Public TV. ${runOfShowDirector?.automationPaused ? HOST_LIVE_OPS_LANGUAGE.autoAdvancePaused + '; use the controls here.' : HOST_LIVE_OPS_LANGUAGE.autoAdvanceOn + '.'}`
+                                : autoDj
+                                    ? `${HOST_LIVE_OPS_LANGUAGE.autoDj} runs performances only. Turn on ${HOST_LIVE_OPS_LANGUAGE.autoAdvance} to include moments, or use ${HOST_LIVE_OPS_LANGUAGE.startNext} manually.`
+                                    : `The lineup is manual. Use ${HOST_LIVE_OPS_LANGUAGE.startNext}, or turn on ${HOST_LIVE_OPS_LANGUAGE.autoAdvance} for the full lineup.`}
+                        </div>
+                    </div>
+                </div>
+                <div className="flex flex-wrap gap-2 sm:max-w-[360px] sm:justify-end">
+                    {runOfShowLiveItem?.id ? (
+                        <button type="button" onClick={onAdvanceRunOfShow} disabled={typeof onAdvanceRunOfShow !== 'function'} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] disabled:opacity-50`}>
+                            {HOST_LIVE_OPS_LANGUAGE.finishAndStartNext}
+                        </button>
+                    ) : (runOfShowStagedItem?.id || runOfShowNextItem?.id) ? (
+                        <button type="button" onClick={() => onTriggerRunOfShowItem?.((runOfShowStagedItem || runOfShowNextItem).id)} disabled={typeof onTriggerRunOfShowItem !== 'function'} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] disabled:opacity-50`}>
+                            <i className="fa-solid fa-tower-broadcast mr-1.5"></i>{HOST_LIVE_OPS_LANGUAGE.startNext}
+                        </button>
+                    ) : momentPrepTimelineItems.length ? (
+                        <button type="button" onClick={onStartRunOfShow} disabled={typeof onStartRunOfShow !== 'function'} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] disabled:opacity-50`}>
+                            {HOST_LIVE_OPS_LANGUAGE.turnOnAutoAdvance}
+                        </button>
+                    ) : null}
+                    {runOfShowEnabled ? (
+                        <button type="button" onClick={() => onToggleRunOfShowPause?.(runOfShowDirector?.automationPaused !== true)} disabled={typeof onToggleRunOfShowPause !== 'function'} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px] disabled:opacity-50`}>
+                            {runOfShowDirector?.automationPaused ? HOST_LIVE_OPS_LANGUAGE.resumeAutoAdvance : HOST_LIVE_OPS_LANGUAGE.pauseAutoAdvance}
+                        </button>
+                    ) : null}
+                </div>
+            </div>
+
             <section
                 data-feature-id="moment-prep-timeline"
-                aria-label="Tonight's timeline"
+                aria-label={HOST_LIVE_OPS_LANGUAGE.lineup}
                 className="mb-3 overflow-hidden rounded-2xl border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.1),transparent_36%),linear-gradient(145deg,rgba(10,20,32,0.94),rgba(18,13,30,0.94))] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.22)] sm:p-4"
             >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Run of experience</div>
-                        <div className="mt-1 text-base font-black text-white">Tonight&apos;s Timeline</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Lineup overview</div>
+                        <div className="mt-1 text-base font-black text-white">{HOST_LIVE_OPS_LANGUAGE.lineup}</div>
                         <div className="mt-1 max-w-2xl text-xs leading-5 text-zinc-400">See the planned arc of the night here, then use the builder below to prepare the next audience beat.</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${runOfShowEnabled ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-400'}`}>
-                            {runOfShowEnabled ? 'Flow active' : 'Draft mode'}
+                            {runOfShowEnabled ? HOST_LIVE_OPS_LANGUAGE.autoAdvanceOn : 'Manual'}
                         </span>
-                        <button type="button" onClick={onOpenRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[10px]`}>
-                            Open Timeline Builder
+                        <button type="button" onClick={openDetailedMomentPlanner} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[10px]`}>
+                            {HOST_LIVE_OPS_LANGUAGE.advancedShowControls}
                         </button>
                     </div>
                 </div>
@@ -4528,7 +4588,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             const live = status === 'live' || item?.id === runOfShowLiveItem?.id;
                             const staged = status === 'staged' || item?.id === runOfShowStagedItem?.id;
                             const prepared = item?.destination === 'planner' || status === 'prepared';
-                            const statusLabel = live ? 'Live now' : staged ? 'On deck' : prepared ? 'Prepared' : status === 'ready' ? 'Ready' : 'Planned';
+                            const statusLabel = getHostLineupStateLabel({ status: live ? 'live' : staged ? 'staged' : status, isDraft: prepared });
                             const statusClass = live
                                 ? 'border-rose-300/35 bg-rose-500/12 text-rose-100'
                                 : staged
@@ -4572,7 +4632,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     <div className="flex flex-wrap items-end justify-between gap-2">
                         <div>
                             <div className="text-sm font-black text-white">Quick Moment Builder</div>
-                            <div className="mt-1 text-xs text-zinc-400">Prepare a draft, or place a ready-made beat directly into Tonight&apos;s Flow.</div>
+                            <div className="mt-1 text-xs text-zinc-400">Save a draft, or add a ready-made moment directly to {HOST_LIVE_OPS_LANGUAGE.lineup}.</div>
                         </div>
                         <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">8 starting points</span>
                     </div>
@@ -4598,7 +4658,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         onClick={() => onAddQuickRunOfShowMoment?.(template.id, { destination: 'planner' })}
                                         className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1.5 text-[10px] disabled:opacity-50`}
                                     >
-                                        Prepare
+                                        {HOST_LIVE_OPS_LANGUAGE.saveDraft}
                                     </button>
                                     <button
                                         type="button"
@@ -4606,7 +4666,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         onClick={() => onAddQuickRunOfShowMoment?.(template.id, { destination: 'queue' })}
                                         className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1.5 text-[10px] disabled:opacity-50`}
                                     >
-                                        Add to Flow
+                                        {HOST_LIVE_OPS_LANGUAGE.addToLineup}
                                     </button>
                                 </div>
                             </div>
@@ -4617,7 +4677,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 <section data-feature-id="moment-prep-prepared-hopper" className="rounded-2xl border border-violet-300/16 bg-violet-500/[0.05] p-3 sm:p-4">
                     <div className="flex items-center justify-between gap-2">
                         <div>
-                            <div className="text-sm font-black text-white">Prepared Moments</div>
+                            <div className="text-sm font-black text-white">{HOST_LIVE_OPS_LANGUAGE.momentDrafts}</div>
                             <div className="mt-1 text-xs text-zinc-400">Drafts stay off the live screen until you place them.</div>
                         </div>
                         <span className="rounded-full border border-violet-300/20 bg-violet-500/10 px-2 py-1 text-[10px] font-black text-violet-100">{preparedMomentCount}</span>
@@ -4633,7 +4693,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                 {getPreparedMomentTypeLabel(item)} · {Math.max(0, Math.round(Number(item?.plannedDurationSec || 0) || 0)) || 'TBD'}{Number(item?.plannedDurationSec || 0) ? ' sec' : ''}
                                             </div>
                                         </div>
-                                        <span className="rounded-full border border-white/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-400">Prepared</span>
+                                        <span className="rounded-full border border-white/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-400">Draft</span>
                                     </div>
                                     <div className="mt-3 flex flex-wrap gap-2">
                                         <button
@@ -4642,7 +4702,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                             onClick={() => onPromotePreparedRunOfShowItems?.([item.id])}
                                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2.5 py-1.5 text-[10px] disabled:opacity-50`}
                                         >
-                                            Add to Flow
+                                            {HOST_LIVE_OPS_LANGUAGE.addToLineup}
                                         </button>
                                         {typeof onPreviewRunOfShowItem === 'function' ? (
                                             <button type="button" onClick={() => onPreviewRunOfShowItem(item.id)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2.5 py-1.5 text-[10px]`}>
@@ -4659,19 +4719,43 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             ))}
                             {preparedMoments.length > 8 ? (
                                 <button type="button" onClick={onOpenRunOfShow} className="w-full py-2 text-[10px] font-black uppercase tracking-[0.14em] text-violet-200 hover:text-white">
-                                    View all {preparedMoments.length} in Planner
+                                    View all {preparedMoments.length} in {HOST_LIVE_OPS_LANGUAGE.showPlan}
                                 </button>
                             ) : null}
                         </div>
                     ) : (
                         <div className="mt-3 rounded-xl border border-dashed border-violet-300/18 bg-black/20 px-4 py-5 text-center">
                             <i className="fa-solid fa-layer-group text-violet-200"></i>
-                            <div className="mt-2 text-sm font-black text-white">Your moment shelf is empty</div>
-                            <div className="mt-1 text-xs leading-5 text-zinc-400">Use Prepare on any builder card. Nothing goes live until you choose Add to Flow.</div>
+                            <div className="mt-2 text-sm font-black text-white">No moment drafts yet</div>
+                            <div className="mt-1 text-xs leading-5 text-zinc-400">Choose {HOST_LIVE_OPS_LANGUAGE.saveDraft} on a builder card. Drafts stay private until you choose {HOST_LIVE_OPS_LANGUAGE.addToLineup}.</div>
                         </div>
                     )}
                 </section>
             </div>
+            <details
+                data-feature-id="moment-prep-full-director"
+                open={momentPrepDirectorOpen}
+                onToggle={(event) => setMomentPrepDirectorOpen(event.currentTarget.open)}
+                className="mt-3 overflow-hidden rounded-2xl border border-cyan-300/18 bg-black/20"
+            >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 transition hover:bg-white/[0.04]">
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">Detailed planning</div>
+                        <div className="mt-1 text-sm font-black text-white">{HOST_LIVE_OPS_LANGUAGE.advancedShowControls}</div>
+                        <div className="mt-1 text-xs text-zinc-400">Edit timing, approvals, media, co-host roles, policies, and lineup progression without leaving {HOST_LIVE_OPS_LANGUAGE.showPlan}.</div>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
+                        {momentPrepDirectorOpen ? 'Collapse' : 'Open builder'}
+                    </span>
+                </summary>
+                <div className="border-t border-white/10 p-2 sm:p-3">
+                    {runOfShowDirectorPanel || (
+                        <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-zinc-400">
+                            Create or reopen a room to use the full timeline builder.
+                        </div>
+                    )}
+                </div>
+            </details>
         </div>
     );    const activeMediaScene = room?.announcement?.active && String(room?.announcement?.type || '').trim().toLowerCase() === 'media_scene'
         ? room.announcement
@@ -4954,10 +5038,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         scenes: {
             label: 'Scenes',
             icon: 'fa-images',
-            detail: 'Visual moments for Public TV and the Run Of Show.',
+            detail: `Visual moments for Public TV and ${HOST_LIVE_OPS_LANGUAGE.showPlan}.`,
             accepts: 'Images + video',
             route: `Scene library - ${mediaLibraryUploadDestinationLabel}`,
-            playback: 'Public TV + Run Of Show',
+            playback: `Public TV + ${HOST_LIVE_OPS_LANGUAGE.showPlan}`,
             status: `${visibleScenePresets.length} visible`,
         },
         sfx: {
@@ -5759,7 +5843,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const queueListSection = (
         <div className={`flex-1 min-h-0 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
             <SectionHeader
-                label="Live Queue"
+                label={HOST_LIVE_OPS_LANGUAGE.lineup}
                 open={showQueueList}
                 onToggle={() => setShowQueueList(v => !v)}
                 toneClass={`text-base font-black ${activeQueueWorkspaceToneKey === 'queue' ? activeQueueWorkspaceTone.sectionToneClass : 'text-[#00C4D9]'} px-1 sticky top-0 z-20 ${activeQueueWorkspaceToneKey === 'queue' ? 'bg-cyan-950/80' : 'bg-zinc-950/95'} backdrop-blur ${compactViewport ? 'py-2 rounded-lg border border-white/10' : ''}`}
@@ -6019,7 +6103,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     onClick={onOpenRunOfShow}
                                     className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[11px]`}
                                 >
-                                    Open Run Of Show
+                                    Open {HOST_LIVE_OPS_LANGUAGE.showPlan}
                                 </button>
                             </div>
                         ) : null}
@@ -6450,7 +6534,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             <div className={queueWorkspaceTabListClass}>
                 {renderQueueWorkspaceTabButton({
                     id: 'queue',
-                    label: 'Live Queue',
+                    label: HOST_LIVE_OPS_LANGUAGE.lineup,
                     icon: 'fa-list-ol',
                     active: desktopQueueSurfaceTab === 'queue',
                     onClick: () => setDesktopQueueSurfaceTab('queue'),
@@ -6460,7 +6544,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 })}
                 {renderQueueWorkspaceTabButton({
                     id: 'add',
-                    label: 'Performance Prep',
+                    label: HOST_LIVE_OPS_LANGUAGE.addPerformance,
                     icon: 'fa-plus',
                     active: desktopQueueSurfaceTab === 'add',
                     onClick: () => setDesktopQueueSurfaceTab('add'),
@@ -6489,7 +6573,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 })}
                 {renderQueueWorkspaceTabButton({
                     id: 'show',
-                    label: 'Moment Prep',
+                    label: HOST_LIVE_OPS_LANGUAGE.showPlan,
                     icon: 'fa-clapperboard',
                     active: desktopQueueSurfaceTab === 'show',
                     onClick: () => setDesktopQueueSurfaceTab('show'),
@@ -6543,7 +6627,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     })}
                     {renderQueueWorkspaceTabButton({
                         id: 'add-mobile',
-                        label: 'Performances',
+                        label: HOST_LIVE_OPS_LANGUAGE.addPerformance,
                         icon: 'fa-plus',
                         active: queueSurface.activeCompactTab === 'add',
                         onClick: () => queueSurface.activateCompactTab('add'),
@@ -6572,7 +6656,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     })}
                     {renderQueueWorkspaceTabButton({
                         id: 'show-mobile',
-                        label: 'Moments',
+                        label: HOST_LIVE_OPS_LANGUAGE.showPlan,
                         icon: 'fa-clapperboard',
                         active: queueSurface.activeCompactTab === 'show',
                         onClick: () => queueSurface.activateCompactTab('show'),
@@ -6889,16 +6973,15 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     utilityPanel={legacySoundboardSection}
                 />
             ) : (
-                <div className={`flex-1 ${momentPrepWorkspaceActive ? 'flex min-h-0 flex-col overflow-hidden' : `${allowHostPanelPageScroll ? 'min-h-full' : 'min-h-0'} ${
+                <div className={`flex-1 ${allowHostPanelPageScroll ? 'min-h-full' : 'min-h-0'} ${
                     isMobileLayout
                         ? 'flex flex-col gap-3'
                         : isTightLayout
                             ? 'grid grid-cols-[minmax(280px,0.72fr)_minmax(0,1.42fr)] gap-4'
                             : 'grid grid-cols-[minmax(260px,0.82fr)_minmax(780px,1.9fr)] gap-5'
-                } ${allowHostPanelPageScroll ? 'overflow-visible' : 'overflow-hidden'}`}`}>
+                } ${allowHostPanelPageScroll ? 'overflow-visible' : 'overflow-hidden'}`}>
                 {/* LEFT CONTROLS */}
-                <div className={`w-full flex flex-col ${momentPrepWorkspaceActive ? 'hidden' :
-                    isMobileLayout
+                <div className={`w-full flex flex-col ${isMobileLayout
                         ? (allowHostPanelPageScroll ? 'min-h-0' : 'min-h-0 max-h-[38vh] pr-1.5')
                         : isTightLayout
                             ? 'min-h-0 pr-1'
