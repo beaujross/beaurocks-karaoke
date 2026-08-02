@@ -6470,6 +6470,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [programMode, setProgramMode] = useState(RUN_OF_SHOW_PROGRAM_MODES.standard);
     const [runOfShowEnabled, setRunOfShowEnabled] = useState(false);
     const [runOfShowDirectorState, setRunOfShowDirectorState] = useState(() => createDefaultRunOfShowDirector());
+    const runOfShowDirectorStateRef = useRef(runOfShowDirectorState);
     const [runOfShowFocusRequest, setRunOfShowFocusRequest] = useState(null);
     const [runOfShowSelectedItemId, setRunOfShowSelectedItemId] = useState('');
     const [runOfShowPolicy, setRunOfShowPolicy] = useState(() => normalizeRunOfShowPolicy({}));
@@ -7864,9 +7865,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [activeMomentFeedback, setActiveMomentFeedback] = useState(null);
     const moderationNudgeAtRef = useRef(0);
     const coHostSignalToastStateRef = useRef({ hydrated: false, latestById: {} });
+    useEffect(() => {
+        runOfShowDirectorStateRef.current = runOfShowDirectorState;
+    }, [runOfShowDirectorState]);
     const getCurrentRunOfShowDirector = useCallback(
-        () => normalizeRunOfShowDirector(runOfShowDirectorState || roomRef.current?.runOfShowDirector || {}),
-        [runOfShowDirectorState]
+        () => normalizeRunOfShowDirector(runOfShowDirectorStateRef.current || roomRef.current?.runOfShowDirector || {}),
+        []
     );
     const requestRunOfShowAutomationRecheck = useCallback(() => {
         setRunOfShowAutomationRetryTick((tick) => tick + 1);
@@ -7876,6 +7880,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (result?.runOfShowDirector) {
             const nextDirectorKey = JSON.stringify(nextDirector);
             runOfShowRemoteSyncRef.current.director = nextDirectorKey;
+            runOfShowDirectorStateRef.current = nextDirector;
             setRunOfShowDirectorState(nextDirector);
         }
         if (result?.runOfShowPolicy) {
@@ -7913,6 +7918,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setProgramMode(normalizedMode);
         setRunOfShowEnabled(nextEnabled);
         runOfShowLocalEditAtRef.current = Date.now();
+        runOfShowDirectorStateRef.current = normalizedDirector;
         setRunOfShowDirectorState(normalizedDirector);
         runOfShowRemoteSyncRef.current.director = JSON.stringify(normalizedDirector);
         runOfShowRemoteSyncRef.current.programMode = normalizedMode;
@@ -8573,6 +8579,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!isMarketingDemoFixture) {
             let result;
             let preparedDirector = currentDirector;
+            let preparedItem = requestedItem;
+            if (String(preparedItem?.status || '').trim().toLowerCase() !== 'staged') {
+                preparedDirector = await prepareRunOfShowItem(itemId, { ...options, silent: true });
+                preparedItem = preparedDirector.items.find((item) => item.id === itemId) || null;
+                if (!preparedItem || String(preparedItem.status || '').trim().toLowerCase() !== 'staged') {
+                    toast(`"${preparedItem?.title || getRunOfShowItemLabel(preparedItem?.type || '') || 'Next block'}" is not ready to go live yet.`);
+                    return preparedDirector;
+                }
+            }
             try {
                 result = await executeRunOfShowAction({ roomCode, action: 'start', itemId });
             } catch (error) {
