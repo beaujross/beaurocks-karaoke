@@ -1234,12 +1234,42 @@ const run = async () => {
       const finish = handoff.getByRole("button", { name: /Finish & Start Next/i }).first();
       await finish.waitFor({ state: "visible", timeout: timeoutMs });
       await finish.click({ force: true });
-      await tvPage.locator('[data-prompt-vote-tv-view="wyr"]').first().waitFor({
-        state: "hidden",
-        timeout: timeoutMs,
-      });
+
+      const liveLabel = handoff.getByText(`Live now: ${waveZeroMomentTitle}`, { exact: true });
+      const completionStartedAt = Date.now();
+      while (Date.now() - completionStartedAt < timeoutMs) {
+        const stillLive = await liveLabel.isVisible().catch(() => false);
+        const finishStillVisible = await finish.isVisible().catch(() => false);
+        if (!stillLive && !finishStillVisible) break;
+        await delay(250);
+      }
+      if (await liveLabel.isVisible().catch(() => false)) {
+        const handoffText = String(await handoff.innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 700);
+        const runtimeDetail = hostRuntimeErrors.slice(-8).join(" | ").slice(0, 2400);
+        throw new Error(
+          `Host did not confirm Moment completion before navigation. Handoff="${handoffText}" Runtime="${runtimeDetail || "none"}"`,
+        );
+      }
+
+      const tvWyr = tvPage.locator('[data-prompt-vote-tv-view="wyr"]').first();
+      const stableClearWindowMs = 2000;
+      let clearSince = 0;
+      while (Date.now() - completionStartedAt < timeoutMs) {
+        const visible = await tvWyr.isVisible().catch(() => false);
+        if (!visible) {
+          if (!clearSince) clearSince = Date.now();
+          if (Date.now() - clearSince >= stableClearWindowMs) break;
+        } else {
+          clearSince = 0;
+        }
+        await delay(200);
+      }
+      if (!clearSince || Date.now() - clearSince < stableClearWindowMs) {
+        const tvBodyText = String(await tvPage.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 900);
+        throw new Error(`Public TV did not remain clear of the finished WYR Moment. TV="${tvBodyText}"`);
+      }
       await startUnexpectedWyrFlashMonitor(tvPage);
-      return "Moment finished and the WYR scene cleared before the next performance.";
+      return "Host confirmed completion and Public TV kept the finished WYR scene clear before navigation.";
     });
 
     await runCheck(checks, "host_adds_song_request", async () => {
