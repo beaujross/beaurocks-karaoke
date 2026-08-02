@@ -1038,6 +1038,14 @@ const run = async () => {
   const hostContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   await applyQaAppCheckDebugInitScript(hostContext);
   const hostPage = await hostContext.newPage();
+  const hostRuntimeErrors = [];
+  hostPage.on("pageerror", (error) => {
+    hostRuntimeErrors.push(`pageerror: ${String(error?.message || error).replace(/\s+/g, " ").slice(0, 600)}`);
+  });
+  hostPage.on("console", (message) => {
+    if (message.type() !== "error") return;
+    hostRuntimeErrors.push(`console: ${String(message.text() || "").replace(/\s+/g, " ").slice(0, 600)}`);
+  });
   const tvContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   await applyQaAppCheckDebugInitScript(tvContext);
   const tvPage = await tvContext.newPage();
@@ -1190,10 +1198,19 @@ const run = async () => {
       await startNext.waitFor({ state: "visible", timeout: timeoutMs });
       await startNext.click({ force: true });
 
-      await handoff.getByText(`Live now: ${waveZeroMomentTitle}`, { exact: true }).waitFor({
-        state: "visible",
-        timeout: timeoutMs,
-      });
+      try {
+        await handoff.getByText(`Live now: ${waveZeroMomentTitle}`, { exact: true }).waitFor({
+          state: "visible",
+          timeout: Math.min(timeoutMs, 30000),
+        });
+      } catch (error) {
+        const handoffText = String(await handoff.innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 500);
+        const hostBodyText = String(await hostPage.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 900);
+        const runtimeDetail = hostRuntimeErrors.slice(-8).join(" | ").slice(0, 2400);
+        throw new Error(
+          `${String(error?.message || error)} Handoff="${handoffText}" Host="${hostBodyText}" Runtime="${runtimeDetail || "none"}"`,
+        );
+      }
       const audienceWyr = audiencePage.locator('[data-prompt-vote-player-view="wyr"]').first();
       await audienceWyr.waitFor({ state: "visible", timeout: timeoutMs });
       await audienceWyr.getByText(waveZeroMomentQuestion, { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });

@@ -22981,7 +22981,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     runOfShowPreflightReport={runOfShowPreflightReport}
                     onOpenShowWorkspace={() => openMomentPrepWorkspace()}
                     onOpenRunOfShowIssue={openRunOfShowIssueFromChrome}
-                    onTriggerRunOfShowItem={triggerRunOfShowTimelineItem}
                     onFocusRunOfShowItem={(itemId) => {
                         openMomentPrepWorkspace();
                         setRunOfShowFocusRequest({
