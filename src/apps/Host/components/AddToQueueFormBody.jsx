@@ -1,4 +1,5 @@
 import React from 'react';
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 import { GAMES_META } from '../../../lib/gameRegistry';
 import { getGameLifecycleLabel } from '../../../lib/gameLaunchCompatibility';
 import {
@@ -116,7 +117,7 @@ const ResultList = ({
                         data-feature-id="performance-result-row"
                         role="button"
                         tabIndex={0}
-                        aria-label={`${isAdding ? 'Adding' : performanceActionsEnabled ? 'Add to queue' : 'Select'} ${r.catalogDisplayTitle || r.trackName || 'result'}`}
+                        aria-label={`${isAdding ? 'Adding' : performanceActionsEnabled ? HOST_LIVE_OPS_LANGUAGE.addToLineup : 'Select'} ${r.catalogDisplayTitle || r.trackName || 'result'}`}
                         onClick={activateResult}
                         onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
@@ -149,7 +150,7 @@ const ResultList = ({
                                         <div className="mt-0.5 truncate text-xs text-zinc-300">{r.catalogDisplayArtist || r.artistName}</div>
                                     </div>
                                     <div className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full border border-cyan-300/35 bg-cyan-500/15 px-2.5 text-[9px] font-black uppercase tracking-[0.13em] text-cyan-50">
-                                        {isAdding ? 'Adding...' : performanceActionsEnabled ? 'Add to Queue' : 'Select'}
+                                        {isAdding ? 'Adding...' : performanceActionsEnabled ? HOST_LIVE_OPS_LANGUAGE.addToLineup : 'Select'}
                                     </div>
                                 </div>
                                 <div className={`${compactRows ? 'mt-1 flex max-h-[18px] flex-nowrap gap-1 overflow-hidden' : 'mt-1.5 flex flex-wrap gap-1.5'}`}>
@@ -218,7 +219,7 @@ const ResultList = ({
                 );
             }) : (
                 <div className={`host-search-helper py-3 text-center text-xs uppercase tracking-widest text-zinc-500 ${compactRows ? 'col-span-full' : ''}`}>
-                    {searchQ.length >= 3 ? (queueSearchNoResultHint || 'No results yet') : 'Type at least 3 characters. Each result has Add to Queue.'}
+                    {searchQ.length >= 3 ? (queueSearchNoResultHint || 'No results yet') : `Type at least 3 characters. Each result has ${HOST_LIVE_OPS_LANGUAGE.addToLineup}.`}
                 </div>
             )}
         </div>
@@ -242,21 +243,21 @@ export const HOST_MOMENT_DESTINATIONS = Object.freeze({
 const momentDestinationOptions = [
     {
         id: HOST_MOMENT_DESTINATIONS.queue,
-        label: 'Live Queue',
-        actionLabel: 'Add to Queue',
-        detail: 'Adds to the end. Reorder it from Live Queue.',
+        label: HOST_LIVE_OPS_LANGUAGE.lineup,
+        actionLabel: HOST_LIVE_OPS_LANGUAGE.addToLineup,
+        detail: `Adds it to the end of ${HOST_LIVE_OPS_LANGUAGE.lineup}.`,
     },
     {
         id: HOST_MOMENT_DESTINATIONS.planner,
-        label: 'Prepared',
-        actionLabel: 'Save for Later',
-        detail: 'Keeps it ready for tonight without putting it in the Live Queue.',
+        label: HOST_LIVE_OPS_LANGUAGE.momentDrafts,
+        actionLabel: HOST_LIVE_OPS_LANGUAGE.saveDraft,
+        detail: `Keeps it private until you add it to ${HOST_LIVE_OPS_LANGUAGE.lineup}.`,
     },
     {
         id: HOST_MOMENT_DESTINATIONS.runOfShow,
-        label: "Tonight's Flow",
-        actionLabel: "Add to Tonight's Flow",
-        detail: 'Commits it to the structured order for tonight.',
+        label: HOST_LIVE_OPS_LANGUAGE.lineup,
+        actionLabel: HOST_LIVE_OPS_LANGUAGE.addToLineup,
+        detail: `Adds it to the structured order in ${HOST_LIVE_OPS_LANGUAGE.lineup}.`,
     },
 ];
 
@@ -732,7 +733,7 @@ const AddToQueueFormBody = ({
                     <div className="mt-1 text-sm text-zinc-400">
                         {activeMomentType === 'tv'
                             ? 'Choose a saved scene or open the media library.'
-                            : 'Choose where this moment belongs. Queue always adds it at the end.'}
+                            : `Choose where this moment belongs. ${HOST_LIVE_OPS_LANGUAGE.lineup} always adds it at the end.`}
                     </div>
                     <div className="mt-3 grid gap-2 rounded-xl border border-cyan-300/16 bg-cyan-500/[0.06] p-3 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] sm:items-end" data-feature-id="moment-destination-control">
                         <label className="block min-w-0">

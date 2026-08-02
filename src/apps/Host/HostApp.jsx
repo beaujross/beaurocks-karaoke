@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { HOST_LIVE_OPS_LANGUAGE } from './hostLiveOpsLanguage';
 import './hostBrandTabs.css';
 import { GAMES_META } from '../../lib/gameRegistry';
 import { getRoomGameLaunchPreflight, getRunOfShowGameMode } from '../../lib/gameLaunchCompatibility';
@@ -514,7 +515,7 @@ const lazyHostSurface = (loader, label = 'Host tools updated') => React.lazy(() 
     })
 ));
 
-const HostQueueTab = lazyHostSurface(() => import('./components/HostQueueTab'), 'Live queue updated');
+const HostQueueTab = lazyHostSurface(() => import('./components/HostQueueTab'), `${HOST_LIVE_OPS_LANGUAGE.lineup} updated`);
 const HostLogoManager = lazyHostSurface(() => import('./components/HostLogoManager'), 'Branding tools updated');
 const HostOrbSkinManager = lazyHostSurface(() => import('./components/HostOrbSkinManager'), 'Orb tools updated');
 const ChatSettingsPanel = lazyHostSurface(() => import('./components/ChatSettingsPanel'), 'Chat settings updated');
@@ -6475,6 +6476,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [runOfShowRoles, setRunOfShowRoles] = useState(() => normalizeRunOfShowRoles({}));
     const [runOfShowTemplateMeta, setRunOfShowTemplateMeta] = useState(() => normalizeRunOfShowTemplateMeta({}));
     const [runOfShowTemplates, setRunOfShowTemplates] = useState([]);
+    const openMomentPrepWorkspace = useCallback((options = {}) => {
+        const itemId = String(options?.itemId || '').trim();
+        setTab('stage');
+        if (itemId) {
+            setRunOfShowFocusRequest({
+                itemId,
+                action: String(options?.action || '').trim(),
+                token: Date.now(),
+            });
+        }
+        if (typeof window === 'undefined') return;
+        window.requestAnimationFrame(() => {
+            window.dispatchEvent(new CustomEvent('beaurocks:focus-moment-prep', {
+                detail: { itemId },
+            }));
+        });
+    }, []);
+    useEffect(() => {
+        if (tab !== 'run_of_show') return;
+        openMomentPrepWorkspace();
+    }, [openMomentPrepWorkspace, tab]);
     const [hostNightPreset, setHostNightPreset] = useState('custom');
     const [customHostPresetState, setCustomHostPresetState] = useState(() => loadHostNightRecipeSyncState());
     const customHostPresets = customHostPresetState.presets;
@@ -8460,7 +8482,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const targetItem = director.items.find((item) => item.id === itemId);
         if (!targetItem) return director;
         if (targetItem?.destination === 'planner') {
-            toast('Add this prepared moment to the Live Queue before making it next.');
+            toast(`Add this draft to ${HOST_LIVE_OPS_LANGUAGE.lineup} before making it next.`);
             return director;
         }
         const ready = isRunOfShowItemReady(targetItem);
@@ -8533,7 +8555,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const requestedItem = currentDirector.items.find((item) => item.id === itemId) || null;
         if (requestedItem?.destination === 'planner') {
-            toast('Add this prepared moment to the Live Queue before starting it.');
+            toast(`Add this draft to ${HOST_LIVE_OPS_LANGUAGE.lineup} before starting it.`);
             return currentDirector;
         }
         const requestedGameMode = getRunOfShowGameMode(requestedItem);
@@ -8657,7 +8679,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
         if (targetItem?.destination === 'planner') {
-            toast('Prepared moments are not live yet. Add this one to the Live Queue first.');
+            toast(`Moment drafts stay private. Add this one to ${HOST_LIVE_OPS_LANGUAGE.lineup} first.`);
             return currentDirector;
         }
         const completionDecision = getRunOfShowProgressionDecision({
@@ -9179,10 +9201,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             placement: 'append',
         });
         toast(destination === 'planner'
-            ? `${pack.label} saved to Planner.`
-            : destination === 'run_of_show'
-                ? `${pack.label} added to the end of Run of Show.`
-                : `${pack.label} added to the end of Live Queue.`);
+            ? `${pack.label} saved to ${HOST_LIVE_OPS_LANGUAGE.momentDrafts}.`
+            : `${pack.label} added to the end of ${HOST_LIVE_OPS_LANGUAGE.lineup}.`);
         return persistedDirector;
     }, [addRunOfShowItem, toast]);
     const importRunOfShowCsv = useCallback(async (csvText = '', options = {}) => {
@@ -9308,7 +9328,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const queueScenePresetAsMoment = useCallback(async (preset = {}, options = {}) => {
         const mediaUrl = getRoomMediaUrl(preset);
         if (!mediaUrl || mediaUrl.startsWith('blob:')) {
-            toast('Scene media needs an uploaded cloud URL before it can join Run Of Show.');
+            toast(`Scene media needs an uploaded cloud URL before it can join ${HOST_LIVE_OPS_LANGUAGE.lineup}.`);
             return null;
         }
         const director = getCurrentRunOfShowDirector();
@@ -9327,10 +9347,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         const persistedDirector = await persistRunOfShowDirector(nextDirector);
         toast(destination === 'planner'
-            ? 'Scene saved to Planner.'
-            : destination === 'run_of_show'
-                ? 'Scene added to the end of Run of Show.'
-                : 'Scene added to the end of Live Queue.');
+            ? `Scene saved to ${HOST_LIVE_OPS_LANGUAGE.momentDrafts}.`
+            : `Scene added to the end of ${HOST_LIVE_OPS_LANGUAGE.lineup}.`);
         return persistedDirector;
     }, [buildScenePresetRunOfShowOverrides, getCurrentRunOfShowDirector, persistRunOfShowDirector, toast]);
     const duplicateRunOfShowItem = useCallback(async (itemId) => {
@@ -9378,14 +9396,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             itemIds
         );
         if (!result.promotedCount) {
-            toast('Those items are already in the Live Queue.');
+            toast(`Those items are already in ${HOST_LIVE_OPS_LANGUAGE.lineup}.`);
             return result.director;
         }
         const persistedDirector = await persistRunOfShowDirector(result.director);
         toast(
             result.promotedCount === 1
-                ? 'Added to Live Queue.'
-                : `Added ${result.promotedCount} prepared items to Live Queue.`
+                ? `Added to ${HOST_LIVE_OPS_LANGUAGE.lineup}.`
+                : `Added ${result.promotedCount} drafts to ${HOST_LIVE_OPS_LANGUAGE.lineup}.`
         );
         return persistedDirector;
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, toast]);
@@ -9396,7 +9414,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             everyPerformances
         );
         if (!result.promotedCount) {
-            toast('Choose at least one prepared moment to space through the Live Queue.');
+            toast(`Choose at least one moment draft to space through ${HOST_LIVE_OPS_LANGUAGE.lineup}.`);
             return result.director;
         }
         const persistedDirector = await persistRunOfShowDirector(result.director);
@@ -9763,7 +9781,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode) return getCurrentRunOfShowDirector();
         const allowUnsafe = options?.allowUnsafe === true;
         if (!allowUnsafe && runOfShowPreflightReport.criticalCount > 0) {
-            toast(runOfShowPreflightReport.summary || 'Run of show still has critical blockers.');
+            toast(runOfShowPreflightReport.summary || 'Show Plan still has critical blockers.');
             return getCurrentRunOfShowDirector();
         }
         const activeMode = normalizeRunOfShowProgramMode(programMode);
@@ -9808,7 +9826,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const clearRunOfShowNow = useCallback(async () => {
         const shouldClear = typeof window === 'undefined'
             ? true
-            : window.confirm('Clear this run of show and return the room to the straight queue? This removes the loaded show outline from the room.');
+            : window.confirm(`Clear ${HOST_LIVE_OPS_LANGUAGE.showPlan} and return to manual lineup control? This removes the loaded plan from the room.`);
         if (!shouldClear) return null;
 
         const nextDirector = createDefaultRunOfShowDirector();
@@ -9871,7 +9889,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             appleMusicPlayback: null
         });
         await stopAppleMusic?.();
-        toast('Run of show cleared. Room is back on the straight queue.');
+        toast(`${HOST_LIVE_OPS_LANGUAGE.showPlan} cleared. ${HOST_LIVE_OPS_LANGUAGE.lineup} is back to manual control.`);
         return nextDirector;
     }, [clearRunOfShowPerformanceIntroTimer, songs, stopAppleMusic, toast, updateRoom]);
     const advanceRunOfShowNext = useCallback(async () => {
@@ -9899,7 +9917,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return startRunOfShowItem(preparedItem.id, { manualAdvance: true });
     }, [completeRunOfShowItem, getCurrentRunOfShowDirector, prepareRunOfShowItem, startRunOfShowItem, toast]);
     const openRunOfShowIssueFromChrome = useCallback((options = {}) => {
-        setTab('run_of_show');
+        openMomentPrepWorkspace();
         const requestedItemId = String(options?.itemId || '').trim();
         const preferredCriticalItem = requestedItemId
             ? (runOfShowPreflightReport?.criticalItems || []).find((entry) => String(entry?.itemId || '').trim() === requestedItemId) || null
@@ -9945,7 +9963,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowPendingCountsById,
         runOfShowPreflightReport?.criticalItems,
         runOfShowPreflightReport?.riskyItems,
-        runOfShowStagedItem?.id
+        runOfShowStagedItem?.id,
+        openMomentPrepWorkspace
     ]);
     const triggerRunOfShowTimelineItem = useCallback(async (itemId) => {
         const safeItemId = String(itemId || '').trim();
@@ -9957,7 +9976,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const targetIsStaged = safeItemId === runOfShowStagedItem?.id;
         const targetIsNext = safeItemId === runOfShowNextItem?.id;
         if (!isRunOfShowRoom || targetIsLive || ['complete', 'skipped'].includes(targetStatus) || (!targetIsStaged && !targetIsNext)) {
-            setTab('run_of_show');
+            openMomentPrepWorkspace();
             setRunOfShowFocusRequest({ itemId: safeItemId, token: Date.now() });
             return currentDirector;
         }
@@ -9973,12 +9992,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             || targetItem;
         if (String(preparedItem?.status || '').trim().toLowerCase() !== 'staged') {
             toast(`"${preparedItem?.title || getRunOfShowItemLabel(preparedItem?.type || '') || 'Next block'}" is not ready to go live yet.`);
-            setTab('run_of_show');
+            openMomentPrepWorkspace();
             setRunOfShowFocusRequest({ itemId: safeItemId, token: Date.now() });
             return preparedDirector;
         }
         return startRunOfShowItem(safeItemId, { manualAdvance: true });
-    }, [advanceRunOfShowNext, getCurrentRunOfShowDirector, isRunOfShowRoom, prepareRunOfShowItem, runOfShowLiveItem?.id, runOfShowNextItem?.id, runOfShowStagedItem?.id, setTab, startRunOfShowItem, toast]);
+    }, [advanceRunOfShowNext, getCurrentRunOfShowDirector, isRunOfShowRoom, openMomentPrepWorkspace, prepareRunOfShowItem, runOfShowLiveItem?.id, runOfShowNextItem?.id, runOfShowStagedItem?.id, startRunOfShowItem, toast]);
     const rewindRunOfShowPrevious = useCallback(async () => {
         const currentDirector = getCurrentRunOfShowDirector();
         const items = Array.isArray(currentDirector?.items) ? currentDirector.items : [];
@@ -10187,7 +10206,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const shouldReplace = String(mode || 'replace').trim().toLowerCase() !== 'append';
         const existingCount = Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items.length : 0;
         if (shouldReplace && existingCount > 0) {
-            const confirmed = window.confirm('Replace the current planner with a draft built from this room\'s queue and saved slides?');
+            const confirmed = window.confirm(`Replace the current ${HOST_LIVE_OPS_LANGUAGE.showPlan} with a draft built from this room's lineup and saved slides?`);
             if (!confirmed) return null;
         }
         const nextDirector = await applyGeneratedRunOfShowDraft({
@@ -10207,7 +10226,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return nextDirector;
     }, [applyGeneratedRunOfShowDraft, isMarketingDemoFixture, room?.eventProfileId, runOfShowDirector?.items, runOfShowQueueCandidates, scenePresets, toast, updateRoom]);
     const saveRunOfShowTemplate = useCallback(async (templateName = '') => {
-        const safeName = String(templateName || '').trim() || 'Run Of Show Template';
+        const safeName = String(templateName || '').trim() || 'Show Plan Template';
         if (isMarketingDemoFixture) {
             const templateId = `fixture_${safeName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'template'}`;
             const template = {
@@ -10277,7 +10296,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return result;
     }, [isMarketingDemoFixture, roomCode, runOfShowTemplates]);
     const archiveCurrentRunOfShow = useCallback(async (templateName = '') => {
-        const safeName = String(templateName || '').trim() || 'Archived Run Of Show';
+        const safeName = String(templateName || '').trim() || 'Archived Show Plan';
         if (isMarketingDemoFixture) {
             const archiveId = `archive_${Date.now().toString(36)}`;
             const template = {
@@ -10594,7 +10613,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return `${pendingModeration} moderation item${pendingModeration === 1 ? '' : 's'} waiting. Review inbox to unblock queue entries.`;
         }
         if (!currentSong && activeQueueCount <= 0) {
-            return 'No songs are queued. Add songs in Add to Queue so karaoke can continue.';
+            return `No performances are in the lineup. Use ${HOST_LIVE_OPS_LANGUAGE.addPerformance} so karaoke can continue.`;
         }
         if (!currentSong && activeQueueCount > 0) {
             return `${activeQueueCount} song${activeQueueCount === 1 ? '' : 's'} are waiting and nobody is on stage. Start the next singer.`;
@@ -16032,7 +16051,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const mediaTitle = String(item?.title || item?.trackName || item?.fileName || '').trim();
         if (!mediaTitle || !mediaUrl) return;
         if (!canQueueRoomMedia({ ...item, title: mediaTitle, mediaUrl })) {
-            toast('Images can be used for TV scenes or Run Of Show, not the karaoke queue.');
+            toast(`Images can be used for TV scenes or ${HOST_LIVE_OPS_LANGUAGE.showPlan}, not as karaoke backing tracks.`);
             return;
         }
         const localAudioOnly = getRoomMediaType({ ...item, mediaUrl }) === 'audio'
@@ -17083,8 +17102,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         leaveAdminWithTarget('stage');
     }, [leaveAdminWithTarget]);
     const openRunOfShowWorkspaceFromAdmin = useCallback(() => {
-        leaveAdminWithTarget('run_of_show');
-    }, [leaveAdminWithTarget]);
+        openMomentPrepWorkspace();
+    }, [openMomentPrepWorkspace]);
     const handleStageQuickStartOpenRoomSetup = useCallback(() => {
         updateStageQuickStartProgress({ roomSetupOpened: true });
         openNightSetupWizard(room?.hostNightPreset || hostNightPreset || 'casual');
@@ -17211,7 +17230,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
                 const nextSong = missionQueueSongs[0];
                 if (!nextSong?.id) {
-                    toast('No songs are queued. Add songs in Add to Queue first.');
+                    toast(`No performances are in the lineup. Use ${HOST_LIVE_OPS_LANGUAGE.addPerformance} first.`);
                     return;
                 }
                 await activateQueueSong(nextSong, roomRef.current);
@@ -18948,7 +18967,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         : '';
     const catalogueAddButtonLabel = catalogueOnly
         ? (catalogueHelperSingerAssigned ? `Add For ${catalogueHelperSingerLabel}` : 'Choose Singer')
-        : '+ Add to Queue';
+        : `+ ${HOST_LIVE_OPS_LANGUAGE.addPerformance}`;
     const cataloguePendingSongTitle = cataloguePendingSong
         ? (cataloguePendingSong.__yt ? cataloguePendingSong.item?.trackName : cataloguePendingSong.title)
         : '';
@@ -22354,6 +22373,76 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onTriggerReadyCheck: startReadyCheck,
     };
     const experimentalHostPanelActive = quickRoomControls.runtimeShellMode === HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment;
+    const embeddedRunOfShowDirector = roomCode ? (
+        <React.Suspense fallback={<DeferredHostSurfaceFallback label={`Loading ${HOST_LIVE_OPS_LANGUAGE.advancedShowControls}...`} />}>
+            <RunOfShowDirectorPanel
+                enabled={runOfShowEnabled}
+                roomCode={roomCode}
+                eventProfileId={String(room?.eventProfileId || '')}
+                eventProfileLabel={String(room?.eventProfileLabel || '')}
+                logoUrl={String(room?.logoUrl || '')}
+                audienceBrandTheme={audienceBrandTheme}
+                programMode={programMode}
+                director={runOfShowDirector}
+                runOfShowPolicy={runOfShowPolicy}
+                runOfShowRoles={runOfShowRoles}
+                runOfShowTemplateMeta={runOfShowTemplateMeta}
+                runOfShowTemplates={runOfShowTemplates}
+                missionControl={room?.missionControl || null}
+                submissions={runOfShowSubmissions}
+                roomUsers={users}
+                localLibrary={localLibrary}
+                ytIndex={ytIndex}
+                appleMusicAuthorized={appleMusicAuthorized}
+                queueSongs={runOfShowQueueCandidates}
+                previewActiveId={String(room?.tvPreviewOverlay?.active ? room?.tvPreviewOverlay?.itemId || '' : '')}
+                focusRequest={runOfShowFocusRequest}
+                onSelectionChange={setRunOfShowSelectedItemId}
+                operatorRole={runOfShowOperatorRole}
+                operatorCapabilities={runOfShowOperatorCapabilities}
+                operatingHint={runOfShowOperatingHint}
+                preflightReport={runOfShowPreflightReport}
+                crowdPulse={crowdPulse}
+                compactViewport={compactHostViewport}
+                embedded
+                onPromotePreparedItems={promotePreparedRunOfShowItems}
+                onSchedulePreparedItems={schedulePreparedRunOfShowMoments}
+                onSetProgramMode={setRunOfShowProgramModeState}
+                onAddItem={addRunOfShowItem}
+                onImportCsv={importRunOfShowCsv}
+                onDuplicateItem={duplicateRunOfShowItem}
+                onDeleteItem={deleteRunOfShowItem}
+                onMoveItem={moveRunOfShowItem}
+                onUpdateItem={patchRunOfShowItem}
+                onToggleAutomationPause={toggleRunOfShowAutomationPause}
+                onStartRunOfShow={startRunOfShowNow}
+                onStopRunOfShow={stopRunOfShowNow}
+                onClearRunOfShow={clearRunOfShowNow}
+                onPrepareItem={prepareRunOfShowItem}
+                onPreviewItem={previewRunOfShowItem}
+                onClearPreview={clearRunOfShowPreview}
+                onStartItem={startRunOfShowItem}
+                onCompleteItem={completeRunOfShowItem}
+                onSkipItem={skipRunOfShowItem}
+                onOpenReleaseWindow={openRunOfShowReleaseWindow}
+                onCloseReleaseWindow={closeRunOfShowReleaseWindow}
+                onReviewSubmission={reviewRunOfShowSubmission}
+                onAssignQueueSongToItem={assignQueueSongToRunOfShowItem}
+                onUpdatePolicy={updateRunOfShowPolicyState}
+                onUpdateRoles={updateRunOfShowRolesState}
+                onApplyGeneratedDraft={applyGeneratedRunOfShowDraft}
+                currentRoomDraftSummary={currentRoomDraftSummary}
+                onApplyCurrentRoomDraft={applyCurrentRoomRunOfShowDraft}
+                scenePresets={scenePresets}
+                onAddScenePresetToRunOfShow={applyScenePresetToRunOfShow}
+                onSaveTemplate={saveRunOfShowTemplate}
+                onApplyTemplate={applyRunOfShowTemplate}
+                onApplyStarterTemplate={applyRunOfShowStarterTemplate}
+                onArchiveCurrent={archiveCurrentRunOfShow}
+            />
+        </React.Suspense>
+    ) : null;
+
     const queueTabProps = {
         songs,
         room,
@@ -22466,7 +22555,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowStagedItem,
         runOfShowNextItem,
         runOfShowPreflightReport,
-        onOpenRunOfShow: () => setTab('run_of_show'),
+        runOfShowDirectorPanel: embeddedRunOfShowDirector,
+        onTriggerRunOfShowItem: triggerRunOfShowTimelineItem,
+        onOpenRunOfShow: () => openMomentPrepWorkspace(),
         onOpenRunOfShowIssue: openRunOfShowIssueFromChrome,
         onStartRunOfShow: startRunOfShowNow,
         onAdvanceRunOfShow: advanceRunOfShowNext,
@@ -22674,7 +22765,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             onFocusRunOfShowItem={(itemId) => {
                                 const safeItemId = String(itemId || '').trim();
                                 if (!safeItemId) return;
-                                setTab('run_of_show');
+                                openMomentPrepWorkspace();
                                 setRunOfShowFocusRequest({
                                     itemId: safeItemId,
                                     token: Date.now(),
@@ -22714,7 +22805,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     launchUrls={activeRoomLaunchUrls}
                     roomCode={roomCode}
                     tab={tab}
-                    setTab={handleTopChromeTabChange}
+                    setTab={(nextTab) => nextTab === 'run_of_show' ? openMomentPrepWorkspace() : handleTopChromeTabChange(nextTab)}
                     showLaunchMenu={showLaunchMenu}
                     setShowLaunchMenu={setShowLaunchMenu}
                     showNavMenu={showNavMenu}
@@ -22871,11 +22962,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     runOfShowStagedItem={runOfShowStagedItem}
                     runOfShowNextItem={runOfShowNextItem}
                     runOfShowPreflightReport={runOfShowPreflightReport}
-                    onOpenShowWorkspace={() => handleTopChromeTabChange('run_of_show')}
+                    onOpenShowWorkspace={() => openMomentPrepWorkspace()}
                     onOpenRunOfShowIssue={openRunOfShowIssueFromChrome}
                     onTriggerRunOfShowItem={triggerRunOfShowTimelineItem}
                     onFocusRunOfShowItem={(itemId) => {
-                        handleTopChromeTabChange('run_of_show');
+                        openMomentPrepWorkspace();
                         setRunOfShowFocusRequest({
                             itemId: String(itemId || '').trim(),
                             token: Date.now()
@@ -22920,7 +23011,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         const item = segment?.item || null;
                         const isPlannerObject = item?.sourceLabel === 'Show';
                         if ((isPlannerObject || item?.objectType !== 'performance') && item?.id) {
-                            leaveAdminWithTarget('run_of_show');
+                            openMomentPrepWorkspace();
                             setRunOfShowFocusRequest({
                                 itemId: String(item.id || '').trim(),
                                 token: Date.now(),
@@ -22964,13 +23055,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     aria-hidden={tab !== 'stage' ? 'true' : undefined}
                     className={tab === 'stage' ? 'flex flex-1 min-h-0 flex-col' : 'hidden'}
                 >
-                    <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading live queue..." />}>
+                    <React.Suspense fallback={<DeferredHostSurfaceFallback label={`Loading ${HOST_LIVE_OPS_LANGUAGE.lineup}...`} />}>
                         <HostQueueTab
                             {...queueTabProps}
                             onFocusRunOfShowItem={(itemId) => {
                                 const safeItemId = String(itemId || '').trim();
                                 if (!safeItemId) return;
-                                setTab('run_of_show');
+                                openMomentPrepWorkspace();
                                 setRunOfShowFocusRequest({
                                     itemId: safeItemId,
                                     token: Date.now(),
@@ -22990,8 +23081,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <div className="flex flex-1 min-h-0 flex-col gap-4">
                         <div className="hidden flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/82 px-4 py-3 sm:flex">
                             <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Tonight's Flow</div>
-                                <div className="mt-1 text-sm text-zinc-400">Prepare performances and moments, then commit them to one Live Queue.</div>
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">{HOST_LIVE_OPS_LANGUAGE.showPlan}</div>
+                                <div className="mt-1 text-sm text-zinc-400">Build performances and moments, then add them to {HOST_LIVE_OPS_LANGUAGE.lineup}.</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <button
@@ -22999,7 +23090,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onClick={() => setTab('stage')}
                                     className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
                                 >
-                                    Back To Live Queue
+                                    Back To {HOST_LIVE_OPS_LANGUAGE.lineup}
                                 </button>
                                 <button
                                     type="button"
@@ -23012,7 +23103,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                         <div className="min-h-0">
                             {roomCode ? (
-                                <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading tonight's flow..." />}>
+                                <React.Suspense fallback={<DeferredHostSurfaceFallback label={`Loading ${HOST_LIVE_OPS_LANGUAGE.showPlan}...`} />}>
                                 <RunOfShowDirectorPanel
                                     enabled={runOfShowEnabled}
                                     roomCode={roomCode}
@@ -23082,7 +23173,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </React.Suspense>
                             ) : (
                                 <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-6 text-sm text-zinc-300">
-                                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Run Of Show</div>
+                                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">{HOST_LIVE_OPS_LANGUAGE.advancedShowControls}</div>
                                     <div className="mt-2 text-xl font-bold text-white">Create or reopen a room first.</div>
                                     <div className="mt-2 max-w-2xl text-zinc-400">
                                         Show planning stays out of the launch flow until there is an active room. Once a room exists, this workspace becomes the conveyor-first planning surface for slots, approvals, co-hosts, and automation.
@@ -24736,7 +24827,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                             <div className="mt-4">
                                 <div className="text-sm uppercase tracking-widest text-zinc-400">Event profiles</div>
-                                <div className="host-form-helper mt-1">Reusable room packages for event-specific branding, audience shell colors, rules, credits, and run-of-show starters.</div>
+                                <div className="host-form-helper mt-1">Reusable room packages for event-specific branding, audience colors, rules, credits, and Show Plan starters.</div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                                     {ROOM_EVENT_PROFILE_OPTIONS.map((profile) => {
                                         const active = String(room?.eventProfileId || '').trim().toLowerCase() === profile.id;
@@ -25446,7 +25537,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         {audienceBrandThemePresetMatch?.label || 'Custom mix'}
                                     </span>
                                 </div>
-                                <div className="host-form-helper mt-2">Recolor the audience app for this room and carry the same palette into Public TV run-of-show announcements. The room title stays editable below.</div>
+                                <div className="host-form-helper mt-2">Recolor the audience app for this room and carry the same palette into Public TV Show Plan announcements. The room title stays editable below.</div>
                                 <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                                     <div>
                                         <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Theme selector</div>
@@ -26054,7 +26145,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
                                         <div className="text-sm font-semibold text-white">Cleanup + Advanced Room Tools</div>
-                                        <div className="mt-1 text-xs text-zinc-400">Exports, recap actions, and the separate show-planning workspace.</div>
+                                        <div className="mt-1 text-xs text-zinc-400">Exports, recap actions, and the detailed planning controls inside {HOST_LIVE_OPS_LANGUAGE.showPlan}.</div>
                                     </div>
                                     <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
                                         Open when needed
@@ -26066,15 +26157,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="rounded-3xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 p-5">
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-xs uppercase tracking-[0.28em] text-cyan-300">Run Of Show</div>
-                                            <div className="mt-2 text-lg font-semibold text-white">Show planning lives in its own workspace now.</div>
+                                            <div className="text-xs uppercase tracking-[0.28em] text-cyan-300">{HOST_LIVE_OPS_LANGUAGE.advancedShowControls}</div>
+                                            <div className="mt-2 text-lg font-semibold text-white">Detailed planning now lives inside {HOST_LIVE_OPS_LANGUAGE.showPlan}.</div>
                                             <div className="mt-2 max-w-2xl text-sm text-zinc-300">
-                                                Use the top `Show` tab for the timeline, approvals, co-hosts, and live run-of-show controls. Admin keeps the room setup and deeper utilities, but no longer buries the main show board.
+                                                Open {HOST_LIVE_OPS_LANGUAGE.showPlan} for the lineup, approvals, co-hosts, automation, and live TV controls. The Stage stays alongside it.
                                             </div>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
-                                            <button type="button" onClick={() => handleTopChromeTabChange('run_of_show')} className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}>
-                                                Open Show Workspace
+                                            <button type="button" onClick={() => openMomentPrepWorkspace()} className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}>
+                                                Open {HOST_LIVE_OPS_LANGUAGE.showPlan}
                                             </button>
                                             {!roomCode ? (
                                                 <span className="rounded-full border border-white/10 bg-black/30 px-3 py-2 text-xs uppercase tracking-[0.18em] text-zinc-300">
@@ -27570,7 +27661,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-xs uppercase tracking-[0.24em] text-cyan-100/75">Runtime Handoff</div>
                                     <div className="mt-1 text-lg font-semibold text-white">Admin manages the library. Live routing happens from the runtime workspaces.</div>
                                     <div className="mt-1 text-sm text-cyan-100/75">
-                                        Queueing, scene launches, and run-of-show placement stay in their canonical live surfaces so this section does not write to multiple runtime owners.
+                                        Adding performances, launching scenes, and arranging moments stay in their live workspaces so each action has one clear home.
                                     </div>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
@@ -27584,7 +27675,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                     <button onClick={openRunOfShowWorkspaceFromAdmin} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>
                                         <i className="fa-solid fa-clapperboard"></i>
-                                        Open Run Of Show
+                                        Open {HOST_LIVE_OPS_LANGUAGE.showPlan}
                                     </button>
                                 </div>
                             </div>
@@ -27872,7 +27963,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                             <div className="host-form-helper">Audio/video/image. Max 150MB. Scene images stay capped at 20MB. Room storage target: 2GB.</div>
                             <div className="rounded-lg border border-cyan-400/20 bg-black/20 px-3 py-3 text-sm text-cyan-100/75">
-                                Uploads land in the room library here. Queue placement, TV scenes, and run-of-show assignment now happen from the live Queue, Media Library, and Run Of Show workspaces.
+                                Uploads land in the room library here. Add performances from the live workspace, build TV scenes in Media Library, and arrange moments in {HOST_LIVE_OPS_LANGUAGE.showPlan}.
                             </div>
                             <div className="flex items-center justify-between text-sm text-cyan-100/60">
                                 <span>Room storage used</span>
@@ -27975,7 +28066,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                 onClick={() => void addRoomUploadToRunOfShow(item)}
                                                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-sm`}
                                                             >
-                                                                Use In Run Of Show
+                                                                Use In {HOST_LIVE_OPS_LANGUAGE.showPlan}
                                                             </button>
                                                         </>
                                                     ) : null}
@@ -28475,7 +28566,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                         onClick={() => addLocalItemToQueue(item)}
                                                                         className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
                                                                     >
-                                                                        + Add to Queue
+                                                                        + {HOST_LIVE_OPS_LANGUAGE.addPerformance}
                                                                     </button>
                                                                     <a
                                                                         href={item.url}
@@ -28587,7 +28678,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                 onClick={() => queueYouTubeFromCatalog(item)}
                                                                 className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
                                                             >
-                                                                + Add to Queue
+                                                                + {HOST_LIVE_OPS_LANGUAGE.addPerformance}
                                                             </button>
                                                             <a
                                                                 href={item.url}

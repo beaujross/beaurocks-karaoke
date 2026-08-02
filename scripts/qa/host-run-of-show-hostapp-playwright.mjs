@@ -45,16 +45,27 @@ const clickHostTab = async (page, tabKey, timeoutMs) => {
 };
 
 const ensureShowWorkspace = async (page, timeoutMs) => {
-  const alreadyInShow = await waitForHostState(page, {
-    tab: "run_of_show",
-    section: "show.timeline",
+  const onStage = await waitForHostState(page, {
+    tab: "stage",
     timeoutMs: Math.min(5000, timeoutMs),
   }).then(() => true).catch(() => false);
-  if (!alreadyInShow) {
-    await clickHostTab(page, "run_of_show", timeoutMs);
-    await waitForHostState(page, { tab: "run_of_show", timeoutMs });
+  if (!onStage) {
+    await clickHostTab(page, "stage", timeoutMs);
+    await waitForHostState(page, { tab: "stage", timeoutMs });
   }
-  await page.getByText("SHOW CONVEYOR").first().waitFor({ state: "visible", timeout: timeoutMs });
+  const momentPrepTab = page.locator(
+    '[data-feature-id="queue-surface-tab-show-desktop"]:visible, [data-feature-id="queue-surface-tab-show"]:visible',
+  ).first();
+  await momentPrepTab.waitFor({ state: "visible", timeout: timeoutMs });
+  await momentPrepTab.click({ force: true, timeout: timeoutMs });
+  await page.locator('[data-feature-id="host-moment-prep-workbench"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+  const detailedPlanner = page.locator('[data-feature-id="moment-prep-full-director"]').first();
+  await detailedPlanner.waitFor({ state: "visible", timeout: timeoutMs });
+  const detailsOpen = await detailedPlanner.evaluate((node) => node.open === true).catch(() => false);
+  if (!detailsOpen) {
+    await detailedPlanner.locator('summary').first().click({ force: true, timeout: timeoutMs });
+  }
+  await page.locator('[data-run-of-show-director-surface="true"]').first().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
 const ensureStageWorkspace = async (page, timeoutMs) => {
@@ -88,7 +99,7 @@ const ensureStageWorkspace = async (page, timeoutMs) => {
     await waitForAnyVisible([
       page.locator('[data-feature-id="queue-workspace-top-chrome"]').first(),
       page.locator('[data-feature-id="queue-surface-tab-queue-desktop"]').first(),
-      page.getByText("Live Queue", { exact: true }).first(),
+      page.getByText("Tonight's Lineup", { exact: true }).first(),
     ], timeoutMs);
   } catch (error) {
     const state = await page.evaluate(() => {
@@ -127,9 +138,9 @@ const gotoHostFixture = async (page, server, fixtureId, timeoutMs) => {
     mkDemoEmbed: "1",
     qaHostFixture: fixtureId,
     hostUiVersion: "v2",
-    view: "show",
-    section: "show.timeline",
-    tab: "run_of_show",
+    view: "queue",
+    section: "queue.live_run",
+    tab: "stage",
   });
   await page.goto(`${server.baseUrl}/?${params.toString()}`, {
     waitUntil: "domcontentloaded",
@@ -226,8 +237,8 @@ const main = async () => {
     await ensureShowWorkspace(page, timeoutMs);
 
     await runCheck(checks, "host_app_fixture_loaded", async () => {
-      await page.getByText("SHOW CONVEYOR").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("CONVEYOR STATUS").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator('[data-run-of-show-director-surface="true"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByLabel("Conveyor belt").first().waitFor({ state: "visible", timeout: timeoutMs });
       await waitForAnyVisible([
         page.getByText("Open Issues").first(),
         page.getByText("Fix Issue").first(),
@@ -446,7 +457,7 @@ const main = async () => {
       await page.reload({ waitUntil: "domcontentloaded", timeout: timeoutMs });
       await delay(2500);
       await ensureShowWorkspace(page, timeoutMs);
-      await page.getByText("SHOW CONVEYOR").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator('[data-run-of-show-director-surface="true"]').first().waitFor({ state: "visible", timeout: timeoutMs });
       return "fixture reload restores the host workspace without a runtime crash";
     });
 

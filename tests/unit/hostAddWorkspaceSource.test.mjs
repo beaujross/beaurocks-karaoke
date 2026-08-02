@@ -74,17 +74,17 @@ test("host room setup keeps quick actions compact instead of repeating the Night
   );
 });
 
-test("host add workspace uses one destination selector and append-only Queue language", () => {
-  assert.match(addWorkspaceSource, /Add to Queue/);
-  assert.match(addWorkspaceSource, /Save for Later/);
-  assert.match(addWorkspaceSource, /Add to Tonight's Flow/);
+test("host add workspace uses one destination selector and append-only lineup language", () => {
+  assert.match(addWorkspaceSource, /HOST_LIVE_OPS_LANGUAGE\.addToLineup/);
+  assert.match(addWorkspaceSource, /HOST_LIVE_OPS_LANGUAGE\.saveDraft/);
+  assert.match(addWorkspaceSource, /HOST_LIVE_OPS_LANGUAGE\.lineup/);
   assert.match(addWorkspaceSource, /data-feature-id="moment-destination-control"/);
-  assert.match(addWorkspaceSource, /Queue always adds it at the end\./);
+  assert.match(addWorkspaceSource, /HOST_LIVE_OPS_LANGUAGE\.lineup\} always adds it at the end\./);
   assert.match(addWorkspaceSource, /placement: 'append'/);
   assert.doesNotMatch(addWorkspaceSource, /Tap to queue/);
   assert.doesNotMatch(addWorkspaceSource, /Queue Only/);
   assert.doesNotMatch(addWorkspaceSource, /moment-pack-queue-next/);
-  assert.match(hostAppSource, /added to the end of Live Queue/);
+  assert.match(hostAppSource, /added to the end of \$\{HOST_LIVE_OPS_LANGUAGE\.lineup\}/);
   assert.match(quickMomentMutationSource, /placement: 'append'/);
   assert.doesNotMatch(quickMomentMutationSource, /activateShow/);
   assert.match(sceneQueueMutationSource, /items\.push\(nextItem\)/);
@@ -119,7 +119,7 @@ test("host performance results queue directly while manual requests keep a local
   assert.match(addWorkspaceSource, /data-feature-id="performance-result-row"/);
   assert.match(addWorkspaceSource, /if \(performanceActionsEnabled\) \{\s*onQueueOnly\?\.\(r\);\s*return;/);
   assert.doesNotMatch(addWorkspaceSource, /data-feature-id="performance-result-queue-only"/);
-  assert.match(addWorkspaceSource, /performanceActionsEnabled \? 'Add to Queue' : 'Select'/);
+  assert.match(addWorkspaceSource, /performanceActionsEnabled \? HOST_LIVE_OPS_LANGUAGE\.addToLineup : 'Select'/);
   assert.match(addWorkspaceSource, /External playback/);
   assert.doesNotMatch(addWorkspaceSource, /\? 'External' : 'TV'/);
   assert.match(addWorkspaceSource, /data-feature-id="host-manual-queue-submit"/);

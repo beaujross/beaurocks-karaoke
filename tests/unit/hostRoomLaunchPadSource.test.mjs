@@ -62,7 +62,7 @@ test('join poster modal stays brand-forward and print-ready', () => {
   assert.match(source, /Print Poster/);
 });
 
-test('room browser keeps results adjacent to folders, supports pinning, and does not cap host rooms to a tiny recent subset', () => {
+test('room browser keeps results adjacent to the compact filter row, supports pinning, and does not cap host rooms to a tiny recent subset', () => {
   const browserSource = readFileSync(launchPadBrowserPath, 'utf8');
   const launchPadSource = readFileSync(launchPadPath, 'utf8');
   const roomManagerSource = readFileSync(roomManagerPath, 'utf8');
@@ -71,8 +71,9 @@ test('room browser keeps results adjacent to folders, supports pinning, and does
   assert.match(browserSource, /ref=\{roomBrowserResultsRef\}/);
   assert.match(browserSource, /handleRoomBrowserBucketClick/);
   assert.ok(browserSource.includes("roomBrowserResultsRef.current?.scrollIntoView"));
-  assert.match(browserSource, /xl:col-start-2 xl:row-start-1/);
-  assert.match(browserSource, /xl:col-start-3 xl:row-start-1/);
+  assert.match(browserSource, /xl:col-span-2 xl:row-start-1/);
+  assert.match(browserSource, /xl:col-start-1 xl:row-start-2/);
+  assert.match(browserSource, /xl:col-start-2 xl:row-start-2/);
   assert.ok(browserSource.includes("openExistingRoomWorkspace(roomItem.code, 'ops.room_setup')"));
   assert.match(browserSource, /\{roomPinned \? 'Pinned' : 'Pin'\}/);
   assert.match(browserSource, /roomItem\.hasRecap && audienceBase[\s\S]*runFeaturedAction\('recap', roomItem\)[\s\S]*Recap/);
@@ -119,7 +120,8 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
   assert.match(browserSource, /existingRoomCount = roomBrowserBuckets\.find\(\(bucket\) => bucket\.id === 'all'\)\?\.rooms\.length \|\| 0/);
   assert.match(browserSource, /\{manageModeActive \? \(/);
   assert.match(browserSource, /\{createModeActive \? \(/);
-  assert.match(browserSource, /xl:grid-cols-\[220px_minmax\(0,1fr\)_380px\]/);
+  assert.match(browserSource, /xl:grid-cols-\[minmax\(0,1fr\)_minmax\(340px,400px\)\]/);
+  assert.match(browserSource, /grid grid-cols-2 gap-2 sm:grid-cols-4/);
   assert.match(browserSource, /xl:sticky xl:top-4/);
   assert.ok(browserSource.includes("openExistingRoomWorkspace(roomItem.code, 'ops.room_setup')"));
   assert.match(browserSource, /More room actions/);

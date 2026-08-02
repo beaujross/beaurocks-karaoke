@@ -1,4 +1,5 @@
 import React from 'react';
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 import { normalizeBackingChoice, isQueueEntryPlayable } from '../../../lib/playbackSource';
 import { isAudienceSelectedUnverifiedResolution, requiresBackingHostReview } from '../../../lib/requestModes';
 import {
@@ -182,7 +183,7 @@ const QueueSongCard = ({
             : isPendingApproval
                 ? { label: 'Approve', icon: 'fa-circle-check', className: ' border-orange-300/45 text-orange-100 bg-orange-500/10' }
                 : isAssignedToRunOfShow
-                    ? { label: 'Planner', icon: 'fa-link', className: ' border-violet-300/40 text-violet-100 bg-violet-500/10' }
+                    ? { label: HOST_LIVE_OPS_LANGUAGE.showPlan, icon: 'fa-link', className: ' border-violet-300/40 text-violet-100 bg-violet-500/10' }
                     : isHeld
                         ? { label: 'Held', icon: 'fa-pause', className: ' border-zinc-300/35 text-zinc-100 bg-zinc-500/10' }
                         : lockedInLineup
@@ -349,7 +350,7 @@ const QueueSongCard = ({
                         {showSupportText && selectedExpanded ? (
                             <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
                                 {isAssignedToRunOfShow
-                                    ? `Reserved for ${assignedRunOfShowSlot?.label || 'a run of show slot'}.`
+                                    ? `Reserved for ${assignedRunOfShowSlot?.label || 'a Show Plan slot'}.`
                                     : isHeld
                                         ? `Held: ${String(song?.holdReason || 'not_here').replace(/_/g, ' ')}. Restore when the singer is ready.`
                                     : queueUsesExternalWindow
@@ -434,7 +435,7 @@ const QueueSongCard = ({
                             ) : isAssignedToRunOfShow ? (
                                 <button
                                     type="button"
-                                    title="Inspect this run-of-show-linked song"
+                                    title="Inspect this Show Plan performance"
                                     onClick={() => onSelect?.(song)}
                                     className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
                                 >
@@ -506,7 +507,7 @@ const QueueSongCard = ({
                                     type="button"
                                     title={runOfShowOpenSlots.length === 1
                                         ? `Assign to ${nextOpenSlot.label}`
-                                        : 'Assign to the next open run-of-show slot'}
+                                        : 'Assign to the next open Show Plan slot'}
                                     onClick={() => onAssignQueueSongToNextOpenRunOfShowSlot(song.id)}
                                     className={`${styles.btnStd} ${styles.btnNeutral} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
                                 >

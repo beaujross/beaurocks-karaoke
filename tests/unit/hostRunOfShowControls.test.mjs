@@ -57,13 +57,13 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
 
   assert.match(source, /getCrowdPulseSnapshot/);
   assert.match(source, /crowdPulse=\{crowdPulse\}/);
-  assert.match(source, /Tonight's Flow/);
+  assert.match(source, /HOST_LIVE_OPS_LANGUAGE\.showPlan/);
   assert.match(directorPanelSource, /getRunOfShowConveyorSnapshot/);
   assert.match(directorPanelSource, /getRunOfShowConveyorPhase/);
   assert.match(directorPanelSource, /Crowd Pulse/);
-  assert.match(directorPanelSource, /Live Queue status/);
-  assert.match(directorPanelSource, /Tonight's Flow/);
-  assert.match(directorPanelSource, /On Deck/);
+  assert.match(directorPanelSource, /HOST_LIVE_OPS_LANGUAGE\.lineup\} status/);
+  assert.match(directorPanelSource, /HOST_LIVE_OPS_LANGUAGE\.advancedShowControls/);
+  assert.match(directorPanelSource, /In Lineup/);
   assert.match(directorPanelSource, /Next/);
   assert.match(source, /const openRunOfShowReleaseWindow = useCallback\(async \(itemId, options = \{\}\) => \{/);
   assert.match(source, /const closeRunOfShowReleaseWindow = useCallback\(async \(options = \{\}\) => \{/);
@@ -77,7 +77,7 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
   assert.match(source, /onImportCsv=\{importRunOfShowCsv\}/);
   assert.match(source, /const applyCurrentRoomRunOfShowDraft = useCallback\(async \(\{ mode = 'replace' \} = \{\}\) => \{/);
   assert.match(source, /buildCurrentRoomRunOfShowDraft\(\{/);
-  assert.match(source, /window\.confirm\('Replace the current planner with a draft built from this room\\'s queue and saved slides\?'\)/);
+  assert.match(source, /window\.confirm\(\`Replace the current \$\{HOST_LIVE_OPS_LANGUAGE\.showPlan\} with a draft built from this room's lineup and saved slides\?\`\)/);
   assert.ok(
     source.indexOf("const applyGeneratedRunOfShowDraft = useCallback") < source.indexOf("const applyCurrentRoomRunOfShowDraft = useCallback"),
     "HostApp should declare applyGeneratedRunOfShowDraft before applyCurrentRoomRunOfShowDraft to avoid runtime TDZ crashes",
@@ -477,7 +477,7 @@ test("Host scene presets can be slotted into the conveyor from the media library
   assert.match(queueTabSource, /SFX/);
   assert.match(queueTabSource, /BG Music/);
   assert.match(queueTabSource, /sceneLibrarySeedPack\.label/);
-  assert.match(hostSource, /Use In Run Of Show/);
+  assert.match(hostSource, /Use In \{HOST_LIVE_OPS_LANGUAGE\.showPlan\}/);
   assert.match(queueSongCardSource, /Assign To Next Open Slot/);
   assert.match(queueSongCardSource, /Assign Selected Slot/);
   assert.match(hostSource, /const saveMediaAssetAsScenePreset = useCallback\(async \(item = \{\}, options = \{\}\) => \{/);
@@ -485,7 +485,7 @@ test("Host scene presets can be slotted into the conveyor from the media library
   assert.match(hostSource, /AAHF_SCENE_LIBRARY_SEED_ASSETS/);
   assert.match(hostSource, /const addScenePresetToRunOfShow = useCallback\(async \(preset = \{\}\) => \{/);
   assert.match(hostSource, /const applyScenePresetToRunOfShow = addScenePresetToRunOfShow;/);
-  assert.match(hostSource, /Scene media needs an uploaded cloud URL before it can join Run Of Show\./);
+  assert.match(hostSource, /Scene media needs an uploaded cloud URL before it can join \$\{HOST_LIVE_OPS_LANGUAGE\.lineup\}/);
   assert.match(hostSource, /onQueueScenePreset:\s*\(preset, options = \{\}\)\s*=>\s*queueScenePresetAsMoment/);
   assert.match(hostSource, /onAddScenePresetToRunOfShow:\s*addScenePresetToRunOfShow/);
   assert.match(hostSource, /sceneLibrarySeedPack:\s*isAahfSceneLibraryTargetRoom\(roomCode\)/);

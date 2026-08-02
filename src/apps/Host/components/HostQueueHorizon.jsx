@@ -1,4 +1,5 @@
 import React from 'react';
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 
 const SEGMENT_TONES = Object.freeze({
     live: 'border-pink-300/30 bg-pink-500/10 text-pink-100',
@@ -60,7 +61,7 @@ const HostQueueHorizon = ({
     return (
         <section
             data-feature-id="host-queue-horizon"
-            aria-label="Live Queue horizon"
+            aria-label={`${HOST_LIVE_OPS_LANGUAGE.lineup} horizon`}
             className="host-queue-horizon shrink-0 border-b border-pink-200/20 bg-[linear-gradient(100deg,rgba(18,60,76,0.96),rgba(30,42,75,0.97)_48%,rgba(71,27,66,0.96))] px-3 py-1.5 shadow-[0_12px_30px_rgba(8,15,34,0.3),inset_0_1px_0_rgba(165,243,252,0.08)] sm:px-4"
         >
             <div className="mx-auto flex min-h-[52px] w-full items-center gap-2">
@@ -68,10 +69,10 @@ const HostQueueHorizon = ({
                     type="button"
                     onClick={onOpenQueue}
                     className="inline-flex min-h-[44px] shrink-0 items-center gap-2 rounded-xl border border-cyan-200/45 bg-cyan-300/16 px-3 text-[12px] font-black uppercase tracking-[0.14em] text-cyan-50 shadow-[0_8px_22px_rgba(34,211,238,0.12)] transition hover:border-cyan-100/75 hover:bg-cyan-300/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80"
-                    aria-label={`Open Live Queue${model?.queueTotalCount ? `, ${model.queueTotalCount} ready` : ''}`}
+                    aria-label={`Open ${HOST_LIVE_OPS_LANGUAGE.lineup}${model?.queueTotalCount ? `, ${model.queueTotalCount} ready` : ''}`}
                 >
                     <i className="fa-solid fa-list-ol" aria-hidden="true"></i>
-                    <span className={compact ? 'hidden sm:inline' : 'hidden md:inline'}>Live Queue</span>
+                    <span className={compact ? 'hidden sm:inline' : 'hidden md:inline'}>{HOST_LIVE_OPS_LANGUAGE.lineup}</span>
                 </button>
 
                 <div className="min-w-0 flex-1 sm:hidden">
@@ -115,7 +116,7 @@ const HostQueueHorizon = ({
                         type="button"
                         onClick={onOpenQueue}
                         className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm font-black text-white transition hover:border-cyan-300/35 hover:bg-cyan-500/10"
-                        aria-label={`Open ${remainingCount} more Live Queue item${remainingCount === 1 ? '' : 's'}`}
+                        aria-label={`Open ${remainingCount} more ${HOST_LIVE_OPS_LANGUAGE.lineupShort.toLowerCase()} item${remainingCount === 1 ? '' : 's'}`}
                     >
                         +{remainingCount}
                     </button>

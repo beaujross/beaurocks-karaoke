@@ -119,7 +119,7 @@ test('HostStageConsoleExperimental takes over the workspace while preserving roo
   assert.match(markup, /Support Lane/);
   assert.match(markup, /Summary/);
   assert.match(markup, /Tonight Flow/);
-  assert.match(markup, /Deeper queue, planner, inbox, and tools stay collapsed until you call for them\./);
+  assert.match(markup, /Deeper lineup, Show Plan, inbox, and tools stay collapsed until you call for them\./);
   assert.match(markup, /Workspace/);
   assert.match(markup, /Tools/);
 });

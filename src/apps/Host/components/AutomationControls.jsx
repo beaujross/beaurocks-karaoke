@@ -1,3 +1,4 @@
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 import React from 'react';
 
 const AutomationControls = ({
@@ -40,7 +41,7 @@ const AutomationControls = ({
             className={`${styles.btnStd} ${autoDj ? styles.btnPrimary : styles.btnNeutral} flex-1`}
             title="Automatically moves the next queued song to stage after each performance"
         >
-            <i className="fa-solid fa-forward-fast mr-2"></i>Auto DJ Queue Runner
+            <i className="fa-solid fa-forward-fast mr-2"></i>{HOST_LIVE_OPS_LANGUAGE.autoDj} - {HOST_LIVE_OPS_LANGUAGE.autoDjScope}
         </button>
         <ToggleSwitch checked={!!room?.bouncerMode} onChange={(v) => updateRoom({ bouncerMode: v })} icon={<i className="fa-solid fa-lock"></i>} label="Bouncer" />
         <button

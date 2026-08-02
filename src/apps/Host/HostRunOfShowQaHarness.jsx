@@ -54,7 +54,7 @@ export default function HostRunOfShowQaHarness({ fixtureId = 'run-of-show-consol
             >
                 <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
                     <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Host QA Harness</div>
-                    <div className="mt-2 text-2xl font-bold text-white">Run-of-show console fixture</div>
+                    <div className="mt-2 text-2xl font-bold text-white">Advanced Show Controls fixture</div>
                     <div className="mt-1 text-sm text-zinc-400">This harness renders the operator surface without the full host runtime so Playwright can validate the console deterministically.</div>
                 </div>
 

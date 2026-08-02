@@ -9,7 +9,7 @@ export const HOST_UI_FEATURE_CHECKLIST = [
     { id: 'panel-overlays-guides', label: 'Panel Header: Overlays & Guides', selector: '[data-feature-id="panel-overlays-guides"]' },
     { id: 'panel-chat', label: 'Panel Header: Chat', selector: '[data-feature-id="panel-chat"]' },
     { id: 'panel-reward-points', label: 'Panel Header: Reward Points', selector: '[data-feature-id="panel-reward-points"]' },
-    { id: 'panel-add-to-queue', label: 'Panel Header: Add to Queue', selector: '[data-feature-id="panel-add-to-queue"]' },
+    { id: 'panel-add-to-queue', label: 'Panel Header: Add Performance', selector: '[data-feature-id="panel-add-to-queue"]' },
     { id: 'panel-queue-list', label: 'Panel Header: Queue', selector: '[data-feature-id="panel-queue-list"]' }
 ];
 

@@ -207,7 +207,7 @@ const buildAttentionItems = ({
             id: 'attention-show',
             objectType: 'attention',
             title: `${runOfShowNeedsAttentionCount} show blocker${runOfShowNeedsAttentionCount === 1 ? '' : 's'}`,
-            subtitle: 'Run of show needs review',
+            subtitle: 'Show Plan needs review',
             tone: 'warning',
         });
     }

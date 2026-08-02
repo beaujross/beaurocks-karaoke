@@ -612,7 +612,7 @@ const HostRoomLaunchPadBrowser = ({
     );
 
     return (
-    <div className="relative z-10 w-full max-w-[1600px] scroll-mt-4">
+    <div className="relative z-10 mx-auto w-full max-w-[1680px] scroll-mt-4">
         <div className="rounded-[1.35rem] border border-cyan-300/25 bg-[radial-gradient(circle_at_top_left,rgba(255,194,104,0.08),transparent_22%),radial-gradient(circle_at_85%_14%,rgba(236,72,153,0.08),transparent_28%),linear-gradient(145deg,rgba(13,18,34,0.94),rgba(8,14,24,0.98))] p-2 shadow-[0_24px_70px_rgba(0,0,0,0.44)] backdrop-blur-xl md:p-3">
             <header className="flex flex-wrap items-center gap-2 rounded-[1rem] border border-white/10 bg-black/20 p-2.5">
                 <div className="mr-auto flex min-w-[220px] items-center gap-2.5">
@@ -665,14 +665,14 @@ const HostRoomLaunchPadBrowser = ({
             <div className="mt-2 space-y-3">
 
                 {manageModeActive ? (
-                    <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_380px]">
-                        <aside className="order-2 rounded-[1.4rem] border border-white/10 bg-black/22 p-3 xl:order-none xl:col-start-1 xl:row-start-1">
-                            <div className="px-2">
+                    <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]">
+                        <aside className="order-1 rounded-[1.15rem] border border-white/10 bg-black/22 p-3 xl:col-span-2 xl:row-start-1">
+                            <div className="flex flex-wrap items-end justify-between gap-2 px-1">
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Folders</div>
                                 <div className="mt-1 text-lg font-black text-white">Existing rooms</div>
                                 <div className="mt-1 text-sm text-cyan-100/68">Ready and upcoming rooms stay separate. Closed and archived rooms live together under Past.</div>
                             </div>
-                            <div className="mt-3 space-y-1.5">
+                            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                                 {roomBrowserBuckets.map((bucket) => {
                                     const selected = activeRoomBucket?.id === bucket.id;
                                     return (
@@ -681,7 +681,7 @@ const HostRoomLaunchPadBrowser = ({
                                             type="button"
                                             onClick={() => handleRoomBrowserBucketClick(bucket.id)}
                                             data-room-browser-bucket={bucket.id}
-                                            className={`flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left transition ${selected
+                                            className={`flex min-h-[58px] w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition ${selected
                                                 ? 'border-cyan-300/35 bg-cyan-500/12 text-white'
                                                 : 'border-transparent bg-white/[0.03] text-cyan-100/76 hover:border-white/10 hover:bg-white/[0.05]'}`}
                                         >
@@ -698,7 +698,7 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
                         </aside>
 
-                        <section ref={roomBrowserResultsRef} className="order-3 overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/22 xl:order-none xl:col-start-2 xl:row-start-1">
+                        <section ref={roomBrowserResultsRef} className="order-2 min-w-0 overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/22 xl:col-start-1 xl:row-start-2">
                             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
                                 <div>
                                     <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">{activeRoomBucket?.label || 'Rooms'}</div>
@@ -877,7 +877,7 @@ const HostRoomLaunchPadBrowser = ({
                                 )}
                             </div>
                         </section>
-                        <aside className="order-1 self-start xl:order-none xl:col-start-3 xl:row-start-1 xl:sticky xl:top-4">
+                        <aside className="order-3 self-start xl:col-start-2 xl:row-start-2 xl:sticky xl:top-4">
                             <div className="rounded-[1.4rem] border border-cyan-300/22 bg-[linear-gradient(145deg,rgba(10,18,28,0.94),rgba(12,21,34,0.92))] p-4 shadow-[0_20px_48px_rgba(0,0,0,0.24)]">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>

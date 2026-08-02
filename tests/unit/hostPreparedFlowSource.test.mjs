@@ -6,7 +6,7 @@ const directorPanelSource = readFileSync('src/apps/Host/components/RunOfShowDire
 const addMomentSource = readFileSync('src/apps/Host/components/AddToQueueFormBody.jsx', 'utf8');
 const liveOpsSource = readFileSync('src/apps/Host/components/HostLiveOpsPanel.jsx', 'utf8');
 
-test('prepared moments have individual and bulk paths into the Live Queue', () => {
+test("moment drafts have individual and bulk paths into Tonight's Lineup", () => {
   assert.match(
     hostAppSource,
     /onPromotePreparedItems=\{promotePreparedRunOfShowItems\}/,
@@ -19,29 +19,30 @@ test('prepared moments have individual and bulk paths into the Live Queue', () =
   );
   assert.match(
     directorPanelSource,
-    /Add All \$\{nightFlowBuckets\.preparedItems\.length\} to Live Queue/,
+    /Add All \$\{nightFlowBuckets\.preparedItems\.length\} to Lineup/,
     'Prepared work should support ordered bulk promotion',
   );
   assert.match(
     directorPanelSource,
-    /label: 'Add to Live Queue'/,
+    /label: HOST_LIVE_OPS_LANGUAGE\.addToLineup/,
     'Each prepared item should have a direct promotion action',
   );
   assert.match(directorPanelSource, /data-feature-id="host-prepared-moment-cadence"/);
-  assert.match(directorPanelSource, /Space moments through the Live Queue/);
+  assert.match(directorPanelSource, /Space moments through \{HOST_LIVE_OPS_LANGUAGE\.lineup\}/);
   assert.match(hostAppSource, /schedulePreparedMomentsByPerformanceCadence/);
   assert.match(hostAppSource, /onSchedulePreparedItems=\{schedulePreparedRunOfShowMoments\}/);
 });
 
 test('host-facing planning language describes the job instead of the implementation', () => {
-  assert.match(directorPanelSource, /Tonight's Flow/);
+  assert.match(directorPanelSource, /HOST_LIVE_OPS_LANGUAGE\.advancedShowControls/);
   assert.match(directorPanelSource, />\s*Prepare\s*</);
   assert.match(directorPanelSource, />\s*Review\s*</);
-  assert.match(directorPanelSource, /Live Queue status/);
-  assert.match(addMomentSource, /label: 'Prepared'/);
-  assert.match(addMomentSource, /actionLabel: 'Save for Later'/);
+  assert.match(directorPanelSource, /HOST_LIVE_OPS_LANGUAGE\.lineup\} status/);
+  assert.match(addMomentSource, /label: HOST_LIVE_OPS_LANGUAGE\.momentDrafts/);
+  assert.match(addMomentSource, /actionLabel: HOST_LIVE_OPS_LANGUAGE\.saveDraft/);
   assert.match(liveOpsSource, /label="Next Moment"/);
 
+  assert.notMatch(directorPanelSource, /Live Queue|Tonight's Flow|Add to Live Queue/);
   assert.equal(/>Show Conveyor</.test(directorPanelSource), false);
   assert.equal(/label="Flighted"/.test(directorPanelSource), false);
   assert.equal(/label: 'Full Night Builder'/.test(addMomentSource), false);

@@ -149,7 +149,7 @@ test('AddToQueueFormBody exposes one append-only performance result action', asy
   assert.equal(queueOnly, null);
   assert.ok(resultRow);
   assert.equal(resultRow.props.role, 'button');
-  assert.match(resultRow.props['aria-label'], /^Add to queue /);
+  assert.match(resultRow.props['aria-label'], /^Add to Lineup /);
 });
 
 test('AddToQueueFormBody queues a performance when the host taps its result card', async () => {

@@ -1,4 +1,5 @@
 import React from 'react';
+import { HOST_LIVE_OPS_LANGUAGE } from '../hostLiveOpsLanguage';
 import HostPlaybackDock from './HostPlaybackDock';
 import HostPerformerRing from './HostPerformerRing';
 import buildHostRuntimeShellTheme from '../lib/hostRuntimeShellTheme';
@@ -178,7 +179,7 @@ function QueueDeck({
                     <CommandButton label="Queue" icon="fa-list-check" onClick={onOpenQueue} tone="primary" />
                     <CommandButton label="Add" icon="fa-plus" onClick={onOpenAdd} tone="neutral" />
                     <CommandButton label="Inbox" icon="fa-inbox" onClick={onOpenInbox} tone="neutral" />
-                    <CommandButton label="Planner" icon="fa-clapperboard" onClick={onOpenPlanner} tone="accent" />
+                    <CommandButton label={HOST_LIVE_OPS_LANGUAGE.showPlan} icon="fa-clapperboard" onClick={onOpenPlanner} tone="accent" />
                 </div>
             </div>
 
@@ -388,7 +389,7 @@ export default function HostNightPilotPrototype({
                         <CommandButton label="Queue" icon="fa-list-check" onClick={onOpenQueue} tone="neutral" />
                         <CommandButton label="Add" icon="fa-plus" onClick={onOpenAdd} tone="neutral" />
                         <CommandButton label="Inbox" icon="fa-inbox" onClick={onOpenInbox} tone="neutral" />
-                        <CommandButton label="Planner" icon="fa-clapperboard" onClick={onOpenPlanner} tone="neutral" />
+                        <CommandButton label={HOST_LIVE_OPS_LANGUAGE.showPlan} icon="fa-clapperboard" onClick={onOpenPlanner} tone="neutral" />
                         <CommandButton label="Classic" icon="fa-arrow-left" onClick={onExitPrototype} tone="accent" />
                     </div>
                 </div>
@@ -410,7 +411,7 @@ export default function HostNightPilotPrototype({
                             title="Show Beats"
                             items={beatItems}
                             tone="beat"
-                            actionLabel="Planner"
+                            actionLabel={HOST_LIVE_OPS_LANGUAGE.showPlan}
                             onAction={onOpenPlanner}
                         />
                     </div>

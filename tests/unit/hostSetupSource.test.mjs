@@ -371,8 +371,8 @@ test('host setup keeps room uploads available while routing live media actions b
   );
   assert.match(
     mediaSection,
-    /Open Run Of Show/,
-    'Admin media should hand run-of-show placement back to the run-of-show workspace',
+    /Open \{HOST_LIVE_OPS_LANGUAGE\.showPlan\}/,
+    'Admin media should hand moment placement back to Show Plan',
   );
   assert.match(
     mediaSection,
@@ -391,8 +391,8 @@ test('host setup keeps room uploads available while routing live media actions b
   );
   assert.match(
     mediaSection,
-    /Use In Run Of Show/,
-    'Admin media should still let hosts turn eligible uploaded items into a run-of-show asset after upload',
+    /Use In \{HOST_LIVE_OPS_LANGUAGE\.showPlan\}/,
+    'Admin media should still let hosts add eligible uploaded items to Show Plan after upload',
   );
   assert.doesNotMatch(
     mediaSection,
