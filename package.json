@@ -34,6 +34,7 @@
     "qa:readability": "node scripts/qa/readability-ux-playwright.mjs",
     "qa:cost-envelope": "node scripts/qa/room-cost-envelope-preflight.mjs",
     "qa:youtube:submission-preflight": "node scripts/ops/youtube-submission-preflight.mjs --live",
+    "qa:youtube:browse-backings": "node scripts/audit-browse-backings.mjs",
     "test:rules": "node scripts/qa/run-firebase-emulator-sanitized.mjs --project demo-bross --only firestore,storage -- \"node tests/security/rules.test.cjs\"",
     "test:callables": "npm run test:callables:host-access && npm run test:callables:room-provision && npm run test:callables:room && npm run test:callables:room-cost-observation && npm run test:callables:usage-operation && npm run test:callables:tv-awards && npm run test:callables:webhooks && npm run test:callables:directory && npm run test:callables:marketing-notifications && npm run test:callables:lyrics && npm run test:callables:media-catalog && npm run test:callables:beaubucks && npm run test:callables:vip-account",
     "test:callables:host-access": "node scripts/qa/run-firebase-emulator-sanitized.mjs --project demo-bross --only firestore -- \"node tests/integration/hostAccessGuardrails.test.cjs\"",

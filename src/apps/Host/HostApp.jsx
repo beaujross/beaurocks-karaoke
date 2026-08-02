@@ -18144,6 +18144,54 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         return null;
     };
+    const verifyYouTubeCatalogBacking = async (backing = {}, usageSource = 'host_browse_catalog_queue') => {
+        const trackSource = String(backing?.trackSource || backing?.source || '').trim().toLowerCase();
+        const mediaUrl = String(backing?.mediaUrl || backing?.url || '').trim();
+        if (trackSource && trackSource !== 'youtube') {
+            return { status: 'not_required', backing };
+        }
+        const videoId = String(backing?.videoId || backing?.youtubeId || parseYouTubeId(mediaUrl) || '').trim();
+        if (!videoId) {
+            return { status: 'unavailable', backing: null };
+        }
+        try {
+            const statusData = await callFunction('youtubeStatus', {
+                ids: [videoId],
+                roomCode,
+                usageContext: createUsageContext({
+                    prefix: 'youtube-status',
+                    source: usageSource,
+                    surface: 'host'
+                })
+            });
+            const statusItem = (Array.isArray(statusData?.items) ? statusData.items : [])
+                .find((entry) => String(entry?.id || '').trim() === videoId) || null;
+            if (!statusItem) {
+                return { status: 'unavailable', backing: null, videoId };
+            }
+            const playbackState = normalizeYouTubePlaybackState(statusItem);
+            if (!playbackState.playable || !playbackState.embeddable) {
+                return { status: 'unavailable', backing: null, videoId, playbackState };
+            }
+            return {
+                status: 'ready',
+                videoId,
+                playbackState,
+                backing: {
+                    ...backing,
+                    videoId,
+                    mediaUrl: mediaUrl || `https://www.youtube.com/watch?v=${videoId}`,
+                    playable: true,
+                    embeddable: true,
+                    youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+                    durationSec: Math.max(0, Math.round(Number(statusItem?.durationSec || backing?.durationSec || 0) || 0))
+                }
+            };
+        } catch (error) {
+            hostLogger.warn('Could not validate catalog YouTube backing', error);
+            return { status: 'unknown', backing: null, videoId };
+        }
+    };
     const sampleArtPool = Object.values(sampleArt);
     const hashString = (value) => {
         let hash = 0;
@@ -18180,7 +18228,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return;
         }
         const automationSource = String(options?.automationSource || '').trim().toLowerCase();
-        const approvedBrowseBacking = isApprovedPlayableBrowseSong(song) ? song.backing : null;
+        let approvedBrowseBacking = isApprovedPlayableBrowseSong(song) ? song.backing : null;
+        let catalogBackingValidation = { status: 'not_required' };
+        if (approvedBrowseBacking && String(approvedBrowseBacking?.trackSource || 'youtube').trim().toLowerCase() === 'youtube') {
+            catalogBackingValidation = await verifyYouTubeCatalogBacking(
+                approvedBrowseBacking,
+                automationSource ? 'host_dead_air_catalog_queue' : 'host_browse_catalog_queue'
+            );
+            approvedBrowseBacking = catalogBackingValidation.status === 'ready'
+                ? catalogBackingValidation.backing
+                : null;
+        }
         const canonicalMatch = await (async () => {
             try {
                 return await resolveCanonicalTrackIdentity({
@@ -18276,8 +18334,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             emoji: EMOJI.mic,
             backingAudioOnly: false,
             audioOnly: false,
+            ...(catalogBackingValidation.status !== 'not_required' ? {
+                catalogBackingValidationStatus: catalogBackingValidation.status,
+                catalogBackingValidatedAtMs: nowMs()
+            } : {}),
             ...(automationSource ? { automationSource } : {})
         });
+        if (catalogBackingValidation.status === 'unavailable') {
+            toast('Added for backing review - the saved YouTube track is no longer available.');
+            return;
+        }
+        if (catalogBackingValidation.status === 'unknown') {
+            toast('Added for backing review - the saved YouTube track could not be confirmed.');
+            return;
+        }
         if (playbackReady) {
             toast(room?.autoLyricsOnQueue ? 'Queued and ready (finalizing lyrics...)' : 'Added to queue and ready');
             return;
@@ -18908,6 +18978,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Added to queue');
             return;
         }
+        const catalogBackingValidation = await verifyYouTubeCatalogBacking({
+            ...item,
+            trackSource: 'youtube',
+            mediaUrl: item.url || item.mediaUrl || '',
+            videoId: item.videoId || item.youtubeId || parseYouTubeId(item.url || item.mediaUrl || '') || ''
+        }, 'host_youtube_catalog_queue');
+        const playbackReady = catalogBackingValidation.status === 'ready';
+        const validatedBacking = playbackReady ? catalogBackingValidation.backing : null;
         const songRecord = await ensureSong({
             title: item.trackName,
             artist: item.artistName || 'YouTube',
@@ -18916,36 +18994,43 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             verifiedBy: hostName || 'host'
         });
         const songId = songRecord?.songId || buildSongKey(item.trackName, item.artistName || 'YouTube');
-        const trackRecord = await ensureTrack({
+        const trackRecord = playbackReady ? await ensureTrack({
             songId,
             source: 'youtube',
-            mediaUrl: item.url,
-            duration: durationSec || null,
+            mediaUrl: validatedBacking.mediaUrl,
+            duration: validatedBacking.durationSec || durationSec || null,
             audioOnly: backingAudioOnly,
             backingOnly: backingAudioOnly,
             addedBy: hostName || 'Host'
-        });
+        }) : null;
+        const validatedDurationSec = playbackReady
+            ? Math.max(0, Math.round(Number(validatedBacking?.durationSec || durationSec || 0) || 0))
+            : 0;
         await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
             roomCode,
             songId,
             trackId: trackRecord?.trackId || null,
-            trackSource: 'youtube',
+            trackSource: playbackReady ? 'youtube' : null,
             songTitle: item.trackName,
             artist: item.artistName || 'YouTube',
             singerUid: singerIdentity.singerUid || null,
             singerName,
-            mediaUrl: item.url,
+            mediaUrl: playbackReady ? validatedBacking.mediaUrl : '',
             albumArtUrl: item.artworkUrl100 || '',
-            duration: durationSec || null,
-            durationSec: durationSec || null,
-            mediaDurationSec: durationSec || null,
-            backingDurationSec: durationSec || null,
+            duration: validatedDurationSec || null,
+            durationSec: validatedDurationSec || null,
+            mediaDurationSec: validatedDurationSec || null,
+            backingDurationSec: validatedDurationSec || null,
             autoEndSafe: false,
-            playbackReady: true,
-            mediaResolutionStatus: 'browse_ready',
-            resolutionStatus: 'resolved',
-            resolutionLayer: 'helper_catalog_youtube',
-            youtubePlaybackStatus: item?.youtubePlaybackStatus || '',
+            playbackReady,
+            mediaResolutionStatus: playbackReady ? 'browse_ready' : 'pending',
+            resolutionStatus: playbackReady ? 'resolved' : 'review_required',
+            resolutionLayer: playbackReady ? 'helper_catalog_youtube' : 'manual_review',
+            youtubePlaybackStatus: playbackReady
+                ? validatedBacking.youtubePlaybackStatus
+                : (catalogBackingValidation.status === 'unavailable' ? 'unavailable' : ''),
+            catalogBackingValidationStatus: catalogBackingValidation.status,
+            catalogBackingValidatedAtMs: nowMs(),
             status: 'requested',
             timestamp: serverTimestamp(),
             priorityScore: nowMs(),
@@ -18953,7 +19038,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             backingAudioOnly,
             audioOnly: backingAudioOnly
         });
-        toast('Added to queue');
+        if (!playbackReady) {
+            toast(catalogBackingValidation.status === 'unavailable'
+                ? 'Added for backing review - that YouTube track is no longer available.'
+                : 'Added for backing review - that YouTube track could not be confirmed.');
+            return;
+        }
+        toast('Added to queue and ready');
     };
 
     const resolveCatalogueSingerSelection = (selectedUserId = catalogueUserId, typedSingerName = catalogueName) => {
@@ -19105,35 +19196,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const browsePanel = (
-                    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-y-contain pb-8 pr-2 custom-scrollbar touch-scroll-y">
-                        {!catalogueOnly ? (
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div>
-                                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Browse</div>
-                                    <div className="text-2xl font-bold text-white">Karaoke Catalog</div>
+                    <div data-feature-id="host-catalog-scroll-region" className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain pb-4 pr-1.5 custom-scrollbar touch-scroll-y">
+                        <div data-feature-id="host-catalog-source-filter" className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#0b0b10]/95 px-3 py-2 shadow-[0_12px_28px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+                            <div className="flex min-w-0 items-center gap-2.5">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-300/18 bg-violet-500/10 text-violet-100">
+                                    <i className="fa-solid fa-book-open"></i>
                                 </div>
-                                <div className="text-sm text-zinc-500">
-                                    Drag to queue from Stage
+                                <div className="min-w-0">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-200">Karaoke Catalog</div>
+                                    <div className="truncate text-xs text-zinc-400">Verified TV-ready backings first</div>
                                 </div>
                             </div>
-                        ) : null}
-                        <div data-feature-id="host-catalog-source-filter" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                            <div>
-                                <div className="text-xs font-black uppercase tracking-[0.18em] text-zinc-300">Backing confidence</div>
-                                <div className="mt-1 text-xs text-zinc-500">Browse verified TV-ready backings first; reveal ideas only when you need them.</div>
-                            </div>
-                            <div className="flex rounded-xl border border-white/10 bg-black/25 p-1">
+                            <div className="flex shrink-0 rounded-xl border border-white/10 bg-black/25 p-1" aria-label="Catalog backing availability">
                                 <button
                                     type="button"
                                     onClick={() => setBrowseBackingFilter('ready')}
-                                    className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${browseReadyOnly ? 'bg-emerald-500/18 text-emerald-100' : 'text-zinc-500 hover:text-white'}`}
+                                    className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black transition-colors ${browseReadyOnly ? 'bg-emerald-500/18 text-emerald-100' : 'text-zinc-500 hover:text-white'}`}
                                 >
-                                    <i className="fa-solid fa-tv mr-2"></i>TV Ready
+                                    <i className="fa-solid fa-tv mr-1.5"></i>TV Ready
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setBrowseBackingFilter('all')}
-                                    className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${!browseReadyOnly ? 'bg-amber-500/16 text-amber-100' : 'text-zinc-500 hover:text-white'}`}
+                                    className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black transition-colors ${!browseReadyOnly ? 'bg-amber-500/16 text-amber-100' : 'text-zinc-500 hover:text-white'}`}
                                 >
                                     All Ideas
                                 </button>

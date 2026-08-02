@@ -4326,7 +4326,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const isMobileLayout = layoutMode === 'mobile';
     const isTightLayout = layoutMode === 'laptop-tight';
     const isDenseLayout = mediumViewport || isTightLayout;
-    const allowHostPanelPageScroll = isMobileLayout || compactViewport || mediumViewport;
+    const catalogWorkspaceActive = queueSurface.isCompactQueueSurface
+        ? queueSurface.activeCompactTab === 'catalog'
+        : desktopQueueSurfaceTab === 'catalog';
+    const allowHostPanelPageScroll = !catalogWorkspaceActive && (isMobileLayout || compactViewport || mediumViewport);
     const sectionPaddingClass = isDenseLayout ? 'px-3 py-3' : 'px-4 py-4';
     const activeEditingSong = editingSongId ? songs.find((song) => song.id === editingSongId) || null : null;
     const preparedMoments = useMemo(
@@ -4559,7 +4562,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </div>
     );
     const catalogWorkspaceSection = (
-        <div data-feature-id="panel-catalog" className={`flex flex-1 min-h-0 flex-col overflow-hidden px-4 py-4 ${activeQueueWorkspaceToneKey === 'catalog' ? 'bg-violet-500/[0.03]' : ''}`}>
+        <div data-feature-id="panel-catalog" className={`flex h-full flex-1 min-h-0 flex-col overflow-hidden p-2 sm:p-3 ${activeQueueWorkspaceToneKey === 'catalog' ? 'bg-violet-500/[0.03]' : ''}`}>
             {catalogPanel || (
                 <div className="rounded-2xl border border-dashed border-violet-300/20 bg-black/20 px-4 py-5 text-sm text-zinc-400">
                     Catalog is not available in this host session yet.

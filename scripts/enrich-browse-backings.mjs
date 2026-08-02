@@ -20,6 +20,7 @@ const FALLBACK_SEARCH_SUFFIXES = [
   'instrumental karaoke'
 ];
 const REQUEST_RETRY_DELAYS_MS = [0, 500, 1500, 3000];
+const SHOW_CANDIDATES = process.argv.includes('--show-candidates');
 const STOP_WORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with',
   'feat', 'featuring', 'version', 'from'
@@ -228,6 +229,11 @@ const chooseBestCandidate = async (song) => {
       score: scoreCandidate({ song, candidate }),
     }))
     .sort((a, b) => b.score - a.score);
+  if (SHOW_CANDIDATES) {
+    ranked.slice(0, 8).forEach(({ candidate, score }) => {
+      process.stdout.write(`  candidate ${candidate.id} score=${score.toFixed(1)} views=${candidate.rawViewCount} duration=${candidate.durationSec}s :: ${candidate.title} :: ${candidate.channelTitle}\n`);
+    });
+  }
   const topCandidates = ranked.slice(0, 4);
   const verified = [];
   for (const entry of topCandidates) {
@@ -294,6 +300,11 @@ const main = async () => {
   const apply = process.argv.includes('--apply');
   const limitFlagIndex = process.argv.indexOf('--limit');
   const offsetFlagIndex = process.argv.indexOf('--offset');
+  const requestedSongKeys = new Set(
+    process.argv
+      .flatMap((arg, index) => (arg === '--song-key' ? [String(process.argv[index + 1] || '').trim().toLowerCase()] : []))
+      .filter(Boolean)
+  );
   const limit = limitFlagIndex >= 0 ? Math.max(1, Number(process.argv[limitFlagIndex + 1] || 0) || 0) : 0;
   const offset = offsetFlagIndex >= 0 ? Math.max(0, Number(process.argv[offsetFlagIndex + 1] || 0) || 0) : 0;
   const top100Seed = await readTop100SeedFromSource();
@@ -312,7 +323,10 @@ const main = async () => {
         return true;
       });
   })();
-  const slicedSongs = offset > 0 ? songs.slice(offset) : songs;
+  const selectedSongs = requestedSongKeys.size
+    ? songs.filter((song) => requestedSongKeys.has(buildSongKey(song.title, song.artist)))
+    : songs;
+  const slicedSongs = offset > 0 ? selectedSongs.slice(offset) : selectedSongs;
   const targetSongs = limit > 0 ? slicedSongs.slice(0, limit) : slicedSongs;
   const results = new Map();
   let foundCount = 0;

@@ -309,6 +309,33 @@ const main = async () => {
       return "stage workspace exposes the live queue, add, and catalog rails";
     });
 
+    await runCheck(checks, "host_app_catalog_owns_vertical_scroll", async () => {
+      await ensureStageWorkspace(page, timeoutMs);
+      await page.locator('[data-feature-id="queue-surface-tab-catalog-desktop"]').first().click({ force: true, timeout: timeoutMs });
+      const catalogScrollRegion = page.locator('[data-feature-id="host-catalog-scroll-region"]').first();
+      await catalogScrollRegion.waitFor({ state: "visible", timeout: timeoutMs });
+      const scrollState = await catalogScrollRegion.evaluate((element) => {
+        const before = element.scrollTop;
+        const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+        const target = before > 0 ? 0 : Math.min(240, maxScrollTop);
+        element.scrollTop = target;
+        return {
+          before,
+          after: element.scrollTop,
+          clientHeight: element.clientHeight,
+          scrollHeight: element.scrollHeight,
+          overflowY: window.getComputedStyle(element).overflowY,
+        };
+      });
+      if (!['auto', 'scroll'].includes(scrollState.overflowY)) {
+        throw new Error(`Catalog overflow-y is ${scrollState.overflowY}, expected auto or scroll`);
+      }
+      if (scrollState.scrollHeight <= scrollState.clientHeight || scrollState.after === scrollState.before) {
+        throw new Error(`Catalog did not scroll: ${JSON.stringify(scrollState)}`);
+      }
+      return `catalog scroll region moved to ${Math.round(scrollState.after)}px inside its ${Math.round(scrollState.clientHeight)}px viewport`;
+    });
+
     await runCheck(checks, "host_app_stage_timing_controls_visible", async () => {
       await gotoHostFixture(page, server, "run-of-show-stage-live", timeoutMs);
       await ensureStageWorkspace(page, timeoutMs);

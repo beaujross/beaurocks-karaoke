@@ -154,8 +154,8 @@ test('host catalogue helper mode requires singer assignment before queueing', ()
   );
   assert.match(
     hostAppSource,
-    /duration: durationSec \|\| null,\s*durationSec: durationSec \|\| null,\s*mediaDurationSec: durationSec \|\| null,\s*backingDurationSec: durationSec \|\| null,\s*autoEndSafe: false,/,
-    'Helper YouTube queue writes should preserve duration without allowing metadata-only auto-end',
+    /const validatedDurationSec = playbackReady[\s\S]*duration: validatedDurationSec \|\| null,\s*durationSec: validatedDurationSec \|\| null,\s*mediaDurationSec: validatedDurationSec \|\| null,\s*backingDurationSec: validatedDurationSec \|\| null,\s*autoEndSafe: false,/,
+    'Helper YouTube queue writes should use the freshly validated duration without allowing metadata-only auto-end',
   );
   assert.match(
     hostAppSource,
@@ -223,4 +223,57 @@ test('host catalog collection browsing preserves navigation and defaults to veri
     'TV-ready browse should filter collection songs through the approved backing index',
   );
   assert.match(hostAppSource, /Ready on TV/, 'Playable backing status should be explicit to hosts');
+});
+
+test('host catalog owns its scroll region and keeps its header compact', () => {
+  const hostQueueSource = readFileSync('src/apps/Host/components/HostQueueTab.jsx', 'utf8');
+
+  assert.match(
+    hostQueueSource,
+    /const catalogWorkspaceActive = queueSurface\.isCompactQueueSurface[\s\S]*const allowHostPanelPageScroll = !catalogWorkspaceActive/,
+    'The page-level Host scroller should stay disabled while Catalog owns the viewport',
+  );
+  assert.match(
+    hostQueueSource,
+    /data-feature-id="panel-catalog"[^>]*h-full flex-1 min-h-0 flex-col overflow-hidden/,
+    'The Catalog workspace should constrain its content to the available Host panel height',
+  );
+  assert.match(
+    hostAppSource,
+    /data-feature-id="host-catalog-scroll-region"[^>]*h-full min-h-0 flex-1[^>]*overflow-y-auto/,
+    'The catalog list should be the real vertical scroll owner',
+  );
+  assert.match(
+    hostAppSource,
+    /data-feature-id="host-catalog-source-filter"[^>]*sticky top-0[^>]*px-3 py-2/,
+    'The TV-ready filter should remain available in a compact sticky toolbar',
+  );
+  assert.doesNotMatch(
+    hostAppSource,
+    /Drag to queue from Stage/,
+    'Catalog should not spend vertical space repeating workspace instructions',
+  );
+});
+
+test('host revalidates YouTube catalog media before marking a queue item TV-ready', () => {
+  assert.match(hostAppSource, /const verifyYouTubeCatalogBacking = async/);
+  assert.match(hostAppSource, /callFunction\('youtubeStatus'/);
+  assert.match(hostAppSource, /normalizeYouTubePlaybackState\(statusItem\)/);
+  assert.match(
+    hostAppSource,
+    /approvedBrowseBacking = catalogBackingValidation\.status === 'ready'[\s\S]*\? catalogBackingValidation\.backing[\s\S]*: null/,
+    'A stale curated backing must be removed from the ready queue payload',
+  );
+  assert.match(
+    hostAppSource,
+    /const trackRecord = playbackReady \? await ensureTrack/,
+    'A helper-catalog YouTube track should only be persisted after live validation succeeds',
+  );
+  assert.match(
+    hostAppSource,
+    /videoId: item\.videoId \|\| item\.youtubeId \|\| parseYouTubeId\(item\.url \|\| item\.mediaUrl \|\| ''\) \|\| ''/,
+    'Helper catalog validation should derive YouTube identity from media fields, never an internal document id',
+  );
+  assert.match(hostAppSource, /catalogBackingValidationStatus: catalogBackingValidation\.status/);
+  assert.match(hostAppSource, /Added for backing review - that YouTube track could not be confirmed\./);
 });
