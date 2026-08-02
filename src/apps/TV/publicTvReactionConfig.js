@@ -1,4 +1,4 @@
-import { getReactionDefinition } from '../../lib/reactionCatalog';
+import { getReactionDefinition } from '../../lib/reactionCatalog.js';
 
 export const TV_REACTION_LABELS = Object.freeze({
     fire: 'Hype',

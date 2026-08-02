@@ -104,7 +104,9 @@ test('PromptVoteGame renders Would You Rather player and TV states with the expe
   );
 
   assert.match(wyrPlayer, /data-prompt-vote-player-view="wyr"/);
+  assert.match(wyrPlayer, /data-prompt-vote-question="wyr"/);
   assert.match(wyrPlayer, /WOULD YOU RATHER/);
+  assert.match(wyrPlayer, /Would you rather open with a power ballad or a singalong anthem\?/);
   assert.match(wyrPlayer, /data-wyr-choice="A"/);
   assert.match(wyrPlayer, /data-wyr-choice="B"/);
   assert.match(wyrPlayer, /Power ballad/);
