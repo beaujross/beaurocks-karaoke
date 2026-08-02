@@ -1,10 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$SaveCredential,
-    [switch]$ResetCredential,
-    [switch]$ForgetCredential,
     [switch]$CheckOnly,
-    [switch]$KeepRawLog,
+    [switch]$KeepSanitizedLog,
     [string]$CredentialPath = "",
     [string]$AppCheckTokenPath = ""
 )
@@ -12,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Write-Info($Message) {
-    Write-Host "[qa-admin-prod-secure-win] $Message"
+    Write-Host "[qa-core-night-secure-win] $Message"
 }
 
 function Normalize-EmailList($Value) {
@@ -40,7 +37,7 @@ function Redact-Text($Text, $Email, $Password, $AppCheckToken) {
 }
 
 if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
-    throw 'This secure runner uses Windows DPAPI via Export-Clixml and must run on Windows.'
+    throw 'This secure runner uses Windows DPAPI via Import-Clixml and must run on Windows.'
 }
 
 if (-not $CredentialPath) {
@@ -53,44 +50,16 @@ if (-not $AppCheckTokenPath) {
     $AppCheckTokenPath = Join-Path $appDataRoot 'BeauRocks\qa\qa-app-check-debug-token.xml'
 }
 
-$credentialDir = Split-Path -Parent $CredentialPath
-New-Item -ItemType Directory -Force -Path $credentialDir | Out-Null
-New-Item -ItemType Directory -Force -Path 'tmp' | Out-Null
-
-if ($ForgetCredential) {
-    if (Test-Path -LiteralPath $CredentialPath) {
-        Remove-Item -LiteralPath $CredentialPath -Force
-        Write-Info "Removed stored credential: $CredentialPath"
-    } else {
-        Write-Info "No stored credential found at: $CredentialPath"
-    }
-    exit 0
-}
-
-if ($ResetCredential -and (Test-Path -LiteralPath $CredentialPath)) {
-    Remove-Item -LiteralPath $CredentialPath -Force
-    Write-Info 'Removed previous stored credential before reset.'
-}
-
-if ($SaveCredential -or -not (Test-Path -LiteralPath $CredentialPath)) {
-    Write-Info 'Opening Windows credential prompt. Use the dedicated low-privilege QA host account.'
-    $credential = Get-Credential -Message 'Enter BeauRocks QA host email and password'
-    if (-not $credential -or -not $credential.UserName) {
-        throw 'No QA host credential was provided.'
-    }
-    $credential | Export-Clixml -LiteralPath $CredentialPath
-    Write-Info "Stored Windows-encrypted credential at: $CredentialPath"
+if (-not (Test-Path -LiteralPath $CredentialPath)) {
+    throw 'Stored QA credential is missing. Initialize it with npm run qa:admin:prod:secure:win -- -SaveCredential.'
 }
 
 $qaCredential = Import-Clixml -LiteralPath $CredentialPath
-if (-not $qaCredential -or -not $qaCredential.UserName) {
-    throw "Could not load stored QA credential from: $CredentialPath"
-}
-
 $qaEmail = [string]$qaCredential.UserName
-$qaPassword = $qaCredential.GetNetworkCredential().Password
+$networkCredential = $qaCredential.GetNetworkCredential()
+$qaPassword = if ($null -ne $networkCredential) { [string]$networkCredential.Password } else { '' }
 if (-not $qaEmail -or -not $qaPassword) {
-    throw 'Stored QA credential is incomplete. Run again with -ResetCredential.'
+    throw 'Stored QA credential could not be decrypted or is incomplete.'
 }
 
 $qaAppCheckToken = ''
@@ -102,7 +71,7 @@ if (Test-Path -LiteralPath $AppCheckTokenPath) {
     $qaAppCheckToken = [string]$env:QA_APP_CHECK_DEBUG_TOKEN
 }
 if (-not $qaAppCheckToken) {
-    throw 'A Windows-encrypted App Check debug token or QA_APP_CHECK_DEBUG_TOKEN is required before running production admin QA.'
+    throw 'A Windows-encrypted App Check debug token or QA_APP_CHECK_DEBUG_TOKEN is required before running production core-night QA.'
 }
 
 $allowedEmails = Normalize-EmailList $env:QA_ALLOWED_HOST_EMAILS
@@ -112,27 +81,31 @@ if ($allowedEmails.Count -eq 0) {
 
 $normalizedEmail = $qaEmail.Trim().ToLowerInvariant()
 if ($allowedEmails -notcontains $normalizedEmail) {
-    throw 'Stored QA host email is not in QA_ALLOWED_HOST_EMAILS. Refusing to run production QA with this account.'
+    throw 'Stored QA host email is not in QA_ALLOWED_HOST_EMAILS. Refusing to run production QA.'
+}
+
+$blockedEmails = @('hello@beauross.com') + (Normalize-EmailList $env:SUPER_ADMIN_EMAILS) + (Normalize-EmailList $env:QA_BLOCKED_HOST_EMAILS)
+$allowSuperAdmin = @('1', 'true', 'yes', 'on') -contains ([string]$env:QA_ALLOW_SUPERADMIN).Trim().ToLowerInvariant()
+if (-not $allowSuperAdmin -and $blockedEmails -contains $normalizedEmail) {
+    throw 'Stored QA host email matches the blocked/super-admin policy. Use a dedicated low-privilege QA account.'
 }
 
 if ($CheckOnly) {
     $qaPassword = $null
     $qaAppCheckToken = $null
     Write-Info 'Credential loaded, encrypted App Check token present, and QA host email is allowlisted.'
-    Write-Info "Credential path: $CredentialPath"
     exit 0
 }
 
-$rawLogPath = 'tmp\qa-admin-prod.raw.log'
-$sanitizedLogPath = 'tmp\qa-admin-prod.sanitized.log'
-if (Test-Path -LiteralPath $rawLogPath) { Remove-Item -LiteralPath $rawLogPath -Force }
-if (Test-Path -LiteralPath $sanitizedLogPath) { Remove-Item -LiteralPath $sanitizedLogPath -Force }
+$tmpDir = Join-Path (Get-Location).Path 'tmp'
+New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+$sanitizedLogPath = Join-Path $tmpDir 'qa-core-night.sanitized.log'
 
-Write-Info 'Running npm run qa:admin:prod with QA credentials scoped to the child process.'
+Write-Info 'Running the production core-night gate with the saved Windows-encrypted credential.'
 
 $psi = [System.Diagnostics.ProcessStartInfo]::new()
 $psi.FileName = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
-$psi.Arguments = '/d /c "npm run qa:admin:prod"'
+$psi.Arguments = '/d /c "npm run qa:golden:host-room-hands-off"'
 $psi.WorkingDirectory = (Get-Location).Path
 $psi.UseShellExecute = $false
 $psi.RedirectStandardOutput = $true
@@ -150,28 +123,25 @@ $stderr = $process.StandardError.ReadToEnd()
 $process.WaitForExit()
 $exitCode = $process.ExitCode
 
-$rawOutput = $stdout
+$combinedOutput = $stdout
 if ($stderr) {
-    $rawOutput = "$rawOutput`r`n$stderr"
+    $combinedOutput = $combinedOutput + [Environment]::NewLine + $stderr
+}
+$sanitized = Redact-Text -Text $combinedOutput -Email $qaEmail -Password $qaPassword -AppCheckToken $qaAppCheckToken
+
+if ($KeepSanitizedLog -or $exitCode -ne 0) {
+    $logText = $sanitized + [Environment]::NewLine + "EXIT_CODE=$exitCode" + [Environment]::NewLine
+    Set-Content -LiteralPath $sanitizedLogPath -Value $logText -NoNewline
+    Write-Info "Sanitized log: $sanitizedLogPath"
 }
 
-$sanitized = Redact-Text -Text $rawOutput -Email $qaEmail -Password $qaPassword -AppCheckToken $qaAppCheckToken
-$sanitized = "$sanitized`r`nEXIT_CODE=$exitCode`r`n"
-Set-Content -LiteralPath $sanitizedLogPath -Value $sanitized -NoNewline
-
-if ($KeepRawLog) {
-    $raw = Redact-Text -Text $rawOutput -Email $qaEmail -Password $qaPassword -AppCheckToken $qaAppCheckToken
-    Set-Content -LiteralPath $rawLogPath -Value $raw -NoNewline
-    Write-Info "Kept redacted raw log at: $rawLogPath"
-}
-
-$env:QA_HOST_EMAIL = $null
-$env:QA_HOST_PASSWORD = $null
 $qaPassword = $null
 $qaAppCheckToken = $null
 $secureAppCheckToken = $null
 $appCheckCredential = $null
+$networkCredential = $null
+$qaCredential = $null
 
-Write-Info "Sanitized log: $sanitizedLogPath"
+Write-Output $sanitized
 Write-Info "Exit code: $exitCode"
 exit $exitCode

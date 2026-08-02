@@ -612,6 +612,69 @@ const ensureHostQueueListWorkspaceOpen = async ({ page, timeoutMs }) => {
   return "Queue workspace open.";
 };
 
+const ensureHostShowPlanWorkspaceOpen = async ({ page, timeoutMs }) => {
+  await closeAnyHostTopMenu(page);
+  await closeAutomationMenuIfOpen(page);
+  await closeQueueMenuIfOpen(page);
+  const showWorkspace = page.locator('[data-feature-id="host-moment-prep-workbench"]:visible').first();
+  if (await showWorkspace.isVisible().catch(() => false)) {
+    return "Show Plan workspace already open.";
+  }
+
+  const stageTab = page.locator('[data-host-tab="stage"]:visible').first();
+  if (await stageTab.isVisible().catch(() => false)) {
+    await stageTab.click({ force: true });
+    await delay(800);
+  }
+
+  const runtimeShell = page.locator('[data-host-runtime-brand-title]:visible').first();
+  const runtimeWorkspaceButton = runtimeShell.getByRole("button", { name: /^Workspace$/i }).first();
+  if (await runtimeWorkspaceButton.isVisible().catch(() => false)) {
+    await runtimeWorkspaceButton.click({ force: true });
+    await delay(500);
+  }
+
+  for (const button of [
+    page.locator('[data-feature-id="queue-surface-tab-show-desktop"]:visible').first(),
+    page.locator('[data-feature-id="queue-surface-tab-show"]:visible').first(),
+  ]) {
+    if (!(await button.isVisible().catch(() => false))) continue;
+    await button.click({ force: true });
+    break;
+  }
+
+  await showWorkspace.waitFor({ state: "visible", timeout: timeoutMs });
+  return "Show Plan workspace open.";
+};
+
+const startUnexpectedWyrFlashMonitor = async (page) => {
+  await page.evaluate(() => {
+    if (window.__qaUnexpectedWyrFlashMonitor) {
+      clearInterval(window.__qaUnexpectedWyrFlashMonitor);
+    }
+    window.__qaUnexpectedWyrVisibleSamples = 0;
+    window.__qaUnexpectedWyrFlashMonitor = setInterval(() => {
+      const node = document.querySelector('[data-prompt-vote-tv-view="wyr"]');
+      if (!node) return;
+      const style = window.getComputedStyle(node);
+      const visible = style.display !== "none"
+        && style.visibility !== "hidden"
+        && Number(style.opacity || 1) > 0
+        && node.getBoundingClientRect().width > 0
+        && node.getBoundingClientRect().height > 0;
+      if (visible) window.__qaUnexpectedWyrVisibleSamples += 1;
+    }, 40);
+  });
+};
+
+const stopUnexpectedWyrFlashMonitor = async (page) => page.evaluate(() => {
+  if (window.__qaUnexpectedWyrFlashMonitor) {
+    clearInterval(window.__qaUnexpectedWyrFlashMonitor);
+    window.__qaUnexpectedWyrFlashMonitor = null;
+  }
+  return Number(window.__qaUnexpectedWyrVisibleSamples || 0);
+});
+
 const closeHostRoomAndWaitForConfirmation = async ({ page, timeoutMs }) => {
   await closeAnyHostTopMenu(page);
   await closeAutomationMenuIfOpen(page);
@@ -960,6 +1023,8 @@ const run = async () => {
   const audienceSongTitle = `QAAUD${Date.now().toString().slice(-5)}`;
   const audienceArtist = "QA Audience Artist";
   const hostSearchQuery = "Sweet Caroline";
+  const waveZeroMomentTitle = `Wave 0 Audience Choice ${Date.now().toString().slice(-5)}`;
+  const waveZeroMomentQuestion = "Would you rather open with a power ballad or a crowd singalong?";
 
   const { chromium } = await ensurePlaywright();
   const browser = await chromium.launch({ headless });
@@ -1084,6 +1149,75 @@ const run = async () => {
       return `${joinDetail} joinUrl=${joinUrl}`;
     });
 
+    await runCheck(checks, "host_prepares_edits_and_places_moment_draft", async () => {
+      await ensureHostShowPlanWorkspaceOpen({ page: hostPage, timeoutMs });
+      const builder = hostPage.locator('[data-feature-id="moment-prep-builder"]:visible').first();
+      const template = builder.locator('[data-moment-prep-template="would_you_rather"]').first();
+      await template.waitFor({ state: "visible", timeout: timeoutMs });
+      await template.locator('[data-moment-prep-action="save-draft"]').click({ force: true });
+
+      const hopper = hostPage.locator('[data-feature-id="moment-prep-prepared-hopper"]:visible').first();
+      const draftCard = hopper.locator('[data-moment-draft-id]').last();
+      await draftCard.waitFor({ state: "visible", timeout: timeoutMs });
+      const draftId = String(await draftCard.getAttribute("data-moment-draft-id") || "").trim();
+      if (!draftId) throw new Error("Prepared Moment did not expose a stable draft id.");
+
+      const timeline = hostPage.locator('[data-feature-id="moment-prep-timeline"]:visible').first();
+      const beforeText = String(await timeline.innerText().catch(() => ""));
+      if (beforeText.includes(waveZeroMomentTitle)) {
+        throw new Error("Prepared Moment appeared in Tonight's Lineup before placement.");
+      }
+
+      const editor = draftCard.locator('[data-feature-id="moment-draft-inline-editor"]').first();
+      await editor.locator("summary").click({ force: true });
+      await editor.getByLabel("Moment title").fill(waveZeroMomentTitle);
+      await editor.getByLabel("Question for the Room").fill(waveZeroMomentQuestion);
+      await editor.getByLabel("Choice A").fill("Power ballad");
+      await editor.getByLabel("Choice B").fill("Crowd singalong");
+      await editor.getByRole("button", { name: /Save changes/i }).click({ force: true });
+      await editor.getByText("Draft saved.", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+
+      await draftCard.locator('[data-moment-draft-action="add-to-lineup"]').click({ force: true });
+      await timeline.getByText(waveZeroMomentTitle, { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+      await hopper.locator(`[data-moment-draft-id="${draftId}"]`).waitFor({ state: "detached", timeout: timeoutMs });
+      return `Edited draft ${draftId} and added it once to Tonight's Lineup.`;
+    });
+
+    await runCheck(checks, "host_starts_moment_on_audience_and_public_tv", async () => {
+      await ensureHostShowPlanWorkspaceOpen({ page: hostPage, timeoutMs });
+      const handoff = hostPage.locator('[data-feature-id="moment-prep-live-handoff"]:visible').first();
+      const startNext = handoff.getByRole("button", { name: /^Start Next$/i }).first();
+      await startNext.waitFor({ state: "visible", timeout: timeoutMs });
+      await startNext.click({ force: true });
+
+      await handoff.getByText(`Live now: ${waveZeroMomentTitle}`, { exact: true }).waitFor({
+        state: "visible",
+        timeout: timeoutMs,
+      });
+      const audienceWyr = audiencePage.locator('[data-prompt-vote-player-view="wyr"]').first();
+      await audienceWyr.waitFor({ state: "visible", timeout: timeoutMs });
+      await audienceWyr.getByText(waveZeroMomentQuestion, { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+      await audienceWyr.locator('[data-wyr-choice="A"]').click({ force: true });
+
+      const tvWyr = tvPage.locator('[data-prompt-vote-tv-view="wyr"]').first();
+      await tvWyr.waitFor({ state: "visible", timeout: timeoutMs });
+      await tvWyr.getByText(waveZeroMomentQuestion, { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+      return "The edited Moment went live on Host, Audience, and Public TV.";
+    });
+
+    await runCheck(checks, "host_finishes_moment_before_performance", async () => {
+      const handoff = hostPage.locator('[data-feature-id="moment-prep-live-handoff"]:visible').first();
+      const finish = handoff.getByRole("button", { name: /Finish & Start Next/i }).first();
+      await finish.waitFor({ state: "visible", timeout: timeoutMs });
+      await finish.click({ force: true });
+      await tvPage.locator('[data-prompt-vote-tv-view="wyr"]').first().waitFor({
+        state: "hidden",
+        timeout: timeoutMs,
+      });
+      await startUnexpectedWyrFlashMonitor(tvPage);
+      return "Moment finished and the WYR scene cleared before the next performance.";
+    });
+
     await runCheck(checks, "host_adds_song_request", async () => {
       const activeHostRoomUrl = new URL(hostUrl);
       activeHostRoomUrl.pathname = "/";
@@ -1166,6 +1300,15 @@ const run = async () => {
         timeoutMs: Math.min(timeoutMs, 90000),
       })
     );
+
+    await runCheck(checks, "no_intermission_activity_flash_before_performance", async () => {
+      await delay(750);
+      const visibleSamples = await stopUnexpectedWyrFlashMonitor(tvPage);
+      if (visibleSamples > 0) {
+        throw new Error(`Would You Rather became visible for ${visibleSamples} monitor sample(s) while the performance was starting.`);
+      }
+      return "No WYR/intermission frame appeared while the queued performance started.";
+    });
 
     await runCheck(checks, "audience_pop_trivia_renders_and_accepts_answer", async () => {
       const triviaCard = await waitForAudiencePopTriviaCard({

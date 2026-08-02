@@ -157,12 +157,12 @@ const main = async () => {
       return 'slot 6 correctly explains slot 5 and presents the account reward path';
     });
 
-    await audiencePage.getByRole('button', { name: 'Close points sheet' }).click();
+    await audiencePage.getByRole('button', { name: 'Close audience wallet' }).click();
     await runCheck(checks, 'audience_reaction_library_is_obvious_and_actionable', async () => {
       const browse = audiencePage.locator('[data-feature-id="browse-reaction-emoji-library"]');
       await browse.waitFor({ state: 'visible', timeout: timeoutMs });
       await browse.click();
-      await audiencePage.getByRole('heading', { name: 'Reaction Emoji Library' }).waitFor({
+      await audiencePage.getByRole('heading', { name: 'Reaction Bank' }).waitFor({
         state: 'visible',
         timeout: timeoutMs,
       });
@@ -170,7 +170,7 @@ const main = async () => {
         state: 'visible',
         timeout: timeoutMs,
       });
-      await audiencePage.getByText('Compare power. Pick your show.', { exact: true }).waitFor({
+      await audiencePage.getByText('See the effect before you equip it', { exact: true }).waitFor({
         state: 'visible',
         timeout: timeoutMs,
       });

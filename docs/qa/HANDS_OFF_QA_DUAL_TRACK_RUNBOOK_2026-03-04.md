@@ -56,6 +56,12 @@ Normal run after the credential is stored:
 npm run qa:admin:prod:secure:win
 ```
 
+Run the production core-night gate with the same saved credential:
+
+```powershell
+npm run qa:release:core-night:secure:win
+```
+
 Credential cleanup:
 
 ```powershell
@@ -65,11 +71,22 @@ npm run qa:admin:prod:secure:win -- -ForgetCredential
 The Windows secure runner:
 - stores the QA host credential outside the repo under the current Windows user profile
 - uses Windows DPAPI via `Export-Clixml`
-- requires `QA_APP_CHECK_DEBUG_TOKEN` and `QA_ALLOWED_HOST_EMAILS`
+- loads the App Check debug token from the Windows DPAPI file at
+  `%APPDATA%\BeauRocks\qa\qa-app-check-debug-token.xml`, with
+  `QA_APP_CHECK_DEBUG_TOKEN` retained only as a compatibility fallback
+- requires `QA_ALLOWED_HOST_EMAILS`
 - rejects a stored QA email that is not allowlisted
-- injects `QA_HOST_EMAIL` and `QA_HOST_PASSWORD` only into the child QA process
+- injects `QA_HOST_EMAIL`, `QA_HOST_PASSWORD`, and the App Check token only into the child QA process
 - writes `tmp\qa-admin-prod.sanitized.log`
 - redacts email-shaped strings and the credential values from logs
+
+The core-night Windows runner reads that same encrypted credential, applies the same App Check,
+allowlist, and super-admin guardrails, and only retains a sanitized log when requested or when the
+gate fails.
+
+Firebase emulator test scripts use `scripts/qa/run-firebase-emulator-sanitized.mjs`. The wrapper
+removes production QA credentials, App Check values, and inherited `DEBUG` logging before Firebase
+starts so local integration-test diagnostics cannot echo production secrets.
 
 Optional policy hardening:
 - set `QA_ALLOWED_HOST_EMAILS` to enforce dedicated QA-only account(s)

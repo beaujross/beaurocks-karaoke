@@ -185,9 +185,16 @@ const ensureAdminRoomSetup = async (page, timeoutMs) => {
 
 const ensureAdminMediaWorkspace = async (page, timeoutMs) => {
   await ensureAdminRoomSetup(page, timeoutMs);
+  const settingsSearch = page.locator('[data-admin-settings-search="true"] input:visible').first();
+  await settingsSearch.waitFor({ state: "visible", timeout: timeoutMs });
+  await settingsSearch.fill("Screens");
   const mediaButton = page.getByRole("button", { name: /Screens \+ Playback/i }).first();
   await mediaButton.waitFor({ state: "visible", timeout: timeoutMs });
   await mediaButton.click({ force: true, timeout: timeoutMs });
+  await page.locator('[data-admin-active-section-title]').filter({ hasText: "Screens + Playback" }).first().waitFor({
+    state: "visible",
+    timeout: timeoutMs,
+  });
   await page.getByText("Room Uploads").last().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
@@ -238,43 +245,24 @@ const main = async () => {
 
     await runCheck(checks, "host_app_fixture_loaded", async () => {
       await page.locator('[data-run-of-show-director-surface="true"]').first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByLabel("Conveyor belt").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await waitForAnyVisible([
-        page.getByText("Open Issues").first(),
-        page.getByText("Fix Issue").first(),
-        page.getByText("Issue Rail").first(),
-      ], timeoutMs);
-      return "run-of-show show workspace loaded";
+      await page.locator('[data-feature-id="moment-prep-timeline"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator('[data-feature-id="moment-prep-builder"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "Moment Prep workspace loaded with Timeline and Quick Moment Builder";
     });
 
     await runCheck(checks, "host_app_run_of_show_board_visible", async () => {
       await ensureShowWorkspace(page, timeoutMs);
-      const boardToggle = await waitForAnyVisible([
-        page.getByRole("button", { name: /Open Board/i }).first(),
-        page.getByRole("button", { name: /Collapse Board/i }).first(),
-      ], timeoutMs);
-      const toggleName = await boardToggle.textContent();
-      if (/open board/i.test(String(toggleName || ""))) {
-        await boardToggle.click({ force: true, timeout: timeoutMs });
-      }
-      await page.getByText("Conveyor Actions").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await waitForAnyVisible([
-        page.getByText("Issue Rail").first(),
-        page.getByText("Open Issues").first(),
-      ], timeoutMs);
-      await page.getByText("Audience Spotlight").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "board controls and issue rail rendered";
+      await page.locator('[data-feature-id="moment-prep-live-handoff"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator('[data-feature-id="moment-prep-full-director"][open]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "Moment Prep exposes the live handoff and detailed Show Plan in one workspace";
     });
 
     await runCheck(checks, "host_app_sequence_tools_tray_visible", async () => {
       await ensureShowWorkspace(page, timeoutMs);
-      const buildButton = page.getByRole("button", { name: /^BUILD$/i }).first();
-      await buildButton.waitFor({ state: "visible", timeout: timeoutMs });
-      await buildButton.click({ force: true, timeout: timeoutMs });
-      await page.getByText("Sequence Tools").first().waitFor({ state: "visible", timeout: timeoutMs });
-      const trayToggle = page.getByRole("button", { name: /Hide Sequence Tools|Open Sequence Tools/i }).first();
-      await trayToggle.waitFor({ state: "visible", timeout: timeoutMs });
-      return "build workspace exposes the collapsible sequence tools tray";
+      await page.locator('[data-feature-id="moment-prep-builder"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator('[data-moment-prep-template]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator('[data-feature-id="moment-prep-prepared-hopper"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "Quick Moment Builder and Prepared Moments are visible without a separate Build tray";
     });
 
     await runCheck(checks, "host_app_audio_dropdown_and_quick_volume_controls_visible", async () => {
@@ -432,11 +420,11 @@ const main = async () => {
       const uploadRow = page.locator("div").filter({
         hasText: "Festival Break Card",
       }).filter({
-        has: page.getByRole("button", { name: /Use In Run Of Show/i }).first(),
+        has: page.getByRole("button", { name: /Use In Show Plan/i }).first(),
       }).first();
       await uploadRow.waitFor({ state: "visible", timeout: timeoutMs });
       await uploadRow.getByRole("button", { name: /TV Library/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
-      await uploadRow.getByRole("button", { name: /Use In Run Of Show/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
+      await uploadRow.getByRole("button", { name: /Use In Show Plan/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
       return "room uploads expose the TV library and run-of-show handoff controls for shared visual media";
     });
 
