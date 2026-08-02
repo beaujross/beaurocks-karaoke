@@ -52,6 +52,16 @@ test('PublicTV queue sidebar promotes queue count and estimated wait as dedicate
   );
   assert.match(
     tvSource,
+    /data-tv-queue-count=\{allQueue\.length\}/,
+    'The normal TV queue should expose a stable machine-readable count for production telemetry.',
+  );
+  assert.match(
+    tvSource,
+    /data-tv-queue-count=\{queueCount\}/,
+    'The self-serve TV queue should expose the same stable machine-readable count.',
+  );
+  assert.match(
+    tvSource,
     /Est\. Wait/,
     'The queue sidebar should call out estimated wait as a dedicated metric.',
   );
