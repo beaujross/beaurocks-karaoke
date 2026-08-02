@@ -27,6 +27,11 @@ test('Queue workspace separates performance and moment preparation without addin
   assert.match(queueSource, /HOST_LIVE_OPS_LANGUAGE\.advancedShowControls/);
   assert.match(queueSource, /data-feature-id="moment-prep-live-handoff"/);
   assert.match(queueSource, /HOST_LIVE_OPS_LANGUAGE\.startNext/);
+  assert.match(
+    queueSource,
+    /\(runOfShowStagedItem\?\.id \|\| runOfShowNextItem\?\.id\)[\s\S]*?data-moment-live-action="start-next" onClick=\{onAdvanceRunOfShow\}/,
+    'The live handoff must advance a next item even before Auto-Advance mode is active',
+  );
   assert.match(queueSource, /HOST_LIVE_OPS_LANGUAGE\.autoDj\} runs performances only/);
   assert.notMatch(queueSource, /Live Queue|Moment Prep|Performance Prep|Take Next Live|Add to Flow/);
   assert.match(queueSource, /destination: 'planner'/);
