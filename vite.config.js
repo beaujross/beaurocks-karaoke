@@ -37,6 +37,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // Keep the bootstrap URL stable so a cached HTML document never points at
+        // an entry module that disappears during the next Hosting release.
+        entryFileNames: 'assets/[name].js',
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
           const packagePath = id.split('node_modules/')[1] || ''
