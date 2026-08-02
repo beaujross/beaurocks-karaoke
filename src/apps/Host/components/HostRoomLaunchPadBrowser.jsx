@@ -1114,55 +1114,60 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
                         ) : null}
 
-                        <div className="relative grid overflow-hidden rounded-[1.45rem] border border-white/10 bg-black/24 shadow-[0_18px_50px_rgba(0,0,0,0.28)] lg:grid-cols-[minmax(250px,0.76fr)_minmax(0,1.35fr)]" data-launch-core-setup="true">
-                            <div className="relative overflow-hidden border-b border-white/10 bg-[linear-gradient(160deg,rgba(236,72,153,0.13),rgba(9,20,31,0.18)_48%,rgba(34,211,238,0.10))] p-5 sm:p-6 lg:border-b-0 lg:border-r lg:p-7">
-                                <div aria-hidden="true" className="absolute -right-14 -top-14 h-40 w-40 rounded-full border border-cyan-200/10 shadow-[0_0_60px_rgba(34,211,238,0.16)]" />
-                                <div className="relative flex h-full min-h-[170px] flex-col">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-100/72">
-                                            <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_14px_rgba(244,114,182,0.95)]" />
-                                            New room
-                                        </span>
-                                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${launchDisabled ? 'border-amber-300/25 bg-amber-500/10 text-amber-100' : 'border-cyan-300/30 bg-cyan-400/10 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.1)]'}`}>
-                                            <span className={`h-1.5 w-1.5 rounded-full ${launchDisabled ? 'bg-amber-300' : 'bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]'}`} />
-                                            {launchDisabled ? 'Needs input' : 'Ready'}
-                                        </span>
-                                    </div>
-                                    <div className="mt-4 grid h-11 w-11 place-items-center rounded-xl border border-cyan-200/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.19),rgba(236,72,153,0.16))] text-base text-white shadow-[0_12px_26px_rgba(0,0,0,0.22)]">
+                        <div className="relative overflow-hidden rounded-[1.45rem] border border-white/10 bg-black/24 shadow-[0_18px_50px_rgba(0,0,0,0.28)]" data-launch-core-setup="true">
+                            <div className="relative overflow-hidden border-b border-white/10 bg-[linear-gradient(115deg,rgba(236,72,153,0.13),rgba(9,20,31,0.3)_48%,rgba(34,211,238,0.10))] px-4 py-4 sm:px-5" data-launch-create-header="true">
+                                <div aria-hidden="true" className="absolute -right-14 -top-20 h-44 w-44 rounded-full border border-cyan-200/10 shadow-[0_0_60px_rgba(34,211,238,0.16)]" />
+                                <div className="relative grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+                                    <div className="grid h-12 w-12 place-items-center rounded-2xl border border-cyan-200/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.19),rgba(236,72,153,0.16))] text-lg text-white shadow-[0_12px_26px_rgba(0,0,0,0.22)]">
                                         <i className="fa-solid fa-microphone-lines" />
                                     </div>
-                                    <h2 className="mt-3 max-w-xs text-2xl font-black leading-[1.04] tracking-[-0.03em] text-white">Create your room</h2>
-                                    <p className="mt-2 max-w-xs text-sm leading-5 text-cyan-50/62">Name it, choose a recipe, and decide who can join.</p>
-                                    <div className="mt-auto pt-4">
-                                        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3.5 backdrop-blur-sm">
-                                            <div className="flex items-center gap-3">
-                                                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-fuchsia-200/15 bg-fuchsia-500/10 text-fuchsia-100">
-                                                    <i className={`fa-solid ${selectedOperatingModelOption.icon}`} />
-                                                </span>
-                                                <span className="min-w-0">
-                                                    <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-cyan-100/44">Night recipe</span>
-                                                    <span className="mt-1 block truncate text-sm font-bold text-white">{selectedNightType.label}</span>
-                                                </span>
-                                            </div>
+                                    <div className="min-w-0">
+                                        <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-100/72">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_14px_rgba(244,114,182,0.95)]" />
+                                            New room
                                         </div>
+                                        <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                                            <h2 className="text-2xl font-black leading-tight tracking-[-0.03em] text-white">Build the room guests will enter</h2>
+                                            <span className="text-sm text-cyan-50/58">Name it, choose the night, then set the front door.</span>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2" data-launch-create-summary="true">
+                                            <span className="rounded-full border border-fuchsia-300/18 bg-fuchsia-500/8 px-2.5 py-1 text-[10px] text-fuchsia-50/78">{selectedNightType.label}</span>
+                                            <span className="rounded-full border border-cyan-300/18 bg-cyan-500/8 px-2.5 py-1 text-[10px] text-cyan-50/78">{discoveryListingEnabled ? 'Listed in Discover' : 'Private room'}</span>
+                                            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] text-cyan-50/68">{getLaunchMediaSourceLabels(launchMediaSources).length} media sources</span>
+                                        </div>
+                                    </div>
+                                    <div className={`flex min-w-[170px] items-center gap-3 rounded-2xl border px-3 py-3 ${launchDisabled ? 'border-amber-300/24 bg-amber-500/9' : 'border-emerald-300/24 bg-emerald-500/9'}`} data-launch-readiness="true">
+                                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${launchDisabled ? 'bg-amber-400/14 text-amber-100' : 'bg-emerald-400/14 text-emerald-100'}`}>
+                                            <i className={`fa-solid ${launchDisabled ? 'fa-pen-to-square' : 'fa-check'}`} />
+                                        </span>
+                                        <span>
+                                            <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-cyan-100/45">Launch readiness</span>
+                                            <span className={`mt-0.5 block text-sm font-black ${launchDisabled ? 'text-amber-50' : 'text-emerald-50'}`}>{launchDisabled ? 'Needs input' : 'Ready to create'}</span>
+                                        </span>
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-[linear-gradient(150deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-4 sm:p-6 lg:p-7">
+                            <div className="bg-[linear-gradient(150deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-4 sm:p-5 lg:p-6">
                                 {launchDraftRecovered ? (
                                     <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-50" role="status">
                                         <i className="fa-solid fa-rotate-left"></i>
                                         Saved choices restored
                                     </div>
                                 ) : null}
-                                <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-                                    <label className="block md:col-span-2 lg:col-span-3">
-                                        <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><i className="fa-solid fa-signature text-cyan-300/72" /> Room name</span>
-                                        <input value={launchRoomName} onChange={(e) => setLaunchRoomName(e.target.value)} placeholder="Friday Karaoke" autoFocus className={launchInputClass} />
+                                <div className="grid gap-4 lg:grid-cols-12">
+                                    <label className="block rounded-2xl border border-white/10 bg-black/18 p-4 lg:col-span-12" data-launch-room-identity="true">
+                                        <span className="flex flex-wrap items-center justify-between gap-2">
+                                            <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><span className="grid h-6 w-6 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[9px] text-cyan-100">1</span><i className="fa-solid fa-signature text-cyan-300/72" /> Name the room</span>
+                                            <span className="text-[11px] text-cyan-100/44">This is what guests and hosts will recognize.</span>
+                                        </span>
+                                        <input value={launchRoomName} onChange={(e) => setLaunchRoomName(e.target.value)} placeholder="Friday Karaoke" autoFocus className={`${launchInputClass} max-w-3xl`} />
                                     </label>
-                                    <div className="md:col-span-2 lg:col-span-3" data-launch-room-control="true">
-                                        <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><i className="fa-solid fa-layer-group text-fuchsia-300/78" /> Night recipe</span>
-                                        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                                    <div className="rounded-2xl border border-fuchsia-300/14 bg-fuchsia-500/[0.045] p-4 lg:col-span-12" data-launch-room-control="true">
+                                        <div className="flex flex-wrap items-end justify-between gap-2">
+                                            <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-100/70"><span className="grid h-6 w-6 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-500/10 text-[9px] text-fuchsia-100">2</span><i className="fa-solid fa-layer-group text-fuchsia-300/78" /> Choose the kind of night</span>
+                                            <span className="text-[11px] text-fuchsia-100/48">Sets sensible defaults for pacing, automation, and rewards.</span>
+                                        </div>
+                                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                                             {LAUNCH_NIGHT_TYPE_OPTIONS.map((option) => {
                                                 const selected = option.id === launchNightType;
                                                 return (
@@ -1172,7 +1177,7 @@ const HostRoomLaunchPadBrowser = ({
                                                         data-launch-room-recipe={option.id}
                                                         aria-pressed={selected}
                                                         onClick={() => applyLaunchNightType(option.id)}
-                                                        className={`min-h-[126px] rounded-xl border p-3 text-left transition ${selected ? 'border-fuchsia-300/48 bg-fuchsia-500/14 text-white shadow-[0_14px_30px_rgba(217,70,239,0.1)]' : 'border-white/10 bg-black/18 text-cyan-100/72 hover:border-cyan-300/25 hover:bg-white/[0.04]'}`}
+                                                        className={`min-h-[112px] rounded-xl border p-3 text-left transition ${selected ? 'border-fuchsia-300/48 bg-fuchsia-500/14 text-white shadow-[0_14px_30px_rgba(217,70,239,0.1)]' : 'border-white/10 bg-black/18 text-cyan-100/72 hover:border-cyan-300/25 hover:bg-white/[0.04]'}`}
                                                     >
                                                         <span className="flex items-start justify-between gap-2">
                                                             <span className="inline-flex items-center gap-2 text-sm font-black"><i className={`fa-solid ${option.icon}`} />{option.label}</span>
@@ -1187,8 +1192,9 @@ const HostRoomLaunchPadBrowser = ({
                                             })}
                                         </div>
                                     </div>
-                                    <div className="md:col-span-2" data-launch-guest-access="true">
-                                        <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><i className="fa-solid fa-user-group text-cyan-300/72" /> Guest access</span>
+                                    <div className="rounded-2xl border border-cyan-300/14 bg-cyan-500/[0.04] p-4 lg:col-span-8" data-launch-guest-access="true">
+                                        <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/68"><span className="grid h-6 w-6 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[9px] text-cyan-100">3</span><i className="fa-solid fa-user-group text-cyan-300/72" /> Choose the front door</span>
+                                        <div className="mt-1 text-[11px] text-cyan-100/46">Control what guests need before they can enter and request songs.</div>
                                         <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
                                             {AUDIENCE_JOIN_ACCESS_OPTIONS.map((option) => {
                                                 const selected = launchJoinAccessMode === option.id;
@@ -1203,8 +1209,8 @@ const HostRoomLaunchPadBrowser = ({
                                             })}
                                         </div>
                                     </div>
-                                    <div className="block" data-launch-room-privacy="true">
-                                        <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><i className="fa-solid fa-eye text-cyan-300/72" /> Room privacy</span>
+                                    <div className="rounded-2xl border border-white/10 bg-black/18 p-4 lg:col-span-4" data-launch-room-privacy="true">
+                                        <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><i className="fa-solid fa-eye text-cyan-300/72" /> Who can find it?</span>
                                         <div className="mt-2 inline-flex min-h-[50px] w-full rounded-[0.95rem] border border-white/10 bg-slate-950/60 p-1">
                                             <button type="button" onClick={() => setDiscoveryListingMode(false)} aria-pressed={!discoveryListingEnabled} className={`flex-1 rounded-xl px-3 py-2 text-xs font-bold transition ${!discoveryListingEnabled ? 'bg-white text-slate-950' : 'text-cyan-100/62 hover:text-white'}`}>Private</button>
                                             <button type="button" onClick={() => setDiscoveryListingMode(true)} aria-pressed={discoveryListingEnabled} className={`flex-1 rounded-xl px-3 py-2 text-xs font-bold transition ${discoveryListingEnabled ? 'bg-gradient-to-r from-cyan-300 to-fuchsia-300 text-slate-950' : 'text-cyan-100/62 hover:text-white'}`}>Discover</button>
@@ -1212,14 +1218,15 @@ const HostRoomLaunchPadBrowser = ({
                                         <div className="mt-2 text-xs leading-5 text-cyan-100/52">{discoveryListingEnabled ? 'List this Room in Discover. You can add venue and schedule details later.' : 'Only people with the Room code or Audience App link can find it.'}</div>
                                     </div>
                                 </div>
+                                <div className={`mt-4 grid gap-3 ${launchNeedsPasscode ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`} data-launch-access-details="true">
                                 {launchNeedsPasscode ? (
-                                    <label className="mt-5 block max-w-md">
+                                    <label className="block rounded-2xl border border-fuchsia-300/16 bg-fuchsia-500/[0.045] p-4">
                                         <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/60"><i className="fa-solid fa-lock text-fuchsia-300/78" /> Guest passcode</span>
                                         <input type="password" value={launchJoinPasscode} onChange={(e) => setLaunchJoinPasscode(String(e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24))} placeholder="4-24 letters or numbers" minLength={4} maxLength={24} autoComplete="new-password" className={launchInputClass} />
                                         {!launchPasscodeValid ? <div className="mt-2 text-xs text-amber-200">Use at least 4 letters or numbers.</div> : null}
                                     </label>
                                 ) : null}
-                                <details className="group mt-5 rounded-2xl border border-white/[0.08] bg-black/18 px-4 py-3 transition open:border-cyan-300/15 open:bg-cyan-500/[0.035]">
+                                <details className="group rounded-2xl border border-white/[0.08] bg-black/18 px-4 py-3 transition open:border-cyan-300/15 open:bg-cyan-500/[0.035]">
                                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold text-cyan-50/68 transition hover:text-white">
                                         <span className="inline-flex items-center gap-2"><i className="fa-solid fa-hashtag text-cyan-300/58" /> Custom room code <span className="font-normal text-cyan-100/34">Optional</span></span>
                                         <i className="fa-solid fa-chevron-down text-[9px] text-cyan-100/42 transition group-open:rotate-180" />
@@ -1229,13 +1236,14 @@ const HostRoomLaunchPadBrowser = ({
                                         <div className="mt-2 text-xs text-cyan-100/48">Leave blank and we&apos;ll create one.</div>
                                     </label>
                                 </details>
-                                <div className="mt-5 rounded-2xl border border-cyan-300/18 bg-cyan-500/[0.07] px-4 py-3" data-launch-media-readiness="true">
+                                </div>
+                                <div className="mt-4 rounded-2xl border border-cyan-300/18 bg-cyan-500/[0.07] px-4 py-4" data-launch-media-readiness="true">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/74"><i className="fa-solid fa-music" /> Searchable media</span>
+                                        <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/74"><span className="grid h-6 w-6 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[9px] text-cyan-100">4</span><i className="fa-solid fa-music" /> Choose where song search looks</span>
                                         <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.15em] text-cyan-50">{getLaunchMediaSourceLabels(launchMediaSources).length} enabled</span>
                                     </div>
                                     <div className="mt-2 text-xs leading-5 text-cyan-50/66">Choose where Host and Audience searches may look. This sets guardrails, not a catalog lock; every performance still needs playable backing.</div>
-                                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                                         {LAUNCH_MEDIA_SOURCE_OPTIONS.map((option) => {
                                             const selected = !option.disabled && launchMediaSources?.[option.id] !== false;
                                             return (
@@ -1247,12 +1255,23 @@ const HostRoomLaunchPadBrowser = ({
                                         })}
                                     </div>
                                 </div>
-                                <button type="button" data-host-create-room-primary="true" aria-busy={creatingRoom} onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`group/launch mt-5 flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(100deg,#db2777_0%,#ec4899_35%,#14b8a6_78%,#22d3ee_100%)] px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_14px_34px_rgba(236,72,153,0.18),0_0_28px_rgba(34,211,238,0.1)] transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(236,72,153,0.24),0_0_34px_rgba(34,211,238,0.16)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:brightness-100 ${roomLaunchDisabled ? 'cursor-not-allowed opacity-45' : ''}`}>
-                                    {creatingRoom ? <i className="fa-solid fa-circle-notch animate-spin" /> : <i className="fa-solid fa-wand-magic-sparkles" />}
-                                    <span>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</span>
-                                    {!creatingRoom ? <i className="fa-solid fa-arrow-right text-[10px] transition-transform group-hover/launch:translate-x-1" /> : null}
-                                </button>
-                                <div className="mt-3 flex items-center justify-center gap-2 text-center text-[11px] text-cyan-100/42"><i className="fa-solid fa-shield-check text-[9px]" /> Your recipe and media guardrails apply immediately. Fine-tune them later from Room Settings.</div>
+                                <div className="mt-4 grid gap-4 rounded-2xl border border-emerald-300/18 bg-[linear-gradient(110deg,rgba(16,185,129,0.09),rgba(8,16,27,0.78)_46%,rgba(236,72,153,0.08))] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.55fr)] lg:items-center" data-launch-primary-bar="true">
+                                    <div className="min-w-0">
+                                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100/62">Review and launch</div>
+                                        <div className="mt-1 text-lg font-black text-white">{launchRoomName.trim() || 'Name your room to continue'}</div>
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {launchSummaryItems.slice(0, 4).map((item) => <span key={item} className="rounded-full border border-white/10 bg-black/22 px-2.5 py-1 text-[10px] text-cyan-50/72">{item}</span>)}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <button type="button" data-host-create-room-primary="true" aria-busy={creatingRoom} onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`group/launch flex min-h-[56px] w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(100deg,#db2777_0%,#ec4899_35%,#14b8a6_78%,#22d3ee_100%)] px-5 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-white shadow-[0_14px_34px_rgba(236,72,153,0.18),0_0_28px_rgba(34,211,238,0.1)] transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(236,72,153,0.24),0_0_34px_rgba(34,211,238,0.16)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:brightness-100 ${roomLaunchDisabled ? 'cursor-not-allowed opacity-45' : ''}`}>
+                                            {creatingRoom ? <i className="fa-solid fa-circle-notch animate-spin" /> : <i className="fa-solid fa-wand-magic-sparkles" />}
+                                            <span>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</span>
+                                            {!creatingRoom ? <i className="fa-solid fa-arrow-right text-[10px] transition-transform group-hover/launch:translate-x-1" /> : null}
+                                        </button>
+                                        <div className="mt-2 flex items-center justify-center gap-2 text-center text-[10px] text-cyan-100/42"><i className="fa-solid fa-shield-check text-[9px]" /> You can fine-tune everything later in Room Settings.</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
