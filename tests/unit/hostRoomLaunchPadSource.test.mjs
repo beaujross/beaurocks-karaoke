@@ -143,7 +143,19 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
 
   assert.match(source, /data-launch-core-setup="true"/);
   assert.match(source, /data-room-create-premium="true"/);
-  assert.match(source, /Name it, choose a recipe, and decide who can join\./);
+  assert.match(source, /Build the room guests will enter/);
+  assert.match(source, /Name it, choose the night, then set the front door\./);
+  assert.match(source, /data-launch-create-header="true"/);
+  assert.match(source, /data-launch-create-summary="true"/);
+  assert.match(source, /data-launch-readiness="true"/);
+  assert.match(source, /data-launch-room-identity="true"/);
+  assert.match(source, /data-launch-access-details="true"/);
+  assert.match(source, /data-launch-primary-bar="true"/);
+  assert.match(source, /lg:grid-cols-12/);
+  assert.match(source, /lg:col-span-8/);
+  assert.match(source, /lg:col-span-4/);
+  assert.match(source, /xl:grid-cols-5/);
+  assert.doesNotMatch(source, /lg:grid-cols-\[minmax\(250px,0\.76fr\)_minmax\(0,1\.35fr\)\]/);
   assert.match(source, /data-launch-room-control="true"/);
   assert.match(source, /data-launch-guest-access="true"/);
   assert.match(source, /data-launch-room-privacy="true"/);
@@ -151,7 +163,7 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
   assert.match(source, /openNightSetup: false, launchTarget: 'stage'/);
   assert.match(source, /Create \+ Open Host Panel/);
-  assert.match(source, /Your recipe and media guardrails apply immediately/);
+  assert.match(source, /You can fine-tune everything later in Room Settings\./);
   assert.match(source, /Custom room code/);
   assert.match(source, /data-launch-configuration-contract="true"/);
   assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Party Karaoke[\s\S]*Crowd Sing-Along[\s\S]*Score Challenge[\s\S]*Karaoke \+ Trivia/);
