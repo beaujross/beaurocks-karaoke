@@ -5,7 +5,6 @@ import { buildSurfaceUrl, inferSurfaceFromHostname } from "../../../lib/surfaceD
 import { MARKETING_ROUTE_PAGES } from "../routing";
 import { marketingFlags } from "../featureFlags";
 import { PersonaPageFrame } from "./PersonaMarketingBlocks";
-import { HOST_SUBSCRIPTION_PLAN_CATALOG } from "../../../billing/hostPlans";
 
 const deriveWaitlistName = (email = "") => {
   const local = String(email || "").split("@")[0] || "";
@@ -33,9 +32,6 @@ const getHostApplicationErrorMessage = (error) => {
   }
   return "We could not add you to the waitlist right now. Please try again.";
 };
-
-const monthlyHostPlan = HOST_SUBSCRIPTION_PLAN_CATALOG.host_monthly;
-const annualHostPlan = HOST_SUBSCRIPTION_PLAN_CATALOG.host_annual;
 
 const ForHostsPage = ({
   route,
@@ -451,11 +447,11 @@ const ForHostsPage = ({
 
       <section className="mk3-persona-simple-band">
         <div className="mk3-persona-simple-band-intro">
-          <div className="mk3-rebuild-kicker">What Host access costs</div>
-          <h2>Pay for the tools that run the Room—not for joining the line.</h2>
+          <div className="mk3-rebuild-kicker">Testing access and future pricing</div>
+          <h2>Apply free. Test free. Choose before you ever pay.</h2>
           <p>
-            The waitlist is free. Selected testers may receive temporary access under the terms in their invitation.
-            Standard paid Host access is available monthly or annually.
+            Joining the waitlist is free. Selected Hosts currently receive complimentary testing access.
+            No card is required, no subscription starts automatically, and future paid terms will be shown before you choose them.
           </p>
         </div>
         <div className="mk3-persona-simple-card-grid is-three">
@@ -465,14 +461,14 @@ const ForHostsPage = ({
             <p>Apply with your name and email. No account, card, or subscription is required.</p>
           </article>
           <article className="mk3-persona-simple-card">
-            <span>Monthly Host</span>
-            <strong>{monthlyHostPlan.priceLabel}</strong>
-            <p>Full Host Dashboard and Room creation, billed month to month.</p>
+            <span>Approved testing access</span>
+            <strong>Complimentary</strong>
+            <p>$0 while your testing invitation is active, with no card or automatic charge.</p>
           </article>
           <article className="mk3-persona-simple-card">
-            <span>Annual Host</span>
-            <strong>{annualHostPlan.priceLabel}</strong>
-            <p>The same Host access for a year, saving $30 compared with twelve monthly payments.</p>
+            <span>Future paid access</span>
+            <strong>Terms before payment</strong>
+            <p>Pricing is not open during testing. You will explicitly opt in before any paid plan begins.</p>
           </article>
         </div>
         <div className="mk3-host-pricing-details">
@@ -482,7 +478,7 @@ const ForHostsPage = ({
           </article>
           <article>
             <strong>You stay in control</strong>
-            <p>Billing and usage are visible in the Host Dashboard. Provider-powered tools have limits and pause before creating an unexpected usage charge.</p>
+            <p>Usage is visible in the Host Dashboard so you and BeauRocks can understand real operating costs. Testing counters are not a bill.</p>
           </article>
           <article>
             <strong>Not included</strong>

@@ -26,6 +26,20 @@ describe("marketing page source", () => {
     expect(source).toContain("Invitations are selected in small batches—not first come, first served.");
   });
 
+  it("keeps public Host pricing aligned with complimentary testing", () => {
+    const hostSource = readSource("src/apps/Marketing/pages/ForHostsPage.jsx");
+    const helpSource = readSource("src/apps/Help/HelpCenter.jsx");
+    const seoSource = readSource("src/apps/Marketing/seoModel.js");
+    expect(hostSource).not.toContain("HOST_SUBSCRIPTION_PLAN_CATALOG");
+    expect(helpSource).not.toContain("HOST_SUBSCRIPTION_PLAN_CATALOG");
+    expect(hostSource).toContain("Approved testing access");
+    expect(hostSource).toContain("No card is required");
+    expect(hostSource).toContain("explicitly opt in");
+    expect(helpSource).toContain("Approved testing access currently costs $0");
+    expect(seoSource).toContain("complimentary testing access with no card or automatic charge");
+    expect(seoSource).not.toContain("compare monthly or annual access");
+  });
+
   it("separates room access from the highlighted Host waitlist call to action", () => {
     const navSource = readSource("src/apps/Marketing/iaModel.js");
     const siteSource = readSource("src/apps/Marketing/MarketingSite.jsx");

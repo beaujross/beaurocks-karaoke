@@ -63,7 +63,7 @@ const PAGE_DESCRIPTION_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.demoAuto]: "Watch a BeauRocks karaoke night move from Host Dashboard to TV to guest phones.",
   [MARKETING_ROUTE_PAGES.changelog]: "Release updates and product changes across host, audience, and public TV experiences.",
   [MARKETING_ROUTE_PAGES.hostAccess]: "Invited BeauRocks Hosts sign in here. New applicants can join the Host waitlist without creating an account.",
-  [MARKETING_ROUTE_PAGES.forHosts]: "Join the invite-only BeauRocks Host waitlist and compare monthly or annual access for running karaoke Rooms.",
+  [MARKETING_ROUTE_PAGES.forHosts]: "Join the invite-only BeauRocks Host waitlist. Selected Hosts currently receive complimentary testing access with no card or automatic charge.",
   [MARKETING_ROUTE_PAGES.forVenues]: "Publish a karaoke venue and schedule so singers can find the night and join when it is live.",
   [MARKETING_ROUTE_PAGES.forPerformers]: "Find karaoke nights, join from your phone, save eligible scores, and compete for Song Crowns.",
   [MARKETING_ROUTE_PAGES.forFans]: "Run self-hosted karaoke at home or at a private party, or discover live karaoke nights near you with BeauRocks.",

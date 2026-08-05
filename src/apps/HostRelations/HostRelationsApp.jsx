@@ -357,35 +357,82 @@ const HostRoster = ({ summary }) => {
   return <Panel className="overflow-hidden" data-active-host-roster><div className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row sm:items-end sm:justify-between"><div><Eyebrow>Approved Host Roster</Eyebrow><h2 className="mt-1 text-xl font-black text-white">Activity and usage snapshot</h2><p className="mt-1 text-xs text-zinc-500">Room activity reflects provisioning milestones; provider counts reflect the selected monthly usage period.</p></div><input className={`${inputClass} sm:max-w-xs`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Hosts" /></div><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-white/[0.03] text-[10px] uppercase tracking-[0.16em] text-zinc-500"><tr><th className="px-4 py-3">Host</th><th className="px-3 py-3">Last Room</th><th className="px-3 py-3">Onboarding</th><th className="px-3 py-3">AI</th><th className="px-3 py-3">YouTube</th><th className="px-3 py-3">Apple</th><th className="px-3 py-3">Plan</th><th className="px-3 py-3">Attention</th></tr></thead><tbody className="divide-y divide-white/5">{hosts.map((host) => { const dormant = host.lastRoomAtMs && Number(summary?.generatedAtMs || 0) - host.lastRoomAtMs > 14 * 86400000; const attention = !host.workspaceActivatedAtMs ? 'Needs setup' : !host.firstRoomAtMs ? 'Needs rehearsal' : dormant ? 'Dormant' : 'Healthy'; return <tr key={host.applicationId} className="hover:bg-white/[0.03]"><td className="px-4 py-3"><strong className="block text-white">{host.name || host.email}</strong><span className="text-xs text-zinc-500">{host.email}</span></td><td className="px-3 py-3 text-zinc-300">{formatAgo(host.lastRoomAtMs)}</td><td className="px-3 py-3"><span className="text-xs text-zinc-300">{host.secondRoomAtMs ? 'Repeat' : host.firstRoomAtMs ? 'First Room' : host.workspaceActivatedAtMs ? 'Workspace ready' : 'Invited'}</span></td><td className="px-3 py-3 text-zinc-300">{host.usageMeters?.ai_generate_content?.used || 0}</td><td className="px-3 py-3 text-zinc-300">{host.usageMeters?.youtube_data_request?.used || 0}</td><td className="px-3 py-3 text-zinc-300">{host.usageMeters?.apple_music_request?.used || 0}</td><td className="px-3 py-3"><StatusChip>{host.planId || 'free'}</StatusChip></td><td className="px-3 py-3"><StatusChip tone={attention === 'Healthy' ? 'emerald' : 'amber'}>{attention}</StatusChip></td></tr>; })}</tbody></table></div>{!hosts.length ? <div className="p-6 text-center text-sm text-zinc-500">No approved Hosts match this view.</div> : null}</Panel>;
 };
 
+
 const ApplicationsWorkspace = ({ onChanged, focusApplicationId = '' }) => {
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('pending');
   const [notes, setNotes] = useState({});
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
-  const refresh = useCallback(async (clearNotice = true) => { try { const payload = await listHostApplications({ status: filter, limit: 100 }); setItems(Array.isArray(payload?.items) ? payload.items : []); if (clearNotice) setNotice(''); return true; } catch (error) { setNotice(errorText(error, 'Could not load applications.')); return false; } }, [filter]);
+  const refresh = useCallback(async (clearNotice = true) => {
+    try {
+      const payload = await listHostApplications({ status: filter, limit: 100 });
+      setItems(Array.isArray(payload?.items) ? payload.items : []);
+      if (clearNotice) setNotice('');
+      return true;
+    } catch (error) {
+      setNotice(errorText(error, 'Could not load applications.'));
+      return false;
+    }
+  }, [filter]);
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
     if (!focusApplicationId || !items.some((item) => item.applicationId === focusApplicationId)) return;
-    const element = document.getElementById(`host-application-${focusApplicationId}`);
-    element?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    document.getElementById(`host-application-${focusApplicationId}`)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
   }, [focusApplicationId, items]);
+
   const decide = async (item, action) => {
-    const verb = action === 'approve' ? 'approve and invite' : 'reject';
+    const verb = action === 'approve' ? 'approve and invite' : action === 'resend_invite' ? 'resend onboarding to' : 'reject';
     if (!window.confirm(`Are you sure you want to ${verb} ${item.name || item.email}?`)) return;
     setBusy(item.applicationId);
     try {
-      await resolveHostApplication({ applicationId: item.applicationId, action, notes: notes[item.applicationId] || '' });
-      const successMessage = action === 'approve' ? 'Host approved and invitation activated.' : 'Application rejected.';
+      const result = await resolveHostApplication({
+        applicationId: item.applicationId,
+        action,
+        notes: notes[item.applicationId] || '',
+      });
+      const delivery = result?.notification || {};
+      const deliveryMessage = delivery.status === 'queued'
+        ? `Email queued to ${delivery.recipient}.`
+        : `Access was updated, but the email is ${delivery.status || 'not confirmed'}.`;
+      const actionMessage = action === 'approve'
+        ? `Host approved. ${deliveryMessage}`
+        : action === 'resend_invite'
+          ? `Onboarding email retry complete. ${deliveryMessage}`
+          : `Application rejected. ${deliveryMessage}`;
       const listRefreshed = await refresh(false);
       let summaryRefreshed = true;
       try { await onChanged?.(); } catch { summaryRefreshed = false; }
-      setNotice(listRefreshed && summaryRefreshed ? successMessage : `${successMessage} Some dashboard data could not refresh.`);
+      setNotice(listRefreshed && summaryRefreshed ? actionMessage : `${actionMessage} Some dashboard data could not refresh.`);
     } catch (error) {
-      setNotice(errorText(error, 'Application review failed before any success was confirmed.'));
-    } finally { setBusy(''); }
+      setNotice(errorText(error, 'Application action failed before any success was confirmed.'));
+    } finally {
+      setBusy('');
+    }
   };
-  return <div className="space-y-4"><Panel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:justify-between"><div><Eyebrow tone="pink">Invite Desk</Eyebrow><h2 className="mt-1 text-xl font-black text-white">Host applications</h2><p className="mt-1 text-sm text-zinc-400">Approve selectively and keep onboarding tied to a verified Host identity.</p></div><select className={`${inputClass} sm:max-w-[220px]`} value={filter} onChange={(event) => setFilter(event.target.value)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></Panel><div className="grid gap-3 xl:grid-cols-2">{items.map((item) => <div id={`host-application-${item.applicationId}`} key={item.applicationId}><Panel className={`p-4 ${focusApplicationId === item.applicationId ? 'border-cyan-200/50 ring-2 ring-cyan-300/15' : ''}`}><div className="flex items-start justify-between gap-3"><div><strong className="text-lg text-white">{item.name || item.email}</strong><div className="mt-1 text-xs text-zinc-500">{item.email} · {formatDate(item.submittedAtMs || item.createdAtMs)}</div></div><StatusChip tone={item.status === 'pending' ? 'amber' : item.status === 'approved' ? 'emerald' : 'rose'}>{item.status}</StatusChip></div><div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3"><Eyebrow>Hosting Goal</Eyebrow><p className="mt-2 text-sm leading-6 text-zinc-300">{item.hostProfile?.hostingGoal || 'No testing goal supplied.'}</p><div className="mt-2 text-xs text-zinc-500">{item.hostProfile?.hostType?.replace(/_/g, ' ') || 'Host type not supplied'}</div></div>{item.status === 'pending' ? <><textarea className={`${inputClass} mt-3 min-h-[88px]`} value={notes[item.applicationId] || ''} onChange={(event) => setNotes((current) => ({ ...current, [item.applicationId]: event.target.value }))} placeholder="Private approval notes" /><div className="mt-3 flex gap-2"><button className={primaryButton} disabled={busy === item.applicationId} onClick={() => decide(item, 'approve')}>Approve Host</button><button className={dangerButton} disabled={busy === item.applicationId} onClick={() => decide(item, 'reject')}>Reject</button></div></> : null}</Panel></div>)}</div>{!items.length ? <EmptyState icon="fa-ticket" title={`No ${filter} applications`} body="Applications will appear here as people join the selective Host testing line." /> : null}{notice ? <div className="rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-sm text-amber-100">{notice}</div> : null}</div>;
+
+  return <div className="space-y-4" data-host-application-delivery-tracking>
+    <Panel className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:justify-between">
+      <div><Eyebrow tone="pink">Invite Desk</Eyebrow><h2 className="mt-1 text-xl font-black text-white">Host applications</h2><p className="mt-1 text-sm text-zinc-400">Approval grants complimentary testing access and queues a guided onboarding email.</p></div>
+      <div className="flex gap-2"><select className={`${inputClass} min-w-[170px]`} value={filter} onChange={(event) => setFilter(event.target.value)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select><button type="button" className={secondaryButton} onClick={() => refresh()}><i className="fa-solid fa-rotate" /> Refresh</button></div>
+    </Panel>
+    <div className="grid gap-3 xl:grid-cols-2">
+      {items.map((item) => {
+        const delivery = item.decisionEmail;
+        const deliveryStatus = delivery?.status || 'not_recorded';
+        const deliveryTone = deliveryStatus === 'sent' ? 'emerald' : deliveryStatus === 'queued' || deliveryStatus === 'sending' ? 'amber' : 'rose';
+        return <div id={`host-application-${item.applicationId}`} key={item.applicationId}><Panel className={`p-4 ${focusApplicationId === item.applicationId ? 'border-cyan-200/50 ring-2 ring-cyan-300/15' : ''}`}>
+          <div className="flex items-start justify-between gap-3"><div><strong className="text-lg text-white">{item.name || item.email}</strong><div className="mt-1 text-xs text-zinc-500">{item.email} · {formatDate(item.submittedAtMs || item.createdAtMs)}</div></div><StatusChip tone={item.status === 'pending' ? 'amber' : item.status === 'approved' ? 'emerald' : 'rose'}>{item.status}</StatusChip></div>
+          <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3"><Eyebrow>Hosting Goal</Eyebrow><p className="mt-2 text-sm leading-6 text-zinc-300">{item.hostProfile?.hostingGoal || 'No testing goal supplied.'}</p><div className="mt-2 text-xs text-zinc-500">{item.hostProfile?.hostType?.replace(/_/g, ' ') || 'Host type not supplied'}</div></div>
+          {item.status !== 'pending' ? <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><Eyebrow>Applicant email</Eyebrow><div className="mt-1 text-sm text-zinc-300">{delivery?.recipient || item.email}</div></div><StatusChip tone={deliveryTone}>{deliveryStatus.replace(/_/g, ' ')}</StatusChip></div>{delivery?.lastError ? <p className="mt-2 text-xs text-rose-200">{delivery.lastError}</p> : null}{!delivery ? <p className="mt-2 text-xs text-amber-100">Delivery was not recorded for this earlier decision. Resend if the Host did not receive onboarding.</p> : null}</div> : null}
+          {item.status === 'pending' ? <><textarea className={`${inputClass} mt-3 min-h-[88px]`} value={notes[item.applicationId] || ''} onChange={(event) => setNotes((current) => ({ ...current, [item.applicationId]: event.target.value }))} placeholder="Private approval notes" /><div className="mt-3 flex gap-2"><button className={primaryButton} disabled={busy === item.applicationId} onClick={() => decide(item, 'approve')}>Approve + Send Onboarding</button><button className={dangerButton} disabled={busy === item.applicationId} onClick={() => decide(item, 'reject')}>Reject</button></div></> : null}
+          {item.status === 'approved' ? <button type="button" className={`${secondaryButton} mt-3`} disabled={busy === item.applicationId} onClick={() => decide(item, 'resend_invite')}><i className="fa-solid fa-paper-plane" /> Resend onboarding email</button> : null}
+        </Panel></div>;
+      })}
+    </div>
+    {!items.length ? <EmptyState icon="fa-ticket" title={`No ${filter} applications`} body="Applications will appear here as people join the selective Host testing line." /> : null}
+    {notice ? <div className="rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-sm text-amber-100">{notice}</div> : null}
+  </div>;
 };
 
 const GettingStarted = ({ onboarding, onOpenHelp, onOpenSupport }) => {
@@ -398,6 +445,18 @@ const GettingStarted = ({ onboarding, onOpenHelp, onOpenSupport }) => {
   const complete = steps.filter((step) => step.complete).length;
   return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]"><Panel className="p-5"><Eyebrow>First-Night Path</Eyebrow><h2 className="mt-1 text-2xl font-black text-white">Build confidence before guests arrive</h2><div className="mt-5 space-y-3">{steps.map((step, index) => <div key={step.id} className={`flex items-center gap-3 rounded-2xl border p-4 ${step.complete ? 'border-emerald-300/20 bg-emerald-500/8' : index === complete ? 'border-cyan-300/25 bg-cyan-500/8' : 'border-white/10 bg-black/20'}`}><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${step.complete ? 'border-emerald-300/25 bg-emerald-500/12 text-emerald-200' : 'border-white/10 bg-white/5 text-zinc-500'}`}><i className={`fa-solid ${step.complete ? 'fa-check' : 'fa-circle'}`} /></span><div><strong className="text-sm text-white">{step.label}</strong><div className="mt-1 text-xs text-zinc-500">{step.complete ? 'Complete' : index === complete ? 'Your next step' : 'Comes next'}</div></div></div>)}</div></Panel><Panel className="p-5"><Eyebrow tone="pink">Rehearsal Checklist</Eyebrow><h3 className="mt-1 text-lg font-black text-white">Test all three surfaces</h3><ol className="mt-4 space-y-3 text-sm leading-6 text-zinc-300"><li>1. Create a private Room.</li><li>2. Open Public TV on a second screen.</li><li>3. Join from your phone as an audience member.</li><li>4. Request a song and move it through the queue.</li><li>5. Send product questions through Message the Team—not Room chat.</li></ol><div className="mt-5 grid gap-2"><button type="button" onClick={onOpenHelp} className={`${primaryButton} w-full`}>Open Host Guide</button><button type="button" onClick={onOpenSupport} className={`${secondaryButton} w-full`}>Message the Team</button></div></Panel></div>;
 };
+
+const GettingStartedV2 = ({ accessTerms, ...props }) => (
+  <div className="space-y-4" data-complimentary-host-onboarding>
+    <Panel className="border-emerald-300/20 bg-emerald-500/8 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div><Eyebrow>Testing access</Eyebrow><h2 className="mt-1 text-xl font-black text-white">{accessTerms?.label || 'Complimentary testing access'}</h2><p className="mt-1 text-sm leading-6 text-emerald-50/75">Your approved testing access costs $0. No card is required, no subscription was started, and there are no automatic charges. Usage meters are shown for transparency, not as a bill.</p></div>
+        <StatusChip tone="emerald">{accessTerms?.priceLabel || '$0 during testing'}</StatusChip>
+      </div>
+    </Panel>
+    <GettingStarted {...props} />
+  </div>
+);
 
 const AccessGate = ({ mode, access, error }) => <div className="grid min-h-screen place-items-center bg-black p-6 text-white"><Panel className="max-w-xl p-8 text-center"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-amber-300/25 bg-amber-500/10 text-amber-200"><i className="fa-solid fa-lock text-xl" /></div><h1 className="mt-5 text-2xl font-black">{mode === 'ops' ? 'Super admin access required' : 'Approved Host access required'}</h1><p className="mt-3 text-sm leading-6 text-zinc-400">{error || (mode === 'ops' ? 'Sign in with a verified BeauRocks super-admin account to open Host Operations.' : 'The Host Hub becomes available after your private Host invitation is approved.')}</p><div className="mt-6 flex flex-wrap justify-center gap-2"><a className={primaryButton} href="/host-access">Sign In</a><a className={secondaryButton} href="/?mode=host">Host Dashboard</a></div>{access?.email ? <div className="mt-4 text-xs text-zinc-600">Signed in as {access.email}</div> : null}</Panel></div>;
 
@@ -462,7 +521,7 @@ const HostRelationsApp = ({ mode = 'hub' }) => {
             {isOps && tab === 'hosts' ? <HostRoster summary={summary} /> : null}
             {tab === 'updates' ? <UpdatesWorkspace admin={isOps} /> : null}
             {tab === 'support' ? <SupportWorkspace admin={isOps} /> : null}
-            {!isOps && tab === 'getting_started' ? <GettingStarted onboarding={access?.host?.onboarding} onOpenHelp={() => switchTab('help')} onOpenSupport={() => switchTab('support')} /> : null}
+            {!isOps && tab === 'getting_started' ? <GettingStartedV2 accessTerms={access?.host?.accessTerms} onboarding={access?.host?.onboarding} onOpenHelp={() => switchTab('help')} onOpenSupport={() => switchTab('support')} /> : null}
             {!isOps && tab === 'help' ? <HostHelpGuide onOpenSupport={() => switchTab('support')} /> : null}
           </div>
         </main>

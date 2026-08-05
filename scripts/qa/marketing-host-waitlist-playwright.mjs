@@ -76,8 +76,9 @@ const main = async () => {
       await loadMarketingRoute(page, server.baseUrl, { path: "/for-hosts", legacyPage: "for_hosts" }, timeoutMs);
       await page.getByRole("heading", { name: /host karaoke your way/i }).waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText(/new host applications are open/i).first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("$15/mo", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("$150/yr", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Complimentary", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Terms before payment", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText(/no card is required, no subscription starts automatically/i).waitFor({ state: "visible", timeout: timeoutMs });
       return "for-hosts page loaded";
     });
 

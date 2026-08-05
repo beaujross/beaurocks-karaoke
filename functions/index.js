@@ -5030,6 +5030,9 @@ const MARKETING_DISCOVER_OFFICIAL_ROOM_CODES = parseMarketingRoomCodeSet(
 const MARKETING_PRIVATE_HOST_ACCESS_ENFORCED = String(process.env.MARKETING_PRIVATE_HOST_ACCESS_ENFORCED || "true")
   .trim()
   .toLowerCase() === "true";
+const HOST_SUBSCRIPTION_CHECKOUT_ENABLED = String(process.env.HOST_SUBSCRIPTION_CHECKOUT_ENABLED || "false")
+  .trim()
+  .toLowerCase() === "true";
 const MARKETING_PRIVATE_INVITE_CODES = parseMarketingPrivateInviteCodes(
   process.env.MARKETING_PRIVATE_INVITE_CODES || process.env.MARKETING_PRIVATE_INVITE_CODE || ""
 );
@@ -8241,6 +8244,14 @@ const resolveUserEntitlements = async (uid) => {
   ]);
   const superAdmin = await isSuperAdminUid(uid);
   if (superAdmin) {
+    const accessTerms = {
+      mode: "super_admin",
+      label: "Super admin access",
+      priceLabel: "$0",
+      cardRequired: false,
+      subscriptionStarted: false,
+      automaticCharges: false,
+    };
     return {
       orgId,
       role: "owner",
@@ -8253,6 +8264,8 @@ const resolveUserEntitlements = async (uid) => {
       usagePlanId: "host_annual",
       usageStatus: "active",
       usageAccessSource: "super_admin",
+      accessTerms,
+      subscriptionCheckoutEnabled: HOST_SUBSCRIPTION_CHECKOUT_ENABLED,
       capabilities: normalizeCapabilities({
         ...BASE_CAPABILITIES,
         [ROOM_CREATE_CAPABILITY]: true,
@@ -8267,6 +8280,34 @@ const resolveUserEntitlements = async (uid) => {
   }
   const capabilities = normalizeCapabilities(entitlements.capabilities || {});
   const hostApprovalEnabled = await hasHostApprovalAccess(uid);
+  const paidHostSubscriptionActive = isPublicPaidHostPlan(entitlements.planId)
+    && isEntitledStatus(entitlements.status);
+  const accessTerms = hostApprovalEnabled && !paidHostSubscriptionActive
+    ? {
+      mode: "complimentary_testing",
+      label: "Complimentary testing access",
+      priceLabel: "$0 during testing",
+      cardRequired: false,
+      subscriptionStarted: false,
+      automaticCharges: false,
+    }
+    : paidHostSubscriptionActive
+      ? {
+        mode: "paid_subscription",
+        label: getPlanDefinition(entitlements.planId)?.name || "Host subscription",
+        priceLabel: "See Billing & Usage",
+        cardRequired: true,
+        subscriptionStarted: true,
+        automaticCharges: !entitlements.cancelAtPeriodEnd,
+      }
+      : {
+        mode: "no_host_access",
+        label: "No active Host access",
+        priceLabel: "$0",
+        cardRequired: false,
+        subscriptionStarted: false,
+        automaticCharges: false,
+      };
   if (hostApprovalEnabled) {
     capabilities[ROOM_CREATE_CAPABILITY] = true;
     capabilities["ai.generate_content"] = true;
@@ -8293,6 +8334,8 @@ const resolveUserEntitlements = async (uid) => {
         usagePlanId: hostApprovalEnabled ? "host_monthly" : entitlements.planId,
         usageStatus: hostApprovalEnabled ? "active" : entitlements.status,
         usageAccessSource: hostApprovalEnabled ? "approved_host_override" : entitlements.source,
+        accessTerms,
+        subscriptionCheckoutEnabled: HOST_SUBSCRIPTION_CHECKOUT_ENABLED,
         capabilities,
       };
     }
@@ -8320,6 +8363,8 @@ const resolveUserEntitlements = async (uid) => {
       : legacyMeterAccessEnabled
         ? "legacy_host_tier"
         : entitlements.source,
+    accessTerms,
+    subscriptionCheckoutEnabled: HOST_SUBSCRIPTION_CHECKOUT_ENABLED,
     capabilities,
   };
 };
@@ -8570,6 +8615,8 @@ const resolveHostWorkspaceAccess = async (uid = "", email = "") => {
     planId: entitlements.planId,
     status: entitlements.status,
     role: entitlements.role,
+    accessTerms: entitlements.accessTerms,
+    subscriptionCheckoutEnabled: entitlements.subscriptionCheckoutEnabled === true,
     applicationRecord: application,
   };
 };
@@ -17374,6 +17421,17 @@ exports.listHostApplications = onCall({ cors: true }, async (request) => {
         }
         : {},
       reviewNotes: normalizeDirectoryTextBlock(item.reviewNotes || "", 500),
+      decisionEmail: item.decisionEmail && typeof item.decisionEmail === "object"
+        ? {
+          eventType: safeDirectoryString(item.decisionEmail.eventType || "", 80),
+          recipient: sanitizeOptionalWaitlistEmail(item.decisionEmail.recipient || ""),
+          status: safeDirectoryString(item.decisionEmail.status || "", 40),
+          outboundMessageId: safeDirectoryString(item.decisionEmail.outboundMessageId || "", 180),
+          lastError: safeDirectoryString(item.decisionEmail.lastError || "", 600),
+          updatedAtMs: valueToMillis(item.decisionEmail.updatedAt),
+          sentAtMs: valueToMillis(item.decisionEmail.sentAt),
+        }
+        : null,
       createdAtMs: valueToMillis(item.createdAt),
       submittedAtMs: valueToMillis(item.submittedAt || item.createdAt),
       reviewedAtMs: valueToMillis(item.reviewedAt),
@@ -17397,8 +17455,8 @@ exports.resolveHostApplication = onCall({ cors: true }, async (request) => {
   if (!applicationId) {
     throw new HttpsError("invalid-argument", "applicationId is required.");
   }
-  if (!["approve", "reject"].includes(action)) {
-    throw new HttpsError("invalid-argument", "action must be approve or reject.");
+  if (!["approve", "reject", "resend_invite"].includes(action)) {
+    throw new HttpsError("invalid-argument", "action must be approve, reject, or resend_invite.");
   }
   const appRef = admin.firestore().collection("host_access_applications").doc(applicationId);
   const appSnap = await appRef.get();
@@ -17406,14 +17464,19 @@ exports.resolveHostApplication = onCall({ cors: true }, async (request) => {
     throw new HttpsError("not-found", "Host application not found.");
   }
   const appData = appSnap.data() || {};
+  if (action === "resend_invite" && sanitizeHostApplicationStatus(appData.status || "", "") !== "approved") {
+    throw new HttpsError("failed-precondition", "Only approved Host invitations can be resent.");
+  }
   const targetUid = normalizeUidToken(appData.uid || payload.targetUid || "");
   const targetEmail = sanitizeOptionalWaitlistEmail(appData.email || payload.targetEmail || "");
   const now = admin.firestore.FieldValue.serverTimestamp();
-  const nextStatus = action === "approve" ? "approved" : "rejected";
-  const writes = [
-    appRef.set({
+  const nextStatus = action === "reject" ? "rejected" : "approved";
+  const effectiveNotes = notes || normalizeDirectoryTextBlock(appData.reviewNotes || "", 500);
+  const writes = [];
+  if (action !== "resend_invite") {
+    writes.push(appRef.set({
       status: nextStatus,
-      reviewNotes: notes,
+      reviewNotes: effectiveNotes,
       reviewedByUid: requesterUid,
       reviewedAt: now,
       milestones: action === "approve"
@@ -17425,30 +17488,48 @@ exports.resolveHostApplication = onCall({ cors: true }, async (request) => {
           reviewedAt: now,
         },
       updatedAt: now,
-    }, { merge: true })
-  ];
+    }, { merge: true }));
+  }
   if (action === "approve" && (targetUid || targetEmail)) {
     writes.push(runSetHostApprovalStatus({
       ...request,
       data: {
         target: targetUid || targetEmail,
         enabled: true,
-        notes,
+        notes: effectiveNotes,
         source: "host_application_review",
       },
     }));
   }
   await Promise.all(writes);
+  let notification = {
+    status: "missing_recipient",
+    recipient: targetEmail,
+    outboundMessageId: "",
+    lastError: targetEmail ? "" : "No applicant email is available.",
+  };
   if (targetEmail) {
-    const templateName = action === "approve"
-      ? "host_application_applicant_approved"
-      : "host_application_applicant_rejected";
+    const templateName = action === "reject"
+      ? "host_application_applicant_rejected"
+      : "host_application_applicant_approved";
+    await appRef.set({
+      decisionEmail: {
+        eventType: templateName,
+        recipient: targetEmail,
+        status: "queueing",
+        outboundMessageId: "",
+        lastError: "",
+        updatedAt: now,
+        attempts: admin.firestore.FieldValue.increment(1),
+      },
+      updatedAt: now,
+    }, { merge: true });
     const decisionResult = await queueOutboundEmail(
       buildEmailTemplatePayload(templateName, {
         applicationId,
         targetEmail,
         name: appData.name || "",
-        notes,
+        notes: effectiveNotes,
         reviewedAt: Date.now(),
       }),
       { source: "host_application_review" },
@@ -17461,6 +17542,50 @@ exports.resolveHostApplication = onCall({ cors: true }, async (request) => {
         error: decisionResult.responseText || "queue_failed",
       });
     }
+    notification = {
+      status: decisionResult.status || (decisionResult.sent ? "queued" : "queue_failed"),
+      recipient: targetEmail,
+      outboundMessageId: decisionResult.messageId || "",
+      lastError: decisionResult.sent ? "" : (decisionResult.responseText || "Could not queue email."),
+    };
+    await Promise.all([
+      admin.firestore().runTransaction(async (tx) => {
+        const latestSnap = await tx.get(appRef);
+        const latestStatus = String(latestSnap.data()?.decisionEmail?.status || "").trim();
+        tx.set(appRef, {
+          decisionEmail: {
+            eventType: templateName,
+            recipient: targetEmail,
+            ...(latestStatus === "queueing" ? { status: notification.status } : {}),
+            outboundMessageId: notification.outboundMessageId,
+            lastError: notification.lastError,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }),
+      logHostApplicationNotification({
+        applicationId,
+        eventType: templateName,
+        hookResult: decisionResult,
+        recipients: [targetEmail],
+      }),
+    ]);
+  } else {
+    await appRef.set({
+      decisionEmail: {
+        eventType: action === "reject"
+          ? "host_application_applicant_rejected"
+          : "host_application_applicant_approved",
+        recipient: "",
+        status: notification.status,
+        outboundMessageId: "",
+        lastError: notification.lastError,
+        updatedAt: now,
+        attempts: admin.firestore.FieldValue.increment(1),
+      },
+      updatedAt: now,
+    }, { merge: true });
   }
   return {
     ok: true,
@@ -17468,6 +17593,7 @@ exports.resolveHostApplication = onCall({ cors: true }, async (request) => {
     status: nextStatus,
     targetUid,
     targetEmail,
+    notification,
   };
 });
 
@@ -23516,7 +23642,9 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
   }
   case "host_application_applicant_approved": {
     const targetEmail = sanitizeOptionalWaitlistEmail(data.targetEmail || "");
-    const hostUrl = normalizeDirectoryOptionalUrl(data.hostUrl || "https://host.beaurocks.app/?mode=host") || "https://host.beaurocks.app/?mode=host";
+    const hostUrl = normalizeDirectoryOptionalUrl(data.hostUrl || "https://host.beaurocks.app/hub?tab=getting_started") || "https://host.beaurocks.app/hub?tab=getting_started";
+    const helpUrl = normalizeDirectoryOptionalUrl(data.helpUrl || "https://host.beaurocks.app/hub?tab=help") || "https://host.beaurocks.app/hub?tab=help";
+    const supportUrl = normalizeDirectoryOptionalUrl(data.supportUrl || "https://host.beaurocks.app/hub?tab=support") || "https://host.beaurocks.app/hub?tab=support";
     const hostInfoUrl = normalizeDirectoryOptionalUrl(data.hostInfoUrl || "https://beaurocks.app/for-hosts") || "https://beaurocks.app/for-hosts";
     const name = sanitizeWaitlistName(data.name || "") || "Host";
     const notes = normalizeDirectoryTextBlock(data.notes || "", 500);
@@ -23525,7 +23653,7 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       `Hi ${name},`,
       "",
       "You have been selected for a limited BeauRocks Host testing cohort.",
-      "Your private Host invitation is active. Sign in to Host Dashboard and complete a guided first-Room rehearsal.",
+      "Your private Host invitation is active. Start in the Host Hub and complete a guided first-Room rehearsal.",
       reviewLabel ? `Approved: ${reviewLabel}` : "",
       notes ? `Admin notes: ${notes}` : "",
       "",
@@ -23536,20 +23664,23 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       "4. Join from your phone as an audience member and move one request through the queue.",
       "",
       "Access and billing:",
-      "Applying did not start a subscription. Money > Billing & Usage shows your current plan, metered requests, limits, and available receipts.",
-      "Review that page before larger events so usage and available capacity stay transparent.",
+      "Your approved testing access costs $0. No card is required, no subscription was started, and BeauRocks will not charge you automatically.",
+      "Billing & Usage shows metered requests and limits for transparency and testing safety. These counters are not a bill.",
+      "If paid plans are offered later, you will see the price and terms and must explicitly opt in before any charge.",
       "",
       "Suggested next steps:",
       "- Run 1-2 private test nights with a second device for TV and at least one phone joining as a guest.",
       "- Note any friction in room launch, join flow, queue management, or recap screens.",
       "- Reply with your venue setup, devices, and what kind of host night you want to run so we can help shape the rollout.",
-      `Open Host Dashboard: ${hostUrl}`,
+      `Start Host onboarding: ${hostUrl}`,
+      `Open the Host Guide: ${helpUrl}`,
+      `Message the BeauRocks team privately: ${supportUrl}`,
       `Host access info: ${hostInfoUrl}`,
       "Questions or feedback: reply to this email.",
     ].filter(Boolean).join("\n");
     const html = `
       <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Hi ${escapeAlertHtml(name)},</p>
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>You have been selected for a limited BeauRocks Host testing cohort.</strong> Your private Host invitation is active. Sign in to Host Dashboard and complete a guided first-Room rehearsal.</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>You have been selected for a limited BeauRocks Host testing cohort.</strong> Your private Host invitation is active. Start in the Host Hub and complete a guided first-Room rehearsal.</p>
       ${reviewLabel ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Approved:</strong> ${escapeAlertHtml(reviewLabel)}</p>` : ""}
       ${notes ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Admin notes:</strong> ${escapeAlertHtml(notes)}</p>` : ""}
       <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>Your onboarding checklist</strong></p>
@@ -23560,14 +23691,17 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
         <li style="margin:0">Join from your phone as an audience member and move one request through the queue.</li>
       </ol>
       <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>Access and billing</strong></p>
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Applying did not start a subscription. In Host Dashboard, <strong>Money &gt; Billing &amp; Usage</strong> shows your current plan, metered requests, limits, and available receipts. Review it before larger events so usage and capacity stay transparent.</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Your approved testing access costs $0.</strong> No card is required, no subscription was started, and BeauRocks will not charge you automatically. Billing &amp; Usage shows metered requests and limits for transparency and testing safety; those counters are not a bill.</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">If paid plans are offered later, you will see the price and terms and must explicitly opt in before any charge.</p>
       <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>Suggested next steps</strong></p>
       <ul style="margin:0 0 18px 22px;padding:0;color:#d6d9e5;font-size:16px;line-height:1.8">
         <li style="margin:0 0 8px">Run 1-2 private test nights with a second device for TV and at least one phone joining as a guest.</li>
         <li style="margin:0 0 8px">Note any friction in room launch, join flow, queue management, or recap screens.</li>
         <li style="margin:0">Reply with your venue setup, devices, and what kind of host night you want to run so we can help shape the rollout.</li>
       </ul>
-      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">You can also review host access info here: <a href="${escapeAlertHtml(hostInfoUrl)}">${escapeAlertHtml(hostInfoUrl)}</a></p>
+      <p style="margin:0 0 8px;color:#d6d9e5;font-size:16px;line-height:1.7">Host Guide: <a href="${escapeAlertHtml(helpUrl)}">${escapeAlertHtml(helpUrl)}</a></p>
+      <p style="margin:0 0 8px;color:#d6d9e5;font-size:16px;line-height:1.7">Message the team privately: <a href="${escapeAlertHtml(supportUrl)}">${escapeAlertHtml(supportUrl)}</a></p>
+      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">Host access info: <a href="${escapeAlertHtml(hostInfoUrl)}">${escapeAlertHtml(hostInfoUrl)}</a></p>
     `;
     return {
       eventType: "host_application_applicant_approved",
@@ -23578,7 +23712,7 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       eyebrow: "Host Access Approved",
       title: "Your Host invitation is ready",
       preheader: "You were selected for a limited BeauRocks Host testing cohort.",
-      ctaLabel: "Open Host Dashboard",
+      ctaLabel: "Start Host Onboarding",
       ctaUrl: hostUrl,
       applicationId: safeDirectoryString(data.applicationId || "", 180),
     };
@@ -23995,30 +24129,50 @@ const isHostApplicationAdminAlertEventType = (value = "") =>
     normalizeDirectoryToken(value || "", 80) || "",
   );
 
+const isHostApplicationApplicantDecisionEventType = (value = "") =>
+  ["host_application_applicant_approved", "host_application_applicant_rejected"].includes(
+    normalizeDirectoryToken(value || "", 80) || "",
+  );
+
+const isHostApplicationNotificationEventType = (value = "") =>
+  isHostApplicationAdminAlertEventType(value) || isHostApplicationApplicantDecisionEventType(value);
+
 const logHostApplicationNotification = async ({
   applicationId = "",
   eventType = "",
   hookResult = {},
   suffix = "",
+  recipients = null,
 } = {}) => {
   const safeApplicationId = safeDirectoryString(applicationId || "", 180);
   const safeEventType = safeDirectoryString(eventType || "host_application_created", 80) || "host_application_created";
   const safeSuffix = safeDirectoryString(suffix || "", 80);
   const docId = `${safeEventType}_${safeApplicationId || nowMs()}${safeSuffix ? `_${safeSuffix}` : ""}`;
-  await admin.firestore().collection("host_application_notifications").doc(docId).set({
-    applicationId: safeApplicationId,
-    status: hookResult.status || "unknown",
-    sent: !!hookResult.sent,
-    providerUrl: hookResult.url || "",
-    providerHttpStatus: Number(hookResult.httpStatus || 0),
-    providerResponse: safeDirectoryString(hookResult.responseText || "", 600),
-    outboundMessageId: safeDirectoryString(hookResult.messageId || "", 180),
-    deliveryStatus: hookResult.status || "unknown",
-    deliveryUpdatedAt: buildDirectoryNow(),
-    createdAt: buildDirectoryNow(),
-    eventType: safeEventType,
-    recipients: Array.from(SUPER_ADMIN_EMAILS).filter(Boolean),
-  }, { merge: true });
+  const notificationRef = admin.firestore().collection("host_application_notifications").doc(docId);
+  await admin.firestore().runTransaction(async (tx) => {
+    const currentSnap = await tx.get(notificationRef);
+    const currentStatus = String(currentSnap.data()?.deliveryStatus || "").trim();
+    const nextStatus = hookResult.status || "unknown";
+    const preserveAdvancedDelivery = nextStatus === "queued" && currentStatus && currentStatus !== "queued";
+    tx.set(notificationRef, {
+      applicationId: safeApplicationId,
+      ...(!preserveAdvancedDelivery ? {
+        status: nextStatus,
+        sent: !!hookResult.sent,
+        deliveryStatus: nextStatus,
+        deliveryUpdatedAt: buildDirectoryNow(),
+      } : {}),
+      providerUrl: hookResult.url || "",
+      providerHttpStatus: Number(hookResult.httpStatus || 0),
+      providerResponse: safeDirectoryString(hookResult.responseText || "", 600),
+      outboundMessageId: safeDirectoryString(hookResult.messageId || "", 180),
+      createdAt: buildDirectoryNow(),
+      eventType: safeEventType,
+      recipients: Array.isArray(recipients)
+        ? normalizeEmailRecipientList(recipients)
+        : Array.from(SUPER_ADMIN_EMAILS).filter(Boolean),
+    }, { merge: true });
+  });
 };
 
 const dispatchHostApplicationAlert = async ({ applicationId = "", application = {}, eventType = "host_application_created" } = {}) => {
@@ -24149,7 +24303,7 @@ exports.syncHostApplicationNotificationDelivery = onDocumentUpdated(
     const nextStatus = String(after.status || "").trim();
     if (!nextStatus || previousStatus === nextStatus) return;
     const eventType = normalizeDirectoryToken(after.eventType || "", 80) || "";
-    if (!isHostApplicationAdminAlertEventType(eventType)) return;
+    if (!isHostApplicationNotificationEventType(eventType)) return;
     const applicationId = safeDirectoryString(after?.meta?.applicationId || "", 180);
     if (!applicationId) return;
     const notificationId = `${eventType}_${applicationId}`;
@@ -24164,6 +24318,30 @@ exports.syncHostApplicationNotificationDelivery = onDocumentUpdated(
       recipients: normalizeEmailRecipientList(after.to || []),
       sent: nextStatus === "sent",
     }, { merge: true });
+    if (isHostApplicationApplicantDecisionEventType(eventType)) {
+      const applicationUpdate = {
+        decisionEmail: {
+          eventType,
+          recipient: normalizeEmailRecipientList(after.to || [])[0] || "",
+          status: nextStatus,
+          outboundMessageId: safeDirectoryString(event.params?.messageId || "", 180),
+          providerMessageId: safeDirectoryString(after.providerMessageId || "", 320),
+          lastError: safeDirectoryString(after.lastError || "", 600),
+          updatedAt: buildDirectoryNow(),
+          ...(nextStatus === "sent" ? { sentAt: buildDirectoryNow() } : {}),
+        },
+        updatedAt: buildDirectoryNow(),
+      };
+      if (nextStatus === "sent") {
+        applicationUpdate.milestones = eventType === "host_application_applicant_approved"
+          ? { inviteEmailSentAt: buildDirectoryNow() }
+          : { decisionEmailSentAt: buildDirectoryNow() };
+      }
+      await admin.firestore().collection("host_access_applications").doc(applicationId).set(
+        applicationUpdate,
+        { merge: true },
+      );
+    }
   },
 );
 
@@ -30172,6 +30350,12 @@ exports.createSubscriptionCheckout = onCall(
     checkRateLimit(request.rawRequest, "stripe_checkout");
     const callerUid = requireAuth(request);
     enforceAppCheckIfEnabled(request, "create_subscription_checkout");
+    if (!HOST_SUBSCRIPTION_CHECKOUT_ENABLED) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Paid Host checkout is paused while complimentary testing is active. No payment is required for approved testing access."
+      );
+    }
     const planId = String(request.data?.planId || "").trim();
     const plan = getPlanDefinition(planId);
     if (!plan || !isPublicPaidHostPlan(planId)) {

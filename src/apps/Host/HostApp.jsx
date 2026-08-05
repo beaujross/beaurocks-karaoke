@@ -6711,6 +6711,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         provider: 'internal',
         renewalAtMs: 0,
         cancelAtPeriodEnd: false,
+        accessTerms: null,
+        subscriptionCheckoutEnabled: false,
         capabilities: {},
         loading: true,
         error: ''
@@ -6937,13 +6939,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         [resolveLaunchUrlsForRoomCode, roomCode]
     );
     const planLabel = useMemo(() => {
-        return getSubscriptionPlanLabel(orgContext?.planId || 'free');
-    }, [orgContext?.planId]);
+        return orgContext?.accessTerms?.label || getSubscriptionPlanLabel(orgContext?.planId || 'free');
+    }, [orgContext?.accessTerms?.label, orgContext?.planId]);
+    const complimentaryTestingAccess = orgContext?.accessTerms?.mode === 'complimentary_testing';
+    const subscriptionCheckoutEnabled = orgContext?.subscriptionCheckoutEnabled === true;
     const renewalLabel = useMemo(() => {
+        if (orgContext?.accessTerms?.mode === 'complimentary_testing') return 'No charge scheduled';
         const ms = Number(orgContext?.renewalAtMs || 0);
         if (!ms) return 'Not scheduled';
         return new Date(ms).toLocaleDateString();
-    }, [orgContext?.renewalAtMs]);
+    }, [orgContext?.accessTerms?.mode, orgContext?.renewalAtMs]);
     const hostMonthlyPlan = useMemo(() => getHostSubscriptionPlan('host_monthly'), []);
     const hostAnnualPlan = useMemo(() => getHostSubscriptionPlan('host_annual'), []);
     const capabilities = useMemo(() => orgContext?.capabilities || {}, [orgContext?.capabilities]);
@@ -7304,6 +7309,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 provider: 'internal',
                 renewalAtMs: 0,
                 cancelAtPeriodEnd: false,
+                accessTerms: null,
+                subscriptionCheckoutEnabled: false,
                 capabilities: {}
             }));
             setUsageSummary({
@@ -7351,6 +7358,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     provider: entitlements?.provider || 'internal',
                     renewalAtMs: Number(entitlements?.renewalAtMs || 0),
                     cancelAtPeriodEnd: !!entitlements?.cancelAtPeriodEnd,
+                    accessTerms: entitlements?.accessTerms || null,
+                    subscriptionCheckoutEnabled: entitlements?.subscriptionCheckoutEnabled === true,
                     capabilities: entitlements?.capabilities || {},
                     loading: false,
                     error: ''
@@ -12356,6 +12365,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             cancelAtPeriodEnd: typeof entitlements?.cancelAtPeriodEnd === 'boolean'
                 ? entitlements.cancelAtPeriodEnd
                 : !!prev.cancelAtPeriodEnd,
+            accessTerms: entitlements?.accessTerms || prev.accessTerms || null,
+            subscriptionCheckoutEnabled: entitlements?.subscriptionCheckoutEnabled === true,
             capabilities: entitlements?.capabilities || prev.capabilities || {},
             loading: false,
             error: ''
@@ -20969,6 +20980,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             )}
                             {onboardingStep === 1 && (
                                 <div className="space-y-4">
+                                    {subscriptionCheckoutEnabled ? <>
                                     <div className="rounded-2xl border border-fuchsia-300/30 bg-gradient-to-r from-[#1a1230]/80 via-[#111a2e]/85 to-[#10212d]/80 p-4 shadow-[0_0_28px_rgba(34,211,238,0.12)]">
                                         <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Billing</div>
                                         <div className="text-lg font-bold text-white mt-1">Choose your workspace plan</div>
@@ -21018,6 +21030,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </button>
                                         </div>
                                     )}
+                                    </> : <div className="rounded-2xl border border-emerald-300/30 bg-emerald-500/10 p-4 shadow-[0_0_28px_rgba(52,211,153,0.10)]">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-emerald-100/70">{complimentaryTestingAccess ? 'Testing access' : 'Host access'}</div>
+                                        <div className="mt-1 text-lg font-bold text-white">{complimentaryTestingAccess ? 'Complimentary · $0 during testing' : 'Paid checkout is currently paused'}</div>
+                                        <div className="mt-2 text-sm leading-6 text-emerald-50/75">{complimentaryTestingAccess ? 'No card is required, no subscription was started, and there are no automatic charges. Continue setup now; you will see and approve any future paid terms before payment.' : 'Join the Host waitlist for a selective invitation. No payment or subscription action is available while testing terms are being finalized.'}</div>
+                                    </div>}
                                     <div className="flex justify-between gap-2">
                                         <button
                                             onClick={() => setOnboardingStep(0)}
@@ -21035,7 +21052,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             Continue to Branding
                                         </button>
                                     </div>
-                                    {!onboardingHasActiveSubscription && onboardingPlanId !== 'free' && (
+                                    {subscriptionCheckoutEnabled && !onboardingHasActiveSubscription && onboardingPlanId !== 'free' && (
                                         <div className="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/35 rounded-lg px-3 py-2">
                                             Subscription is not active yet. You can continue setup now and activate billing later.
                                         </div>
@@ -26793,6 +26810,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="space-y-4">
                             <div className={STYLES.header}>Subscription & Billing</div>
                             <div className="bg-zinc-950/60 border border-white/10 rounded-xl p-4 space-y-4">
+                                {complimentaryTestingAccess && (
+                                    <div className="rounded-xl border border-emerald-300/25 bg-emerald-500/10 p-4" data-complimentary-testing-terms>
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-xs uppercase tracking-widest text-emerald-200/70">Approved testing access</div>
+                                                <div className="mt-1 text-lg font-black text-white">$0 during testing</div>
+                                            </div>
+                                            <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-emerald-100">No automatic charges</span>
+                                        </div>
+                                        <p className="mt-2 text-sm leading-6 text-emerald-50/75">No card is required and no subscription was started. Usage meters below are for transparency and testing safety; they are not a bill. If paid plans open later, you will see the terms and explicitly opt in first.</p>
+                                    </div>
+                                )}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                     <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
                                         <div className="text-xs uppercase tracking-widest text-zinc-500">Plan</div>
@@ -26806,7 +26835,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     ? 'bg-emerald-500/10 text-emerald-200 border-emerald-400/30'
                                                     : 'bg-zinc-800 text-zinc-300 border-zinc-700'
                                             }`}>
-                                                {orgContext?.status || 'inactive'}
+                                                {complimentaryTestingAccess ? 'testing' : (orgContext?.status || 'inactive')}
                                             </span>
                                         </div>
                                     </div>
@@ -27739,33 +27768,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     >
                                         {usageSummary.loading ? 'Refreshing usage...' : 'Refresh Usage'}
                                     </button>
-                                    <button
-                                        onClick={() => openSubscriptionCheckout('host_monthly')}
-                                        disabled={!!subscriptionActionLoading}
-                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${subscriptionActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                    >
-                                        {subscriptionActionLoading === 'host_monthly'
-                                            ? 'Opening checkout...'
-                                            : `${hostMonthlyPlan?.label || 'Host Monthly'} (${hostMonthlyPlan?.priceLabel || '$15/mo'})`}
-                                    </button>
-                                    <button
-                                        onClick={() => openSubscriptionCheckout('host_annual')}
-                                        disabled={!!subscriptionActionLoading}
-                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} ${subscriptionActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                    >
-                                        {subscriptionActionLoading === 'host_annual'
-                                            ? 'Opening checkout...'
-                                            : `${hostAnnualPlan?.label || 'Host Annual'} (${hostAnnualPlan?.priceLabel || '$150/yr'})`}
-                                    </button>
-                                    <button
+                                    {subscriptionCheckoutEnabled ? <>
+                                        <button
+                                            onClick={() => openSubscriptionCheckout('host_monthly')}
+                                            disabled={!!subscriptionActionLoading}
+                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${subscriptionActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        >
+                                            {subscriptionActionLoading === 'host_monthly' ? 'Opening checkout...' : `${hostMonthlyPlan?.label || 'Host Monthly'} (${hostMonthlyPlan?.priceLabel || '$15/mo'})`}
+                                        </button>
+                                        <button
+                                            onClick={() => openSubscriptionCheckout('host_annual')}
+                                            disabled={!!subscriptionActionLoading}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} ${subscriptionActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        >
+                                            {subscriptionActionLoading === 'host_annual' ? 'Opening checkout...' : `${hostAnnualPlan?.label || 'Host Annual'} (${hostAnnualPlan?.priceLabel || '$150/yr'})`}
+                                        </button>
+                                    </> : null}
+                                    {orgContext?.provider === 'stripe' ? <button
                                         onClick={openBillingPortal}
                                         disabled={billingActionLoading}
                                         className={`${STYLES.btnStd} ${STYLES.btnInfo} ${billingActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
                                     >
                                         {billingActionLoading ? 'Opening portal...' : 'Manage Billing'}
-                                    </button>
+                                    </button> : null}
                                 </div>
-                                <div className="host-form-helper">Use checkout to start/change plans. Use Manage Billing for payment methods, invoices, and cancellations.</div>
+                                <div className="host-form-helper">{subscriptionCheckoutEnabled ? 'Use checkout to start/change plans. Existing Stripe customers can manage payment methods, invoices, and cancellations.' : 'Paid Host checkout is paused during complimentary testing. No payment action is required.'}</div>
                             </div>
                         </div>
                         )}

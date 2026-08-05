@@ -335,11 +335,41 @@ async function run() {
         })
       );
       assert.equal(resolved.ok, true);
+      assert.equal(resolved.notification.status, "queued");
+      assert.equal(resolved.notification.recipient, "queue-host@beaurocks.app");
       const appSnap = await db.doc(`host_access_applications/${applicationId}`).get();
       assert.equal(String(appSnap.get("status")), "approved");
+      assert.equal(String(appSnap.get("decisionEmail.status")), "queued");
       const approvalSnap = await db.doc(`host_access_approvals/${USER_UID}`).get();
       assert.equal(approvalSnap.exists, true);
       assert.equal(!!approvalSnap.get("hostApprovalEnabled"), true);
+
+      const outboundSnap = await db.collection("outboundMessages")
+        .where("eventType", "==", "host_application_applicant_approved")
+        .get();
+      assert.equal(outboundSnap.empty, false);
+      const approvalMessage = outboundSnap.docs.find((docSnap) => docSnap.get("meta.applicationId") === applicationId);
+      assert.ok(approvalMessage);
+      const approvalText = String(approvalMessage.get("text") || "");
+      assert.match(approvalText, /costs \$0/i);
+      assert.match(approvalText, /No card is required/i);
+      assert.match(approvalText, /will not charge you automatically/i);
+      assert.match(approvalText, /hub\?tab=getting_started/i);
+      assert.match(approvalText, /hub\?tab=help/i);
+
+      const resent = await resolveHostApplication.run(
+        requestFor(ADMIN_UID, { applicationId, action: "resend_invite" })
+      );
+      assert.equal(resent.ok, true);
+      assert.equal(resent.status, "approved");
+      assert.equal(resent.notification.status, "queued");
+
+      const hostAccess = await getMyHostAccessStatus.run(requestFor(USER_UID));
+      assert.equal(hostAccess.accessTerms.mode, "complimentary_testing");
+      assert.equal(hostAccess.accessTerms.priceLabel, "$0 during testing");
+      assert.equal(hostAccess.accessTerms.cardRequired, false);
+      assert.equal(hostAccess.accessTerms.automaticCharges, false);
+      assert.equal(hostAccess.subscriptionCheckoutEnabled, false);
     }],
 
     ["upsertHostRoomDiscoveryListing creates public room_session listing", async () => {

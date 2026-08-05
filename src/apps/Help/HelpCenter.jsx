@@ -1,10 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ASSETS } from '../../lib/assets';
-import { HOST_SUBSCRIPTION_PLAN_CATALOG } from '../../billing/hostPlans';
 import { HOST_LIVE_OPS_LANGUAGE } from '../Host/hostLiveOpsLanguage';
-
-const monthlyHostPlan = HOST_SUBSCRIPTION_PLAN_CATALOG.host_monthly;
-const annualHostPlan = HOST_SUBSCRIPTION_PLAN_CATALOG.host_annual;
 
 const HELP_SECTIONS = Object.freeze([
     {
@@ -57,7 +53,7 @@ const HELP_SECTIONS = Object.freeze([
             ['Choose the right automation', `${HOST_LIVE_OPS_LANGUAGE.autoDj} runs performances only. ${HOST_LIVE_OPS_LANGUAGE.autoAdvance} runs the full lineup, including moments. You can always use ${HOST_LIVE_OPS_LANGUAGE.startNext} manually.`],
             ['Launch all three surfaces', 'Host Dashboard controls the night, Audience App is for guests, and Public TV is the intentionally public projection. Use Incognito or a separate browser profile for the display.'],
             ['Use the Host Inbox live', 'Room lounge messages, DM Host, and Tell Host belong to the active Room. They are not a product-support channel. Keep private operator messages off Public TV.'],
-            ['Know what access costs', `The waitlist is free. Standard Host access is ${monthlyHostPlan.priceLabel} or ${annualHostPlan.priceLabel} and includes Room creation, Host controls, and provider-powered tools within visible usage limits. Your invitation explains any temporary testing access before you begin.`],
+            ['Know what access costs', 'The waitlist is free. Approved testing access currently costs $0, requires no card, starts no subscription, and creates no automatic charge. Billing & Usage shows testing meters for transparency, not as a bill. If paid access is offered later, you will see the terms and explicitly opt in first.'],
         ],
         tips: [
             'Complete one full phone-to-TV rehearsal before inviting guests.',
