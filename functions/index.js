@@ -8715,10 +8715,10 @@ const buildMyHostOnboardingStatus = ({ access = {}, applicationData = {} } = {})
               ? "under_review"
               : "not_applied",
     steps: [
-      { id: "application", label: "Application received", complete: applied },
-      { id: "review", label: "Invitation received", complete: approved },
-      { id: "workspace", label: "Set up your Host profile", complete: workspaceActivated },
-      { id: "first_room", label: "Run your first Room", complete: firstRoomComplete },
+      { id: "invitation", label: "Invitation received", complete: approved },
+      { id: "identity", label: "Host identity ready", complete: workspaceActivated },
+      { id: "first_room", label: "First Room created", complete: firstRoomComplete },
+      { id: "returning_host", label: "Returning Host", complete: repeatRoomComplete },
     ],
     workspaceActivatedAtMs,
     firstRoomAtMs,
@@ -17701,6 +17701,10 @@ exports.getHostLifecycleReportingSummary = onCall({ cors: true }, async (request
       orgId,
       planId: String(account.planId || "free").trim() || "free",
       planStatus: String(account.planStatus || "inactive").trim() || "inactive",
+      submittedAtMs: valueToMillis(application.lastSubmittedAt || application.submittedAt || application.createdAt),
+      approvedAtMs: valueToMillis(milestones.approvedAt || application.reviewedAt || application.updatedAt),
+      inviteEmailSentAtMs: valueToMillis(milestones.inviteEmailSentAt),
+      decisionEmailStatus: String(application?.decisionEmail?.status || "").trim(),
       workspaceActivatedAtMs,
       firstRoomAtMs,
       secondRoomAtMs,
@@ -23561,14 +23565,14 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       intro,
       "We release only a few private invitations at a time.",
       "If an invitation becomes available, we will email this address with everything you need to get started.",
-      "Joining the waitlist is free. You do not need an account, card, or subscription right now.",
+      "Applying to the Host waitlist is free. You do not need an account, card, or subscription.",
       `Host access info: ${hostInfoUrl}`,
     ].join("\n");
     const html = `
       <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Hi ${escapeAlertHtml(name)},</p>
       <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">${escapeAlertHtml(intro)}</p>
       <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">We release only a few private invitations at a time. If a spot becomes available, we will email this address with everything you need to get started.</p>
-      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">Joining the waitlist is free. You do not need an account, card, or subscription right now.</p>
+      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">Applying to the Host waitlist is free. You do not need an account, card, or subscription.</p>
     `;
     return {
       eventType: isNewSignup ? "host_application_applicant_received" : "host_application_applicant_reconfirmed",
@@ -23664,9 +23668,10 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       "4. Join from your phone as an audience member and move one request through the queue.",
       "",
       "Access and billing:",
-      "Your approved testing access costs $0. No card is required, no subscription was started, and BeauRocks will not charge you automatically.",
-      "Billing & Usage shows metered requests and limits for transparency and testing safety. These counters are not a bill.",
-      "If paid plans are offered later, you will see the price and terms and must explicitly opt in before any charge.",
+      "Approved testing access is $0 while your invitation is active.",
+      "No card is required, no subscription was started, and there are no automatic charges.",
+      "Billing & Usage shows metered product usage and limits for transparency; testing counters are not a bill.",
+      "If paid Host plans become available, you will see the price, what is included, and the terms before deciding. Access will not convert automatically; you must explicitly opt in before any charge.",
       "",
       "Suggested next steps:",
       "- Run 1-2 private test nights with a second device for TV and at least one phone joining as a guest.",
@@ -23691,8 +23696,8 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
         <li style="margin:0">Join from your phone as an audience member and move one request through the queue.</li>
       </ol>
       <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>Access and billing</strong></p>
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Your approved testing access costs $0.</strong> No card is required, no subscription was started, and BeauRocks will not charge you automatically. Billing &amp; Usage shows metered requests and limits for transparency and testing safety; those counters are not a bill.</p>
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">If paid plans are offered later, you will see the price and terms and must explicitly opt in before any charge.</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Approved testing access is $0 while your invitation is active.</strong> No card is required, no subscription was started, and there are no automatic charges. Billing &amp; Usage shows metered product usage and limits for transparency; testing counters are not a bill.</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">If paid Host plans become available, you will see the price, what is included, and the terms before deciding. Access will not convert automatically; you must explicitly opt in before any charge.</p>
       <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>Suggested next steps</strong></p>
       <ul style="margin:0 0 18px 22px;padding:0;color:#d6d9e5;font-size:16px;line-height:1.8">
         <li style="margin:0 0 8px">Run 1-2 private test nights with a second device for TV and at least one phone joining as a guest.</li>

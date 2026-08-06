@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ASSETS } from '../../lib/assets';
 import { HostHelpGuide } from '../Help/HelpCenter';
+import HostWorkspaceHeader from '../Host/components/HostWorkspaceHeader';
+import { HostOverview, HostRoster } from './HostOperationsAnalytics';
+import HostOnboardingNextAction from './HostOnboardingNextAction';
+import '../Host/hostBrandTabs.css';
 import {
   createHostSupportThread,
   getHostLifecycleReportingSummary,
@@ -55,15 +58,6 @@ const formatDate = (value) => {
   const numeric = Number(value || 0);
   if (!numeric) return 'Not yet';
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(numeric));
-};
-const formatAgo = (value) => {
-  const numeric = Number(value || 0);
-  if (!numeric) return 'Never';
-  const days = Math.max(0, Math.floor((Date.now() - numeric) / 86400000));
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 30) return `${days} days ago`;
-  return formatDate(numeric);
 };
 const errorText = (error, fallback) => String(error?.message || fallback || 'Something went wrong.').replace(/^FirebaseError:\s*/i, '');
 const inputClass = 'w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-400/10';
@@ -339,25 +333,6 @@ const SupportWorkspace = ({ admin = false }) => {
   );
 };
 
-const Metric = ({ label, value, detail, tone = 'cyan' }) => (
-  <Panel className="p-4"><Eyebrow tone={tone}>{label}</Eyebrow><div className="mt-2 text-3xl font-black tracking-tight text-white">{value}</div><p className="mt-1 text-xs leading-5 text-zinc-500">{detail}</p></Panel>
-);
-
-const HostOverview = ({ summary, onSelectHost }) => {
-  const funnel = summary?.funnel || {};
-  const hosts = Array.isArray(summary?.hosts) ? summary.hosts : [];
-  const referenceMs = Number(summary?.generatedAtMs || 0);
-  const attentionHosts = hosts.filter((host) => host.status === 'approved' && (!host.workspaceActivatedAtMs || !host.firstRoomAtMs || (host.lastRoomAtMs && referenceMs - host.lastRoomAtMs > 14 * 86400000)));
-  return <div className="space-y-4" data-host-operations-overview><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Approved Hosts" value={funnel.approved || 0} detail="Selected for Host access" /><Metric label="Room-Active 30d" value={funnel.activeHosts30 || 0} detail="Based on the most recent provisioned Room" tone="pink" /><Metric label="Repeat Hosts" value={funnel.repeatHosts || 0} detail="Created at least two distinct Rooms" tone="amber" /><Metric label="Needs Attention" value={attentionHosts.length} detail="Onboarding or activity follow-up" tone="amber" /></div><Panel className="p-4"><div className="flex items-end justify-between gap-3"><div><Eyebrow>Operating Snapshot</Eyebrow><h2 className="mt-1 text-xl font-black text-white">Hosts to check in with</h2></div><span className="text-xs text-zinc-500">Usage period {summary?.period || '—'}</span></div><div className="mt-4 grid gap-2">{attentionHosts.slice(0, 8).map((host) => <button type="button" key={host.applicationId} onClick={() => onSelectHost(host)} className="grid gap-2 rounded-xl border border-white/10 bg-black/20 p-3 text-left transition hover:border-cyan-300/25 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"><div><strong className="text-sm text-white">{host.name || host.email}</strong><div className="mt-1 text-xs text-zinc-500">{!host.workspaceActivatedAtMs ? 'Workspace not started' : !host.firstRoomAtMs ? 'No first Room yet' : `Last Room ${formatAgo(host.lastRoomAtMs)}`}</div></div><StatusChip tone="amber">Follow up</StatusChip><span className="text-xs text-zinc-500">{host.hostType?.replace(/_/g, ' ') || 'Host'}</span></button>)}{!attentionHosts.length ? <div className="rounded-xl border border-emerald-300/15 bg-emerald-500/8 p-4 text-sm text-emerald-100">No approved Hosts currently match the onboarding or dormancy attention rules.</div> : null}</div></Panel></div>;
-};
-
-const HostRoster = ({ summary }) => {
-  const [query, setQuery] = useState('');
-  const hosts = useMemo(() => (Array.isArray(summary?.hosts) ? summary.hosts : []).filter((host) => host.status === 'approved' && `${host.name} ${host.email}`.toLowerCase().includes(query.toLowerCase())), [query, summary]);
-  return <Panel className="overflow-hidden" data-active-host-roster><div className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row sm:items-end sm:justify-between"><div><Eyebrow>Approved Host Roster</Eyebrow><h2 className="mt-1 text-xl font-black text-white">Activity and usage snapshot</h2><p className="mt-1 text-xs text-zinc-500">Room activity reflects provisioning milestones; provider counts reflect the selected monthly usage period.</p></div><input className={`${inputClass} sm:max-w-xs`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Hosts" /></div><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-white/[0.03] text-[10px] uppercase tracking-[0.16em] text-zinc-500"><tr><th className="px-4 py-3">Host</th><th className="px-3 py-3">Last Room</th><th className="px-3 py-3">Onboarding</th><th className="px-3 py-3">AI</th><th className="px-3 py-3">YouTube</th><th className="px-3 py-3">Apple</th><th className="px-3 py-3">Plan</th><th className="px-3 py-3">Attention</th></tr></thead><tbody className="divide-y divide-white/5">{hosts.map((host) => { const dormant = host.lastRoomAtMs && Number(summary?.generatedAtMs || 0) - host.lastRoomAtMs > 14 * 86400000; const attention = !host.workspaceActivatedAtMs ? 'Needs setup' : !host.firstRoomAtMs ? 'Needs rehearsal' : dormant ? 'Dormant' : 'Healthy'; return <tr key={host.applicationId} className="hover:bg-white/[0.03]"><td className="px-4 py-3"><strong className="block text-white">{host.name || host.email}</strong><span className="text-xs text-zinc-500">{host.email}</span></td><td className="px-3 py-3 text-zinc-300">{formatAgo(host.lastRoomAtMs)}</td><td className="px-3 py-3"><span className="text-xs text-zinc-300">{host.secondRoomAtMs ? 'Repeat' : host.firstRoomAtMs ? 'First Room' : host.workspaceActivatedAtMs ? 'Workspace ready' : 'Invited'}</span></td><td className="px-3 py-3 text-zinc-300">{host.usageMeters?.ai_generate_content?.used || 0}</td><td className="px-3 py-3 text-zinc-300">{host.usageMeters?.youtube_data_request?.used || 0}</td><td className="px-3 py-3 text-zinc-300">{host.usageMeters?.apple_music_request?.used || 0}</td><td className="px-3 py-3"><StatusChip>{host.planId || 'free'}</StatusChip></td><td className="px-3 py-3"><StatusChip tone={attention === 'Healthy' ? 'emerald' : 'amber'}>{attention}</StatusChip></td></tr>; })}</tbody></table></div>{!hosts.length ? <div className="p-6 text-center text-sm text-zinc-500">No approved Hosts match this view.</div> : null}</Panel>;
-};
-
-
 const ApplicationsWorkspace = ({ onChanged, focusApplicationId = '' }) => {
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('pending');
@@ -436,24 +411,41 @@ const ApplicationsWorkspace = ({ onChanged, focusApplicationId = '' }) => {
 };
 
 const GettingStarted = ({ onboarding, onOpenHelp, onOpenSupport }) => {
-  const steps = [
-    { id: 'approved', label: 'Private invitation active', complete: onboarding?.approved },
-    { id: 'workspace', label: 'Host workspace ready', complete: onboarding?.workspaceActivated },
-    { id: 'first', label: 'Private rehearsal Room created', complete: onboarding?.firstRoomComplete },
-    { id: 'repeat', label: 'Second Room created', complete: onboarding?.repeatRoomComplete },
-  ];
+  const steps = Array.isArray(onboarding?.steps) ? onboarding.steps : [];
   const complete = steps.filter((step) => step.complete).length;
-  return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]"><Panel className="p-5"><Eyebrow>First-Night Path</Eyebrow><h2 className="mt-1 text-2xl font-black text-white">Build confidence before guests arrive</h2><div className="mt-5 space-y-3">{steps.map((step, index) => <div key={step.id} className={`flex items-center gap-3 rounded-2xl border p-4 ${step.complete ? 'border-emerald-300/20 bg-emerald-500/8' : index === complete ? 'border-cyan-300/25 bg-cyan-500/8' : 'border-white/10 bg-black/20'}`}><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${step.complete ? 'border-emerald-300/25 bg-emerald-500/12 text-emerald-200' : 'border-white/10 bg-white/5 text-zinc-500'}`}><i className={`fa-solid ${step.complete ? 'fa-check' : 'fa-circle'}`} /></span><div><strong className="text-sm text-white">{step.label}</strong><div className="mt-1 text-xs text-zinc-500">{step.complete ? 'Complete' : index === complete ? 'Your next step' : 'Comes next'}</div></div></div>)}</div></Panel><Panel className="p-5"><Eyebrow tone="pink">Rehearsal Checklist</Eyebrow><h3 className="mt-1 text-lg font-black text-white">Test all three surfaces</h3><ol className="mt-4 space-y-3 text-sm leading-6 text-zinc-300"><li>1. Create a private Room.</li><li>2. Open Public TV on a second screen.</li><li>3. Join from your phone as an audience member.</li><li>4. Request a song and move it through the queue.</li><li>5. Send product questions through Message the Team—not Room chat.</li></ol><div className="mt-5 grid gap-2"><button type="button" onClick={onOpenHelp} className={`${primaryButton} w-full`}>Open Host Guide</button><button type="button" onClick={onOpenSupport} className={`${secondaryButton} w-full`}>Message the Team</button></div></Panel></div>;
+  return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]"><Panel className="p-5"><Eyebrow>First-Room Path</Eyebrow><h2 className="mt-1 text-2xl font-black text-white">Build confidence before guests arrive</h2><div className="mt-5 space-y-3" data-host-onboarding-progress>{steps.map((step, index) => <div key={step.id} data-host-onboarding-step={step.id} className={`flex items-center gap-3 rounded-2xl border p-4 ${step.complete ? 'border-emerald-300/20 bg-emerald-500/8' : index === complete ? 'border-cyan-300/25 bg-cyan-500/8' : 'border-white/10 bg-black/20'}`}><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${step.complete ? 'border-emerald-300/25 bg-emerald-500/12 text-emerald-200' : 'border-white/10 bg-white/5 text-zinc-500'}`}><i className={`fa-solid ${step.complete ? 'fa-check' : 'fa-circle'}`} /></span><div><strong className="text-sm text-white">{step.label}</strong><div className="mt-1 text-xs text-zinc-500">{step.complete ? 'Complete' : index === complete ? 'Your next step' : 'Comes next'}</div></div></div>)}{!steps.length ? <div className="rounded-2xl border border-amber-300/20 bg-amber-500/8 p-4 text-sm leading-6 text-amber-100">Your Host access is active, but progress could not be loaded. Refresh the page or message the team for help.</div> : null}</div></Panel><Panel className="p-5"><Eyebrow tone="pink">Rehearsal Checklist</Eyebrow><h3 className="mt-1 text-lg font-black text-white">Test all three surfaces</h3><ol className="mt-4 space-y-3 text-sm leading-6 text-zinc-300"><li>1. Create a private Room.</li><li>2. Open Public TV on a second screen.</li><li>3. Join from your phone as an audience member.</li><li>4. Request a song and move it through the queue.</li><li>5. Send product questions through Message the Team—not Room chat.</li></ol><div className="mt-5 grid gap-2"><button type="button" onClick={onOpenHelp} className={`${primaryButton} w-full`}>Open Host Guide</button><button type="button" onClick={onOpenSupport} className={`${secondaryButton} w-full`}>Message the Team</button></div></Panel></div>;
 };
 
 const GettingStartedV2 = ({ accessTerms, ...props }) => (
   <div className="space-y-4" data-complimentary-host-onboarding>
-    <Panel className="border-emerald-300/20 bg-emerald-500/8 p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div><Eyebrow>Testing access</Eyebrow><h2 className="mt-1 text-xl font-black text-white">{accessTerms?.label || 'Complimentary testing access'}</h2><p className="mt-1 text-sm leading-6 text-emerald-50/75">Your approved testing access costs $0. No card is required, no subscription was started, and there are no automatic charges. Usage meters are shown for transparency, not as a bill.</p></div>
+    <Panel className="border-emerald-300/20 bg-emerald-500/8 p-5" data-host-pricing-promise>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="max-w-4xl">
+          <Eyebrow>Testing access</Eyebrow>
+          <h2 className="mt-1 text-xl font-black text-white">{accessTerms?.label || 'Complimentary testing access'}</h2>
+          <p className="mt-2 text-sm leading-6 text-emerald-50/75">Approved testing access is $0 while your invitation is active. No card is required, no subscription was started, and there are no automatic charges. Billing & Usage shows metered product usage and limits for transparency; testing counters are not a bill. If paid Host plans become available, you will see the price, what is included, and the terms before deciding. Access will not convert automatically; you must explicitly opt in before any charge.</p>
+        </div>
         <StatusChip tone="emerald">{accessTerms?.priceLabel || '$0 during testing'}</StatusChip>
       </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-3" aria-label="Host testing access terms">
+        <div className="rounded-xl border border-emerald-300/15 bg-black/18 p-3">
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100/55">Current access</div>
+          <div className="mt-1 text-sm font-black text-white">$0 while active</div>
+          <div className="mt-1 text-xs text-zinc-400">No card or subscription started.</div>
+        </div>
+        <div className="rounded-xl border border-cyan-300/15 bg-black/18 p-3">
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/55">Usage</div>
+          <div className="mt-1 text-sm font-black text-white">Visible, not billable</div>
+          <div className="mt-1 text-xs text-zinc-400">Testing meters help everyone understand real use.</div>
+        </div>
+        <div className="rounded-xl border border-fuchsia-300/15 bg-black/18 p-3">
+          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-100/55">Future plans</div>
+          <div className="mt-1 text-sm font-black text-white">Your choice first</div>
+          <div className="mt-1 text-xs text-zinc-400">Price and terms appear before any opt-in.</div>
+        </div>
+      </div>
     </Panel>
+    <HostOnboardingNextAction onboarding={props.onboarding} />
     <GettingStarted {...props} />
   </div>
 );
@@ -466,7 +458,9 @@ const HostRelationsApp = ({ mode = 'hub' }) => {
   const tabs = isOps ? OPS_TABS : HUB_TABS;
   const initialTab = params.get('tab') || (isOps ? 'overview' : 'updates');
   const focusApplicationId = params.get('applicationId') || '';
+  const initialHostId = params.get('hostId') || '';
   const [tab, setTab] = useState(tabs.some((item) => item.id === initialTab) ? initialTab : tabs[0].id);
+  const [selectedHostId, setSelectedHostId] = useState(initialHostId);
   const [access, setAccess] = useState(null);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -500,25 +494,54 @@ const HostRelationsApp = ({ mode = 'hub' }) => {
   const allowed = isOps ? access?.isSuperAdmin : (access?.isSuperAdmin || access?.host?.hostApprovalEnabled);
   if (loading) return <div className="grid min-h-screen place-items-center bg-black text-cyan-200"><div className="text-center"><i className="fa-solid fa-spinner fa-spin text-2xl" /><div className="mt-3 text-xs font-black uppercase tracking-[0.22em]">Opening {isOps ? 'Host Operations' : 'Host Hub'}</div></div></div>;
   if (!allowed) return <AccessGate mode={mode} access={access} error={error} />;
-  const switchTab = (next) => { setTab(next); const url = new URL(window.location.href); url.searchParams.set('tab', next); window.history.replaceState({}, '', url); };
+  const switchTab = (next) => {
+    setTab(next);
+    if (next !== 'hosts') setSelectedHostId('');
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', next);
+    if (next !== 'hosts') url.searchParams.delete('hostId');
+    window.history.replaceState({}, '', url);
+  };
+  const openHost = (host) => {
+    const hostId = String(host?.applicationId || '');
+    setSelectedHostId(hostId);
+    setTab('hosts');
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'hosts');
+    if (hostId) url.searchParams.set('hostId', hostId);
+    else url.searchParams.delete('hostId');
+    window.history.replaceState({}, '', url);
+  };
+  const closeHost = () => {
+    setSelectedHostId('');
+    const url = new URL(window.location.href);
+    url.searchParams.delete('hostId');
+    window.history.replaceState({}, '', url);
+  };
   return (
-    <div className="h-screen overflow-hidden bg-black font-saira text-white" data-host-relations-mode={mode}>
+    <div className="host-vivid-shell h-screen overflow-hidden bg-black font-saira text-white" data-host-relations-mode={mode}>
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.16),transparent_34%),radial-gradient(circle_at_90%_0%,rgba(244,114,182,0.14),transparent_34%),linear-gradient(180deg,#0a0a0d,#050507)]" />
-      <header className="relative z-20 flex min-h-[76px] items-center justify-between gap-3 border-b border-cyan-200/20 bg-[linear-gradient(105deg,rgba(20,42,66,0.98),rgba(37,31,67,0.98)_52%,rgba(61,25,59,0.97))] px-3 py-2.5 shadow-[0_16px_45px_rgba(8,15,34,0.38)] sm:px-5" data-host-panel-shell="true">
-        <div className="flex min-w-0 items-center gap-3"><img src={ASSETS.logo} alt="BeauRocks" className="h-11 w-11 rounded-xl border border-white/10 bg-black/30 object-contain p-0.5 shadow-xl" /><div className="min-w-0"><Eyebrow>{isOps ? 'Super Admin · Host Panel' : 'Approved Host · Host Panel'}</Eyebrow><h1 className="truncate text-lg font-black tracking-tight sm:text-xl">{isOps ? 'Host Operations' : 'Host Hub'}</h1><p className="hidden truncate text-xs text-cyan-50/55 sm:block">{isOps ? 'Applications, Host activity, updates, and support' : 'Updates, guides, onboarding, and private team support'}</p></div></div>
-        <div className="flex items-center gap-2">{access?.isSuperAdmin ? <a href={isOps ? '/hub' : '/ops/hosts'} className={secondaryButton}><i className={`fa-solid ${isOps ? 'fa-sparkles' : 'fa-shield-halved'}`} /><span className="hidden sm:inline">{isOps ? 'View Host Hub' : 'Host Operations'}</span></a> : null}<a href="/?mode=host" className={secondaryButton}><i className="fa-solid fa-arrow-left" /><span className="hidden sm:inline">Back to Host Panel</span></a></div>
-      </header>
+      <div className="relative z-20" data-host-panel-shell="true">
+        <HostWorkspaceHeader
+          eyebrow={isOps ? 'Super Admin · Host Panel' : 'Approved Host · Host Panel'}
+          title={isOps ? 'Host Operations' : 'Host Hub'}
+          description={isOps ? 'Applications, Host activity, updates, and support' : 'Updates, guides, onboarding, and private team support'}
+          icon={isOps ? 'fa-chart-line' : 'fa-sparkles'}
+          badge={isOps ? 'Testing program' : 'Approved Hosts'}
+          actions={<>{access?.isSuperAdmin ? <a href={isOps ? '/hub' : '/ops/hosts'} className={secondaryButton}><i className={`fa-solid ${isOps ? 'fa-sparkles' : 'fa-shield-halved'}`} /><span className="hidden sm:inline">{isOps ? 'View Host Hub' : 'Host Operations'}</span></a> : null}<a href="/?mode=host" className={secondaryButton}><i className="fa-solid fa-arrow-left" /><span className="hidden sm:inline">Back to Host Panel</span></a></>}
+        />
+      </div>
       <div className="relative z-10 flex h-[calc(100vh-76px)] min-h-0 flex-col md:flex-row">
-        <nav className="shrink-0 overflow-x-auto border-b border-white/10 bg-zinc-950/86 p-2 md:w-[232px] md:overflow-y-auto md:border-b-0 md:border-r md:p-3 custom-scrollbar" aria-label={isOps ? 'Host Operations' : 'Host Hub'}>
+        <nav className="shrink-0 overflow-x-auto border-b border-cyan-200/15 bg-[linear-gradient(180deg,rgba(24,42,65,0.96),rgba(22,26,46,0.97)_55%,rgba(39,22,43,0.96))] p-2 shadow-[12px_0_34px_rgba(0,0,0,0.18)] md:w-[232px] md:overflow-y-auto md:border-b-0 md:border-r md:p-3 custom-scrollbar" aria-label={isOps ? 'Host Operations' : 'Host Hub'} data-host-workspace-navigation="true">
           <div className="hidden px-2 pb-3 pt-1 md:block"><div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">{isOps ? 'Team workspace' : 'Host resources'}</div><p className="mt-1 text-xs leading-5 text-zinc-500">{isOps ? 'Manage the testing program.' : 'Catch up, learn, or reach the team.'}</p></div>
-          <div className="flex min-w-max gap-1 md:min-w-0 md:flex-col">{tabs.map((item) => <button key={item.id} type="button" onClick={() => switchTab(item.id)} className={`flex min-h-[58px] min-w-[132px] items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition md:min-w-0 ${tab === item.id ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-50 shadow-[0_10px_28px_rgba(6,182,212,0.08)]' : 'border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/5 hover:text-white'}`}><span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${tab === item.id ? 'bg-cyan-400/15 text-cyan-200' : 'bg-white/5 text-zinc-500'}`}><i className={`fa-solid ${item.icon}`} /></span><span className="min-w-0"><span className="block text-sm font-black leading-4">{item.label}</span><span className="mt-1 hidden text-[11px] leading-4 text-zinc-500 md:block">{item.description}</span></span></button>)}</div>
+          <div className="flex min-w-max gap-1 md:min-w-0 md:flex-col">{tabs.map((item) => <button key={item.id} type="button" onClick={() => switchTab(item.id)} className={`flex min-h-[58px] min-w-[132px] items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition md:min-w-0 ${tab === item.id ? 'border-cyan-200/30 bg-[linear-gradient(115deg,rgba(34,211,238,0.15),rgba(244,114,182,0.12))] text-cyan-50 shadow-[0_10px_28px_rgba(6,182,212,0.1)]' : 'border-transparent text-zinc-400 hover:border-white/10 hover:bg-white/5 hover:text-white'}`}><span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${tab === item.id ? 'bg-[linear-gradient(135deg,rgba(34,211,238,0.2),rgba(244,114,182,0.18))] text-cyan-100' : 'bg-white/5 text-zinc-500'}`}><i className={`fa-solid ${item.icon}`} /></span><span className="min-w-0"><span className="block text-sm font-black leading-4">{item.label}</span><span className={`mt-1 hidden text-[11px] leading-4 md:block ${tab === item.id ? 'text-cyan-50/55' : 'text-zinc-500'}`}>{item.description}</span></span></button>)}</div>
         </nav>
         <main className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar sm:p-4 lg:p-5">
           <div className="mx-auto max-w-[1500px]">
             {error ? <div className="mb-4 rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 text-sm text-amber-100">{error}</div> : null}
-            {isOps && tab === 'overview' ? <HostOverview summary={summary} onSelectHost={() => switchTab('hosts')} /> : null}
+            {isOps && tab === 'overview' ? <HostOverview summary={summary} onSelectHost={openHost} /> : null}
             {isOps && tab === 'applications' ? <ApplicationsWorkspace focusApplicationId={focusApplicationId} onChanged={async () => setSummary(await getHostLifecycleReportingSummary({}))} /> : null}
-            {isOps && tab === 'hosts' ? <HostRoster summary={summary} /> : null}
+            {isOps && tab === 'hosts' ? <HostRoster summary={summary} selectedHostId={selectedHostId} onSelectHost={openHost} onCloseHost={closeHost} /> : null}
             {tab === 'updates' ? <UpdatesWorkspace admin={isOps} /> : null}
             {tab === 'support' ? <SupportWorkspace admin={isOps} /> : null}
             {!isOps && tab === 'getting_started' ? <GettingStartedV2 accessTerms={access?.host?.accessTerms} onboarding={access?.host?.onboarding} onOpenHelp={() => switchTab('help')} onOpenSupport={() => switchTab('support')} /> : null}

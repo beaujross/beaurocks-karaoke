@@ -351,9 +351,9 @@ async function run() {
       const approvalMessage = outboundSnap.docs.find((docSnap) => docSnap.get("meta.applicationId") === applicationId);
       assert.ok(approvalMessage);
       const approvalText = String(approvalMessage.get("text") || "");
-      assert.match(approvalText, /costs \$0/i);
+      assert.match(approvalText, /Approved testing access is \$0 while your invitation is active/i);
       assert.match(approvalText, /No card is required/i);
-      assert.match(approvalText, /will not charge you automatically/i);
+      assert.match(approvalText, /will not convert automatically; you must explicitly opt in before any charge/i);
       assert.match(approvalText, /hub\?tab=getting_started/i);
       assert.match(approvalText, /hub\?tab=help/i);
 

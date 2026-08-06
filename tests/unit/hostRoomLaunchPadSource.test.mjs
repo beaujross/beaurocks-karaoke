@@ -117,6 +117,7 @@ test('AAHF rooms still drive the default launchpad focus without a dedicated bro
 
 test('room setup rail keeps one workspace open at a time so the browser stays primary', () => {
   const browserSource = readFileSync(launchPadBrowserPath, 'utf8');
+  const workspaceHeaderSource = readFileSync('src/apps/Host/components/HostWorkspaceHeader.jsx', 'utf8');
 
   assert.match(browserSource, /const \[roomSetupMode, setRoomSetupMode\] = useState\('manage'\);/);
   assert.match(browserSource, /Existing Rooms/);
@@ -134,6 +135,10 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
   assert.match(browserSource, /activeRoomSetupTab\.helper/);
   assert.doesNotMatch(browserSource, /Pick a task/);
   assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\(tab\.id\)\}/);
+  assert.match(browserSource, /data-host-workspace-shell="room-setup"/);
+  assert.match(browserSource, /<HostWorkspaceHeader/);
+  assert.match(browserSource, /Host Panel · Room operations/);
+  assert.match(workspaceHeaderSource, /data-host-workspace-horizon="true"/);
 
   assert.match(browserSource, /ROOM_SETUP_TABS = Object\.freeze\(\[/);
   assert.match(browserSource, /id: 'manage'/);

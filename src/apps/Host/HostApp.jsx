@@ -5,6 +5,8 @@ import { GAMES_META } from '../../lib/gameRegistry';
 import { getRoomGameLaunchPreflight, getRunOfShowGameMode } from '../../lib/gameLaunchCompatibility';
 import HostTopChrome from './components/HostTopChrome';
 import HostQueueHorizon from './components/HostQueueHorizon';
+import ComplimentaryHostSetupReady from './components/ComplimentaryHostSetupReady';
+import { getHostSetupSteps } from './hostSetupFlowModel';
 import { buildQaHostFixture } from './qaHostFixtures';
 import MissionSetupShell from './components/setup/MissionSetupShell';
 import MissionSetupHeader from './components/setup/MissionSetupHeader';
@@ -522,6 +524,7 @@ const ChatSettingsPanel = lazyHostSurface(() => import('./components/ChatSetting
 const HostQaDebugPanel = lazyHostSurface(() => import('./components/HostQaDebugPanel'), 'QA tools updated');
 const RunOfShowDirectorPanel = lazyHostSurface(() => import('./components/RunOfShowDirectorPanel'), 'Show conveyor updated');
 const HostRoomLaunchPad = lazyHostSurface(() => import('./components/HostRoomLaunchPad'), 'Room manager updated');
+const HostRoomQuickStart = lazyHostSurface(() => import('./components/HostRoomQuickStart'), 'Room launch guide updated');
 const EventCreditsConfigPanel = lazyHostSurface(() => import('./components/EventCreditsConfigPanel'), 'Audience store settings updated');
 const UnifiedGameLauncher = lazyHostSurface(() => import('../../components/UnifiedGameLauncher'), 'Game launcher updated');
 const HostChatPanel = lazyHostSurface(() => import('./components/HostChatPanel'), 'Host chat updated');
@@ -5558,6 +5561,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     
     // 2. Local State
     const [view, setView] = useState('landing');
+    const [roomSetupHandoffToken, setRoomSetupHandoffToken] = useState(0);
     const [tab, setTab] = useState(() => resolveInitialHostWorkspaceRoute(
         typeof window !== 'undefined' ? window.location.search : ''
     ).tab);
@@ -6434,7 +6438,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         joinLinkCopied: false,
         roomSetupOpened: false,
     });
-    const [roomReadinessLaunching, setRoomReadinessLaunching] = useState(false);
     const [marqueeEnabled, setMarqueeEnabled] = useState(false);
     const [marqueeDurationSec, setMarqueeDurationSec] = useState(12);
     const [marqueeIntervalSec, setMarqueeIntervalSec] = useState(20);
@@ -10690,9 +10693,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     );
     const canPermanentlyDeleteRooms = hostPermissionLevel === 'owner' || hostPermissionLevel === 'admin';
     const hostAuthSessionReady = !!(uid || auth.currentUser?.uid);
-    const hasWorkspaceIdentityReady = Boolean(String(orgContext?.orgId || '').trim());
-    const hasHostProfileIdentity = Boolean(String(hostName || '').trim());
-    const isFirstHostRoomRun = !hasWorkspaceIdentityReady;
     const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > nowMs() - 5 * 60 * 1000);
     const lastActivity = activities?.[0];
     const recentCoHostSignals = useMemo(() => {
@@ -12504,6 +12504,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const status = String(orgContext?.status || '').toLowerCase();
         return ['active', 'trialing', 'past_due'].includes(status);
     }, [orgContext?.status]);
+    const onboardingWizardSteps = useMemo(
+        () => getHostSetupSteps({ complimentaryTestingAccess }),
+        [complimentaryTestingAccess]
+    );
+    const finishComplimentaryHostSetup = useCallback(() => {
+        closeOnboardingWizard({ completed: true });
+        setRoomSetupHandoffToken((current) => current + 1);
+        trackEvent('host_onboarding_room_setup_handoff', {
+            source: 'host_profile_complete',
+            onboarding_stage: 'workspace_ready',
+            destination: 'room_setup',
+        });
+        toast('Host profile saved. Room Setup is ready.');
+    }, [closeOnboardingWizard, toast]);
 
     useEffect(() => {
         syncOnboardingWorkspaceName(onboardingHostName.trim() || hostName.trim() || 'Host');
@@ -13197,22 +13211,35 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const opened = openActiveRoomTv();
         if (opened) {
             updateStageQuickStartProgress({ tvOpened: true });
+            trackEvent('host_room_launch_guide_action', {
+                room_code: String(roomCode || '').trim().toUpperCase(),
+                action: 'open_public_tv',
+            });
         }
-    }, [openActiveRoomTv, updateStageQuickStartProgress]);
+    }, [openActiveRoomTv, roomCode, updateStageQuickStartProgress]);
     const handleStageQuickStartCopyJoinLink = useCallback(async () => {
         const copied = await copyActiveRoomAudienceLink();
         if (copied) {
             updateStageQuickStartProgress({ joinLinkCopied: true });
+            trackEvent('host_room_launch_guide_action', {
+                room_code: String(roomCode || '').trim().toUpperCase(),
+                action: 'copy_join_link',
+            });
         }
-    }, [copyActiveRoomAudienceLink, updateStageQuickStartProgress]);
+    }, [copyActiveRoomAudienceLink, roomCode, updateStageQuickStartProgress]);
     const handleStageQuickStartConnectAppleMusic = useCallback(async () => {
         setSettingsTab('media');
+        trackEvent('host_room_launch_guide_action', {
+            room_code: String(roomCode || '').trim().toUpperCase(),
+            action: 'connect_apple_music',
+            already_connected: appleMusicAuthorized,
+        });
         if (appleMusicAuthorized) {
             toast('Apple Music already connected.');
             return;
         }
         await connectAppleMusic();
-    }, [appleMusicAuthorized, connectAppleMusic, toast]);
+    }, [appleMusicAuthorized, connectAppleMusic, roomCode, toast]);
     const showStageQuickStartChecklist = (
         tab === 'stage'
         && !!roomCode
@@ -13223,15 +13250,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         : { roomCode: String(roomCode || '').trim().toUpperCase(), tvOpened: false, joinLinkCopied: false, roomSetupOpened: false };
     const stageQuickStartAudienceReady = !!String(activeRoomLaunchUrls?.audienceUrl || '').trim();
     const stageQuickStartTvReady = !!String(activeRoomLaunchUrls?.tvUrl || '').trim();
-    const stageQuickStartSetupReady = hasWorkspaceIdentityReady && hasHostProfileIdentity;
-    const stageQuickStartAppleReady = true;
-    const stageQuickStartCompletedCount = Number(!!activeQuickStartProgress.tvOpened)
-        + Number(!!activeQuickStartProgress.joinLinkCopied)
-        + Number(!!appleMusicAuthorized)
-        + Number(!!activeQuickStartProgress.roomSetupOpened);
     const dismissStageQuickStartChecklist = useCallback(() => {
+        trackEvent('host_room_launch_guide_dismissed', {
+            room_code: String(roomCode || '').trim().toUpperCase(),
+            essential_steps_completed: Number(!!activeQuickStartProgress.tvOpened)
+                + Number(!!activeQuickStartProgress.joinLinkCopied),
+        });
         setQuickStartChecklistRoomCode('');
-    }, []);
+    }, [activeQuickStartProgress.joinLinkCopied, activeQuickStartProgress.tvOpened, roomCode]);
 
     const purgeRoomArtifactsForCode = async (targetRoomCode = '', { deleteHostLibrary = false } = {}) => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
@@ -17256,120 +17282,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         openMomentPrepWorkspace();
     }, [openMomentPrepWorkspace]);
     const handleStageQuickStartOpenRoomSetup = useCallback(() => {
+        trackEvent('host_room_launch_guide_action', {
+            room_code: String(roomCode || '').trim().toUpperCase(),
+            action: 'adjust_room_setup',
+        });
         updateStageQuickStartProgress({ roomSetupOpened: true });
         openNightSetupWizard(room?.hostNightPreset || hostNightPreset || 'casual');
-    }, [hostNightPreset, openNightSetupWizard, room?.hostNightPreset, updateStageQuickStartProgress]);
-    const handleRoomReadinessLaunch = useCallback(async () => {
-        if (roomReadinessLaunching) return;
-        setRoomReadinessLaunching(true);
-        try {
-            const launchResult = await launchNightSetupPackage();
-            if (launchResult?.applied) {
-                updateStageQuickStartProgress({
-                    tvOpened: launchResult.tvOpened === true,
-                    joinLinkCopied: launchResult.joinLinkCopied === true,
-                    roomSetupOpened: true
-                });
-            }
-        } finally {
-            setRoomReadinessLaunching(false);
-        }
-    }, [launchNightSetupPackage, roomReadinessLaunching, updateStageQuickStartProgress]);
-    const roomReadinessQueueSummary = useMemo(() => {
-        const limitOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === nightSetupQueueLimitMode) || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
-        const rotationOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === nightSetupQueueRotation) || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
-        const limitLabel = limitOption?.label || 'No limit';
-        const rotationLabel = rotationOption?.label || 'Round robin';
-        return `${limitLabel}${nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''} | ${rotationLabel}`;
-    }, [nightSetupQueueLimitCount, nightSetupQueueLimitMode, nightSetupQueueRotation]);
-    const roomReadinessAutomationLabel = useMemo(() => {
-        const assistLevel = String(room?.missionControl?.setupDraft?.assistLevel || missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL).trim().toLowerCase();
-        const assist = MISSION_ASSIST_LEVELS.find((entry) => entry.id === assistLevel);
-        if (assist?.label) return assist.label;
-        return autoDj ? 'Auto DJ' : 'Manual';
-    }, [autoDj, missionDraft?.assistLevel, room?.missionControl?.setupDraft?.assistLevel]);
-    const roomReadinessState = useMemo(() => {
-        const hasRoom = !!String(roomCode || '').trim();
-        const blockers = [
-            !hasRoom,
-            !stageQuickStartTvReady,
-            !stageQuickStartAudienceReady,
-        ].filter(Boolean).length;
-        const waiting = [
-            hasRoom && stageQuickStartTvReady && !activeQuickStartProgress.tvOpened,
-            hasRoom && stageQuickStartAudienceReady && !activeQuickStartProgress.joinLinkCopied,
-        ].filter(Boolean).length;
-        const statusLabel = blockers > 0
-            ? `${blockers} blocker${blockers === 1 ? '' : 's'}`
-            : waiting > 0
-                ? `${waiting} launch step${waiting === 1 ? '' : 's'}`
-                : 'Ready';
-        const title = blockers > 0
-            ? 'Room needs setup'
-            : waiting > 0
-                ? 'Room ready to launch'
-                : 'Room live-ready';
-        const detail = blockers > 0
-            ? 'Finish TV and guest entry before launch.'
-            : waiting > 0
-                ? 'Open TV and share the join link from the Queue menu.'
-                : `${roomReadinessQueueSummary} Ã‚Â· ${roomReadinessAutomationLabel}`;
-        return {
-            blockers,
-            waiting,
-            active: blockers === 0,
-            needsAttention: blockers > 0,
-            statusLabel,
-            summary: `${title}. ${detail}`.trim(),
-        };
-    }, [
-        activeQuickStartProgress.joinLinkCopied,
-        activeQuickStartProgress.tvOpened,
-        roomCode,
-        roomReadinessAutomationLabel,
-        roomReadinessQueueSummary,
-        stageQuickStartAudienceReady,
-        stageQuickStartTvReady,
-    ]);
-    const stageQuickStartSummary = stageQuickStartCompletedCount === 4
-        ? 'Quick start complete. Keep running the room from this live deck.'
-        : (isFirstHostRoomRun
-            ? 'Open the TV, share the join link, then handle Apple Music or room setup only if you need it.'
-            : 'Use the live deck first. TV and guest entry matter most, then tune setup only if needed.');
-    const stageQuickStartItems = [
-        {
-            id: 'tv',
-            label: activeQuickStartProgress.tvOpened ? 'Open TV Again' : 'Open Public TV',
-            completed: !!activeQuickStartProgress.tvOpened,
-            ready: stageQuickStartTvReady,
-            disabled: !stageQuickStartTvReady,
-            onClick: handleStageQuickStartOpenTv
-        },
-        {
-            id: 'audience',
-            label: activeQuickStartProgress.joinLinkCopied ? 'Copy Join Link Again' : 'Copy Join Link',
-            completed: !!activeQuickStartProgress.joinLinkCopied,
-            ready: stageQuickStartAudienceReady,
-            disabled: !stageQuickStartAudienceReady,
-            onClick: handleStageQuickStartCopyJoinLink
-        },
-        {
-            id: 'setup',
-            label: activeQuickStartProgress.roomSetupOpened ? 'Reopen Night Setup' : 'Open Night Setup',
-            completed: !!activeQuickStartProgress.roomSetupOpened,
-            ready: stageQuickStartSetupReady,
-            disabled: false,
-            onClick: handleStageQuickStartOpenRoomSetup
-        },
-        {
-            id: 'apple',
-            label: appleMusicAuthorized ? 'Apple Music Connected' : 'Connect Apple Music',
-            completed: !!appleMusicAuthorized,
-            ready: stageQuickStartAppleReady,
-            disabled: !stageQuickStartAppleReady,
-            onClick: handleStageQuickStartConnectAppleMusic
-        }
-    ];
+    }, [hostNightPreset, openNightSetupWizard, room?.hostNightPreset, roomCode, updateStageQuickStartProgress]);
     const runMissionDeckAction = async (actionId = '') => {
         const action = String(actionId || '').trim();
         if (!action) return;
@@ -20814,6 +20733,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 shouldShowSetupCard={shouldShowSetupCard}
                 canUseWorkspaceOnboarding={canUseWorkspaceOnboarding}
                 openOnboardingWizard={openOnboardingWizard}
+                roomSetupHandoffToken={roomSetupHandoffToken}
                 launchRoomName={launchRoomName}
                 setLaunchRoomName={setLaunchRoomName}
                 launchRequestedRoomCode={launchRequestedRoomCode}
@@ -20884,12 +20804,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             </React.Suspense>
             {showOnboardingWizard && (
                 <div className="fixed inset-0 z-[95] bg-black/85 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
-                    <div className="w-full max-w-5xl mx-auto bg-gradient-to-br from-[#151026]/95 via-[#0f1628]/95 to-[#0a111c]/95 border border-cyan-300/35 rounded-[2rem] shadow-[0_34px_100px_rgba(0,0,0,0.62),0_0_60px_rgba(236,72,153,0.16)] overflow-hidden text-left">
+                    <div className={`w-full ${complimentaryTestingAccess ? 'max-w-3xl' : 'max-w-5xl'} mx-auto bg-gradient-to-br from-[#151026]/95 via-[#0f1628]/95 to-[#0a111c]/95 border border-cyan-300/35 rounded-[2rem] shadow-[0_34px_100px_rgba(0,0,0,0.62),0_0_60px_rgba(236,72,153,0.16)] overflow-hidden text-left`}>
                         <div className="px-5 py-4 md:px-6 border-b border-cyan-400/20 flex items-center justify-between gap-3">
                             <div>
                                 <div className="text-[11px] uppercase tracking-[0.3em] text-fuchsia-100/70">Host Setup</div>
                                 <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mt-1">Set Up Your Hosting Profile</div>
-                                <div className="text-sm text-cyan-100/80 mt-1">Add your host details, choose your plan, add branding, then launch your first room.</div>
+                                <div className="text-sm text-cyan-100/80 mt-1">{complimentaryTestingAccess ? 'Confirm the two names that identify you in BeauRocks. Branding and Room details can wait.' : 'Add your host details, choose your plan, add branding, then launch your first Room.'}</div>
                             </div>
                             <button
                                 onClick={closeOnboardingWizard}
@@ -20903,12 +20823,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="h-1.5 rounded-full bg-[#0a1222] border border-cyan-500/20 overflow-hidden">
                                 <div
                                     className="h-full bg-gradient-to-r from-cyan-400 via-cyan-300 to-pink-400 transition-all duration-300"
-                                    style={{ width: `${Math.round(((onboardingStep + 1) / Math.max(1, HOST_ONBOARDING_STEPS.length)) * 100)}%` }}
+                                    style={{ width: `${Math.round(((onboardingStep + 1) / Math.max(1, onboardingWizardSteps.length)) * 100)}%` }}
                                 ></div>
                             </div>
-                            <div className="mt-2 text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Step {onboardingStep + 1} of {HOST_ONBOARDING_STEPS.length}</div>
-                            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {HOST_ONBOARDING_STEPS.map((step, idx) => (
+                            <div className="mt-2 text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Step {onboardingStep + 1} of {onboardingWizardSteps.length}</div>
+                            <div className={`mt-3 grid grid-cols-2 gap-2 ${onboardingWizardSteps.length > 2 ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
+                            {onboardingWizardSteps.map((step, idx) => (
                                 <button
                                     key={step.key}
                                     onClick={() => {
@@ -20942,7 +20862,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="rounded-2xl border border-fuchsia-300/30 bg-gradient-to-r from-[#1a1230]/80 via-[#111a2e]/85 to-[#10212d]/80 p-4 shadow-[0_0_28px_rgba(34,211,238,0.12)]">
                                         <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Identity</div>
                                         <div className="text-lg font-bold text-white mt-1">Define your host profile</div>
-                                        <div className="text-sm text-cyan-100/75 mt-1">These values become your default organization and room identity.</div>
+                                            <div className="text-sm text-cyan-100/75 mt-1">These are the two names people and teammates will use to recognize you.</div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <div>
@@ -20965,7 +20885,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                     </div>
                                     <div className="rounded-xl border border-cyan-400/28 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100/80">
-                                        This creates or updates the organization record used for capabilities, billing, and room ownership.
+                                            Your Host name appears to guests. Your workspace name keeps your Rooms and settings organized.
                                     </div>
                                     <div className="flex justify-end">
                                         <button
@@ -20973,13 +20893,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             disabled={onboardingBusy}
                                             className={`${STYLES.btnStd} ${STYLES.btnPrimary} bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent ${onboardingBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
                                         >
-                                            {onboardingBusy ? 'Initializing...' : 'Continue to Plan'}
+                                                {onboardingBusy ? 'Saving...' : complimentaryTestingAccess ? 'Save Host Profile' : 'Continue to Plan'}
                                         </button>
                                     </div>
                                 </div>
                             )}
                             {onboardingStep === 1 && (
                                 <div className="space-y-4">
+                                    {complimentaryTestingAccess ? (
+                                        <ComplimentaryHostSetupReady
+                                            hostName={onboardingHostName}
+                                            workspaceName={onboardingWorkspaceName}
+                                            onBack={() => setOnboardingStep(0)}
+                                            onFinish={finishComplimentaryHostSetup}
+                                            buttonClass={`${STYLES.btnStd} ${STYLES.btnPrimary} bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent`}
+                                            secondaryButtonClass={`${STYLES.btnStd} ${STYLES.btnNeutral} border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
+                                        />
+                                    ) : <>
                                     {subscriptionCheckoutEnabled ? <>
                                     <div className="rounded-2xl border border-fuchsia-300/30 bg-gradient-to-r from-[#1a1230]/80 via-[#111a2e]/85 to-[#10212d]/80 p-4 shadow-[0_0_28px_rgba(34,211,238,0.12)]">
                                         <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Billing</div>
@@ -21033,7 +20963,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </> : <div className="rounded-2xl border border-emerald-300/30 bg-emerald-500/10 p-4 shadow-[0_0_28px_rgba(52,211,153,0.10)]">
                                         <div className="text-[11px] uppercase tracking-[0.24em] text-emerald-100/70">{complimentaryTestingAccess ? 'Testing access' : 'Host access'}</div>
                                         <div className="mt-1 text-lg font-bold text-white">{complimentaryTestingAccess ? 'Complimentary · $0 during testing' : 'Paid checkout is currently paused'}</div>
-                                        <div className="mt-2 text-sm leading-6 text-emerald-50/75">{complimentaryTestingAccess ? 'No card is required, no subscription was started, and there are no automatic charges. Continue setup now; you will see and approve any future paid terms before payment.' : 'Join the Host waitlist for a selective invitation. No payment or subscription action is available while testing terms are being finalized.'}</div>
+                                        <div className="mt-2 text-sm leading-6 text-emerald-50/75">{complimentaryTestingAccess ? 'Approved testing access is $0 while your invitation is active. No card is required, no subscription was started, and there are no automatic charges. If paid Host plans become available, you will see the price, what is included, and the terms before deciding. Access will not convert automatically; you must explicitly opt in before any charge.' : 'Join the Host waitlist for a selective invitation. No payment or subscription action is available while testing terms are being finalized.'}</div>
                                     </div>}
                                     <div className="flex justify-between gap-2">
                                         <button
@@ -21057,6 +20987,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             Subscription is not active yet. You can continue setup now and activate billing later.
                                         </div>
                                     )}
+                                    </>}
                                 </div>
                             )}
                             {onboardingStep === 2 && (
@@ -23187,18 +23118,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onOpenQueueControls={focusQueueLiveControls}
                     quickAutomationControls={quickAutomationControls}
                     quickRoomControls={quickRoomControls}
-                    roomReadinessSummary={roomReadinessState.summary}
-                    roomReadinessStatusLabel={roomReadinessState.statusLabel}
-                    roomReadinessActive={roomReadinessState.active}
-                    roomReadinessNeedsAttention={roomReadinessState.needsAttention}
-                    roomReadinessLaunchBusy={roomReadinessLaunching || nightSetupApplying}
-                    onLaunchRoom={handleRoomReadinessLaunch}
                     onOpenHostDashboard={openHostRoomDashboard}
-                    showStageQuickStart={showStageQuickStartChecklist}
-                    stageQuickStartCompletedCount={stageQuickStartCompletedCount}
-                    stageQuickStartSummary={stageQuickStartSummary}
-                    stageQuickStartItems={stageQuickStartItems}
-                    onDismissStageQuickStart={dismissStageQuickStartChecklist}
                     audiencePreviewVisible={audiencePreviewVisible}
                     setAudiencePreviewVisible={setAudiencePreviewVisible}
                     audiencePreviewMode={audiencePreviewMode}
@@ -23305,6 +23225,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     aria-hidden={tab !== 'stage' ? 'true' : undefined}
                     className={tab === 'stage' ? 'flex flex-1 min-h-0 flex-col' : 'hidden'}
                 >
+                    {showStageQuickStartChecklist ? (
+                        <div className="mb-3 shrink-0">
+                            <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading Room launch guide..." />}>
+                            <HostRoomQuickStart
+                                roomCode={roomCode}
+                                tvOpened={!!activeQuickStartProgress.tvOpened}
+                                joinLinkCopied={!!activeQuickStartProgress.joinLinkCopied}
+                                tvReady={stageQuickStartTvReady}
+                                joinLinkReady={stageQuickStartAudienceReady}
+                                roomSetupReviewed={!!activeQuickStartProgress.roomSetupOpened}
+                                appleMusicConnected={appleMusicAuthorized}
+                                onOpenTv={handleStageQuickStartOpenTv}
+                                onCopyJoinLink={handleStageQuickStartCopyJoinLink}
+                                onOpenRoomSetup={handleStageQuickStartOpenRoomSetup}
+                                onConnectAppleMusic={handleStageQuickStartConnectAppleMusic}
+                                onDismiss={dismissStageQuickStartChecklist}
+                            />
+                            </React.Suspense>
+                        </div>
+                    ) : null}
                     <React.Suspense fallback={<DeferredHostSurfaceFallback label={`Loading ${HOST_LIVE_OPS_LANGUAGE.lineup}...`} />}>
                         <HostQueueTab
                             {...queueTabProps}
@@ -26819,7 +26759,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                             <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-emerald-100">No automatic charges</span>
                                         </div>
-                                        <p className="mt-2 text-sm leading-6 text-emerald-50/75">No card is required and no subscription was started. Usage meters below are for transparency and testing safety; they are not a bill. If paid plans open later, you will see the terms and explicitly opt in first.</p>
+                                        <p className="mt-2 text-sm leading-6 text-emerald-50/75">Approved testing access is $0 while your invitation is active. No card is required, no subscription was started, and there are no automatic charges. Billing & Usage shows metered product usage and limits for transparency; testing counters are not a bill. If paid Host plans become available, you will see the price, what is included, and the terms before deciding. Access will not convert automatically; you must explicitly opt in before any charge.</p>
                                     </div>
                                 )}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">

@@ -508,6 +508,7 @@ const HostRoomLaunchPad = ({
     shouldShowSetupCard,
     canUseWorkspaceOnboarding,
     openOnboardingWizard,
+    roomSetupHandoffToken = 0,
     launchRoomName,
     setLaunchRoomName,
     launchRequestedRoomCode,
@@ -759,6 +760,7 @@ const HostRoomLaunchPad = ({
             audienceBase={audienceBase}
             shouldShowSetupCard={shouldShowSetupCard}
             openOnboardingWizard={openOnboardingWizard}
+            roomSetupHandoffToken={roomSetupHandoffToken}
             canUseWorkspaceOnboarding={canUseWorkspaceOnboarding}
             launchDisabled={launchDisabled}
             launchRoomName={launchRoomName}

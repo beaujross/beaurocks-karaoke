@@ -35,7 +35,7 @@ describe("marketing page source", () => {
     expect(hostSource).toContain("Approved testing access");
     expect(hostSource).toContain("No card is required");
     expect(hostSource).toContain("explicitly opt in");
-    expect(helpSource).toContain("Approved testing access currently costs $0");
+    expect(helpSource).toContain("Approved testing access is $0 while your invitation is active");
     expect(seoSource).toContain("complimentary testing access with no card or automatic charge");
     expect(seoSource).not.toContain("compare monthly or annual access");
   });

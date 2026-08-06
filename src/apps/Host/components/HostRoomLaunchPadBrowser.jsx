@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ASSETS } from '../../../lib/assets';
 import { REQUEST_MODES } from '../../../lib/requestModes';
 import {
     AUDIENCE_JOIN_ACCESS_MODES,
@@ -11,6 +10,7 @@ import { resolveRoomSetupEffectiveBehavior } from '../roomSetupEffectiveBehavior
 import { applyEventCreditsPreset } from '../hostLaunchHelpers';
 import { getRoomEconomySummary } from '../../../lib/roomEconomySummary';
 import RoomJoinPosterModal from './RoomJoinPosterModal';
+import HostWorkspaceHeader from './HostWorkspaceHeader';
 import { AAHF_FESTIVAL_LOGO_URL } from '../hostAppData';
 import {
     HOST_LAUNCH_EXPERIENCE_DRAFT_KEY,
@@ -334,6 +334,7 @@ const HostRoomLaunchPadBrowser = ({
     audienceBase,
     shouldShowSetupCard,
     openOnboardingWizard,
+    roomSetupHandoffToken = 0,
     canUseWorkspaceOnboarding,
     launchDisabled,
     launchRoomName,
@@ -376,6 +377,7 @@ const HostRoomLaunchPadBrowser = ({
     const [joinPosterRoom, setJoinPosterRoom] = useState(null);
     const [roomSetupMode, setRoomSetupMode] = useState('manage');
     const roomBrowserResultsRef = useRef(null);
+    const createRoomSectionRef = useRef(null);
     const selectedPresetBaseId = selectedLaunchPreset?.basePresetId || selectedLaunchPreset?.id || 'casual';
     const selectedPresetJoinPolicy = normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {});
     const recoveredJoinAccessMode = AUDIENCE_JOIN_ACCESS_OPTIONS.some(
@@ -606,6 +608,24 @@ const HostRoomLaunchPadBrowser = ({
         }, 0);
     };
     useEffect(() => {
+        if (!roomSetupHandoffToken) return undefined;
+        if (typeof window === 'undefined') return undefined;
+        let focusTimer = null;
+        const modeTimer = window.setTimeout(() => {
+            setRoomSetupMode('create');
+            focusTimer = window.setTimeout(() => {
+                createRoomSectionRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                createRoomSectionRef.current
+                    ?.querySelector('[data-launch-room-identity] input')
+                    ?.focus();
+            }, 0);
+        }, 0);
+        return () => {
+            window.clearTimeout(modeTimer);
+            if (focusTimer !== null) window.clearTimeout(focusTimer);
+        };
+    }, [roomSetupHandoffToken]);
+    useEffect(() => {
         if (selectedRoom?.code) return;
         if (!roomBrowserResults.length) {
             const timer = setTimeout(() => setRoomSetupMode('create'), 0);
@@ -630,18 +650,27 @@ const HostRoomLaunchPadBrowser = ({
     );
 
     return (
-    <div className="relative z-10 mx-auto w-full max-w-[1680px] scroll-mt-4">
-        <div className="rounded-[1.35rem] border border-cyan-300/25 bg-[radial-gradient(circle_at_top_left,rgba(255,194,104,0.08),transparent_22%),radial-gradient(circle_at_85%_14%,rgba(236,72,153,0.08),transparent_28%),linear-gradient(145deg,rgba(13,18,34,0.94),rgba(8,14,24,0.98))] p-2 shadow-[0_24px_70px_rgba(0,0,0,0.44)] backdrop-blur-xl md:p-3">
-            <header className="flex flex-wrap items-center gap-2 rounded-[1rem] border border-white/10 bg-black/20 p-2.5">
-                <div className="mr-auto flex min-w-[220px] items-center gap-2.5">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-300/18 bg-black/25 p-1.5">
-                        <img src={ASSETS.logo} alt="BeauRocks Karaoke" className="h-full w-full object-contain" />
-                    </div>
-                    <div className="min-w-0">
-                        <div className="text-sm font-black text-white">Room setup</div>
-                        <div className="truncate text-[11px] text-cyan-100/58">{activeRoomSetupTab.helper}</div>
-                    </div>
-                </div>
+    <div className="relative z-10 mx-auto w-full max-w-[1680px] scroll-mt-4" data-host-workspace-shell="room-setup">
+        <div className="rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_85%_6%,rgba(236,72,153,0.09),transparent_28%),linear-gradient(145deg,rgba(22,36,58,0.94),rgba(12,18,31,0.98))] p-2 shadow-[0_24px_70px_rgba(0,0,0,0.36)] backdrop-blur-xl md:p-3">
+            <HostWorkspaceHeader
+                compact
+                eyebrow="Host Panel · Room operations"
+                title="Room Setup"
+                description={activeRoomSetupTab.helper}
+                icon="fa-door-open"
+                badge={launchAccessPending ? 'Syncing access' : 'Ready to launch'}
+                actions={activeRoomCode ? (
+                    <button
+                        type="button"
+                        onClick={() => openExistingRoomWorkspace(activeRoomCode, 'queue.live_run')}
+                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] uppercase tracking-[0.14em]`}
+                    >
+                        <i className="fa-solid fa-arrow-left" />
+                        Back to Live Room
+                    </button>
+                ) : null}
+            />
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[1rem] border border-white/10 bg-black/18 p-2">
                 <div className="host-brand-tabs host-brand-tabs--fill w-full sm:w-auto sm:min-w-[330px]" role="tablist" aria-label="Room setup workspace">
                     {ROOM_SETUP_TABS.map((tab) => {
                         const active = roomSetupMode === tab.id;
@@ -669,17 +698,8 @@ const HostRoomLaunchPadBrowser = ({
                 <span className={`rounded-full border px-2 py-1 text-[9px] uppercase tracking-[0.14em] ${launchAccessPending ? 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100' : 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100'}`}>
                     {launchAccessPending ? 'Syncing' : 'Ready'}
                 </span>
-                {activeRoomCode ? (
-                    <button
-                        type="button"
-                        onClick={() => openExistingRoomWorkspace(activeRoomCode, 'queue.live_run')}
-                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px] uppercase tracking-[0.14em]`}
-                    >
-                        <i className="fa-solid fa-arrow-left" />
-                        Back to Live Room
-                    </button>
-                ) : null}
-            </header>
+                <span className="ml-auto hidden text-[10px] font-bold text-cyan-100/45 lg:inline">Existing Rooms and Create Room share one setup workspace.</span>
+            </div>
             <div className="mt-2 space-y-3">
 
                 {manageModeActive ? (
@@ -1116,6 +1136,7 @@ const HostRoomLaunchPadBrowser = ({
                 {createModeActive ? (
                     <div
                         id="launchpad-create-room"
+                        ref={createRoomSectionRef}
                         data-room-create-premium="true"
                         className="relative isolate overflow-hidden rounded-[1.75rem] border border-fuchsia-300/20 bg-[radial-gradient(circle_at_12%_12%,rgba(236,72,153,0.18),transparent_31%),radial-gradient(circle_at_88%_18%,rgba(34,211,238,0.16),transparent_32%),linear-gradient(145deg,rgba(12,15,29,0.98),rgba(8,19,29,0.98)_52%,rgba(24,10,29,0.98))] p-3 shadow-[0_28px_80px_rgba(0,0,0,0.42),0_0_48px_rgba(34,211,238,0.055)] sm:p-5 lg:p-6"
                     >

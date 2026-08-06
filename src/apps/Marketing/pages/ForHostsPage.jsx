@@ -407,7 +407,7 @@ const ForHostsPage = ({
                 No account is needed. We will use this email only for your application and invitation updates.
               </div>
               <div className="mk3-auth-hint">
-                Joining is free and does not start a subscription. If invited, you will see the access terms before you begin.
+                Applying is free and does not start a subscription. If invited, you will see the access terms before you begin.
               </div>
               <button className="mk3-rebuild-button is-primary" type="submit" disabled={requestBusy}>
                 {requestBusy ? "Submitting..." : "Submit My Host Application"}
@@ -448,10 +448,10 @@ const ForHostsPage = ({
       <section className="mk3-persona-simple-band">
         <div className="mk3-persona-simple-band-intro">
           <div className="mk3-rebuild-kicker">Testing access and future pricing</div>
-          <h2>Apply free. Test free. Choose before you ever pay.</h2>
+          <h2>Apply for free. Approved testing is $0. You choose before any future payment.</h2>
           <p>
-            Joining the waitlist is free. Selected Hosts currently receive complimentary testing access.
-            No card is required, no subscription starts automatically, and future paid terms will be shown before you choose them.
+            Approved testing access is $0 while your invitation is active. No card is required, no subscription was started,
+            and there are no automatic charges. Future paid access never starts unless you explicitly choose it.
           </p>
         </div>
         <div className="mk3-persona-simple-card-grid is-three">
@@ -463,12 +463,12 @@ const ForHostsPage = ({
           <article className="mk3-persona-simple-card">
             <span>Approved testing access</span>
             <strong>Complimentary</strong>
-            <p>$0 while your testing invitation is active, with no card or automatic charge.</p>
+            <p>$0 while your invitation is active, with no card, subscription, or automatic charge.</p>
           </article>
           <article className="mk3-persona-simple-card">
             <span>Future paid access</span>
-            <strong>Terms before payment</strong>
-            <p>Pricing is not open during testing. You will explicitly opt in before any paid plan begins.</p>
+            <strong>Your choice first</strong>
+            <p>You will see the price, what is included, and the terms before deciding. Access will not convert automatically; you must explicitly opt in before any charge.</p>
           </article>
         </div>
         <div className="mk3-host-pricing-details">
@@ -478,7 +478,7 @@ const ForHostsPage = ({
           </article>
           <article>
             <strong>You stay in control</strong>
-            <p>Usage is visible in the Host Dashboard so you and BeauRocks can understand real operating costs. Testing counters are not a bill.</p>
+            <p>Billing & Usage shows metered product usage and limits for transparency; testing counters are not a bill.</p>
           </article>
           <article>
             <strong>Not included</strong>

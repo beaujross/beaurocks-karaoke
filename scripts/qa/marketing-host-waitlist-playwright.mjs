@@ -77,8 +77,9 @@ const main = async () => {
       await page.getByRole("heading", { name: /host karaoke your way/i }).waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText(/new host applications are open/i).first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("Complimentary", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Terms before payment", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText(/no card is required, no subscription starts automatically/i).waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Your choice first", { exact: true }).waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText(/no card is required, no subscription was started/i).first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText(/access will not convert automatically; you must explicitly opt in before any charge/i).waitFor({ state: "visible", timeout: timeoutMs });
       return "for-hosts page loaded";
     });
 

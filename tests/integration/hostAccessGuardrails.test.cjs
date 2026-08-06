@@ -83,6 +83,23 @@ async function grantPrivateHostAccess(uid) {
   );
 }
 
+const assertOnboardingProgress = (access, expectedStage, completedStepCount) => {
+  assert.equal(access?.onboarding?.currentStage, expectedStage);
+  assert.deepEqual(
+    access?.onboarding?.steps?.map((step) => ({
+      id: step.id,
+      label: step.label,
+      complete: step.complete,
+    })),
+    [
+      { id: "invitation", label: "Invitation received", complete: completedStepCount >= 1 },
+      { id: "identity", label: "Host identity ready", complete: completedStepCount >= 2 },
+      { id: "first_room", label: "First Room created", complete: completedStepCount >= 3 },
+      { id: "returning_host", label: "Returning Host", complete: completedStepCount >= 4 },
+    ]
+  );
+};
+
 async function grantRoomYoutubeAccessForAudience(uid) {
   const roomOrgId = "org_guard_room";
   await db.doc(`organizations/${roomOrgId}`).set({
@@ -185,17 +202,23 @@ async function run() {
         hostingGoal: "Validate the simplified Host cohort funnel.",
       }));
       await grantPrivateHostAccess(USER_UID);
+      const invitedAccess = await getMyHostAccessStatus.run(requestFor(USER_UID));
+      assertOnboardingProgress(invitedAccess, "invited", 1);
       const workspace = await bootstrapOnboardingWorkspace.run(
         requestFor(USER_UID, { orgName: "Guardrail Org", hostName: "Guardrail Host" })
       );
       assert.equal(workspace.ok, true);
+      const workspaceAccess = await getMyHostAccessStatus.run(requestFor(USER_UID));
+      assertOnboardingProgress(workspaceAccess, "workspace_ready", 2);
       const first = await provisionHostRoom.run(
         requestFor(USER_UID, { requestId: "guardrail-room-first", hostName: "Guardrail Host" })
       );
+      assert.equal(first.ok, true);
+      const firstRoomAccess = await getMyHostAccessStatus.run(requestFor(USER_UID));
+      assertOnboardingProgress(firstRoomAccess, "first_room_complete", 3);
       const second = await provisionHostRoom.run(
         requestFor(USER_UID, { requestId: "guardrail-room-second", hostName: "Guardrail Host" })
       );
-      assert.equal(first.ok, true);
       assert.equal(second.ok, true);
       assert.notEqual(first.roomCode, second.roomCode);
       const applicationSnap = await db.collection("host_access_applications")
@@ -209,7 +232,7 @@ async function run() {
       assert.equal(application.milestones?.secondRoomCode, second.roomCode);
       assert.equal(application.hostAccountSnapshot?.orgId, workspace.orgId);
       const access = await getMyHostAccessStatus.run(requestFor(USER_UID));
-      assert.equal(access.onboarding.currentStage, "repeat_room_complete");
+      assertOnboardingProgress(access, "repeat_room_complete", 4);
       await expectHttpsError(
         () => getHostLifecycleReportingSummary.run(requestFor(USER_UID, { period: "202607" })),
         "permission-denied"

@@ -17,6 +17,7 @@ import { formatDateTime, MARKETING_BRAND_NEON_URL } from "./pages/shared";
 import { buildSurfaceUrl, inferSurfaceFromHostname } from "../../lib/surfaceDomains";
 import { getMarketingNavModel } from "./iaModel";
 import { OFFICIAL_BEAUROCKS_SOCIAL_LINKS } from "../../lib/officialSocialLinks";
+import { resolveHostDashboardReturnHref } from "./hostAuthReturn";
 import "./marketing.css";
 
 const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
@@ -141,36 +142,6 @@ const stripIntentParams = (params = {}) => {
   delete next.next;
   delete next.return_to;
   return next;
-};
-
-const resolveHostDashboardReturnHref = (returnToHref = "", locationLike = null) => {
-  const raw = String(returnToHref || "").trim();
-  if (!raw || !locationLike) return "";
-  try {
-    const parsed = new URL(raw, locationLike.origin || "https://host.beaurocks.app");
-    const normalizedPathname = (parsed.pathname || "/").replace(/\/+$/, "") || "/";
-    const params = new URLSearchParams(parsed.search || "");
-    const legacyPage = String(params.get("page") || "").trim().toLowerCase();
-    const isHostAccessReturn = normalizedPathname === "/host-access"
-      || legacyPage === "host_access"
-      || legacyPage === "host-access";
-    if (isHostAccessReturn) return "";
-
-    const sameOrigin = parsed.origin === locationLike.origin;
-    const targetSurface = inferSurfaceFromHostname(parsed.hostname, locationLike);
-    const targetsHostApp = String(params.get("mode") || "").trim().toLowerCase() === "host"
-      || ["/hub", "/host-hub", "/ops/hosts", "/host-operations"].includes(normalizedPathname)
-      || !!String(params.get("view") || "").trim()
-      || !!String(params.get("tab") || "").trim()
-      || !!String(params.get("game") || "").trim();
-    if (!targetsHostApp) return "";
-    if (!sameOrigin && targetSurface !== "host") return "";
-    return sameOrigin
-      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
-      : parsed.toString();
-  } catch {
-    return "";
-  }
 };
 
 const APP_VERSION = typeof import.meta !== "undefined" && import.meta?.env
@@ -574,6 +545,19 @@ const MarketingSite = () => {
     const intent = String(currentRoute.params?.intent || "").trim();
     const targetType = String(currentRoute.params?.targetType || "").trim();
     const targetId = String(currentRoute.params?.targetId || "").trim();
+    const isHostResume = intent.toLowerCase() === "host_dashboard_resume"
+      || targetType.toLowerCase() === "host_dashboard";
+    const hostReturnHref = isHostResume
+      ? resolveHostDashboardReturnHref(returnToHref, window.location)
+      : "";
+    if (hostReturnHref) {
+      trackEvent("mk_host_auth_return", {
+        intent: intent || "host_dashboard_resume",
+        targetType: targetType || "host_dashboard",
+      });
+      window.location.href = hostReturnHref;
+      return;
+    }
     if (!returnToHref) {
       const fallbackRoute = currentRoute.page === MARKETING_ROUTE_PAGES.hostAccess
         ? { page: MARKETING_ROUTE_PAGES.hostAccess, id: "", params: stripIntentParams(currentRoute.params) }
@@ -1137,7 +1121,7 @@ const MarketingSite = () => {
               <div className="mk3-value-points">
                 <span>Anyone can join the waitlist with a name and email.</span>
                 <span>We review the line and release invitations as testing space opens.</span>
-                <span>Your invitation explains when to sign in, what access includes, and any cost before you begin.</span>
+                <span>Selected Hosts currently receive approved testing access for $0, with no card or automatic charge.</span>
               </div>
               {hasFullAccount && session.hasHostWorkspaceAccess && (
                 <div className="mk3-auth-cta-row">

@@ -4,6 +4,7 @@ import { test } from 'vitest';
 
 const appSource = readFileSync('src/App.jsx', 'utf8');
 const marketingSiteSource = readFileSync('src/apps/Marketing/MarketingSite.jsx', 'utf8');
+const hostAuthReturnSource = readFileSync('src/apps/Marketing/hostAuthReturn.js', 'utf8');
 const hostTopChromeSource = readFileSync('src/apps/Host/components/HostTopChrome.jsx', 'utf8');
 const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
 const hostEntryBootstrapSource = readFileSync('src/apps/Host/hooks/useHostEntryBootstrap.js', 'utf8');
@@ -71,6 +72,11 @@ test('host catalogue launch preserves the requested catalog surface through auth
   );
   assert.match(
     marketingSiteSource,
+    /resolveHostDashboardReturnHref\(returnToHref, window\.location\)/,
+    'Successful authentication should honor the same safe host return before using marketing routing',
+  );
+  assert.match(
+    hostAuthReturnSource,
     /isHostAccessReturn/,
     'Host access resume should reject host-access return loops',
   );

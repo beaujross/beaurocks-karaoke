@@ -53,7 +53,7 @@ const HELP_SECTIONS = Object.freeze([
             ['Choose the right automation', `${HOST_LIVE_OPS_LANGUAGE.autoDj} runs performances only. ${HOST_LIVE_OPS_LANGUAGE.autoAdvance} runs the full lineup, including moments. You can always use ${HOST_LIVE_OPS_LANGUAGE.startNext} manually.`],
             ['Launch all three surfaces', 'Host Dashboard controls the night, Audience App is for guests, and Public TV is the intentionally public projection. Use Incognito or a separate browser profile for the display.'],
             ['Use the Host Inbox live', 'Room lounge messages, DM Host, and Tell Host belong to the active Room. They are not a product-support channel. Keep private operator messages off Public TV.'],
-            ['Know what access costs', 'The waitlist is free. Approved testing access currently costs $0, requires no card, starts no subscription, and creates no automatic charge. Billing & Usage shows testing meters for transparency, not as a bill. If paid access is offered later, you will see the terms and explicitly opt in first.'],
+            ['Know what access costs', 'Applying to the Host waitlist is free. Approved testing access is $0 while your invitation is active. No card is required, no subscription was started, and there are no automatic charges. Billing & Usage shows metered product usage and limits for transparency; testing counters are not a bill. If paid Host plans become available, you will see the price, what is included, and the terms before deciding. Access will not convert automatically; you must explicitly opt in before any charge.'],
         ],
         tips: [
             'Complete one full phone-to-TV rehearsal before inviting guests.',

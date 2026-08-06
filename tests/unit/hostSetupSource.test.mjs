@@ -181,10 +181,10 @@ test('host panel presents readiness and one launch action before deeper setup', 
     /roomReadinessLaunchBusy \? 'Launching\.\.\.' : 'Launch'/,
     'Top chrome should not duplicate the quick-launch menu with a second standalone launch button',
   );
-  assert.match(
+  assert.doesNotMatch(
     hostAppSource,
     /const roomReadinessState = useMemo\(\(\) => \{/,
-    'Host app should still derive room readiness state for setup and admin handoff',
+    'Host app should not retain a second disconnected room-readiness model',
   );
   assert.match(
     hostAppSource,
@@ -198,13 +198,13 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
   assert.match(
     hostAppSource,
-    /roomReadinessSummary=\{roomReadinessState\.summary\}/,
-    'Host app should pass the derived readiness summary into top chrome',
+    /<HostRoomQuickStart[\s\S]*tvReady=\{stageQuickStartTvReady\}[\s\S]*joinLinkReady=\{stageQuickStartAudienceReady\}/,
+    'The in-room Quick Start should own the essential TV and audience readiness handoff',
   );
   assert.match(
     hostAppSource,
-    /await launchNightSetupPackage\(\)/,
-    'Readiness launch should reuse the atomic TV, setup, and join-link flow',
+    /onLaunchPackage=\{launchNightSetupPackage\}/,
+    'Room setup should reuse the existing atomic TV, setup, and join-link flow',
   );
   assert.match(
     hostAppSource,

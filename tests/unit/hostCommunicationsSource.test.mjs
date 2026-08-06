@@ -7,7 +7,10 @@ const callableSource = readFileSync('functions/hostCommunications.js', 'utf8');
 const indexSource = readFileSync('functions/index.js', 'utf8');
 const appSource = readFileSync('src/App.jsx', 'utf8');
 const relationsSource = readFileSync('src/apps/HostRelations/HostRelationsApp.jsx', 'utf8');
+const analyticsSource = readFileSync('src/apps/HostRelations/HostOperationsAnalytics.jsx', 'utf8');
+const workspaceHeaderSource = readFileSync('src/apps/Host/components/HostWorkspaceHeader.jsx', 'utf8');
 const helpSource = readFileSync('src/apps/Help/HelpCenter.jsx', 'utf8');
+const forHostsSource = readFileSync('src/apps/Marketing/pages/ForHostsPage.jsx', 'utf8');
 const topChromeSource = readFileSync('src/apps/Host/components/HostTopChrome.jsx', 'utf8');
 const firebaseSource = readFileSync('src/lib/firebase.js', 'utf8');
 const indexesSource = readFileSync('firestore.indexes.json', 'utf8');
@@ -60,15 +63,39 @@ test('Host Relations exposes the approved-host operating workspaces and honest a
   assert.match(relationsSource, /data-host-relations-mode=\{mode\}/);
   assert.match(relationsSource, /data-host-updates-workspace/);
   assert.match(relationsSource, /data-host-support-workspace/);
-  assert.match(relationsSource, /data-active-host-roster/);
-  assert.match(relationsSource, /Room activity reflects provisioning milestones/);
+  assert.match(analyticsSource, /data-active-host-roster/);
+  assert.match(analyticsSource, /These are usage units recorded for billing transparency.[\s\S]*not a cost or revenue estimate./);
   assert.match(relationsSource, /Send product questions through Message the Team—not Room chat\./);
   assert.match(relationsSource, /Approved Host · Host Panel/);
   assert.match(relationsSource, /Super Admin · Host Panel/);
   assert.match(relationsSource, /id: 'help', label: 'Host Guide'/);
   assert.match(relationsSource, /data-host-panel-shell="true"/);
+  assert.match(relationsSource, /data-host-workspace-navigation="true"/);
+  assert.match(workspaceHeaderSource, /data-host-workspace-horizon="true"/);
   assert.match(helpSource, /data-host-help-guide/);
   assert.match(helpSource, /Host Inbox is for the live Room\. Host Hub messages are private conversations with the BeauRocks product team\./);
+});
+
+test('Host Operations presents graphical summary analytics and drillable Host records', () => {
+  assert.match(analyticsSource, /data-host-analytics-funnel/);
+  assert.match(analyticsSource, /data-host-usage-mix/);
+  assert.match(analyticsSource, /data-host-cohort-chart/);
+  assert.match(analyticsSource, /data-host-activity-health/);
+  assert.match(analyticsSource, /data-host-detail-drawer/);
+  assert.match(analyticsSource, /Onboarding milestones/);
+  assert.match(relationsSource, /url\.searchParams\.set\('hostId', hostId\)/);
+  assert.match(indexSource, /submittedAtMs: valueToMillis\(application\.lastSubmittedAt/);
+  assert.match(indexSource, /inviteEmailSentAtMs: valueToMillis\(milestones\.inviteEmailSentAt\)/);
+});
+
+test('Host onboarding progress has one canonical four-step contract on every Host-facing surface', () => {
+  assert.match(indexSource, /\{ id: "invitation", label: "Invitation received", complete: approved \}/);
+  assert.match(indexSource, /\{ id: "identity", label: "Host identity ready", complete: workspaceActivated \}/);
+  assert.match(indexSource, /\{ id: "first_room", label: "First Room created", complete: firstRoomComplete \}/);
+  assert.match(indexSource, /\{ id: "returning_host", label: "Returning Host", complete: repeatRoomComplete \}/);
+  assert.match(relationsSource, /Array\.isArray\(onboarding\?\.steps\) \? onboarding\.steps : \[\]/);
+  assert.doesNotMatch(relationsSource, /onboarding\?\.(approved|workspaceActivated|firstRoomComplete|repeatRoomComplete)/);
+  assert.match(forHostsSource, /Array\.isArray\(session\?\.hostOnboarding\?\.steps\)/);
 });
 
 test('Host application records are administrator-only and explicitly serialized', () => {

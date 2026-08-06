@@ -305,6 +305,10 @@ const useHostLaunchFlow = ({
     ]);
 
     const openOnboardingWizard = useCallback(() => {
+        trackEvent('host_onboarding_profile_started', {
+            onboarding_stage: 'invited',
+            source: 'host_panel',
+        });
         const seededHost = (hostName || '').trim() || 'Host';
         const seededLogo = (logoUrl || ASSETS.logo || '').trim() || ASSETS.logo;
         const allowedPlanIds = new Set(HOST_ONBOARDING_PLAN_OPTIONS.map((option) => option.id));
@@ -316,14 +320,20 @@ const useHostLaunchFlow = ({
         setOnboardingError('');
         setOnboardingStep(0);
         setShowOnboardingWizard(true);
-    }, [hostName, logoUrl, onboardingWorkspaceName, orgContext?.planId]);
+    }, [hostName, logoUrl, onboardingWorkspaceName, orgContext?.planId, trackEvent]);
 
-    const closeOnboardingWizard = useCallback(() => {
+    const closeOnboardingWizard = useCallback(({ completed = false } = {}) => {
         if (onboardingBusy || creatingRoom || subscriptionActionLoading) return;
+        if (!completed) {
+            trackEvent('host_onboarding_profile_dismissed', {
+                onboarding_stage: onboardingStep > 0 ? 'workspace_ready' : 'invited',
+                onboarding_step: onboardingStep,
+            });
+        }
         setShowOnboardingWizard(false);
         setOnboardingStep(0);
         setOnboardingError('');
-    }, [creatingRoom, onboardingBusy, subscriptionActionLoading]);
+    }, [creatingRoom, onboardingBusy, onboardingStep, subscriptionActionLoading, trackEvent]);
 
     const provisionOnboardingWorkspace = useCallback(async () => {
         if (!canUseWorkspaceOnboarding) {
@@ -357,9 +367,19 @@ const useHostLaunchFlow = ({
             setHostName(trimmedHost);
             localStorage.setItem('bross_host_name', trimmedHost);
             setOnboardingStep(1);
+            trackEvent('host_onboarding_profile_saved', {
+                onboarding_stage: 'workspace_ready',
+                source: 'host_profile_setup',
+            });
         } catch (error) {
             hostLogger.error('Onboarding workspace provision failed', error);
             const code = String(error?.code || '').toLowerCase();
+            trackEvent('host_onboarding_profile_save_failed', {
+                onboarding_stage: 'invited',
+                error_code: code.includes('permission-denied')
+                    ? 'permission_denied'
+                    : 'workspace_initialization_failed',
+            });
             if (code.includes('permission-denied')) {
                 setOnboardingError('Host access requires admin approval or an active host subscription.');
             } else {
@@ -379,6 +399,7 @@ const useHostLaunchFlow = ({
         onboardingWorkspaceName,
         setHostName,
         syncOrgContextFromEntitlements,
+        trackEvent,
     ]);
 
     return {

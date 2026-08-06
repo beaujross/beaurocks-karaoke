@@ -22,7 +22,7 @@ describe("approved Host onboarding source", () => {
     expect(functionsSource).toContain('mode: "complimentary_testing"');
     expect(functionsSource).toContain("Paid Host checkout is paused while complimentary testing is active");
     expect(hostSource).toContain("data-complimentary-testing-terms");
-    expect(hostSource).toContain("Usage meters below are for transparency and testing safety; they are not a bill.");
+    expect(hostSource).toContain("Billing & Usage shows metered product usage and limits for transparency; testing counters are not a bill.");
   });
 
   it("guides approved Hosts into onboarding, help, and private support", () => {
