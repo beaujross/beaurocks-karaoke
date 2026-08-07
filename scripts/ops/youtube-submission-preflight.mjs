@@ -4,8 +4,9 @@ import path from "node:path";
 const ROOT = process.cwd();
 const LIVE = process.argv.includes("--live");
 const STRICT = process.argv.includes("--strict");
-const CURRENT_HOSTING_RELEASE = "1784078708909000";
-const CURRENT_HOSTING_VERSION = "5bc48c15cd873eac";
+const EVIDENCE_HOSTING_RELEASE = "1784078708909000";
+const EVIDENCE_HOSTING_VERSION = "5bc48c15cd873eac";
+const CURRENT_PRODUCTION_APP_COMMIT = "4a9030a";
 
 const checks = [];
 const humanBlockers = [];
@@ -80,16 +81,18 @@ await verifyArtifact("docs/compliance/evidence/2026-07-06-youtube-product-audit/
 await verifyArtifact("docs/compliance/evidence/2026-07-06-youtube-live-evidence/manifest.md", 500);
 
 await verifyText("docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md", [
-  CURRENT_HOSTING_RELEASE,
-  CURRENT_HOSTING_VERSION,
+  EVIDENCE_HOSTING_RELEASE,
+  EVIDENCE_HOSTING_VERSION,
+  CURRENT_PRODUCTION_APP_COMMIT,
   "5,000 Search Queries/day",
   "search.list",
   "videos.list",
   "playlistItems.list",
 ]);
 await verifyText("docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md", [
-  CURRENT_HOSTING_RELEASE,
-  CURRENT_HOSTING_VERSION,
+  EVIDENCE_HOSTING_RELEASE,
+  EVIDENCE_HOSTING_VERSION,
+  CURRENT_PRODUCTION_APP_COMMIT,
   "5,000 Search Queries calls/day",
   "100 Search Queries/day",
   "10,000",
@@ -187,9 +190,10 @@ const result = {
   technicalReady: technicalFailures.length === 0,
   submissionReady: technicalFailures.length === 0 && humanBlockers.length === 0,
   liveChecksEnabled: LIVE,
-  currentRelease: {
-    hostingRelease: CURRENT_HOSTING_RELEASE,
-    hostingVersion: CURRENT_HOSTING_VERSION,
+  productionBaseline: {
+    appCommit: CURRENT_PRODUCTION_APP_COMMIT,
+    evidenceHostingRelease: EVIDENCE_HOSTING_RELEASE,
+    evidenceHostingVersion: EVIDENCE_HOSTING_VERSION,
   },
   technicalFailureCount: technicalFailures.length,
   humanBlockerCount: humanBlockers.length,

@@ -1,10 +1,10 @@
 # YouTube Audit Submission Draft
 
-Last updated: 2026-07-19
+Last reviewed: 2026-08-07
 
 ## Status
 
-This draft supports the YouTube Data API compliance audit and quota-extension request. The current product behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`); the production callable is active. The permanent-delete evidence was captured on the earlier production checkpoint and remains independently verified.
+This draft supports the YouTube Data API compliance audit and quota-extension request. The screenshot and deletion evidence is anchored to Hosting release `1784078708909000` (version `5bc48c15cd873eac`). The current production application is deployed from commit `4a9030a` (2026-08-06); the documented YouTube methods, Room Library Curator path, legal URLs, quota controls, and retention behavior remain present. The permanent-delete evidence remains independently verified.
 
 Do not submit yet if the following are still missing:
 - final business/contact confirmation
@@ -16,6 +16,8 @@ Controlled cooldown, permanent-delete evidence, authenticated Quotas API evidenc
 ## Product Summary
 
 BeauRocks Karaoke is a live karaoke web application with separate host, singer, and TV surfaces.
+
+Current Host access is a limited, selectively approved testing cohort. Applying is free, approved testing access is complimentary while an invitation is active, no card or subscription is started, and there are no automatic charges. Paid Host plans are not currently available and any future paid plan will require explicit opt-in.
 
 The product uses YouTube Data API methods to:
 - search for karaoke backing tracks
@@ -167,4 +169,5 @@ Current note:
 
 - final business/contact confirmation
 - final confirmation of the proposed `5,000 Search Queries/day` request with a `120/minute` peak
-- final audit narrative read-through completed against deployed release `1784078708909000` (version `5bc48c15cd873eac`)
+- add the confirmed upcoming-event dates, expected concurrent rooms, and expected attendance to the form justification
+- final audit narrative read-through completed against production app commit `4a9030a`; screenshot evidence remains anchored to release `1784078708909000` (version `5bc48c15cd873eac`)

@@ -1,7 +1,8 @@
 # YouTube Quota Extension Packet
 
-Date: 2026-07-06
-Status: Production event-readiness behavior is deployed through Hosting release `1784078708909000` (version `5bc48c15cd873eac`), and authenticated quota, controlled cooldown, permanent-delete, request-sizing, and all current-form address-bar evidence are captured. The room-deletion evidence remains tied to its original 2026-07-13 production checkpoint. Technical preflight passed on 2026-07-19; only final business/contact/request approval and owner submission remain.
+Originally assembled: 2026-07-06
+Last reviewed: 2026-08-07
+Status: The evidence set remains anchored to Hosting release `1784078708909000` (version `5bc48c15cd873eac`). The current production application is deployed from commit `4a9030a` (2026-08-06), and the documented YouTube methods, legal routes, Room Library Curator, quota controls, and retention behavior remain present. Authenticated quota, controlled cooldown, permanent-delete, request-sizing, and all current-form address-bar evidence are captured. The room-deletion evidence remains tied to its original 2026-07-13 production checkpoint. Technical preflight passed again on 2026-08-07; only final business/contact/request approval, factual upcoming-event details, and owner submission remain.
 
 ## Executive Summary
 
@@ -60,7 +61,7 @@ The quota-extension request should include measured peak-event search demand, ca
 
 ## Deployed Event-Readiness Evidence
 
-Hosting release `3098b4aa26e1003d` introduced `Tonight's media preflight` inside the Host Room Library Curator; the behavior remains active through current release `1784078708909000` (version `5bc48c15cd873eac`). The preflight combines known embeddable catalog coverage, room-proven fresh backings, content-agnostic fallback availability, and this Host browser's estimated Search Queries reserve. It limits guidance to three next moves and states that Google Cloud Quotas is the source of truth for assigned limits.
+Hosting release `3098b4aa26e1003d` introduced `Tonight's media preflight` inside the Host Room Library Curator. The captured evidence is anchored to release `1784078708909000` (version `5bc48c15cd873eac`), and the behavior remains present in current production app commit `4a9030a`. The preflight combines known embeddable catalog coverage, room-proven fresh backings, content-agnostic fallback availability, and this Host browser's estimated Search Queries reserve. It limits guidance to three next moves and states that Google Cloud Quotas is the source of truth for assigned limits.
 
 Authenticated production acceptance observed 115 known embeddable tracks, 14 content-agnostic fallbacks, an estimated 100-search browser reserve, and 0 of the 3 targeted room-proven fresh backings. The product therefore reported `Ready with Watchouts` and asked the Host to use or approve three more room backings. These browser estimates are not submitted as evidence of the project's assigned Google quota.
 
@@ -68,6 +69,8 @@ The product evidence capture fails if the Audio popover obscures Admin. The prod
 
 Default granular limits are configurable through `VITE_YOUTUBE_DAILY_SEARCH_LIST_CALL_LIMIT` and `VITE_YOUTUBE_DAILY_GENERAL_DATA_UNIT_LIMIT`. Production should set those values only to allocations verified in Google Cloud; absent configuration, the client labels the June 2026 defaults as `official_default`.
 ## Product Use Of YouTube API Services
+
+Current commercial posture: BeauRocks is onboarding a limited, selectively approved Host testing cohort. Applying is free; approved testing access is complimentary while an invitation is active; no card or subscription is started; and there are no automatic charges. Paid Host plans are not currently available. Any future paid Host access will present pricing and terms and require explicit opt-in. YouTube content itself is not sold.
 
 BeauRocks uses YouTube Data API for:
 

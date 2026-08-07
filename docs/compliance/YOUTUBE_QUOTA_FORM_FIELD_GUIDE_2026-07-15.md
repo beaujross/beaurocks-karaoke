@@ -1,6 +1,6 @@
 # YouTube Data API Audit And Quota Form — Field Guide
 
-Date: 2026-07-15
+Last reviewed: 2026-08-07
 Official form: https://support.google.com/youtube/contact/yt_api_form?hl=en
 Google Cloud project ID: `beaurocks-karaoke-v2`
 Google Cloud project number: `426849563936`
@@ -21,6 +21,7 @@ Confirm these values:
 - Legal address: `[CONFIRM]`
 - Primary contact: `[CONFIRM FULL NAME] <hello@beaurocks.app>`
 - Current monetization selections: `[CONFIRM CURRENT TRUTH]`
+- Upcoming event dates, expected room count, and expected attendance: `[CONFIRM]`
 - Requested Search Queries allocation: `5,000/day`
 - Requested Search Queries peak: `120/minute`
 
@@ -68,7 +69,7 @@ Monetization:
 - Select only what is currently true.
 - Recommended current description under `Other`:
 
-> Private-event hosting and private product testing. Commercial host subscriptions and venue plans are planned for broader launch; YouTube content itself is not sold.
+> BeauRocks is currently onboarding a limited, selectively approved Host testing cohort. Applying is free. Approved testing access is complimentary while an invitation is active: no card is required, no subscription is started, and there are no automatic charges. Paid Host plans are not currently available. If paid plans are introduced later, Hosts will see the price, included features, and terms and must explicitly opt in before any charge. YouTube content itself is not sold.
 
 - Do not select advertising unless ads actually appear.
 - If asked whether ads or sponsorships are sold on or within YouTube content/player, answer `Not applicable` unless that business model changes.
@@ -129,6 +130,8 @@ Search Queries quota:
 Detailed justification:
 
 > BeauRocks runs live karaoke events that may serve approximately 150 participants over a five-hour show. Our modeled low-, medium-, and high-engagement envelopes are approximately 120, 300, and 750 uncached live searches per event. We request 5,000 search.list calls/day for a controlled public-launch capacity of five simultaneous or same-day high-engagement event-equivalents (3,750 calls) plus 1,250 calls of reserve, or approximately 13 medium-engagement events with contingency. The requested 120-calls/minute peak supports four short room/actor bursts at the application’s enforced 30-calls/minute callable limit and remains below the application-wide 600-calls/minute safety ceiling. Live search remains the last discovery path: the application first uses client, server, and durable query caches; room, account, curated, and canonical backing indexes; known video-ID refresh; and direct host URLs. Quota exhaustion triggers a cooldown and known-catalog/content-agnostic fallback rather than circumvention. We do not download YouTube media, rotate API projects or keys, or present non-embeddable results as playable. We will monitor production usage and request a further reviewed increase only when measured adoption justifies it.
+
+Immediately after that paragraph, add the confirmed near-term event schedule in one factual sentence, for example: `The requested capacity also supports [COUNT] scheduled events on [DATES], with up to [ROOMS] concurrent rooms and approximately [ATTENDEES] attendees.` Do not submit the bracketed example or claim unconfirmed attendance.
 
 ## Section 6 — Upload Mapping
 

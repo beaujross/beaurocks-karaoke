@@ -1,8 +1,9 @@
 # YouTube Audit And Quota Submission Handoff
 
-Date: 2026-07-19
-Current production release: `1784078708909000`
-Current Hosting version: `5bc48c15cd873eac`
+Last reviewed: 2026-08-07
+Current production app commit: `4a9030a` (deployed 2026-08-06)
+Evidence Hosting release: `1784078708909000`
+Evidence Hosting version: `5bc48c15cd873eac`
 
 ## Executive Decision
 
@@ -11,6 +12,7 @@ The technical packet and all required address-bar presentation captures are read
 1. Confirm `hello@beaurocks.app` as the audit/legal contact.
 2. Confirm the final legal operator name and `BeauRocks Karaoke` product naming used on Terms, Privacy, and deletion pages.
 3. Approve the proposed staged public-launch request of `5,000 Search Queries/day` with a `120/minute` peak.
+4. Add the confirmed dates, expected concurrent rooms, and expected attendance for the upcoming events.
 
 Recommendation: approve `5,000 Search Queries/day` and `120/minute`. The documented high-engagement envelope is `750` live searches across a five-hour, 150-person event. The request supports five high-engagement event-equivalents (`3,750` calls) plus `1,250` calls of reserve, or approximately 13 medium-engagement events with contingency. It is large enough for a controlled public launch without making an unsupported mass-scale forecast; measured production adoption should drive the next increase. Indexed, canonical, cached, direct-URL, and content-agnostic paths continue to reduce live-search demand.
 

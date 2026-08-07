@@ -18,8 +18,10 @@ const youtubeSearchListLimit = readConfiguredQuotaLimit('VITE_YOUTUBE_DAILY_SEAR
 const youtubeGeneralDataUnitLimit = readConfiguredQuotaLimit('VITE_YOUTUBE_DAILY_GENERAL_DATA_UNIT_LIMIT', 10000);
 const YOUTUBE_DAILY_SEARCH_LIST_CALLS = youtubeSearchListLimit.value;
 const YOUTUBE_DAILY_GENERAL_DATA_UNITS = youtubeGeneralDataUnitLimit.value;
-// YouTube Data API search.list costs 100 quota units per request.
-const YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH = 100;
+// search.list now uses its own Search Queries bucket. A live BeauRocks search
+// also performs one batched videos.list playability check, which costs one
+// unit from the general YouTube Data API bucket.
+const YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH = 1;
 const YOUTUBE_ESTIMATED_SEARCH_LIST_CALLS_PER_LIVE_SEARCH = 1;
 const YOUTUBE_SEARCH_INTENT_STOPWORDS = new Set([
     'karaoke',

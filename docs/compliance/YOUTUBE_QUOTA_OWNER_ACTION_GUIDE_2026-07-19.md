@@ -1,6 +1,6 @@
 # YouTube Quota Increase — Owner Action Guide
 
-Date: 2026-07-19
+Last reviewed: 2026-08-07
 Project ID: `beaurocks-karaoke-v2`
 Project number: `426849563936`
 Requested Search Queries quota: `5,000 calls/day`, `120 calls/minute`
@@ -27,7 +27,7 @@ Sign into the Google account that owns or administers Google Cloud project `beau
 2. Select `Complete a compliance audit to request for additional quota`.
 3. Enter the real applicant information. Select `Independent Developer/Sole Proprietor` unless a registered entity actually owns and operates the project. Do not invent an organization name or address.
 4. Use `hello@beaurocks.app` for the primary contact, and select same-as-primary for technical and business contacts if accurate.
-5. Use the organization and business-model copy in `docs/compliance/YOUTUBE_QUOTA_FORM_FIELD_GUIDE_2026-07-15.md`. Keep the current monetization answer truthful: private-event hosting/private testing today, with commercial host and venue plans planned for launch.
+5. Use the organization and business-model copy in `docs/compliance/YOUTUBE_QUOTA_FORM_FIELD_GUIDE_2026-07-15.md`. Keep the current monetization answer precise: limited selectively approved testing is complimentary, no card or subscription is started, paid Host plans are not currently available, and any future paid access requires explicit opt-in.
 6. Enter the API client details:
    - Client name: `BeauRocks Karaoke`
    - Primary URL: `https://beaurocks.app`
@@ -41,7 +41,7 @@ Sign into the Google account that owns or administers Google Cloud project `beau
 9. List the methods actually used: `youtube.search.list`, `youtube.videos.list`, and `youtube.playlistItems.list`.
 10. Select expected usage of `1,000 to 10,000 requests per day`.
 11. Leave the general quota at its current `10,000 units/day`; do not request upload quota because BeauRocks does not upload YouTube videos.
-12. Request Search Queries limits of `5,000/day` and `120/minute`. Paste the detailed justification from the field guide. This request covers five high-engagement 150-person event-equivalents plus reserve and is supported by the product's cache, known-ID validation, canonical backing reuse, cooldown, and content-agnostic fallback controls.
+12. Request Search Queries limits of `5,000/day` and `120/minute`. Paste the detailed justification from the field guide, then add the confirmed dates, expected concurrent rooms, and expected attendance for the upcoming events that make the request time-sensitive. This request covers five high-engagement 150-person event-equivalents plus reserve and is supported by the product's cache, known-ID validation, canonical backing reuse, cooldown, and content-agnostic fallback controls.
 13. Upload the evidence from `docs/compliance/evidence/2026-07-15-youtube-form/`:
    - Privacy: `02-privacy-policy-address-bar.png`
    - Product/policy context: `03-host-youtube-policy-links-address-bar.png`
