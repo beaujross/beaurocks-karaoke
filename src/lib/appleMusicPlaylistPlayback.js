@@ -6,9 +6,13 @@ const clean = (value = '') => String(value || '').trim();
 export const parseAppleMusicPlaylistId = (value = '') => {
   const trimmed = clean(value);
   if (!trimmed) return '';
-  const match = trimmed.match(/(?:pl|p)\.[A-Za-z0-9._-]+/);
+  const match = trimmed.match(/(?:pl|p|ra)\.[A-Za-z0-9._-]+/);
   return match?.[0] || trimmed;
 };
+
+export const isAppleMusicStationSource = (playlistId = '', sourceType = '') => (
+  clean(playlistId).startsWith('ra.') || clean(sourceType).toLowerCase().includes('station')
+);
 
 export const isAppleMusicLibraryPlaylistId = (playlistId = '', sourceType = '') => {
   const id = clean(playlistId);
@@ -46,6 +50,10 @@ const getPlaylistCandidates = (playlistId = '', meta = {}) => {
 };
 
 export const buildAppleMusicPlaylistQueueAttempts = (playlistId = '', meta = {}) => {
+  if (isAppleMusicStationSource(playlistId, meta.sourceType)) {
+    const stationUrl = clean(meta.playbackUrl || meta.url);
+    return stationUrl ? [{ url: stationUrl }] : [];
+  }
   const attempts = [];
   const seenIds = new Set();
 

@@ -1612,6 +1612,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             appleMusicId: current?.appleMusicId
         });
         const applePlaybackType = String(room?.appleMusicPlayback?.type || '').trim().toLowerCase();
+        const appleBackgroundSourceActive = ['playlist', 'station'].includes(applePlaybackType);
         const appleStatus = (room?.appleMusicPlayback?.status || '').toLowerCase();
         const shouldPauseApple = !!effectiveBacking.mediaUrl && (appleStatus === 'playing' || appleMusicPlaying);
         if (!shouldPauseApple) {
@@ -1624,12 +1625,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         let cancelled = false;
         (async () => {
             try {
-                if (applePlaybackType === 'playlist') {
+                if (appleBackgroundSourceActive) {
                     await pauseAppleMusic?.();
                 } else {
                     await stopAppleMusic?.();
                 }
-                if (!cancelled && applePlaybackType !== 'playlist') {
+                if (!cancelled && !appleBackgroundSourceActive) {
                     await updateRoom({ appleMusicPlayback: null });
                 }
             } catch (err) {
@@ -3060,7 +3061,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     recapEventCount: Number(reconciled?.eventCount || 0)
                 };
                 const activeApplePlayback = room?.appleMusicPlayback || null;
-                const preservedAppleBackgroundPlayback = String(activeApplePlayback?.type || '').trim().toLowerCase() === 'playlist'
+                const preservedAppleBackgroundPlayback = ['playlist', 'station'].includes(String(activeApplePlayback?.type || '').trim().toLowerCase())
                     ? { ...activeApplePlayback, status: 'paused' }
                     : null;
                 if (!preservedAppleBackgroundPlayback) await stopAppleMusic?.();
@@ -4950,7 +4951,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [backgroundAudioObservedAtMs, setBackgroundAudioObservedAtMs] = useState(() => Date.now());
     useEffect(() => {
         const playback = room?.appleMusicPlayback || {};
-        const applePlaylistPlaying = String(playback?.type || '').trim().toLowerCase() === 'playlist'
+        const applePlaylistPlaying = ['playlist', 'station'].includes(String(playback?.type || '').trim().toLowerCase())
             && String(playback?.status || '').trim().toLowerCase() === 'playing';
         if (!applePlaylistPlaying) return undefined;
         setBackgroundAudioObservedAtMs(Date.now());
@@ -4993,7 +4994,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             return;
         }
         if (backgroundAudioState.actionKey === 'retry_apple' && appleMusicAutoPlaylistId) {
-            void applyAppleMusicPlaylistForBg?.({ id: appleMusicAutoPlaylistId, title: appleMusicAutoPlaylistTitle, sourceType: 'recovery' });
+            void applyAppleMusicPlaylistForBg?.({ id: appleMusicAutoPlaylistId, title: appleMusicAutoPlaylistTitle });
             return;
         }
         if (backgroundAudioState.actionKey === 'pause_apple' || backgroundAudioState.actionKey === 'pause_local') {
@@ -5056,10 +5057,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     type="button"
                     aria-pressed={autoBgMusic}
                     onClick={async () => {
+                        const previous = !!autoBgMusic;
                         const next = !autoBgMusic;
                         setAutoBgMusic?.(next);
-                        await updateRoom?.({ autoBgMusic: next });
-                        await setBgMusicState?.(next);
+                        try {
+                            await updateRoom?.({ autoBgMusic: next });
+                            await setBgMusicState?.(next);
+                        } catch (error) {
+                            setAutoBgMusic?.(previous);
+                            await updateRoom?.({ autoBgMusic: previous }).catch(() => {});
+                            hostLogger.warn('Background loop toggle failed', error);
+                        }
                     }}
                     className={`${STYLES.btnStd} ${autoBgMusic ? STYLES.btnHighlight : STYLES.btnNeutral} px-3 py-2 text-[10px]`}
                 >
@@ -5092,7 +5100,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
                 <div className="rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-100">Your uploads</div><div className="mt-1 text-sm font-black text-white">{(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg' && item?.bgAutoEligible !== false).length} checked</div><div className="mt-1 text-[11px] text-zinc-400">Use each track&apos;s checkbox below.</div></div>
-                <button type="button" onClick={() => setMediaLibraryTab('apple')} className="rounded-xl border border-rose-300/18 bg-rose-500/8 px-3 py-3 text-left"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-100">Apple Music</div><div className="mt-1 truncate text-sm font-black text-white">{appleMusicAutoPlaylistTitle || (appleMusicAuthorized ? 'Choose a playlist' : 'Connect account')}</div><div className="mt-1 text-[11px] text-zinc-400">Use one playlist as the background source.</div></button>
+                <button type="button" onClick={() => setMediaLibraryTab('apple')} className="rounded-xl border border-rose-300/18 bg-rose-500/8 px-3 py-3 text-left"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-100">Apple Music</div><div className="mt-1 truncate text-sm font-black text-white">{appleMusicAutoPlaylistTitle || (appleMusicAuthorized ? 'Choose a soundtrack' : 'Connect account')}</div><div className="mt-1 text-[11px] text-zinc-400">Use one playlist or recent station between performances.</div></button>
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">Spotify</div><div className="mt-1 text-sm font-black text-zinc-300">Provider not connected</div><div className="mt-1 text-[11px] text-zinc-500">Playlist controls appear here when integration is available.</div></div>
             </div>
         </section>
@@ -5106,9 +5114,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
                             <i className="fa-brands fa-apple text-lg"></i>
                         </div>
-                        <div className="mt-4 text-xl font-black text-white">Apple Music background</div>
+                        <div className="mt-4 text-xl font-black text-white">Apple Music room soundtrack</div>
                         <div className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-                            Pick a playlist here and it becomes the room background source immediately. It uses the same background control as uploaded tracks.
+                            Pick a playlist or recent station here and it becomes the room background source immediately. It pauses for performances and returns afterward while Auto BG is on.
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -5131,7 +5139,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 ) : null}
                 {appleMusicAutoPlaylistId ? (
                     <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100">Current Background Playlist</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100">Current Room Soundtrack</div>
                         <div className="mt-1 truncate text-base font-black text-white">{appleMusicAutoPlaylistTitle || appleMusicAutoPlaylistId}</div>
                     </div>
                 ) : null}
@@ -5199,7 +5207,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         <div className="truncate text-sm text-zinc-400">{choice.subtitle}</div>
                                     </div>
                                     <button type="button" onClick={() => { void applyAppleMusicPlaylistForBg?.(choice); }} disabled={choiceIsPending || choiceIsActive} className={`${STYLES.btnStd} ${choiceIsActive ? STYLES.btnSecondary : STYLES.btnHighlight} flex-none px-3 py-2 text-[10px] ${choiceIsPending || choiceIsActive ? 'cursor-not-allowed opacity-75' : ''}`}>
-                                        {choiceIsPending ? 'Starting...' : (choiceIsActive ? 'Active' : 'Start BG')}
+                                        {choiceIsPending ? 'Starting...' : (choiceIsActive ? 'Active' : 'Use Soundtrack')}
                                     </button>
                                 </div>
                                 );
@@ -5207,15 +5215,15 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         </div>
                     ) : (
                         <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-zinc-950/35 px-4 py-5 text-sm text-zinc-500">
-                            Browse your playlists, use For You, or search Apple Music playlists.
+                            Browse playlists, use For You, open Recent Stations, or search Apple Music playlists.
                         </div>
                     )}
                 </div>
             ) : (
                 <div className="rounded-[24px] border border-dashed border-cyan-300/16 bg-zinc-950/35 px-5 py-8">
                     <div className="max-w-2xl">
-                        <div className="text-xl font-black text-white">Connect Apple Music to browse playlists</div>
-                        <div className="mt-2 text-sm leading-6 text-zinc-400">After connecting, this tab can use saved playlists, recommendations, or playlist search as the room background source.</div>
+                        <div className="text-xl font-black text-white">Connect Apple Music to choose the room soundtrack</div>
+                        <div className="mt-2 text-sm leading-6 text-zinc-400">After connecting, choose a saved playlist, recommendation, recent station, or playlist search result as the room background source.</div>
                     </div>
                 </div>
             )}

@@ -45,7 +45,7 @@ export const deriveBackgroundAudioState = ({
   const selectedLocalTitle = clean(localTrackTitle || localPlayback.title);
   const message = clean(statusMessage);
   const errorMessage = /could not|failed|invalid|unavailable|not configured/i.test(message) ? message : '';
-  const applePlaybackActive = playbackType === 'playlist' && ['playing', 'paused'].includes(playbackStatus);
+  const applePlaybackActive = ['playlist', 'station'].includes(playbackType) && ['playing', 'paused'].includes(playbackStatus);
   const heartbeatAtMs = Number(playback.lastHeartbeatAt || playback.lastReportedAt || 0);
   const heartbeatAgeMs = heartbeatAtMs > 0 ? Math.max(0, Number(nowMs || Date.now()) - heartbeatAtMs) : 0;
   const applePlaybackStale = playbackStatus === 'playing' && heartbeatAtMs > 0 && heartbeatAgeMs > Math.max(5000, Number(staleHeartbeatMs || 45000));
@@ -57,13 +57,13 @@ export const deriveBackgroundAudioState = ({
       label: playing ? 'Background Playing' : 'Background Paused',
       detail: playing ? 'Apple Music is audible in the room.' : 'Apple Music is selected and paused.',
       sourceType: 'apple',
-      sourceLabel: clean(playback.title || configuredAppleTitle) || 'Apple Music playlist',
+      sourceLabel: clean(playback.title || configuredAppleTitle) || 'Apple Music soundtrack',
       tone: playing ? 'ready' : 'paused',
       actionKey: playing ? 'pause_apple' : 'resume_apple', actionLabel: playing ? 'Pause Background' : 'Resume Background',
     };
   }
   if (applePlaybackStale) {
-    return { key: 'stale', label: 'Playback Confirmation Lost', detail: 'Apple Music stopped reporting playback. Retry to confirm the room is audible.', sourceType: 'apple', sourceLabel: clean(playback.title || configuredAppleTitle) || 'Apple Music playlist', tone: 'error', actionKey: 'retry_apple', actionLabel: 'Retry Apple Music', heartbeatAgeMs };
+    return { key: 'stale', label: 'Playback Confirmation Lost', detail: 'Apple Music stopped reporting playback. Retry to confirm the room is audible.', sourceType: 'apple', sourceLabel: clean(playback.title || configuredAppleTitle) || 'Apple Music soundtrack', tone: 'error', actionKey: 'retry_apple', actionLabel: 'Retry Apple Music', heartbeatAgeMs };
   }
   if (pendingAppleId) {
     return { key: 'starting', label: 'Starting Background', detail: 'Waiting for Apple Music to confirm audible playback.', sourceType: 'apple', sourceLabel: configuredAppleTitle || pendingAppleId, tone: 'working', actionKey: '', actionLabel: '' };
@@ -85,7 +85,7 @@ export const deriveBackgroundAudioState = ({
     return { key: 'deferred', label: 'Ready After Performance', detail: 'Background audio will start when the current performance ends.', sourceType: configuredAppleId ? 'apple' : 'local', sourceLabel: configuredAppleTitle || selectedLocalTitle || 'Selected background', tone: 'deferred', actionKey: '', actionLabel: '' };
   }
   if (configuredAppleId && !appleAuthorized) {
-    return { key: 'needs_connection', label: 'Connect Apple Music', detail: 'Reconnect Apple Music before this playlist can become audible.', sourceType: 'apple', sourceLabel: configuredAppleTitle || configuredAppleId, tone: 'error', actionKey: 'connect_apple', actionLabel: 'Connect Apple Music' };
+    return { key: 'needs_connection', label: 'Connect Apple Music', detail: 'Reconnect Apple Music before this room soundtrack can become audible.', sourceType: 'apple', sourceLabel: configuredAppleTitle || configuredAppleId, tone: 'error', actionKey: 'connect_apple', actionLabel: 'Connect Apple Music' };
   }
   if (room?.bgMusicPlaying && selectedLocalId) {
     return { key: 'playing', label: 'Background Playing', detail: 'The selected room upload is reported as playing.', sourceType: 'local', sourceLabel: selectedLocalTitle || 'Room upload', tone: 'ready', actionKey: 'pause_local', actionLabel: 'Pause Background' };
@@ -93,7 +93,7 @@ export const deriveBackgroundAudioState = ({
   if (configuredAppleId || selectedLocalId) {
     return { key: 'ready', label: 'Background Ready', detail: 'The source is selected and can start now.', sourceType: configuredAppleId ? 'apple' : 'local', sourceLabel: configuredAppleTitle || selectedLocalTitle || 'Selected background', tone: 'ready', actionKey: configuredAppleId ? 'retry_apple' : 'start_local', actionLabel: configuredAppleId ? 'Start Apple Music' : 'Start Upload' };
   }
-  return { key: 'off', label: 'No Background Selected', detail: 'Choose an Apple playlist or room upload.', sourceType: 'none', sourceLabel: '', tone: 'idle', actionKey: '', actionLabel: '' };
+  return { key: 'off', label: 'No Background Selected', detail: 'Choose an Apple playlist, recent station, or room upload.', sourceType: 'none', sourceLabel: '', tone: 'idle', actionKey: '', actionLabel: '' };
 };
 
 export const buildBackgroundAudioQaSnapshot = (state = {}) => {

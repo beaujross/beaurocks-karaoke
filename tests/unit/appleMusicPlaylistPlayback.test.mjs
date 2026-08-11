@@ -18,6 +18,10 @@ describe('Apple Music playlist playback planning', () => {
       parseAppleMusicPlaylistId('https://music.apple.com/library/playlist/p.XyZ_987'),
       'p.XyZ_987',
     );
+    assert.equal(
+      parseAppleMusicPlaylistId('https://music.apple.com/us/station/apple-music-1/ra.978194965'),
+      'ra.978194965',
+    );
   });
 
   test('queues a personal-library id with the MusicKit playlist option', () => {
@@ -31,6 +35,20 @@ describe('Apple Music playlist playback planning', () => {
     assert.deepEqual(
       buildAppleMusicPlaylistQueueAttempts('pl.catalog123', { sourceType: 'catalog_playlist' }),
       [{ playlist: 'pl.catalog123' }],
+    );
+  });
+
+  test('queues a station only through the Apple-provided content URL', () => {
+    assert.deepEqual(
+      buildAppleMusicPlaylistQueueAttempts('ra.978194965', {
+        sourceType: 'catalog_station',
+        playbackUrl: 'https://music.apple.com/us/station/apple-music-1/ra.978194965',
+      }),
+      [{ url: 'https://music.apple.com/us/station/apple-music-1/ra.978194965' }],
+    );
+    assert.deepEqual(
+      buildAppleMusicPlaylistQueueAttempts('ra.978194965', { sourceType: 'catalog_station' }),
+      [],
     );
   });
 

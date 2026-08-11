@@ -205,9 +205,9 @@ test('host media library uses account-scoped collections with legacy room fallba
   assert.match(hostQueueTabSource, /data-feature-id="host-media-library-apple-music"/);
   assert.match(hostQueueTabSource, /Upload to Sound Effects/);
   assert.match(hostQueueTabSource, /Upload to Background/);
-  assert.match(hostQueueTabSource, /Start BG/);
+  assert.match(hostQueueTabSource, /Use Soundtrack/);
   assert.match(hostQueueTabSource, /appleMusicBgPendingId = ''/);
-  assert.match(hostQueueTabSource, /choiceIsPending \? 'Starting\.\.\.' : \(choiceIsActive \? 'Active' : 'Start BG'\)/);
+  assert.match(hostQueueTabSource, /choiceIsPending \? 'Starting\.\.\.' : \(choiceIsActive \? 'Active' : 'Use Soundtrack'\)/);
   assert.match(hostAppSource, /appleMusicPickerModes: APPLE_MUSIC_PICKER_MODES/);
   assert.match(hostAppSource, /connectAppleMusic,[\s\S]*disconnectAppleMusic,/);
   assert.doesNotMatch(hostQueueTabSource, /No room audio uploads yet/);

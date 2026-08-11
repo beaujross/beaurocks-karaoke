@@ -133,6 +133,9 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
   assert.ok(browserSource.includes("openExistingRoomWorkspace(roomItem.code, 'ops.room_setup')"));
   assert.match(browserSource, /More room actions/);
   assert.match(browserSource, /activeRoomSetupTab\.helper/);
+  assert.match(browserSource, /host-brand-tabs--workspace/);
+  assert.match(browserSource, /Return to \{normalizedActiveRoomCode\}/);
+  assert.match(browserSource, /Room \{normalizedActiveRoomCode\} stays open/);
   assert.doesNotMatch(browserSource, /Pick a task/);
   assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\(tab\.id\)\}/);
   assert.match(browserSource, /data-host-workspace-shell="room-setup"/);
@@ -174,6 +177,10 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /Set how Points build/);
   assert.match(source, /Starting Points/);
   assert.match(source, /Automatic refill/);
+  assert.match(source, /const timedPointsRefillEnabled = eventCreditsConfig\?\.timedLobbyEnabled === true/);
+  assert.match(source, /disabled=\{!timedPointsRefillEnabled\}/);
+  assert.match(source, /min-h-\[250px\]/);
+  assert.match(source, /host-brand-tabs--fill host-brand-tabs--compact/);
   assert.match(source, /fa-door-open/);
   assert.match(source, /fa-user-lock/);
   assert.match(source, /fa-key/);

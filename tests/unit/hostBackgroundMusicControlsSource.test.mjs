@@ -31,26 +31,28 @@ test('Host setup Auto BG buttons delegate to the shared quick toggle', () => {
     const delegatedToggleCount = (hostAppSource.match(/await toggleAutoBgMusicQuick\(\);/g) || []).length;
     assert.ok(delegatedToggleCount >= 2);
 });
-test('Apple Music setup exposes a picker without adding separate runtime playback controls', () => {
+test('Apple Music setup exposes playlist and station choices without adding separate runtime playback controls', () => {
     assert.match(hostAppSource, /const APPLE_MUSIC_PICKER_MODES = Object\.freeze\(\[/);
     assert.match(hostAppSource, /id: 'library', label: 'My Playlists'/);
     assert.match(hostAppSource, /id: 'forYou', label: 'For You'/);
+    assert.match(hostAppSource, /id: 'stations', label: 'Recent Stations'/);
     assert.match(hostAppSource, /id: 'search', label: 'Search'/);
     assert.match(hostAppSource, /v1\/me\/library\/playlists\?limit=100/);
     assert.doesNotMatch(hostAppSource, /v1\/me\/library\/recently-added\?types=library-playlists&limit=50/);
     assert.match(hostAppSource, /v1\/me\/recommendations\?limit=10/);
+    assert.match(hostAppSource, /v1\/me\/recent\/radio-stations\?limit=25/);
     assert.match(hostAppSource, /relationships\?\.contents\?\.data/);
     assert.match(hostAppSource, /if \(Array\.isArray\(payload\)\) \{/);
     assert.match(hostAppSource, /return nested\.length \? \[\.\.\.payload, \.\.\.nested\] : payload;/);
     assert.doesNotMatch(hostAppSource, /v1\/me\/history\/heavy-rotation/);
     assert.match(hostAppSource, /types=playlists&limit=20/);
-    assert.match(hostAppSource, /Apple Music background/);
-    assert.match(hostAppSource, /Use & Start BG/);
+    assert.match(hostAppSource, /Apple Music room soundtrack/);
+    assert.match(hostAppSource, /Use as Soundtrack/);
     assert.match(hostAppSource, /const \[appleMusicBgPendingId, setAppleMusicBgPendingId\] = useState\(''\);/);
     assert.match(hostAppSource, /if \(appleMusicBgPendingId\) return;/);
     assert.match(hostAppSource, /setAppleMusicBgPendingId\(playlistId\);/);
     assert.match(hostAppSource, /finally \{\s*setAppleMusicBgPendingId\(''\);\s*\}/);
-    assert.match(hostAppSource, /choiceIsPending \? 'Starting\.\.\.' : \(choiceIsActive \? 'Active' : 'Use & Start BG'\)/);
+    assert.match(hostAppSource, /choiceIsPending \? 'Starting\.\.\.' : \(choiceIsActive \? 'Active' : 'Use as Soundtrack'\)/);
     assert.match(hostTopChromeSource, /choiceIsPending \? 'Starting\.\.\.' : \(choiceIsActive \? 'Active' : 'Start BG'\)/);
     assert.match(hostTopChromeSource, /Start BG/);
     assert.match(hostAppSource, /autoBgMusic: true,[\s\S]*bgMusicPlaying: false,[\s\S]*bgMusicUrl: ''/);
@@ -102,7 +104,8 @@ test('Apple Music setup exposes a picker without adding separate runtime playbac
     assert.doesNotMatch(appleMusicPlaylistPlaybackSource, /libraryPlaylist/);
     assert.match(appleMusicPlaylistPlaybackSource, /return \{ playlist: id \};/);
     assert.match(appleMusicPlaylistPlaybackSource, /meta\.alternatePlaylistIds/);
-    assert.match(hostAppSource, /if \(!roomCode \|\| !autoBgMusic\) return;[\s\S]*setBgMusicState\(true\)/);
+    assert.match(hostAppSource, /if \(!autoBgMusic\) return;[\s\S]*if \(stageActivationPendingRef\.current\) return;[\s\S]*setBgMusicState\(true, \{ automatic: true \}\)/);
+    assert.doesNotMatch(hostAppSource, /if \(!autoDjEnabled\) return;[\s\S]{0,900}playAppleMusicPlaylist/);
     assert.doesNotMatch(hostAppSource, /Auto-DJ playlist fallback/);
     assert.doesNotMatch(hostAppSource, /The BG button remains the single start\/stop control once a playlist is active\./);
     assert.doesNotMatch(hostAppSource, /Apple Music background[\s\S]{0,3000}Pause/);
@@ -113,12 +116,12 @@ test('background audio checks stale Apple playback only while a playlist claims 
     assert.match(queueSource, /if \(!applePlaylistPlaying\) return undefined;[\s\S]*setInterval\(\(\) => setBackgroundAudioObservedAtMs\(Date\.now\(\)\), 15000\)/);
 });
 
-test('stage transitions preserve and resume an Apple background playlist checkpoint', () => {
+test('stage transitions preserve and resume an Apple background soundtrack checkpoint', () => {
     const queueSource = readSource('src/apps/Host/components/HostQueueTab.jsx');
     const stageHelperSource = readSource('src/apps/Host/startQueueSongOnStage.js');
     assert.match(stageHelperSource, /if \(pauseAppleMusic\) \{\s*await pauseAppleMusic\(\);/);
     assert.doesNotMatch(stageHelperSource, /currentPerformanceSession,[\s\S]{0,220}appleMusicPlayback: null/);
-    assert.match(queueSource, /applePlaybackType === 'playlist'[\s\S]*await pauseAppleMusic\?\.\(\);/);
-    assert.match(queueSource, /const preservedAppleBackgroundPlayback = String\(activeApplePlayback\?\.type[\s\S]*status: 'paused'/);
+    assert.match(queueSource, /const appleBackgroundSourceActive = \['playlist', 'station'\]\.includes\(applePlaybackType\);[\s\S]*await pauseAppleMusic\?\.\(\);/);
+    assert.match(queueSource, /const preservedAppleBackgroundPlayback = \['playlist', 'station'\]\.includes\(String\(activeApplePlayback\?\.type[\s\S]*status: 'paused'/);
     assert.match(queueSource, /appleMusicPlayback: preservedAppleBackgroundPlayback/);
 });

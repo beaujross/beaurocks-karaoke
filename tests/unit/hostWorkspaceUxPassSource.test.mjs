@@ -41,7 +41,7 @@ describe('Host workspace UX pass', () => {
     expect(queue).toContain('bgLoopExcludedTrackIds');
     expect(queue).toContain('Included with BeauRocks');
     expect(queue).toContain('Use each track&apos;s checkbox below.');
-    expect(launchPad).toContain('Back to Live Room');
-    expect(launchPad).toContain("openExistingRoomWorkspace(activeRoomCode, 'queue.live_run')");
+    expect(launchPad).toContain('Return to {normalizedActiveRoomCode}');
+    expect(launchPad).toContain("openExistingRoomWorkspace(normalizedActiveRoomCode, 'queue.live_run')");
   });
 });

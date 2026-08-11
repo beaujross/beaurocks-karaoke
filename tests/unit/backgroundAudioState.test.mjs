@@ -9,6 +9,12 @@ describe('backgroundAudioState', () => {
     })).toMatchObject({ key: 'playing', sourceType: 'apple', sourceLabel: 'Party Mix', actionKey: 'pause_apple' });
   });
 
+  test('treats an Apple station as the same room background lifecycle', () => {
+    expect(deriveBackgroundAudioState({
+      room: { appleMusicPlayback: { type: 'station', status: 'playing', title: 'Apple Music Hits' } },
+    })).toMatchObject({ key: 'playing', sourceType: 'apple', sourceLabel: 'Apple Music Hits', actionKey: 'pause_apple' });
+  });
+
   test('distinguishes starting, deferred, connection, and local playback states', () => {
     expect(deriveBackgroundAudioState({ applePendingId: 'p1', applePlaylistTitle: 'Mix' }).key).toBe('starting');
     expect(deriveBackgroundAudioState({ room: { autoBgMusic: true }, performanceActive: true, appleAuthorized: true, applePlaylistId: 'p1' }).key).toBe('deferred');

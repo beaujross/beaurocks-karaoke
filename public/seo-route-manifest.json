@@ -1,6 +1,6 @@
 {
   "source": "firestore",
-  "generatedAt": "2026-07-25T02:34:15.226Z",
+  "generatedAt": "2026-08-11T02:33:55.434Z",
   "counts": {
     "venues": 32,
     "events": 73,
@@ -63,7 +63,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:15.419Z",
+      "lastmod": "2026-08-11T02:33:55.628Z",
       "priority": "1.0"
     },
     {
@@ -117,7 +117,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:15.657Z",
+      "lastmod": "2026-08-11T02:33:55.863Z",
       "priority": "0.9"
     },
     {
@@ -171,7 +171,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:15.891Z",
+      "lastmod": "2026-08-11T02:33:56.095Z",
       "priority": "0.5"
     },
     {
@@ -182,7 +182,7 @@
       },
       "routePath": "/for-hosts",
       "title": "Host Karaoke at Home and Private Parties | BeauRocks",
-      "description": "Host karaoke at home or at a private event. Run the queue, TV, guest phones, and games from one dashboard.",
+      "description": "Join the invite-only BeauRocks Host waitlist. Selected Hosts currently receive complimentary testing access with no card or automatic charge.",
       "canonicalUrl": "https://beaurocks.app/for-hosts",
       "robots": "index,follow,max-image-preview:large",
       "ogType": "website",
@@ -199,7 +199,7 @@
           "@context": "https://schema.org",
           "@type": "WebPage",
           "name": "Host Karaoke at Home and Private Parties | BeauRocks",
-          "description": "Host karaoke at home or at a private event. Run the queue, TV, guest phones, and games from one dashboard.",
+          "description": "Join the invite-only BeauRocks Host waitlist. Selected Hosts currently receive complimentary testing access with no card or automatic charge.",
           "url": "https://beaurocks.app/for-hosts",
           "image": "https://beaurocks.app/images/social/for_hosts.png"
         }
@@ -210,7 +210,7 @@
       ],
       "staticContent": {
         "heading": "Host Karaoke at Home and Private Parties",
-        "summary": "Host karaoke at home or at a private event. Run the queue, TV, guest phones, and games from one dashboard.",
+        "summary": "Join the invite-only BeauRocks Host waitlist. Selected Hosts currently receive complimentary testing access with no card or automatic charge.",
         "facts": [],
         "links": [
           {
@@ -225,7 +225,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:16.066Z",
+      "lastmod": "2026-08-11T02:33:56.260Z",
       "priority": "0.9"
     },
     {
@@ -279,7 +279,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:16.299Z",
+      "lastmod": "2026-08-11T02:33:56.487Z",
       "priority": "0.9"
     },
     {
@@ -333,7 +333,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:16.459Z",
+      "lastmod": "2026-08-11T02:33:56.647Z",
       "priority": "0.8"
     },
     {
@@ -400,7 +400,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:16.544Z",
+      "lastmod": "2026-08-11T02:33:56.738Z",
       "priority": "0.8"
     },
     {
@@ -411,7 +411,7 @@
       },
       "routePath": "/host-access",
       "title": "Host Access | BeauRocks Karaoke",
-      "description": "Approved hosts sign in here to open Host Dashboard. New host partners can request early access.",
+      "description": "Invited BeauRocks Hosts sign in here. New applicants can join the Host waitlist without creating an account.",
       "canonicalUrl": "https://beaurocks.app/host-access",
       "robots": "noindex,nofollow",
       "ogType": "website",
@@ -428,7 +428,7 @@
           "@context": "https://schema.org",
           "@type": "WebPage",
           "name": "Host Access | BeauRocks Karaoke",
-          "description": "Approved hosts sign in here to open Host Dashboard. New host partners can request early access.",
+          "description": "Invited BeauRocks Hosts sign in here. New applicants can join the Host waitlist without creating an account.",
           "url": "https://beaurocks.app/host-access",
           "image": "https://beaurocks.app/images/social/host_access.png"
         }
@@ -437,7 +437,7 @@
       "sitemapImages": [],
       "staticContent": {
         "heading": "Host Access",
-        "summary": "Approved hosts sign in here to open Host Dashboard. New host partners can request early access.",
+        "summary": "Invited BeauRocks Hosts sign in here. New applicants can join the Host waitlist without creating an account.",
         "facts": [],
         "links": [
           {
@@ -452,7 +452,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:16.774Z",
+      "lastmod": "2026-08-11T02:33:56.963Z",
       "priority": "0.6"
     },
     {
@@ -532,7 +532,7 @@
         "hasMeaningfulData": false,
         "listingCount": 0
       },
-      "lastmod": "2026-07-25T02:34:17.008Z",
+      "lastmod": "2026-08-11T02:33:57.198Z",
       "priority": "0.8"
     },
     {
@@ -614,7 +614,7 @@
         "hasMeaningfulData": true,
         "listingCount": 106
       },
-      "lastmod": "2026-07-25T02:34:17.238Z",
+      "lastmod": "2026-08-11T02:33:57.433Z",
       "priority": "0.8"
     },
     {
@@ -694,7 +694,7 @@
         "hasMeaningfulData": false,
         "listingCount": 0
       },
-      "lastmod": "2026-07-25T02:34:17.541Z",
+      "lastmod": "2026-08-11T02:33:57.657Z",
       "priority": "0.8"
     },
     {
@@ -776,7 +776,7 @@
         "hasMeaningfulData": true,
         "listingCount": 105
       },
-      "lastmod": "2026-07-25T02:34:17.890Z",
+      "lastmod": "2026-08-11T02:33:57.883Z",
       "priority": "0.8"
     },
     {
@@ -856,7 +856,7 @@
         "hasMeaningfulData": false,
         "listingCount": 0
       },
-      "lastmod": "2026-07-25T02:34:18.233Z",
+      "lastmod": "2026-08-11T02:33:58.106Z",
       "priority": "0.8"
     },
     {
@@ -937,7 +937,7 @@
         "hasMeaningfulData": false,
         "listingCount": 0
       },
-      "lastmod": "2026-07-25T02:34:18.576Z",
+      "lastmod": "2026-08-11T02:33:58.332Z",
       "priority": "0.8"
     },
     {
@@ -1018,7 +1018,7 @@
         "hasMeaningfulData": false,
         "listingCount": 0
       },
-      "lastmod": "2026-07-25T02:34:18.906Z",
+      "lastmod": "2026-08-11T02:33:58.552Z",
       "priority": "0.8"
     },
     {
@@ -1101,7 +1101,7 @@
         "hasMeaningfulData": true,
         "listingCount": 7
       },
-      "lastmod": "2026-07-25T02:34:19.242Z",
+      "lastmod": "2026-08-11T02:33:58.769Z",
       "priority": "0.8"
     },
     {
@@ -1184,7 +1184,7 @@
         "hasMeaningfulData": true,
         "listingCount": 5
       },
-      "lastmod": "2026-07-25T02:34:19.581Z",
+      "lastmod": "2026-08-11T02:33:58.984Z",
       "priority": "0.8"
     },
     {
@@ -1267,7 +1267,7 @@
         "hasMeaningfulData": true,
         "listingCount": 41
       },
-      "lastmod": "2026-07-25T02:34:19.914Z",
+      "lastmod": "2026-08-11T02:33:59.193Z",
       "priority": "0.8"
     },
     {
@@ -1350,7 +1350,7 @@
         "hasMeaningfulData": true,
         "listingCount": 10
       },
-      "lastmod": "2026-07-25T02:34:20.239Z",
+      "lastmod": "2026-08-11T02:33:59.399Z",
       "priority": "0.8"
     },
     {
@@ -1433,7 +1433,7 @@
         "hasMeaningfulData": true,
         "listingCount": 3
       },
-      "lastmod": "2026-07-25T02:34:20.570Z",
+      "lastmod": "2026-08-11T02:33:59.610Z",
       "priority": "0.8"
     },
     {
@@ -1516,7 +1516,7 @@
         "hasMeaningfulData": true,
         "listingCount": 3
       },
-      "lastmod": "2026-07-25T02:34:20.906Z",
+      "lastmod": "2026-08-11T02:33:59.815Z",
       "priority": "0.8"
     },
     {
@@ -1599,7 +1599,7 @@
         "hasMeaningfulData": true,
         "listingCount": 22
       },
-      "lastmod": "2026-07-25T02:34:21.229Z",
+      "lastmod": "2026-08-11T02:34:00.022Z",
       "priority": "0.8"
     },
     {
@@ -1682,7 +1682,7 @@
         "hasMeaningfulData": true,
         "listingCount": 11
       },
-      "lastmod": "2026-07-25T02:34:21.563Z",
+      "lastmod": "2026-08-11T02:34:00.227Z",
       "priority": "0.8"
     },
     {
@@ -1763,7 +1763,7 @@
         "hasMeaningfulData": false,
         "listingCount": 0
       },
-      "lastmod": "2026-07-25T02:34:21.890Z",
+      "lastmod": "2026-08-11T02:34:00.442Z",
       "priority": "0.8"
     },
     {
@@ -1846,7 +1846,7 @@
         "hasMeaningfulData": true,
         "listingCount": 4
       },
-      "lastmod": "2026-07-25T02:34:22.230Z",
+      "lastmod": "2026-08-11T02:34:00.665Z",
       "priority": "0.8"
     },
     {
@@ -1939,7 +1939,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:22.792Z",
+      "lastmod": "2026-08-11T02:34:01.056Z",
       "priority": "0.6"
     },
     {
@@ -2032,7 +2032,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:23.366Z",
+      "lastmod": "2026-08-11T02:34:01.329Z",
       "priority": "0.6"
     },
     {
@@ -2125,7 +2125,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:23.849Z",
+      "lastmod": "2026-08-11T02:34:01.683Z",
       "priority": "0.6"
     },
     {
@@ -2218,7 +2218,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:24.308Z",
+      "lastmod": "2026-08-11T02:34:02.028Z",
       "priority": "0.6"
     },
     {
@@ -2311,7 +2311,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:24.758Z",
+      "lastmod": "2026-08-11T02:34:02.313Z",
       "priority": "0.6"
     },
     {
@@ -2404,7 +2404,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:25.096Z",
+      "lastmod": "2026-08-11T02:34:02.533Z",
       "priority": "0.6"
     },
     {
@@ -2497,7 +2497,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:25.451Z",
+      "lastmod": "2026-08-11T02:34:02.778Z",
       "priority": "0.6"
     },
     {
@@ -2590,7 +2590,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:25.896Z",
+      "lastmod": "2026-08-11T02:34:03.092Z",
       "priority": "0.6"
     },
     {
@@ -2683,7 +2683,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:26.242Z",
+      "lastmod": "2026-08-11T02:34:03.317Z",
       "priority": "0.6"
     },
     {
@@ -2776,7 +2776,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:26.565Z",
+      "lastmod": "2026-08-11T02:34:03.523Z",
       "priority": "0.6"
     },
     {
@@ -2869,7 +2869,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:26.921Z",
+      "lastmod": "2026-08-11T02:34:03.761Z",
       "priority": "0.6"
     },
     {
@@ -2962,7 +2962,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:27.326Z",
+      "lastmod": "2026-08-11T02:34:04.043Z",
       "priority": "0.6"
     },
     {
@@ -3055,7 +3055,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:27.750Z",
+      "lastmod": "2026-08-11T02:34:04.353Z",
       "priority": "0.6"
     },
     {
@@ -3148,7 +3148,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:28.078Z",
+      "lastmod": "2026-08-11T02:34:04.567Z",
       "priority": "0.6"
     },
     {
@@ -3241,7 +3241,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:28.514Z",
+      "lastmod": "2026-08-11T02:34:04.869Z",
       "priority": "0.6"
     },
     {
@@ -3334,7 +3334,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:28.854Z",
+      "lastmod": "2026-08-11T02:34:05.092Z",
       "priority": "0.6"
     },
     {
@@ -3427,7 +3427,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:29.211Z",
+      "lastmod": "2026-08-11T02:34:05.329Z",
       "priority": "0.6"
     },
     {
@@ -3520,7 +3520,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:29.650Z",
+      "lastmod": "2026-08-11T02:34:05.630Z",
       "priority": "0.6"
     },
     {
@@ -3613,7 +3613,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:30.108Z",
+      "lastmod": "2026-08-11T02:34:05.944Z",
       "priority": "0.6"
     },
     {
@@ -3706,7 +3706,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:30.436Z",
+      "lastmod": "2026-08-11T02:34:06.146Z",
       "priority": "0.6"
     },
     {
@@ -3799,7 +3799,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:30.807Z",
+      "lastmod": "2026-08-11T02:34:06.376Z",
       "priority": "0.6"
     },
     {
@@ -3892,7 +3892,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:31.195Z",
+      "lastmod": "2026-08-11T02:34:06.635Z",
       "priority": "0.6"
     },
     {
@@ -3985,7 +3985,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:31.625Z",
+      "lastmod": "2026-08-11T02:34:06.942Z",
       "priority": "0.6"
     },
     {
@@ -4078,7 +4078,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:32.061Z",
+      "lastmod": "2026-08-11T02:34:07.254Z",
       "priority": "0.6"
     },
     {
@@ -4171,7 +4171,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:32.374Z",
+      "lastmod": "2026-08-11T02:34:07.457Z",
       "priority": "0.6"
     },
     {
@@ -4264,7 +4264,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:32.732Z",
+      "lastmod": "2026-08-11T02:34:07.693Z",
       "priority": "0.6"
     },
     {
@@ -4357,7 +4357,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:33.167Z",
+      "lastmod": "2026-08-11T02:34:08.011Z",
       "priority": "0.6"
     },
     {
@@ -4450,7 +4450,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:33.594Z",
+      "lastmod": "2026-08-11T02:34:08.322Z",
       "priority": "0.6"
     },
     {
@@ -4543,7 +4543,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:33.926Z",
+      "lastmod": "2026-08-11T02:34:08.520Z",
       "priority": "0.6"
     },
     {
@@ -4636,7 +4636,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:34.260Z",
+      "lastmod": "2026-08-11T02:34:08.753Z",
       "priority": "0.6"
     },
     {
@@ -4729,7 +4729,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:34.616Z",
+      "lastmod": "2026-08-11T02:34:08.983Z",
       "priority": "0.6"
     },
     {
@@ -4822,7 +4822,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:35.043Z",
+      "lastmod": "2026-08-11T02:34:09.289Z",
       "priority": "0.6"
     },
     {
@@ -4931,7 +4931,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:35.358Z",
+      "lastmod": "2026-08-11T02:34:09.473Z",
       "priority": "0.6"
     },
     {
@@ -5040,7 +5040,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:35.642Z",
+      "lastmod": "2026-08-11T02:34:09.646Z",
       "priority": "0.6"
     },
     {
@@ -5142,7 +5142,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:35.968Z",
+      "lastmod": "2026-08-11T02:34:09.849Z",
       "priority": "0.6"
     },
     {
@@ -5238,7 +5238,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:36.291Z",
+      "lastmod": "2026-08-11T02:34:10.058Z",
       "priority": "0.6"
     },
     {
@@ -5340,7 +5340,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:36.617Z",
+      "lastmod": "2026-08-11T02:34:10.261Z",
       "priority": "0.6"
     },
     {
@@ -5442,7 +5442,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:36.941Z",
+      "lastmod": "2026-08-11T02:34:10.466Z",
       "priority": "0.6"
     },
     {
@@ -5544,7 +5544,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:37.268Z",
+      "lastmod": "2026-08-11T02:34:10.668Z",
       "priority": "0.6"
     },
     {
@@ -5646,7 +5646,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:37.605Z",
+      "lastmod": "2026-08-11T02:34:10.872Z",
       "priority": "0.6"
     },
     {
@@ -5748,7 +5748,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:37.929Z",
+      "lastmod": "2026-08-11T02:34:11.082Z",
       "priority": "0.6"
     },
     {
@@ -5850,7 +5850,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:38.252Z",
+      "lastmod": "2026-08-11T02:34:11.284Z",
       "priority": "0.6"
     },
     {
@@ -5952,7 +5952,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:38.579Z",
+      "lastmod": "2026-08-11T02:34:11.504Z",
       "priority": "0.6"
     },
     {
@@ -6054,7 +6054,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:38.901Z",
+      "lastmod": "2026-08-11T02:34:11.710Z",
       "priority": "0.6"
     },
     {
@@ -6156,7 +6156,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:39.228Z",
+      "lastmod": "2026-08-11T02:34:11.915Z",
       "priority": "0.6"
     },
     {
@@ -6258,7 +6258,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:39.546Z",
+      "lastmod": "2026-08-11T02:34:12.118Z",
       "priority": "0.6"
     },
     {
@@ -6360,7 +6360,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:39.881Z",
+      "lastmod": "2026-08-11T02:34:12.325Z",
       "priority": "0.6"
     },
     {
@@ -6462,7 +6462,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:40.218Z",
+      "lastmod": "2026-08-11T02:34:12.530Z",
       "priority": "0.6"
     },
     {
@@ -6564,7 +6564,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:40.547Z",
+      "lastmod": "2026-08-11T02:34:12.736Z",
       "priority": "0.6"
     },
     {
@@ -6666,7 +6666,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:40.888Z",
+      "lastmod": "2026-08-11T02:34:12.942Z",
       "priority": "0.6"
     },
     {
@@ -6768,7 +6768,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:41.214Z",
+      "lastmod": "2026-08-11T02:34:13.147Z",
       "priority": "0.6"
     },
     {
@@ -6870,7 +6870,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:41.549Z",
+      "lastmod": "2026-08-11T02:34:13.351Z",
       "priority": "0.6"
     },
     {
@@ -6972,7 +6972,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:41.872Z",
+      "lastmod": "2026-08-11T02:34:13.558Z",
       "priority": "0.6"
     },
     {
@@ -7074,7 +7074,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:42.191Z",
+      "lastmod": "2026-08-11T02:34:13.766Z",
       "priority": "0.6"
     },
     {
@@ -7176,7 +7176,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:42.516Z",
+      "lastmod": "2026-08-11T02:34:13.976Z",
       "priority": "0.6"
     },
     {
@@ -7278,7 +7278,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:42.847Z",
+      "lastmod": "2026-08-11T02:34:14.185Z",
       "priority": "0.6"
     },
     {
@@ -7380,7 +7380,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:43.175Z",
+      "lastmod": "2026-08-11T02:34:14.390Z",
       "priority": "0.6"
     },
     {
@@ -7482,7 +7482,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:43.499Z",
+      "lastmod": "2026-08-11T02:34:14.596Z",
       "priority": "0.6"
     },
     {
@@ -7584,7 +7584,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:43.849Z",
+      "lastmod": "2026-08-11T02:34:14.799Z",
       "priority": "0.6"
     },
     {
@@ -7686,7 +7686,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:44.188Z",
+      "lastmod": "2026-08-11T02:34:15.004Z",
       "priority": "0.6"
     },
     {
@@ -7788,7 +7788,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:44.516Z",
+      "lastmod": "2026-08-11T02:34:15.209Z",
       "priority": "0.6"
     },
     {
@@ -7889,7 +7889,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:44.844Z",
+      "lastmod": "2026-08-11T02:34:15.419Z",
       "priority": "0.6"
     },
     {
@@ -7990,7 +7990,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:45.163Z",
+      "lastmod": "2026-08-11T02:34:15.633Z",
       "priority": "0.6"
     },
     {
@@ -8091,7 +8091,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:45.483Z",
+      "lastmod": "2026-08-11T02:34:15.846Z",
       "priority": "0.6"
     },
     {
@@ -8192,7 +8192,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:45.809Z",
+      "lastmod": "2026-08-11T02:34:16.055Z",
       "priority": "0.6"
     },
     {
@@ -8294,7 +8294,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:46.142Z",
+      "lastmod": "2026-08-11T02:34:16.262Z",
       "priority": "0.6"
     },
     {
@@ -8396,7 +8396,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:46.474Z",
+      "lastmod": "2026-08-11T02:34:16.468Z",
       "priority": "0.6"
     },
     {
@@ -8498,7 +8498,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:46.796Z",
+      "lastmod": "2026-08-11T02:34:16.679Z",
       "priority": "0.6"
     },
     {
@@ -8600,7 +8600,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:47.123Z",
+      "lastmod": "2026-08-11T02:34:16.884Z",
       "priority": "0.6"
     },
     {
@@ -8702,7 +8702,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:47.458Z",
+      "lastmod": "2026-08-11T02:34:17.090Z",
       "priority": "0.6"
     },
     {
@@ -8804,7 +8804,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:47.778Z",
+      "lastmod": "2026-08-11T02:34:17.300Z",
       "priority": "0.6"
     },
     {
@@ -8906,7 +8906,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:48.105Z",
+      "lastmod": "2026-08-11T02:34:17.504Z",
       "priority": "0.6"
     },
     {
@@ -9008,7 +9008,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:48.444Z",
+      "lastmod": "2026-08-11T02:34:17.707Z",
       "priority": "0.6"
     },
     {
@@ -9110,7 +9110,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:48.762Z",
+      "lastmod": "2026-08-11T02:34:17.913Z",
       "priority": "0.6"
     },
     {
@@ -9212,7 +9212,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:49.081Z",
+      "lastmod": "2026-08-11T02:34:18.116Z",
       "priority": "0.6"
     },
     {
@@ -9314,7 +9314,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:49.403Z",
+      "lastmod": "2026-08-11T02:34:18.321Z",
       "priority": "0.6"
     },
     {
@@ -9416,7 +9416,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:49.732Z",
+      "lastmod": "2026-08-11T02:34:18.537Z",
       "priority": "0.6"
     },
     {
@@ -9518,7 +9518,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:50.058Z",
+      "lastmod": "2026-08-11T02:34:18.747Z",
       "priority": "0.6"
     },
     {
@@ -9620,7 +9620,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:50.381Z",
+      "lastmod": "2026-08-11T02:34:18.956Z",
       "priority": "0.6"
     },
     {
@@ -9722,7 +9722,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:50.709Z",
+      "lastmod": "2026-08-11T02:34:19.158Z",
       "priority": "0.6"
     },
     {
@@ -9824,7 +9824,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:51.048Z",
+      "lastmod": "2026-08-11T02:34:19.364Z",
       "priority": "0.6"
     },
     {
@@ -9926,7 +9926,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:51.381Z",
+      "lastmod": "2026-08-11T02:34:19.576Z",
       "priority": "0.6"
     },
     {
@@ -10028,7 +10028,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:51.714Z",
+      "lastmod": "2026-08-11T02:34:19.789Z",
       "priority": "0.6"
     },
     {
@@ -10130,7 +10130,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:52.041Z",
+      "lastmod": "2026-08-11T02:34:19.994Z",
       "priority": "0.6"
     },
     {
@@ -10232,7 +10232,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:52.371Z",
+      "lastmod": "2026-08-11T02:34:20.199Z",
       "priority": "0.6"
     },
     {
@@ -10334,7 +10334,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:52.696Z",
+      "lastmod": "2026-08-11T02:34:20.406Z",
       "priority": "0.6"
     },
     {
@@ -10436,7 +10436,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:53.020Z",
+      "lastmod": "2026-08-11T02:34:20.611Z",
       "priority": "0.6"
     },
     {
@@ -10538,7 +10538,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:53.355Z",
+      "lastmod": "2026-08-11T02:34:20.819Z",
       "priority": "0.6"
     },
     {
@@ -10640,7 +10640,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:53.680Z",
+      "lastmod": "2026-08-11T02:34:21.024Z",
       "priority": "0.6"
     },
     {
@@ -10742,7 +10742,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:54.014Z",
+      "lastmod": "2026-08-11T02:34:21.232Z",
       "priority": "0.6"
     },
     {
@@ -10844,7 +10844,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:54.333Z",
+      "lastmod": "2026-08-11T02:34:21.434Z",
       "priority": "0.6"
     },
     {
@@ -10946,7 +10946,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:54.657Z",
+      "lastmod": "2026-08-11T02:34:21.640Z",
       "priority": "0.6"
     },
     {
@@ -11048,7 +11048,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:54.989Z",
+      "lastmod": "2026-08-11T02:34:21.848Z",
       "priority": "0.6"
     },
     {
@@ -11150,7 +11150,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:55.310Z",
+      "lastmod": "2026-08-11T02:34:22.049Z",
       "priority": "0.6"
     },
     {
@@ -11252,7 +11252,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:55.641Z",
+      "lastmod": "2026-08-11T02:34:22.260Z",
       "priority": "0.6"
     },
     {
@@ -11353,7 +11353,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:55.974Z",
+      "lastmod": "2026-08-11T02:34:22.468Z",
       "priority": "0.6"
     },
     {
@@ -11455,7 +11455,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:56.305Z",
+      "lastmod": "2026-08-11T02:34:22.672Z",
       "priority": "0.6"
     },
     {
@@ -11557,7 +11557,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:56.638Z",
+      "lastmod": "2026-08-11T02:34:22.881Z",
       "priority": "0.6"
     },
     {
@@ -11659,7 +11659,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:56.964Z",
+      "lastmod": "2026-08-11T02:34:23.085Z",
       "priority": "0.6"
     },
     {
@@ -11761,7 +11761,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:57.294Z",
+      "lastmod": "2026-08-11T02:34:23.290Z",
       "priority": "0.6"
     },
     {
@@ -11863,7 +11863,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:57.616Z",
+      "lastmod": "2026-08-11T02:34:23.495Z",
       "priority": "0.6"
     },
     {
@@ -11965,7 +11965,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:57.938Z",
+      "lastmod": "2026-08-11T02:34:23.703Z",
       "priority": "0.6"
     },
     {
@@ -12067,7 +12067,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:58.268Z",
+      "lastmod": "2026-08-11T02:34:23.916Z",
       "priority": "0.6"
     },
     {
@@ -12169,7 +12169,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:58.585Z",
+      "lastmod": "2026-08-11T02:34:24.121Z",
       "priority": "0.6"
     },
     {
@@ -12271,7 +12271,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:58.912Z",
+      "lastmod": "2026-08-11T02:34:24.333Z",
       "priority": "0.6"
     },
     {
@@ -12361,7 +12361,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:59.182Z",
+      "lastmod": "2026-08-11T02:34:24.504Z",
       "priority": "0.6"
     },
     {
@@ -12451,7 +12451,7 @@
         "publicVibeIndex": null,
         "hasMeaningfulData": true
       },
-      "lastmod": "2026-07-25T02:34:59.454Z",
+      "lastmod": "2026-08-11T02:34:24.670Z",
       "priority": "0.6"
     },
     {
@@ -12488,7 +12488,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/logo-library/beaurocks-logo-background.png"
       ],
-      "lastmod": "2026-07-25T02:34:59.454Z",
+      "lastmod": "2026-08-11T02:34:24.670Z",
       "priority": "0.3"
     },
     {
@@ -12525,7 +12525,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/logo-library/beaurocks-logo-background.png"
       ],
-      "lastmod": "2026-07-25T02:34:59.454Z",
+      "lastmod": "2026-08-11T02:34:24.670Z",
       "priority": "0.3"
     },
     {
@@ -12562,7 +12562,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/logo-library/beaurocks-logo-background.png"
       ],
-      "lastmod": "2026-07-25T02:34:59.454Z",
+      "lastmod": "2026-08-11T02:34:24.670Z",
       "priority": "0.3"
     }
   ]
