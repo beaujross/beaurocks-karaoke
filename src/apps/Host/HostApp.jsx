@@ -207,6 +207,12 @@ import {
     normalizeYouTubePlaybackState,
     YOUTUBE_PLAYBACK_STATUSES
 } from '../../lib/youtubePlaybackStatus';
+import {
+    getYouTubePlaybackPresentation,
+    getYouTubeProvenancePresentation,
+    getYouTubeVerificationFreshness,
+    isYouTubeTvReady,
+} from './youtubeCompliancePresentation';
 import { getBgTrackById, getNextBgTrackIndex } from '../../lib/bgTrackOptions';
 import {
     APPLE_MUSIC_PLAYBACK_START_TIMEOUT_MS,
@@ -5979,7 +5985,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const ytIndexHealthSummary = useMemo(() => {
         const safeList = (ytIndex || []).map((entry) => normalizeYtIndexEntry(entry)).filter(Boolean);
         const atMs = opsStripNowMs || nowMs();
-        const playableCount = safeList.filter((entry) => entry.playable !== false).length;
+        const playableCount = safeList.filter((entry) => isYouTubeTvReady(entry)).length;
         const provenCount = safeList.filter((entry) => Number(entry.successCount || 0) > 0).length;
         const expiredCount = safeList.filter((entry) => isYtIndexEntryExpired(entry, atMs)).length;
         const duePlan = planYouTubeIndexRefresh({
@@ -5996,7 +6002,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const dueIds = new Set((duePlan.candidates || []).map((entry) => String(entry?.videoId || '').trim()).filter(Boolean));
         const freshCount = safeList.filter((entry) => {
             const videoId = String(entry?.videoId || '').trim();
-            return entry.playable !== false && !isYtIndexEntryExpired(entry, atMs) && (!videoId || !dueIds.has(videoId));
+            return isYouTubeTvReady(entry) && !isYtIndexEntryExpired(entry, atMs) && (!videoId || !dueIds.has(videoId));
         }).length;
         const newestValidatedAtMs = safeList.reduce((latest, entry) => {
             const validatedAtMs = Math.max(0, Number(entry?.lastValidatedAtMs || entry?.curatedAtMs || 0));
@@ -6144,7 +6150,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ...(Array.isArray(curatedYouTubeEventIndex) ? curatedYouTubeEventIndex : []),
             ...(Array.isArray(ytIndex) ? ytIndex : []),
         ]
-            .filter((entry) => entry?.playable !== false && entry?.embeddable !== false)
+            .filter((entry) => isYouTubeTvReady(entry))
             .map((entry) => String(entry?.videoId || entry?.id || '').trim())
             .filter(Boolean));
         return buildYouTubeEventReadiness({
@@ -6334,9 +6340,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         embeddable: item.embeddable === true,
                         uploadStatus: item.uploadStatus || '',
                         privacyStatus: item.privacyStatus || '',
-                        sourceDetail: item.playable === true
+                        sourceDetail: isYouTubeEmbeddable(item)
                             ? 'Verified YouTube embeddable track.'
                             : 'YouTube track opens in an external host window.',
+                        sourceDiscovery: data?.cached === true
+                            ? ((data?.cacheLayer || 'server') + '_cache')
+                            : 'live_youtube_search',
                     }))
                     .filter((item) => (hideNonEmbeddableYouTube ? isYouTubeEmbeddable(item) : true))
                     .filter(Boolean);
@@ -6958,6 +6967,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
     const canUseInvoiceDrafts = !!capabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
     const canManageUsageControls = ['owner', 'admin'].includes(String(orgContext?.role || '').trim().toLowerCase());
+    const youtubeQaToolsEnabled = useMemo(() => {
+        if (!canManageUsageControls || typeof window === 'undefined') return false;
+        const params = new URLSearchParams(window.location.search);
+        return params.get('qaYoutube') === '1';
+    }, [canManageUsageControls]);
     const canGenerateAiContent = !!capabilities[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
     const aiDemoBypassEnabled = !!room?.missionControl?.aiDemoBypass;
     const canUseAiTools = canGenerateAiContent || aiDemoBypassEnabled;
@@ -15384,18 +15398,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             concurrency: 4,
             roomCode
         });
-        const playableItems = items.filter((item) => isYouTubeEmbeddable(playableMap.get(item.id)));
+        const playableItems = items
+            .filter((item) => isYouTubeEmbeddable(playableMap.get(item.id)))
+            .map((item) => ({
+                ...item,
+                playable: true,
+                embeddable: true,
+                youtubePlaybackStatus: YOUTUBE_PLAYBACK_STATUSES.embeddable,
+                sourceDetail: 'Indexed and embeddable YouTube track.',
+                sourceDiscovery: 'playlist_index'
+            }));
         await upsertYtIndexEntries(playableItems.map((item) => ({
             videoId: item.id,
             trackName: item.title,
             artistName: item.channel,
             artworkUrl100: item.thumbnail,
             url: item.url,
-            playable: true,
-            embeddable: true,
-            youtubePlaybackStatus: YOUTUBE_PLAYBACK_STATUSES.embeddable,
-            sourceDetail: 'Indexed and embeddable YouTube track.',
-            sourceDiscovery: 'playlist_index'
+            playable: item.playable,
+            embeddable: item.embeddable,
+            youtubePlaybackStatus: item.youtubePlaybackStatus,
+            sourceDetail: item.sourceDetail,
+            sourceDiscovery: item.sourceDiscovery
         })));
         return playableItems;
     };
@@ -15431,7 +15454,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     priorityScore: basePriority + globalIdx,
                     emoji: EMOJI.mic,
                     backingAudioOnly: false,
-                    audioOnly: false
+                    audioOnly: false,
+                    playbackReady: item.playable === true && item.embeddable === true,
+                    youtubeEmbeddable: item.embeddable === true,
+                    youtubePlaybackStatus: item.youtubePlaybackStatus || YOUTUBE_PLAYBACK_STATUSES.unknown,
+                    resolutionStatus: item.playable === true && item.embeddable === true ? 'resolved' : 'review_required',
+                    resolutionLayer: 'playlist_index'
                 };
                 if (!firstQueuedSong) {
                     firstQueuedSong = { id: songRef.id, ...payload };
@@ -25516,7 +25544,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         ? 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100'
                                         : 'border-orange-300/45 bg-orange-500/10 text-orange-100'
                                 }`}>
-                                    {hideNonEmbeddableYouTube ? 'TV-safe search' : 'Non-embeddables included'}
+                                    {hideNonEmbeddableYouTube ? 'TV-safe search' : 'External-only included'}
                                 </span>
                             </div>
                             <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
@@ -25580,12 +25608,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     : 'bg-orange-500/12 text-orange-100 border-orange-300/45'
                                             }`}
                                         >
-                                            {hideNonEmbeddableYouTube ? 'Embeddable Only' : 'Include Non-Embeddable'}
+                                            {hideNonEmbeddableYouTube ? 'Verified for TV Only' : 'Include External-Only'}
                                         </button>
                                     </div>
                                     {!hideNonEmbeddableYouTube && (
                                         <div className="mt-3 rounded-xl border border-orange-300/25 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
-                                            Rare fallback mode. Use it only when a song is hard to find and the host is ready to manage an external backing window.
+                                            Rare fallback mode. These results remain available for Host review or external opening, but they are not treated as playable inside Public TV.
                                         </div>
                                     )}
                                 </div>
@@ -27910,7 +27938,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     {ytPlaylistLoading ? EMOJI.refresh : 'INDEX + QUEUE ALL'}
                                 </button>
                             </div>
-                            <div className="rounded-lg border border-fuchsia-300/25 bg-gradient-to-r from-[#0d1426]/80 to-[#1b1027]/75 px-3 py-2">
+                            {youtubeQaToolsEnabled ? (
+                            <div data-feature-id="youtube-playlist-qa-tools" className="rounded-lg border border-fuchsia-300/25 bg-gradient-to-r from-[#0d1426]/80 to-[#1b1027]/75 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-fuchsia-100/65 mb-2">QA Shortcut</div>
                                 <div className="text-xs text-cyan-100/85 break-all mb-2">{qaYtPlaylistUrl}</div>
                                 <div className="flex flex-wrap gap-2">
@@ -27952,6 +27981,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                 </div>
                             </div>
+                            ) : null}
                             {ytPlaylistStatus && <div className="host-form-helper host-form-helper-status">{ytPlaylistStatus}</div>}
                             <div className="host-form-helper">Indexes up to 1000 videos per playlist load. INDEX + QUEUE ALL enables Auto-DJ and queues every indexed track.</div>
                         </div>
@@ -28565,6 +28595,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <div className="rounded-2xl border border-cyan-400/20 bg-zinc-900/65 p-4">
                                                 <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/75">Grow the room library</div>
                                                 <div className="mt-2 text-sm text-zinc-300">Search verified YouTube karaoke backings, then add the good ones to your room library so audience search and browse can land on them without live YouTube lookup.</div>
+                                                <div data-feature-id="youtube-workflow-explainer" className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-500/[0.06] px-3 py-3">
+                                                    <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                                                        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                                            <div className="font-black uppercase tracking-[0.14em] text-cyan-100">1. Search</div>
+                                                            <div className="mt-1 leading-5 text-zinc-400">A Host starts discovery when the room needs a backing.</div>
+                                                        </div>
+                                                        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                                            <div className="font-black uppercase tracking-[0.14em] text-cyan-100">2. Verify</div>
+                                                            <div className="mt-1 leading-5 text-zinc-400">BeauRocks confirms playability and embeddability.</div>
+                                                        </div>
+                                                        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                                            <div className="font-black uppercase tracking-[0.14em] text-cyan-100">3. Play</div>
+                                                            <div className="mt-1 leading-5 text-zinc-400">Public TV uses the supported embedded YouTube player.</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-2 text-[11px] leading-5 text-cyan-50/65">Videos stay hosted and delivered by YouTube. BeauRocks manages the live event around playback.</div>
+                                                </div>
                                                 <div className="mt-2 text-[11px] leading-5 text-zinc-400">
                                                     This application uses YouTube API Services. By using YouTube search here, you also agree to the{' '}
                                                     <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">YouTube Terms of Service</a>
@@ -28683,13 +28730,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     )}
                                                     {ytCurateResults.map((item) => {
                                                         const alreadyIndexed = (ytIndex || []).some((entry) => String(entry?.videoId || '').trim() === String(item.videoId || '').trim());
+                                                        const playbackPresentation = getYouTubePlaybackPresentation(item);
+                                                        const provenancePresentation = getYouTubeProvenancePresentation(item);
+                                                        const verificationFreshness = getYouTubeVerificationFreshness(item, opsStripNowMs);
                                                         return (
-                                                            <div key={item.videoId} className="rounded-xl border border-zinc-700 bg-black/25 p-3">
+                                                            <div key={item.videoId} data-feature-id="youtube-curator-search-result" className="rounded-xl border border-zinc-700 bg-black/25 p-3">
                                                                 <div className="flex items-center gap-3">
                                                                     <img src={item.artworkUrl100} alt={item.trackName} className="h-12 w-12 rounded-lg object-cover" />
                                                                     <div className="min-w-0 flex-1">
                                                                         <div className="truncate text-sm font-bold text-white">{item.trackName}</div>
                                                                         <div className="truncate text-sm text-zinc-400">{item.artistName}</div>
+                                                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                            <span className={'rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ' + playbackPresentation.className}>
+                                                                                {playbackPresentation.label}
+                                                                            </span>
+                                                                            <span className="rounded-full border border-cyan-300/20 bg-cyan-500/[0.08] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100">
+                                                                                {provenancePresentation.label}
+                                                                            </span>
+                                                                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-300">
+                                                                                {verificationFreshness}
+                                                                            </span>
+                                                                        </div>
                                                                     </div>
                                                                     <button
                                                                         onClick={() => addCuratedYouTubeResult(item)}
@@ -28699,6 +28760,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                         {alreadyIndexed ? 'Indexed' : (ytIndexActionVideoId === item.videoId ? 'Adding...' : 'Add')}
                                                                     </button>
                                                                 </div>
+                                                                <div className="mt-2 text-[11px] leading-5 text-zinc-400">{playbackPresentation.detail} {provenancePresentation.detail}</div>
                                                             </div>
                                                         );
                                                     })}
@@ -28805,16 +28867,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     const diagnosticsBusy = ytDiagnosticsLoadingKey === diagnosticsKey;
                                                     const diagnosticsTone = getTrackDiagnosticsTone(diagnostics);
                                                     const diagnosticsSupport = getTrackDiagnosticsSupport(diagnostics);
+                                                    const playbackPresentation = getYouTubePlaybackPresentation(item);
+                                                    const provenancePresentation = getYouTubeProvenancePresentation(item);
+                                                    const verificationFreshness = getYouTubeVerificationFreshness(item, opsStripNowMs);
                                                     return (
-                                                    <div key={item.videoId} className="rounded-xl border border-zinc-700 bg-black/25 p-3">
+                                                    <div key={item.videoId} data-feature-id="youtube-room-library-item" className="rounded-xl border border-zinc-700 bg-black/25 p-3">
                                                         <div className="flex items-center gap-3">
                                                             <img src={item.artworkUrl100} alt={item.trackName} className="w-14 h-14 rounded-lg object-cover" />
                                                             <div className="min-w-0 flex-1">
                                                                 <div className="font-bold text-white truncate">{item.trackName}</div>
                                                                 <div className="text-sm text-zinc-400 truncate">{item.artistName}</div>
                                                                 <div className="mt-2 flex flex-wrap gap-1.5">
-                                                                    <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
-                                                                        {item.playable !== false ? 'Playable' : 'Check embed'}
+                                                                    <span className={'rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ' + playbackPresentation.className}>
+                                                                        {playbackPresentation.label}
+                                                                    </span>
+                                                                    <span className="rounded-full border border-cyan-300/20 bg-cyan-500/[0.08] px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                                                        {provenancePresentation.label}
+                                                                    </span>
+                                                                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                                        {verificationFreshness}
                                                                     </span>
                                                                     {Number(item.successCount || 0) > 0 && (
                                                                         <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
@@ -28834,6 +28905,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                 </div>
                                                             </div>
                                                         </div>
+                                                        <div className="mt-2 text-[11px] leading-5 text-zinc-400">{playbackPresentation.detail} {provenancePresentation.detail}</div>
                                                         <div className="mt-3 rounded-xl border border-white/10 bg-zinc-950/50 px-3 py-3">
                                                             <div className="flex items-center justify-between gap-2">
                                                                 <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Track health</div>
@@ -28880,9 +28952,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         <div className="mt-3 flex flex-wrap gap-2">
                                                             <button
                                                                 onClick={() => queueYouTubeFromCatalog(item)}
-                                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                                                className={STYLES.btnStd + ' ' + (playbackPresentation.state === 'ready' ? STYLES.btnHighlight : STYLES.btnNeutral) + ' px-3 py-1 text-[10px]'}
                                                             >
-                                                                + {HOST_LIVE_OPS_LANGUAGE.addPerformance}
+                                                                + {playbackPresentation.actionLabel}
                                                             </button>
                                                             <a
                                                                 href={item.url}
@@ -28890,7 +28962,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                 rel="noreferrer"
                                                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}
                                                             >
-                                                                Open
+                                                                Open on YouTube
                                                             </a>
                                                             <button
                                                                 onClick={() => removeCuratedYouTubeResult(item.videoId)}

@@ -67,13 +67,16 @@ const capturePage = async ({
   fullPage = true,
 }) => {
   const context = await browser.newContext({ viewport });
-  await context.addInitScript((firebaseConfig, nowMs) => {
+  await context.addInitScript(({ firebaseConfig, nowMs }) => {
     if (!window.__firebase_config) window.__firebase_config = firebaseConfig;
     const fixedNow = Number(nowMs || 0);
     if (Number.isFinite(fixedNow) && fixedNow > 0) {
       Date.now = () => fixedNow;
     }
-  }, DEFAULT_FIREBASE_RUNTIME_CONFIG, fixedNowMs || FIXED_QA_HOST_NOW_MS);
+  }, {
+    firebaseConfig: DEFAULT_FIREBASE_RUNTIME_CONFIG,
+    nowMs: fixedNowMs || FIXED_QA_HOST_NOW_MS,
+  });
 
   const page = await context.newPage();
   const outputPath = path.join(OUTPUT_DIR, `${id}.png`);
@@ -143,7 +146,7 @@ const main = async () => {
       setup: async (page) => {
         await waitForText(page, "Admin Workspace");
         await page.getByText("Audio + Mix", { exact: true }).waitFor({ state: "detached", timeout: TIMEOUT_MS });
-        const mediaButton = page.getByRole("button", { name: /Screens \+ Playback/i }).first();
+        const mediaButton = page.getByRole("button", { name: /Open Media Setup|Media \+ Apple Music/i }).first();
         await mediaButton.waitFor({ state: "visible", timeout: TIMEOUT_MS });
         await mediaButton.click({ force: true });
         await waitForText(page, "Apple Music background");

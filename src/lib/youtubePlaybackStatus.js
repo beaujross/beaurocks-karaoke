@@ -17,12 +17,13 @@ export const normalizeYouTubePlaybackState = (value = {}) => {
     const embeddable = input.embeddable === true || explicitStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable;
     const uploadReady = !uploadStatus || READY_UPLOAD_STATUSES.has(uploadStatus);
     const allowedPrivacy = !privacyStatus || ALLOWED_PRIVACY_STATUSES.has(privacyStatus);
-    const playable = input.playable === true
-        || explicitStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable
-        || (embeddable && uploadReady && allowedPrivacy);
+    const playable = (
+        explicitStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable
+        || embeddable
+    ) && uploadReady && allowedPrivacy;
 
     let youtubePlaybackStatus = YOUTUBE_PLAYBACK_STATUSES.unknown;
-    if (explicitStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable || playable) {
+    if (explicitStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable || (embeddable && playable)) {
         youtubePlaybackStatus = YOUTUBE_PLAYBACK_STATUSES.embeddable;
     } else if (
         explicitStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable

@@ -50,4 +50,17 @@ describe('youtubePlaybackStatus', () => {
         expect(privateResult.youtubePlaybackStatus).toBe(YOUTUBE_PLAYBACK_STATUSES.notEmbeddable);
         expect(processingResult.youtubePlaybackStatus).toBe(YOUTUBE_PLAYBACK_STATUSES.notEmbeddable);
     });
+
+    test('does not infer embeddability from a legacy playable flag alone', () => {
+        const legacyRecord = {
+            playable: true
+        };
+        const result = normalizeYouTubePlaybackState(legacyRecord);
+
+        expect(result.playable).toBe(false);
+        expect(result.embeddable).toBe(false);
+        expect(result.youtubePlaybackStatus).toBe(YOUTUBE_PLAYBACK_STATUSES.unknown);
+        expect(isYouTubeEmbeddable(result)).toBe(false);
+        expect(getYouTubeEmbedCacheStatus(legacyRecord)).toBe('unknown');
+    });
 });

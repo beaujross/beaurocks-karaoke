@@ -272,7 +272,10 @@ const buildBaseFixture = (roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS, o
             artistName: 'Venue Backing Library',
             url: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
             durationSec: 212,
-            playable: true
+            playable: true,
+            embeddable: true,
+            youtubePlaybackStatus: 'embeddable',
+            sourceDiscovery: 'trusted_catalog'
         },
         {
             videoId: 'yt_demo_valerie_02',
@@ -280,7 +283,10 @@ const buildBaseFixture = (roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS, o
             artistName: 'Venue Backing Library',
             url: 'https://www.youtube.com/watch?v=yt_demo_valerie_02',
             durationSec: 198,
-            playable: true
+            playable: true,
+            embeddable: true,
+            youtubePlaybackStatus: 'embeddable',
+            sourceDiscovery: 'playlist_index'
         }
     ],
     users: [
