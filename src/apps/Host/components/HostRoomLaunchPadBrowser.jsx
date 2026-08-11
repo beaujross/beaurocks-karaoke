@@ -220,6 +220,28 @@ const LAUNCH_NIGHT_TYPE_OPTIONS = Object.freeze([
         effects: ['Balanced turns', 'Trivia ready', 'Auto-DJ assist'],
     },
 ]);
+const LAUNCH_INTERMISSION_TYPE_OPTIONS = Object.freeze([
+    { id: 'trivia', label: 'Trivia', icon: 'fa-lightbulb' },
+    { id: 'would_you_rather', label: 'Would You Rather', icon: 'fa-shuffle' },
+    { id: 'ready_check', label: 'Ready Check', icon: 'fa-circle-check' },
+    { id: 'volley', label: 'Volley Orb', icon: 'fa-circle-nodes' },
+]);
+const normalizeLaunchParty = (value = {}) => {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const preferredTypes = Array.isArray(source.autoCrowdMomentPreferredTypes)
+        ? source.autoCrowdMomentPreferredTypes.filter((type) => LAUNCH_INTERMISSION_TYPE_OPTIONS.some((option) => option.id === type))
+        : [];
+    return {
+        autoCrowdMomentsEnabled: source.autoCrowdMomentsEnabled === true,
+        autoCrowdMomentEverySongs: Math.max(1, Math.min(5, Number(source.autoCrowdMomentEverySongs || 3) || 3)),
+        autoCrowdMomentPreferredTypes: preferredTypes.length ? preferredTypes : ['trivia', 'would_you_rather'],
+    };
+};
+const getLaunchAssistLevel = (operatingModel = 'assisted_host') => (
+    operatingModel === 'host_led'
+        ? 'manual_first'
+        : operatingModel === 'crowd_driven' ? 'autopilot_first' : 'smart_assist'
+);
 
 const getOptionLabel = (options = [], id = '', fallback = 'Default') => (
     options.find((option) => option.id === id)?.label || fallback
@@ -426,6 +448,10 @@ const HostRoomLaunchPadBrowser = ({
     ) ? recoveredExperienceDraft.nightType : 'party_karaoke';
     const [launchOperatingModel, setLaunchOperatingModel] = useState(recoveredOperatingModel);
     const [launchNightType, setLaunchNightType] = useState(recoveredNightType);
+    const recoveredNightTypeOption = LAUNCH_NIGHT_TYPE_OPTIONS.find((option) => option.id === recoveredNightType) || LAUNCH_NIGHT_TYPE_OPTIONS[0];
+    const [launchParty, setLaunchParty] = useState(() => normalizeLaunchParty(
+        recoveredExperienceDraft?.party || recoveredNightTypeOption?.party || {},
+    ));
     const [launchMediaSources, setLaunchMediaSources] = useState(() => normalizeLaunchMediaSources(
         recoveredExperienceDraft?.mediaSources
         || selectedLaunchPreset?.searchSources
@@ -435,6 +461,7 @@ const HostRoomLaunchPadBrowser = ({
         const experienceIsDefault = launchJoinAccessMode === AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed
             && launchOperatingModel === 'assisted_host'
             && launchNightType === 'party_karaoke'
+            && launchParty.autoCrowdMomentsEnabled !== true
             && launchMediaSources.local
             && launchMediaSources.youtube
             && launchMediaSources.itunes;
@@ -446,9 +473,10 @@ const HostRoomLaunchPadBrowser = ({
             joinAccessMode: launchJoinAccessMode,
             operatingModel: launchOperatingModel,
             nightType: launchNightType,
+            party: launchParty,
             mediaSources: launchMediaSources,
         });
-    }, [launchExperienceDraftKey, launchJoinAccessMode, launchMediaSources, launchNightType, launchOperatingModel]);
+    }, [launchExperienceDraftKey, launchJoinAccessMode, launchMediaSources, launchNightType, launchOperatingModel, launchParty]);
     const toggleLaunchMediaSource = (sourceId = '') => {
         if (!['local', 'youtube', 'itunes'].includes(sourceId)) return;
         setLaunchMediaSources((current) => {
@@ -467,12 +495,12 @@ const HostRoomLaunchPadBrowser = ({
         searchSources: launchMediaSources,
         recipe: {
             flowRule: selectedNightType?.flowRule || 'balanced',
-            assistLevel: selectedNightType?.assistLevel || 'smart_assist',
+            assistLevel: getLaunchAssistLevel(launchOperatingModel),
             spotlightMode: selectedNightType?.spotlightMode || 'karaoke',
             performanceMode: selectedNightType?.performanceMode || 'karaoke',
             requirements: { ...(selectedNightType?.requirements || {}) },
             overrides: { ...(selectedNightType?.settingsOverrides || {}) },
-            party: { ...(selectedNightType?.party || {}) },
+            party: { ...launchParty },
         },
         settings: {
             ...(selectedLaunchPreset?.settings || {}),
@@ -575,6 +603,7 @@ const HostRoomLaunchPadBrowser = ({
         const option = LAUNCH_NIGHT_TYPE_OPTIONS.find((entry) => entry.id === nightTypeId) || LAUNCH_NIGHT_TYPE_OPTIONS[0];
         setLaunchNightType(option.id);
         setLaunchOperatingModel(option.operatingModel);
+        setLaunchParty(normalizeLaunchParty(option.party || {}));
         applyLaunchEconomy(option.economyMode);
         if (presets.some((preset) => preset.id === option.presetId)) setHostNightPreset(option.presetId);
     };
@@ -1211,19 +1240,60 @@ const HostRoomLaunchPadBrowser = ({
                                                         data-launch-room-recipe={option.id}
                                                         aria-pressed={selected}
                                                         onClick={() => applyLaunchNightType(option.id)}
-                                                        className={`min-h-[112px] rounded-xl border p-3 text-left transition ${selected ? 'border-fuchsia-300/48 bg-fuchsia-500/14 text-white shadow-[0_14px_30px_rgba(217,70,239,0.1)]' : 'border-white/10 bg-black/18 text-cyan-100/72 hover:border-cyan-300/25 hover:bg-white/[0.04]'}`}
+                                                        className={`min-h-[76px] rounded-xl border p-2.5 text-left transition ${selected ? 'border-fuchsia-300/48 bg-fuchsia-500/14 text-white shadow-[0_14px_30px_rgba(217,70,239,0.1)]' : 'border-white/10 bg-black/18 text-cyan-100/72 hover:border-cyan-300/25 hover:bg-white/[0.04]'}`}
                                                     >
                                                         <span className="flex items-start justify-between gap-2">
                                                             <span className="inline-flex items-center gap-2 text-sm font-black"><i className={`fa-solid ${option.icon}`} />{option.label}</span>
-                                                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]">{option.eyebrow}</span>
+                                                            <span className="rounded-full border border-white/10 bg-black/20 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.1em]">{option.eyebrow}</span>
                                                         </span>
-                                                        <span className="mt-1.5 block text-xs leading-5 opacity-78">{option.summary}</span>
-                                                        <span className="mt-2 flex flex-wrap gap-1">
-                                                            {option.effects.map((effect) => <span key={effect} className="rounded-full border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10px]">{effect}</span>)}
-                                                        </span>
+                                                        <span className="mt-1 line-clamp-2 block text-[10px] leading-4 opacity-72">{option.summary}</span>
                                                     </button>
                                                 );
                                             })}
+                                        </div>
+                                        <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(260px,0.72fr)_minmax(0,1.28fr)]" data-launch-night-controls="true">
+                                            <div className="rounded-xl border border-cyan-300/14 bg-black/18 p-2.5">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-[9px] font-black uppercase tracking-[0.15em] text-cyan-100/62">How much help?</span>
+                                                    <span className="text-[10px] text-cyan-100/42">You can step in anytime</span>
+                                                </div>
+                                                <div className="mt-1.5 grid grid-cols-3 gap-1">
+                                                    {LAUNCH_OPERATING_MODEL_OPTIONS.map((option) => {
+                                                        const selected = option.id === launchOperatingModel;
+                                                        return (
+                                                            <button key={option.id} type="button" data-launch-operating-model-quick={option.id} aria-pressed={selected} onClick={() => setLaunchOperatingModel(option.id)} className={`min-h-[42px] rounded-lg border px-1.5 py-1.5 text-center text-[10px] font-bold transition ${selected ? 'border-cyan-300/42 bg-cyan-500/14 text-white' : 'border-white/10 bg-black/18 text-cyan-100/58 hover:border-cyan-300/22'}`}>
+                                                                <i className={`fa-solid ${option.icon} mr-1`} />{option.label.replace(' Host', '')}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <div className="rounded-xl border border-fuchsia-300/14 bg-black/18 p-2.5" data-launch-intermission-program="true">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <span className="text-[9px] font-black uppercase tracking-[0.15em] text-fuchsia-100/64">Between performances</span>
+                                                    <button type="button" aria-pressed={launchParty.autoCrowdMomentsEnabled} onClick={() => setLaunchParty((current) => ({ ...current, autoCrowdMomentsEnabled: current.autoCrowdMomentsEnabled !== true }))} className={`min-h-[30px] rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${launchParty.autoCrowdMomentsEnabled ? 'border-fuchsia-300/38 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}>
+                                                        {launchParty.autoCrowdMomentsEnabled ? 'Activities on' : 'No activities'}
+                                                    </button>
+                                                </div>
+                                                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                                    {LAUNCH_INTERMISSION_TYPE_OPTIONS.map((option) => {
+                                                        const selected = launchParty.autoCrowdMomentPreferredTypes.includes(option.id);
+                                                        return (
+                                                            <button key={option.id} type="button" disabled={!launchParty.autoCrowdMomentsEnabled} aria-pressed={selected} onClick={() => setLaunchParty((current) => {
+                                                                const hasType = current.autoCrowdMomentPreferredTypes.includes(option.id);
+                                                                const nextTypes = hasType ? current.autoCrowdMomentPreferredTypes.filter((type) => type !== option.id) : [...current.autoCrowdMomentPreferredTypes, option.id];
+                                                                return { ...current, autoCrowdMomentPreferredTypes: nextTypes.length ? nextTypes : [option.id] };
+                                                            })} className={`min-h-[32px] rounded-lg border px-2 py-1 text-[9px] font-bold transition disabled:opacity-35 ${selected ? 'border-fuchsia-300/35 bg-fuchsia-500/13 text-white' : 'border-white/10 bg-black/18 text-zinc-400'}`}>
+                                                                <i className={`fa-solid ${option.icon} mr-1`} />{option.label}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                    <span className="ml-auto text-[9px] uppercase tracking-[0.12em] text-zinc-500">Every</span>
+                                                    {[1, 2, 3, 4, 5].map((count) => (
+                                                        <button key={count} type="button" disabled={!launchParty.autoCrowdMomentsEnabled} aria-pressed={launchParty.autoCrowdMomentEverySongs === count} onClick={() => setLaunchParty((current) => ({ ...current, autoCrowdMomentEverySongs: count }))} className={`h-8 w-8 rounded-lg border text-[10px] font-black disabled:opacity-35 ${launchParty.autoCrowdMomentEverySongs === count ? 'border-fuchsia-300/38 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/18 text-zinc-400'}`}>{count}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-cyan-300/14 bg-cyan-500/[0.04] p-4 lg:col-span-8" data-launch-guest-access="true">

@@ -6845,6 +6845,88 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [invoiceNotes, setInvoiceNotes] = useState('');
     const [showNightSetupWizard, setShowNightSetupWizard] = useState(false);
     const [nightSetupStep, setNightSetupStep] = useState(0);
+    const hostRuntimeIssueCountRef = useRef(0);
+    useEffect(() => {
+        const reportRuntimeIssue = (kind, event = {}) => {
+            if (hostRuntimeIssueCountRef.current >= 3) return;
+            hostRuntimeIssueCountRef.current += 1;
+            const sourceFile = String(event?.filename || '')
+                .split('?')[0]
+                .split('#')[0]
+                .split('/')
+                .pop()
+                ?.slice(0, 80) || '';
+            const errorName = String(event?.error?.name || event?.reason?.name || 'Error').slice(0, 48);
+            const memory = typeof performance !== 'undefined' && performance?.memory
+                ? Math.round(Number(performance.memory.usedJSHeapSize || 0) / 1048576)
+                : 0;
+            trackHostOperatorEvent('host_client_runtime_issue', {
+                issue_kind: kind,
+                error_name: errorName,
+                source_file: sourceFile,
+                line_number: Math.max(0, Number(event?.lineno || 0) || 0),
+                column_number: Math.max(0, Number(event?.colno || 0) || 0),
+                setup_open: showNightSetupWizard,
+                heap_used_mb: memory,
+            });
+        };
+        const handleWindowError = (event) => reportRuntimeIssue('window_error', event);
+        const handleUnhandledRejection = (event) => reportRuntimeIssue('unhandled_rejection', event);
+        window.addEventListener('error', handleWindowError);
+        window.addEventListener('unhandledrejection', handleUnhandledRejection);
+        return () => {
+            window.removeEventListener('error', handleWindowError);
+            window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+        };
+    }, [showNightSetupWizard, trackHostOperatorEvent]);
+    useEffect(() => {
+        const storageKey = 'beaurocks_host_room_setup_active_v1';
+        const safeRoomCode = String(roomCode || normalizedInitialCode || '').trim().toUpperCase();
+        if (!showNightSetupWizard) {
+            try {
+                const previous = JSON.parse(window.localStorage.getItem(storageKey) || 'null');
+                const ageMs = nowMs() - Number(previous?.heartbeatAtMs || previous?.openedAtMs || 0);
+                if (previous?.active === true && ageMs >= 0 && ageMs < 6 * 60 * 60 * 1000) {
+                    trackHostOperatorEvent('host_room_setup_unclean_exit_detected', {
+                        setup_room_code: String(previous.roomCode || '').slice(0, 12),
+                        setup_age_sec: Math.round(ageMs / 1000),
+                    });
+                }
+                window.localStorage.removeItem(storageKey);
+            } catch {
+                window.localStorage.removeItem(storageKey);
+            }
+            return undefined;
+        }
+        const openedAtMs = nowMs();
+        const writeHeartbeat = () => {
+            try {
+                window.localStorage.setItem(storageKey, JSON.stringify({
+                    active: true,
+                    roomCode: safeRoomCode,
+                    openedAtMs,
+                    heartbeatAtMs: nowMs(),
+                }));
+            } catch {
+                // Runtime diagnostics must never interfere with room setup.
+            }
+        };
+        const clearHeartbeat = () => {
+            try {
+                window.localStorage.removeItem(storageKey);
+            } catch {
+                // Ignore unavailable storage during page teardown.
+            }
+        };
+        writeHeartbeat();
+        const heartbeatId = window.setInterval(writeHeartbeat, 15000);
+        window.addEventListener('pagehide', clearHeartbeat, { once: true });
+        return () => {
+            window.clearInterval(heartbeatId);
+            window.removeEventListener('pagehide', clearHeartbeat);
+            clearHeartbeat();
+        };
+    }, [normalizedInitialCode, roomCode, showNightSetupWizard, trackHostOperatorEvent]);
     const roomTipPointRate = Math.max(0, Math.round(Number(room?.tipPointRate ?? TIP_POINTS_PER_DOLLAR) || TIP_POINTS_PER_DOLLAR));
     const supportDropAmountValue = Math.max(0, Number.parseFloat(supportDropAmount || '0') || 0);
     const supportDropHasExplicitPoints = String(supportDropPoints || '').trim() !== '';

@@ -9,11 +9,11 @@ const MissionSetupShell = ({
     footer = null
 }) => (
     <div className="fixed inset-0 z-[240] overflow-y-auto overscroll-y-contain p-2 pt-[calc(env(safe-area-inset-top)+0.35rem)] pb-[calc(env(safe-area-inset-bottom)+6rem)] md:p-3" style={{ background: OVERLAY_BG }}>
-        <div className="mx-auto flex min-h-full w-full max-w-6xl items-start pb-24">
-            <div className="w-full overflow-hidden rounded-[1.75rem] border border-cyan-200/35 bg-[radial-gradient(circle_at_8%_8%,rgba(34,211,238,0.18),transparent_29%),radial-gradient(circle_at_92%_10%,rgba(244,114,182,0.16),transparent_30%),linear-gradient(145deg,rgba(25,43,70,0.98),rgba(52,29,62,0.98))] shadow-[0_32px_90px_rgba(8,15,34,0.48),inset_0_1px_0_rgba(207,250,254,0.08)]">
+        <div className="mx-auto flex min-h-full w-full max-w-5xl items-start pb-24">
+            <div className="w-full overflow-hidden rounded-[1.35rem] border border-cyan-200/28 bg-[linear-gradient(145deg,rgba(25,43,70,0.98),rgba(52,29,62,0.98))] shadow-[0_26px_70px_rgba(8,15,34,0.42)]">
                 {header}
-                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.72fr)_minmax(300px,0.72fr)]">
-                    <div className="space-y-3 px-3 py-3 md:px-5 md:py-5">
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_280px]">
+                    <div className="space-y-3 px-3 py-3 md:px-4 md:py-4">
                         {primaryContent}
                     </div>
                     <aside className="border-t border-cyan-100/15 bg-cyan-950/14 px-3 py-3 md:px-4 md:py-5 xl:border-l xl:border-t-0">

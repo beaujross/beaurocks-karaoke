@@ -196,6 +196,9 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /data-launch-configuration-contract="true"/);
   assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Party Karaoke[\s\S]*Crowd Sing-Along[\s\S]*Score Challenge[\s\S]*Karaoke \+ Trivia/);
   assert.match(source, /data-launch-room-recipe=\{option\.id\}/);
+  assert.match(source, /data-launch-night-controls="true"/);
+  assert.match(source, /data-launch-intermission-program="true"/);
+  assert.match(source, /data-launch-operating-model-quick=\{option\.id\}/);
   assert.match(
     source,
     /const applyLaunchNightType =[\s\S]*setLaunchOperatingModel\(option\.operatingModel\);[\s\S]*applyLaunchEconomy\(option\.economyMode\);[\s\S]*setHostNightPreset\(option\.presetId\)/,
@@ -227,7 +230,7 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /buildHostLaunchDraftKey/);
   assert.match(
     source,
-    /persistHostLaunchDraftPart\(launchExperienceDraftKey, \{\s*joinAccessMode: launchJoinAccessMode,\s*operatingModel: launchOperatingModel,\s*nightType: launchNightType,\s*mediaSources: launchMediaSources,\s*\}\);/,
+    /persistHostLaunchDraftPart\(launchExperienceDraftKey, \{\s*joinAccessMode: launchJoinAccessMode,\s*operatingModel: launchOperatingModel,\s*nightType: launchNightType,\s*party: launchParty,\s*mediaSources: launchMediaSources,\s*\}\);/,
     'Recovered experience drafts should store only non-secret setup choices',
   );
 });

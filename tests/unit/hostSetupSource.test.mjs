@@ -31,8 +31,8 @@ test('mission setup keeps preset selection compact and applies full preset packa
 
   assert.match(
     primaryPicksSource,
-    /1 · Pick a vibe/,
-    'Night setup should present one consolidated recipe decision',
+    /Room recipe/,
+    'Night setup should present one compact recipe decision',
   );
   assert.match(
     primaryPicksSource,
@@ -46,8 +46,8 @@ test('mission setup keeps preset selection compact and applies full preset packa
   );
   assert.match(
     primaryPicksSource,
-    /h-\[264px\][\s\S]*?Preview this plan/,
-    'Every recipe card should reserve the same preview space so selection does not resize the rail',
+    /h-\[96px\][\s\S]*?line-clamp-2/,
+    'Every recipe choice should stay dense and reserve the same height so selection does not resize the rail',
   );
   assert.match(primaryPicksSource, /Save current recipe/);
   assert.doesNotMatch(primaryPicksSource, /Event Shortcut|Pick the queue pace|Change room package/);
@@ -68,15 +68,15 @@ test('mission setup keeps preset selection compact and applies full preset packa
   );
 });
 
-test('mission setup presents three plain-language decisions while preserving automation controls', () => {
+test('mission setup presents a compact room editor while preserving automation controls', () => {
   const primaryPicksSource = readFileSync(primaryPicksPath, 'utf8');
   const autopilotPreviewSource = readFileSync(autopilotPreviewPath, 'utf8');
   const footerSource = readFileSync(footerPath, 'utf8');
   const headerSource = readFileSync(missionSetupHeaderPath, 'utf8');
 
-  assert.match(headerSource, /Step 2 of 2 · Set the night/);
-  assert.match(headerSource, /Pick a vibe, choose what happens between performances, then launch\./);
-  assert.match(headerSource, /Room created/);
+  assert.match(headerSource, /Room Setup · Quick defaults/);
+  assert.match(headerSource, /These choices now live on room creation too\./);
+  assert.doesNotMatch(headerSource, /Step 2 of 2|Room created|Set the vibe/);
 
   assert.match(
     autopilotPreviewSource,
@@ -85,23 +85,23 @@ test('mission setup presents three plain-language decisions while preserving aut
   );
   assert.match(
     autopilotPreviewSource,
-    /aria-pressed=\{intermissionEnabled\}[\s\S]*?min-h-\[48px\][\s\S]*?Breaks on/,
-    'Between-performance activation should be a stable mobile tap target instead of a tiny switch',
+    /aria-pressed=\{intermissionEnabled\}[\s\S]*?min-h-\[36px\][\s\S]*?Breaks on/,
+    'Between-performance activation should remain a stable compact tap target',
   );
   assert.match(
     autopilotPreviewSource,
-    /min-h-\[322px\][\s\S]*?min-h-\[72px\]/,
-    'Both Room Set decision panels should retain stable heights and touch-sized choices',
+    /min-h-\[42px\][\s\S]*?min-h-\[48px\]/,
+    'Both room controls should remain dense with stable touch-sized choices',
   );
   assert.match(
     autopilotPreviewSource,
-    /2 · Between performances/,
-    'Guided setup should present between-performance beats as the second clear decision',
+    /Between performances/,
+    'Guided setup should keep between-performance controls in the compact editor',
   );
   assert.match(
     autopilotPreviewSource,
-    /3 · Host help/,
-    'Guided setup should present host help as the third clear decision',
+    /Host help/,
+    'Guided setup should keep host help in the compact editor',
   );
   assert.match(
     autopilotPreviewSource,
@@ -571,9 +571,26 @@ test('room setup shells stay top-aligned and scrollable on short viewports', () 
   );
   assert.match(
     missionSetupShellSource,
-    /mx-auto flex min-h-full w-full max-w-6xl items-start/,
-    'Guided setup shell should top-align its wider recipe panel on short screens.',
+    /mx-auto flex min-h-full w-full max-w-5xl items-start/,
+    'Guided setup shell should top-align its denser recipe panel on short screens.',
   );
+});
+
+test('new room provisioning preserves the consolidated recipe and activity plan', () => {
+  const functionsSource = readFileSync(functionsPath, 'utf8');
+  assert.match(functionsSource, /const hasRecipe = isPlainObject\(input\.recipe\)/);
+  assert.match(functionsSource, /recipe: hasRecipe \? \{/);
+  assert.match(functionsSource, /autoCrowdMomentsEnabled: partyInput\.autoCrowdMomentsEnabled === true/);
+  assert.match(functionsSource, /overrides\.missionControl = \{/);
+  assert.match(functionsSource, /autoCrowdMomentPreferredTypes: crowdMomentTypes\.length/);
+});
+
+test('host panel records bounded privacy-safe runtime and setup crash breadcrumbs', () => {
+  assert.match(hostAppSource, /hostRuntimeIssueCountRef\.current >= 3/);
+  assert.match(hostAppSource, /host_client_runtime_issue/);
+  assert.match(hostAppSource, /host_room_setup_unclean_exit_detected/);
+  assert.match(hostAppSource, /window\.addEventListener\('unhandledrejection'/);
+  assert.doesNotMatch(hostAppSource, /host_client_runtime_issue[\s\S]{0,800}(?:error_message|error_stack|event\?\.message)/);
 });
 
 test('new room setup keeps marquee off unless the host explicitly enables it', () => {

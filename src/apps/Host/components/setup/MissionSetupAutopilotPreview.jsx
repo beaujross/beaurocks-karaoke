@@ -55,7 +55,7 @@ const MissionSetupAutopilotPreview = ({
     const visibleSongs = deadAirSongs.slice(0, 4);
 
     return (
-        <section className="overflow-hidden rounded-[24px] border border-fuchsia-200/35 bg-[radial-gradient(circle_at_top_right,rgba(244,114,182,0.22),transparent_42%),linear-gradient(145deg,rgba(25,45,72,0.97),rgba(61,29,66,0.95))] shadow-[0_22px_70px_rgba(8,15,34,0.3),inset_0_1px_0_rgba(253,242,248,0.08)]">
+        <section className="border-b border-fuchsia-100/12 pb-3">
             <div className="hidden border-b border-white/10 bg-gradient-to-r from-cyan-500/14 via-zinc-950 to-fuchsia-500/12 px-4 py-4" aria-hidden="true">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -72,7 +72,7 @@ const MissionSetupAutopilotPreview = ({
                 </div>
             </div>
 
-            <div className="p-4 md:p-5">
+            <div>
                 <div className="hidden" aria-hidden="true">
                     <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
                         {FLOW_NODES.map((node, index) => (
@@ -112,19 +112,19 @@ const MissionSetupAutopilotPreview = ({
                     </div>
                 </div>
 
-                <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(280px,0.82fr)]">
-                    <div className="min-h-[322px] rounded-2xl border border-fuchsia-200/40 bg-fuchsia-500/[0.16] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_12px_32px_rgba(45,18,49,0.18)]" data-feature-id="setup-intermission-program">
+                <div className="grid items-stretch gap-2.5 lg:grid-cols-[minmax(0,1.35fr)_minmax(240px,0.65fr)]">
+                    <div className="rounded-xl border border-fuchsia-200/24 bg-fuchsia-500/[0.08] p-3" data-feature-id="setup-intermission-program">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-200">2 · Between performances</div>
-                                <div className="mt-1 text-lg font-black text-white">Shape the pauses.</div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200">Between performances</div>
+                                <div className="mt-0.5 text-sm font-black text-white">Use short activities only when you want them.</div>
                             </div>
-                            <button type="button" aria-pressed={intermissionEnabled} onClick={onToggleIntermission} className={`flex min-h-[48px] min-w-[116px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition ${intermissionEnabled ? 'border-fuchsia-300/40 bg-fuchsia-500/20 text-fuchsia-50' : 'border-white/10 bg-black/25 text-zinc-300'}`}>
+                            <button type="button" aria-pressed={intermissionEnabled} onClick={onToggleIntermission} className={`flex min-h-[36px] min-w-[102px] items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] transition ${intermissionEnabled ? 'border-fuchsia-300/40 bg-fuchsia-500/20 text-fuchsia-50' : 'border-white/10 bg-black/25 text-zinc-300'}`}>
                                 <i className={`fa-solid ${intermissionEnabled ? 'fa-wand-magic-sparkles' : 'fa-pause'}`} />
                                 {intermissionEnabled ? 'Breaks on' : 'No breaks'}
                             </button>
                         </div>
-                        <div className="mt-3 grid grid-cols-2 gap-1.5">
+                        <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                             {[
                                 ['trivia', 'Trivia', 'fa-lightbulb'],
                                 ['would_you_rather', 'Would You Rather', 'fa-shuffle'],
@@ -133,16 +133,16 @@ const MissionSetupAutopilotPreview = ({
                             ].map(([id, label, icon]) => {
                                 const selected = intermissionTypes.includes(id);
                                 return (
-                                    <button key={id} type="button" disabled={!intermissionEnabled} aria-pressed={selected} onClick={() => onToggleIntermissionType(id)} className={`flex min-h-[64px] items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left text-[11px] font-bold transition disabled:opacity-45 ${selected ? 'border-fuchsia-300/35 bg-fuchsia-500/15 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}>
-                                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${selected ? 'border-fuchsia-200/35 bg-fuchsia-300 text-slate-950' : 'border-white/10 bg-white/[0.04]'}`}><i className={`fa-solid ${icon}`}></i></span>
+                                    <button key={id} type="button" disabled={!intermissionEnabled} aria-pressed={selected} onClick={() => onToggleIntermissionType(id)} className={`flex min-h-[42px] items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left text-[10px] font-bold transition disabled:opacity-45 ${selected ? 'border-fuchsia-300/35 bg-fuchsia-500/15 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}>
+                                        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border text-[10px] ${selected ? 'border-fuchsia-200/35 bg-fuchsia-300 text-slate-950' : 'border-white/10 bg-white/[0.04]'}`}><i className={`fa-solid ${icon}`}></i></span>
                                         <span>{label}</span>
                                     </button>
                                 );
                             })}
                         </div>
-                        <div className="mt-3">
-                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">How often</div>
-                            <div className="mt-1.5 grid grid-cols-5 gap-1" role="group" aria-label="Between-performance cadence">
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-400">After singers</div>
+                            <div className="grid min-w-[220px] flex-1 grid-cols-5 gap-1" role="group" aria-label="Between-performance cadence">
                                 {[1, 2, 3, 4, 5].map((count) => {
                                     const selected = Number(intermissionEverySongs) === count;
                                     return (
@@ -152,22 +152,20 @@ const MissionSetupAutopilotPreview = ({
                                             disabled={!intermissionEnabled}
                                             aria-pressed={selected}
                                             onClick={() => onSetIntermissionEverySongs(count)}
-                                            className={`min-h-[40px] rounded-lg border text-xs font-black transition disabled:opacity-40 ${selected ? 'border-fuchsia-300/45 bg-fuchsia-500/20 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}
+                                            className={`min-h-[32px] rounded-md border text-[11px] font-black transition disabled:opacity-40 ${selected ? 'border-fuchsia-300/45 bg-fuchsia-500/20 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}
                                         >
                                             {count}
                                         </button>
                                     );
                                 })}
                             </div>
-                            <div className="mt-1 text-[10px] text-zinc-500">After this many singers</div>
                         </div>
                     </div>
 
-                    <div className="min-h-[322px] rounded-2xl border border-cyan-200/35 bg-cyan-400/[0.12] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_12px_32px_rgba(10,54,67,0.16)]">
-                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-200">3 · Host help</div>
-                        <div className="mt-1 text-lg font-black text-white">Choose your comfort level.</div>
-                        <div className="mt-1 text-xs leading-5 text-zinc-400">{activeMeta.detail}</div>
-                        <div className="mt-4 grid grid-cols-3 gap-1.5">
+                    <div className="rounded-xl border border-cyan-200/24 bg-cyan-400/[0.07] p-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Host help</div>
+                        <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-zinc-400">{activeMeta.detail}</div>
+                        <div className="mt-2 grid grid-cols-3 gap-1.5">
                             {visibleAssistLevels.map((assist) => {
                                 const active = selectedAssistLevel === assist.id;
                                 return (
@@ -176,7 +174,7 @@ const MissionSetupAutopilotPreview = ({
                                         type="button"
                                         onClick={() => onSelectAssistLevel(assist.id)}
                                         aria-pressed={active}
-                                        className={`min-h-[72px] rounded-xl border px-2 py-2 text-center text-[11px] transition-all ${active ? 'border-cyan-300/55 bg-cyan-500/14 text-white shadow-[0_0_24px_rgba(34,211,238,0.08)]' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/30'}`}
+                                        className={`min-h-[48px] rounded-lg border px-1.5 py-1.5 text-center text-[10px] transition-all ${active ? 'border-cyan-300/55 bg-cyan-500/14 text-white shadow-[0_0_18px_rgba(34,211,238,0.08)]' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/30'}`}
                                     >
                                         <i className={`fa-solid ${assist.id === 'manual_first' ? 'fa-hand' : assist.id === 'autopilot_first' ? 'fa-robot' : 'fa-wand-magic-sparkles'} mb-1 block text-sm`} />
                                         <span className="block font-bold">{assist.label.replace(' First', '')}</span>

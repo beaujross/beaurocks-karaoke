@@ -3887,6 +3887,16 @@ const normalizeProvisionNightPresetPayload = (input = {}) => {
   const settings = isPlainObject(input.settings) ? input.settings : {};
   const queueSettings = isPlainObject(settings.queueSettings) ? settings.queueSettings : {};
   const gameDefaults = isPlainObject(settings.gameDefaults) ? settings.gameDefaults : {};
+  const hasRecipe = isPlainObject(input.recipe) && Object.keys(input.recipe).length > 0;
+  const recipeInput = hasRecipe ? input.recipe : {};
+  const partyInput = isPlainObject(recipeInput.party) ? recipeInput.party : {};
+  const allowedCrowdMomentTypes = new Set(["trivia", "would_you_rather", "ready_check", "volley"]);
+  const crowdMomentTypes = Array.isArray(partyInput.autoCrowdMomentPreferredTypes)
+    ? partyInput.autoCrowdMomentPreferredTypes
+      .map((type) => String(type || "").trim().toLowerCase())
+      .filter((type) => allowedCrowdMomentTypes.has(type))
+      .slice(0, 4)
+    : [];
   const theme = normalizeProvisionAudienceBrandTheme(input.audienceBrandTheme || settings.audienceBrandTheme || {});
   return {
     id: normalizeProvisionPresetId(input.id || input.presetId || "custom") || "custom",
@@ -3902,6 +3912,21 @@ const normalizeProvisionNightPresetPayload = (input = {}) => {
       itunes: input?.searchSources?.itunes !== false,
     },
     audienceBrandTheme: theme,
+    recipe: hasRecipe ? {
+      flowRule: String(recipeInput.flowRule || "balanced").trim().toLowerCase().slice(0, 40) || "balanced",
+      assistLevel: ["manual_first", "smart_assist", "autopilot_first"].includes(String(recipeInput.assistLevel || "").trim().toLowerCase())
+        ? String(recipeInput.assistLevel).trim().toLowerCase()
+        : "smart_assist",
+      spotlightMode: String(recipeInput.spotlightMode || "karaoke").trim().toLowerCase().slice(0, 40) || "karaoke",
+      performanceMode: ["karaoke", "sing_along", "lip_sync"].includes(String(recipeInput.performanceMode || "").trim().toLowerCase())
+        ? String(recipeInput.performanceMode).trim().toLowerCase()
+        : "karaoke",
+      party: {
+        autoCrowdMomentsEnabled: partyInput.autoCrowdMomentsEnabled === true,
+        autoCrowdMomentEverySongs: clampNumber(partyInput.autoCrowdMomentEverySongs, 1, 5, 3),
+        autoCrowdMomentPreferredTypes: crowdMomentTypes.length ? crowdMomentTypes : ["trivia", "would_you_rather"],
+      },
+    } : null,
     settings: {
       autoDj: settings.autoDj === true,
       autoBgMusic: settings.autoBgMusic === true,
@@ -4022,6 +4047,25 @@ const buildProvisionPresetOverridesFromConfig = (presetConfig = null) => {
       bingoAutoApprovePct: clampNumber(settings?.gameDefaults?.bingoAutoApprovePct, 10, 100, 50),
     },
   };
+  if (presetConfig.recipe) {
+    const defaultMissionControl = buildDefaultMissionControlPayload();
+    overrides.missionControl = {
+      ...defaultMissionControl,
+      enabled: true,
+      setupDraft: {
+        ...defaultMissionControl.setupDraft,
+        archetype: presetConfig.basePresetId || presetConfig.id || "casual",
+        flowRule: presetConfig.recipe.flowRule || "balanced",
+        spotlightMode: presetConfig.recipe.spotlightMode || "karaoke",
+        assistLevel: presetConfig.recipe.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL,
+        performanceMode: presetConfig.recipe.performanceMode || "karaoke",
+      },
+      party: {
+        ...defaultMissionControl.party,
+        ...(presetConfig.recipe.party || {}),
+      },
+    };
+  }
   if (presetConfig.audienceBrandTheme) {
     overrides.audienceBrandTheme = presetConfig.audienceBrandTheme;
   }

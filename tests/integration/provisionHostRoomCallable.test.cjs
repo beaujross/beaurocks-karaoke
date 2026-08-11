@@ -322,6 +322,17 @@ async function run() {
           nightPresetId: "aahf",
           nightPresetPayload: {
             id: "aahf",
+            recipe: {
+              flowRule: "balanced",
+              assistLevel: "smart_assist",
+              spotlightMode: "karaoke",
+              performanceMode: "karaoke",
+              party: {
+                autoCrowdMomentsEnabled: true,
+                autoCrowdMomentEverySongs: 3,
+                autoCrowdMomentPreferredTypes: ["trivia", "would_you_rather"],
+              },
+            },
             settings: {
               audienceShellVariant: "streamlined",
             },
@@ -345,6 +356,11 @@ async function run() {
       assert.equal(roomSnap.get("lobbyOrbSkinUrl"), "/images/marketing/aahf-combined-badge-clean.png");
       assert.equal(roomSnap.get("audienceShellVariant"), "streamlined");
       assert.equal(roomSnap.get("audienceBrandTheme.appTitle"), "AAHF Festival");
+      assert.equal(roomSnap.get("missionControl.enabled"), true);
+      assert.equal(roomSnap.get("missionControl.setupDraft.assistLevel"), "smart_assist");
+      assert.equal(roomSnap.get("missionControl.party.autoCrowdMomentsEnabled"), true);
+      assert.equal(roomSnap.get("missionControl.party.autoCrowdMomentEverySongs"), 3);
+      assert.deepEqual(roomSnap.get("missionControl.party.autoCrowdMomentPreferredTypes"), ["trivia", "would_you_rather"]);
     }],
 
     ["provisionHostRoom stores public event credits and secure claim config", async () => {
