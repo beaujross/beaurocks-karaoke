@@ -9,7 +9,8 @@ import {
     recordGroupMoment,
     getSingingSharePct,
     recommendAutoCrowdMoment,
-    canLaunchScheduledAutoCrowdMoment
+    canLaunchScheduledAutoCrowdMoment,
+    getAutoPartyStageHandoff
 } from '../../src/apps/Host/partyOrchestrator.js';
 
 test("partyOrchestrator.test", () => {
@@ -188,4 +189,75 @@ test('scheduled crowd moments yield when the next performance starts', () => {
         currentLastPerformanceTs: 1000,
         eligibleLastPerformanceTs: 0
     }).reason, 'performance_not_eligible');
+});
+
+test('Auto Party releases backing playback only after the game and TV settle window', () => {
+    const room = {
+        activeMode: 'karaoke',
+        lightMode: 'off',
+        lobbyVolleyEnabled: false,
+        readyCheck: { active: false },
+        missionControl: {
+            autoMoment: {
+                key: 'volley_1000',
+                status: 'completed',
+                stagePlaybackReleaseAtMs: 11900
+            }
+        }
+    };
+
+    assert.deepEqual(getAutoPartyStageHandoff({
+        room,
+        completedAutoMomentKey: 'volley_1000',
+        now: 11500
+    }), {
+        allowed: false,
+        reason: 'release_time_pending',
+        retryAfterMs: 400,
+        releaseAtMs: 11900
+    });
+
+    assert.equal(getAutoPartyStageHandoff({
+        room,
+        completedAutoMomentKey: 'volley_1000',
+        now: 11900
+    }).allowed, true);
+});
+
+test('Auto Party keeps backing playback blocked until every public presentation flag clears', () => {
+    const baseRoom = {
+        activeMode: 'karaoke',
+        lightMode: 'off',
+        lobbyVolleyEnabled: false,
+        readyCheck: { active: false },
+        missionControl: {
+            autoMoment: {
+                key: 'moment_1',
+                status: 'completed',
+                stagePlaybackReleaseAtMs: 1000
+            }
+        }
+    };
+
+    assert.equal(getAutoPartyStageHandoff({
+        room: { ...baseRoom, missionControl: { autoMoment: { ...baseRoom.missionControl.autoMoment, status: 'live' } } },
+        now: 2000
+    }).reason, 'auto_moment_live');
+    assert.equal(getAutoPartyStageHandoff({
+        room: { ...baseRoom, activeMode: 'trivia_pop' },
+        now: 2000
+    }).reason, 'mode_live');
+    assert.equal(getAutoPartyStageHandoff({
+        room: { ...baseRoom, lobbyVolleyEnabled: true },
+        now: 2000
+    }).reason, 'volley_live');
+    assert.equal(getAutoPartyStageHandoff({
+        room: { ...baseRoom, readyCheck: { active: true } },
+        now: 2000
+    }).reason, 'ready_check_live');
+    assert.equal(getAutoPartyStageHandoff({
+        room: baseRoom,
+        completedAutoMomentKey: 'failed_moment_that_never_started',
+        now: 2000
+    }).allowed, true);
 });

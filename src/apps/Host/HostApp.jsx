@@ -318,7 +318,9 @@ import {
 } from './missionControl';
 import { resolveRoomSetupEffectiveBehavior } from './roomSetupEffectiveBehavior';
 import {
+    AUTO_PARTY_STAGE_SETTLE_MS,
     canLaunchScheduledAutoCrowdMoment,
+    getAutoPartyStageHandoff,
     normalizeMissionParty,
     recordCompletedPerformance,
     recordGroupMoment,
@@ -7675,6 +7677,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const readyCheckTimerRef = useRef(null);
     const autoCrowdMomentLaunchTimerRef = useRef(null);
     const autoCrowdMomentTimerRef = useRef(null);
+    const autoPartyStageHandoffTimerRef = useRef(null);
+    const startNextFromQueueRef = useRef(null);
     const hostVolleyVoiceLastWriteRef = useRef(0);
     const hostVolleyVoiceInactiveSentRef = useRef(true);
     const hostVoiceTelemetryTargetRef = useRef('');
@@ -11851,6 +11855,39 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const startNextFromQueue = useCallback(async (options = {}) => {
         const completedAutoMomentKey = String(options?.completedAutoMomentKey || '').trim();
         const activeRoom = roomRef.current || {};
+        const handoff = getAutoPartyStageHandoff({
+            room: activeRoom,
+            completedAutoMomentKey,
+            now: nowMs()
+        });
+        if (!handoff.allowed) {
+            const attempt = Math.max(0, Number(options?.autoPartyHandoffAttempt || 0));
+            const shouldRetry = handoff.reason === 'release_time_pending' || attempt < 40;
+            if (autoPartyStageHandoffTimerRef.current) {
+                clearTimeout(autoPartyStageHandoffTimerRef.current);
+                autoPartyStageHandoffTimerRef.current = null;
+            }
+            if (shouldRetry) {
+                autoPartyStageHandoffTimerRef.current = setTimeout(() => {
+                    autoPartyStageHandoffTimerRef.current = null;
+                    startNextFromQueueRef.current?.({
+                        ...options,
+                        completedAutoMomentKey: completedAutoMomentKey
+                            || String(activeRoom?.missionControl?.autoMoment?.key || '').trim(),
+                        autoPartyHandoffAttempt: attempt + 1
+                    }).catch((error) => {
+                        hostLogger.warn('Auto Party stage handoff retry failed', error);
+                    });
+                }, Math.max(50, Number(handoff.retryAfterMs || 250)));
+            } else {
+                hostLogger.warn('Auto Party kept backing playback blocked because its presentation did not clear', handoff.reason);
+            }
+            return;
+        }
+        if (autoPartyStageHandoffTimerRef.current) {
+            clearTimeout(autoPartyStageHandoffTimerRef.current);
+            autoPartyStageHandoffTimerRef.current = null;
+        }
         const activeAutoMoment = activeRoom?.missionControl?.autoMoment;
         const activeAutoMomentKey = String(activeAutoMoment?.key || '').trim();
         const autoMomentHandoff = !!completedAutoMomentKey
@@ -11925,6 +11962,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             logActivity
         });
     }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, pauseAppleMusic, performanceRecapAutoDjHoldMs, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowPendingCountsById, runOfShowPolicy, runOfShowReleaseWindowPending, runOfShowStagedItem, updateRoom]);
+    startNextFromQueueRef.current = startNextFromQueue;
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -14162,10 +14200,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const missionControlBase = partyPatch
             ? mergeMissionControlParty(room?.missionControl, partyPatch)
             : (isPlainObject(room?.missionControl) ? room.missionControl : {});
+        const startedAt = nowMs();
+        const stagePlaybackReleaseAtMs = startedAt + (durationSec * 1000) + AUTO_PARTY_STAGE_SETTLE_MS;
         const roomPatch = {
             readyCheck: {
                 active: true,
-                startTime: nowMs(),
+                startTime: startedAt,
                 durationSec,
                 rewardPoints,
                 ...(autoMomentSource ? { source: autoMomentSource } : {}),
@@ -14182,8 +14222,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     status: 'live',
                     title: autoMomentTitle || 'Auto Party: Ready Check',
                     detail: autoMomentDetail || 'Audience check-in is live before the next singer.',
-                    startedAt: nowMs(),
-                    durationSec
+                    startedAt,
+                    durationSec,
+                    stagePlaybackReleaseAtMs
                 }
             };
         }
@@ -14233,6 +14274,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 autoCrowdMomentTimerRef.current = null;
             }
             const startedAt = nowMs();
+            const stagePlaybackReleaseAtMs = startedAt + (durationSec * 1000) + AUTO_PARTY_STAGE_SETTLE_MS;
             const questionDurationSec = Math.max(5, durationSec - 5);
             const hash = Array.from(momentKey).reduce((total, char) => total + char.charCodeAt(0), 0);
             const roomPatch = {
@@ -14246,7 +14288,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         title,
                         detail,
                         startedAt,
-                        durationSec
+                        durationSec,
+                        stagePlaybackReleaseAtMs
                     }
                 }
             };
@@ -14314,6 +14357,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 clearTimeout(autoCrowdMomentTimerRef.current);
                 autoCrowdMomentTimerRef.current = null;
             }
+            const startedAt = nowMs();
+            const stagePlaybackReleaseAtMs = startedAt + (durationSec * 1000) + AUTO_PARTY_STAGE_SETTLE_MS;
             await updateRoom({
                 lightMode: 'volley',
                 lobbyVolleyEnabled: true,
@@ -14326,8 +14371,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         status: 'live',
                         title: title || 'Auto Party: Volley Orb',
                         detail: detail || 'Audience relay is live between singers.',
-                        startedAt: nowMs(),
-                        durationSec
+                        startedAt,
+                        durationSec,
+                        stagePlaybackReleaseAtMs
                     }
                 }
             });
@@ -14572,6 +14618,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (autoCrowdMomentTimerRef.current) {
             clearTimeout(autoCrowdMomentTimerRef.current);
             autoCrowdMomentTimerRef.current = null;
+        }
+        if (autoPartyStageHandoffTimerRef.current) {
+            clearTimeout(autoPartyStageHandoffTimerRef.current);
+            autoPartyStageHandoffTimerRef.current = null;
         }
     }, []);
     const runMissionHypeMoment = async () => {

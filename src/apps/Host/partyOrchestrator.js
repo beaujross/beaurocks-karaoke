@@ -24,6 +24,56 @@ export const PARTY_AUTO_MOMENT_DEFAULTS = Object.freeze({
     autoCrowdMomentPreferredTypes: ['volley', 'ready_check']
 });
 
+export const AUTO_PARTY_STAGE_SETTLE_MS = 900;
+
+const AUTO_PARTY_PRESENTATION_MODES = new Set(['trivia_pop', 'wyr']);
+
+export const getAutoPartyStageHandoff = ({
+    room = {},
+    completedAutoMomentKey = '',
+    now = Date.now()
+} = {}) => {
+    const autoMoment = room?.missionControl?.autoMoment || {};
+    const autoMomentKey = String(autoMoment?.key || '').trim();
+    const completedKey = String(completedAutoMomentKey || '').trim();
+    const status = String(autoMoment?.status || '').trim().toLowerCase();
+    const activeMode = String(room?.activeMode || '').trim().toLowerCase();
+    const lightMode = String(room?.lightMode || '').trim().toLowerCase();
+    const releaseAtMs = Math.max(0, toNumber(autoMoment?.stagePlaybackReleaseAtMs, 0));
+    const nowMs = Math.max(0, toNumber(now, Date.now()));
+
+    if (completedKey && autoMomentKey && autoMomentKey !== completedKey
+        && (status === 'live' || status === 'starting')) {
+        return {
+            allowed: false,
+            reason: 'different_auto_moment',
+            retryAfterMs: 250,
+            releaseAtMs
+        };
+    }
+    if (releaseAtMs > nowMs) {
+        return {
+            allowed: false,
+            reason: 'release_time_pending',
+            retryAfterMs: Math.max(50, Math.ceil(releaseAtMs - nowMs)),
+            releaseAtMs
+        };
+    }
+    if (status === 'live' || status === 'starting') {
+        return { allowed: false, reason: 'auto_moment_live', retryAfterMs: 250, releaseAtMs };
+    }
+    if (room?.readyCheck?.active === true) {
+        return { allowed: false, reason: 'ready_check_live', retryAfterMs: 250, releaseAtMs };
+    }
+    if (AUTO_PARTY_PRESENTATION_MODES.has(activeMode)) {
+        return { allowed: false, reason: 'mode_live', retryAfterMs: 250, releaseAtMs };
+    }
+    if (room?.lobbyVolleyEnabled === true || lightMode === 'volley') {
+        return { allowed: false, reason: 'volley_live', retryAfterMs: 250, releaseAtMs };
+    }
+    return { allowed: true, reason: 'ok', retryAfterMs: 0, releaseAtMs };
+};
+
 export const HEAVY_GROUP_MODES = new Set([
     'bingo',
     'doodle_oke',

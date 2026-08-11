@@ -243,6 +243,16 @@ test("HostApp keeps Auto DJ queue advance independent from TV display mode chang
   );
   assert.match(
     source,
+    /const handoff = getAutoPartyStageHandoff\(\{[\s\S]*if \(!handoff\.allowed\) \{[\s\S]*return;[\s\S]*await startQueueSongOnStage\(\{/,
+    "Auto Party must clear its public presentation and release its timing gate before backing playback starts",
+  );
+  assert.match(
+    source,
+    /stagePlaybackReleaseAtMs = startedAt \+ \(durationSec \* 1000\) \+ AUTO_PARTY_STAGE_SETTLE_MS;/,
+    "Every automatic crowd moment should reserve a TV settle window before the next track can start",
+  );
+  assert.match(
+    source,
     /const timer = setTimeout\(\(\) => \{[\s\S]*const launchGuard = canLaunchScheduledAutoCrowdMoment\([\s\S]*if \(!launchGuard\.allowed\) \{[\s\S]*return;[\s\S]*lastPartyAutoBreakTsRef\.current = lastPerformanceTs;/,
     "Auto-party should stamp a completed bridge only after its timer fires and the launch guard allows the bridge",
   );
