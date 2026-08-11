@@ -10954,61 +10954,71 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
     }, []);
     useEffect(() => {
-        const resume = () => {
-            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
-                bgCtxRef.current.resume().catch(() => {});
-            }
-        };
-        window.addEventListener('pointerdown', resume);
-        return () => window.removeEventListener('pointerdown', resume);
-    }, []);
-    useEffect(() => {
         setSfxMasterVolume(sfxVolume);
     }, [sfxVolume]);
     useEffect(() => {
-        if (!bgAudio.current || bgCtxRef.current) return;
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        try {
-            const ctx = new AudioCtx();
-            const source = ctx.createMediaElementSource(bgAudio.current);
-            const analyser = ctx.createAnalyser();
-            analyser.fftSize = 512;
-            analyser.smoothingTimeConstant = 0.4;
-            source.connect(analyser);
-            analyser.connect(ctx.destination);
-            bgCtxRef.current = ctx;
-            bgSourceRef.current = source;
-            bgAnalyserRef.current = analyser;
-
-            const data = new Uint8Array(analyser.frequencyBinCount);
-            const tick = () => {
-                if (!bgAnalyserRef.current) return;
-                bgAnalyserRef.current.getByteFrequencyData(data);
-                let sum = 0;
-                for (let i = 0; i < data.length; i += 1) sum += data[i];
-                const avg = sum / data.length;
-                let level = Math.min(100, Math.round((avg / 255) * 140));
-                const audioEl = bgAudio.current;
-                if (audioEl && !audioEl.paused && avg < 1) {
-                    bgMeterPhaseRef.current += 0.08;
-                    const pulse = (Math.sin(bgMeterPhaseRef.current) + 1) / 2;
-                    const fallback = Math.round((0.3 + 0.7 * pulse) * (audioEl.volume * 100));
-                    level = Math.max(level, fallback);
+        let disposed = false;
+        const initializeOrResumeBgAnalyser = () => {
+            if (disposed || !bgAudio.current) return;
+            if (bgCtxRef.current) {
+                if (bgCtxRef.current.state === 'suspended') {
+                    void bgCtxRef.current.resume().catch(() => {});
                 }
-                setBgMeterLevel(level);
-                bgMeterRafRef.current = requestAnimationFrame(tick);
-            };
-            tick();
-        } catch (e) {
-            hostLogger.error('BG analyser init failed', e);
-        }
+                return;
+            }
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            try {
+                const ctx = new AudioCtx();
+                const source = ctx.createMediaElementSource(bgAudio.current);
+                const analyser = ctx.createAnalyser();
+                analyser.fftSize = 512;
+                analyser.smoothingTimeConstant = 0.4;
+                source.connect(analyser);
+                analyser.connect(ctx.destination);
+                bgCtxRef.current = ctx;
+                bgSourceRef.current = source;
+                bgAnalyserRef.current = analyser;
+                if (ctx.state === 'suspended') {
+                    void ctx.resume().catch(() => {});
+                }
+
+                const data = new Uint8Array(analyser.frequencyBinCount);
+                const tick = () => {
+                    if (!bgAnalyserRef.current) return;
+                    bgAnalyserRef.current.getByteFrequencyData(data);
+                    let sum = 0;
+                    for (let i = 0; i < data.length; i += 1) sum += data[i];
+                    const avg = sum / data.length;
+                    let level = Math.min(100, Math.round((avg / 255) * 140));
+                    const audioEl = bgAudio.current;
+                    if (audioEl && !audioEl.paused && avg < 1) {
+                        bgMeterPhaseRef.current += 0.08;
+                        const pulse = (Math.sin(bgMeterPhaseRef.current) + 1) / 2;
+                        const fallback = Math.round((0.3 + 0.7 * pulse) * (audioEl.volume * 100));
+                        level = Math.max(level, fallback);
+                    }
+                    setBgMeterLevel(level);
+                    bgMeterRafRef.current = requestAnimationFrame(tick);
+                };
+                tick();
+            } catch (error) {
+                hostLogger.error('BG analyser init failed', error);
+            }
+        };
+        window.addEventListener('pointerdown', initializeOrResumeBgAnalyser, { passive: true });
+        window.addEventListener('keydown', initializeOrResumeBgAnalyser);
         return () => {
+            disposed = true;
+            window.removeEventListener('pointerdown', initializeOrResumeBgAnalyser);
+            window.removeEventListener('keydown', initializeOrResumeBgAnalyser);
             if (bgMeterRafRef.current) cancelAnimationFrame(bgMeterRafRef.current);
             if (bgSourceRef.current) bgSourceRef.current.disconnect();
             if (bgAnalyserRef.current) bgAnalyserRef.current.disconnect();
-            if (bgCtxRef.current) bgCtxRef.current.close();
+            if (bgCtxRef.current) void bgCtxRef.current.close().catch(() => {});
             bgCtxRef.current = null;
+            bgSourceRef.current = null;
+            bgAnalyserRef.current = null;
         };
     }, []);
     const requestStageMic = async () => {

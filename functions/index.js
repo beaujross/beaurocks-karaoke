@@ -2975,6 +2975,12 @@ const LIVE_STAGE_CAMERA_CORNER_VALUES = new Set([
   "bottom_left",
   "bottom_right",
 ]);
+const APPLE_MUSIC_AUTO_SOURCE_TYPE_VALUES = new Set([
+  "",
+  "catalog_playlist",
+  "library_playlist",
+  "catalog_station",
+]);
 const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   'audienceJoinPasscode',
   "activeMode",
@@ -2999,6 +3005,8 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "audienceYoutubeOnlySearch",
   "appleMusicAutoPlaylistId",
   "appleMusicAutoPlaylistTitle",
+  "appleMusicAutoSourceType",
+  "appleMusicAutoPlaybackUrl",
   "appleMusicPlayback",
   "backgroundAudioPlayback",
   "playbackControlCommand",
@@ -3289,6 +3297,8 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "activeScreen",
   "appleMusicAutoPlaylistId",
   "appleMusicAutoPlaylistTitle",
+  "appleMusicAutoSourceType",
+  "appleMusicAutoPlaybackUrl",
   "archivedBy",
   "archivedStatus",
   "audienceBackingMode",
@@ -3604,6 +3614,18 @@ const validateHostRoomUpdateType = (key, value) => {
       "invalid-argument",
       "Room field \"liveStageCameraCorner\" has an unsupported corner.",
     );
+  }
+  if (key === "appleMusicAutoSourceType" && value !== null && !APPLE_MUSIC_AUTO_SOURCE_TYPE_VALUES.has(value)) {
+    throw new HttpsError(
+      "invalid-argument",
+      'Room field "appleMusicAutoSourceType" has an unsupported source type.',
+    );
+  }
+  if (key === "appleMusicAutoSourceType" && typeof value === "string" && value.length > 60) {
+    throw new HttpsError("invalid-argument", 'Room field "appleMusicAutoSourceType" is too long.');
+  }
+  if (key === "appleMusicAutoPlaybackUrl" && typeof value === "string" && value.length > 2048) {
+    throw new HttpsError("invalid-argument", 'Room field "appleMusicAutoPlaybackUrl" is too long.');
   }
 
   if (key === "backgroundAudioPlayback" && value !== null) {

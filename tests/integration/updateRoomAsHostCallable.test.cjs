@@ -108,6 +108,35 @@ async function run() {
       assert.equal(snap.get("liveStageCameraMirror"), false);
     }],
 
+    ["host can persist Apple Music automatic background source metadata", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        appleMusicAutoPlaylistId: "ra.978194965",
+        appleMusicAutoPlaylistTitle: "Host Station",
+        appleMusicAutoSourceType: "catalog_station",
+        appleMusicAutoPlaybackUrl: "https://music.apple.com/us/station/example/ra.978194965",
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, [
+        "appleMusicAutoPlaylistId",
+        "appleMusicAutoPlaylistTitle",
+        "appleMusicAutoSourceType",
+        "appleMusicAutoPlaybackUrl",
+      ]);
+      const snap = await roomRef.get();
+      assert.equal(snap.get("appleMusicAutoSourceType"), "catalog_station");
+      assert.equal(snap.get("appleMusicAutoPlaybackUrl"), "https://music.apple.com/us/station/example/ra.978194965");
+    }],
+
+    ["invalid Apple Music automatic background source types are rejected", async () => {
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          appleMusicAutoSourceType: "untrusted_source",
+        })),
+        "invalid-argument"
+      );
+    }],
+
     ["invalid live stage camera values are rejected", async () => {
       await expectHttpsError(
         () => updateRoomAsHost.run(requestFor(HOST_UID, {
