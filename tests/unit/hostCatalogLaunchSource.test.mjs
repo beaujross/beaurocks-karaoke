@@ -105,8 +105,8 @@ test('host catalogue helper mode requires singer assignment before queueing', ()
   );
   assert.match(
     hostAppSource,
-    /Current Singer Target/,
-    'Helper catalog should keep the current singer target visible while browsing',
+    /data-feature-id="host-catalog-performer-target"/,
+    'The catalog should keep a performer target visible while browsing',
   );
   assert.match(
     hostAppSource,
@@ -120,13 +120,13 @@ test('host catalogue helper mode requires singer assignment before queueing', ()
   );
   assert.match(
     hostAppSource,
-    /Pick once, then tap album art or add\./,
-    'Helper catalog should explain the simplified browse interaction model',
+    /Choose a performer once; every catalog pick stays assigned until you change it\./,
+    'The catalog should explain its persistent performer assignment model',
   );
   assert.match(
     hostAppSource,
-    /const catalogueAddButtonLabel = catalogueOnly\s*\n\s*\? \(catalogueHelperSingerAssigned \? `Add For \$\{catalogueHelperSingerLabel\}` : 'Choose Singer'\)/,
-    'Helper catalog add calls should reflect whether a singer is already selected',
+    /const catalogueAddButtonLabel = catalogueHelperSingerAssigned\s*\n\s*\? `Add For \$\{catalogueHelperSingerLabel\}`\s*\n\s*: 'Choose Singer';/,
+    'Every catalog add call should reflect whether a singer is already selected',
   );
   assert.match(
     hostAppSource,
@@ -135,8 +135,8 @@ test('host catalogue helper mode requires singer assignment before queueing', ()
   );
   assert.match(
     hostAppSource,
-    /if \(catalogueOnly && !singerSelection\.name\) \{\s*toast\('Choose who this song is for first\.'\);/,
-    'Helper catalog should require a visible singer target before completing an add',
+    /if \(!singerSelection\.name\) \{\s*toast\('Choose who this song is for first\.'\);/,
+    'Every host catalog flow should require a visible singer target before completing an add',
   );
   assert.match(
     hostAppSource,
@@ -246,7 +246,7 @@ test('host catalog owns its scroll region and keeps its header compact', () => {
   );
   assert.match(
     hostAppSource,
-    /data-feature-id="host-catalog-scroll-region"[^>]*h-full min-h-0 flex-1[^>]*activeBrowseList \? 'overflow-hidden' : 'overflow-y-auto'/,
+    /data-feature-id="host-catalog-scroll-region"[^>]*w-full min-h-0 flex-1[^>]*activeBrowseList \? 'overflow-hidden' : 'overflow-y-auto overscroll-y-contain touch-scroll-y'/,
     'The catalog workspace should hand scroll ownership to an open collection',
   );
   assert.match(
@@ -268,6 +268,37 @@ test('host catalog owns its scroll region and keeps its header compact', () => {
     hostAppSource,
     /Drag to queue from Stage/,
     'Catalog should not spend vertical space repeating workspace instructions',
+  );
+});
+
+test('add performance exposes singer-aware YouTube playlist import', () => {
+  const hostQueueSource = readFileSync('src/apps/Host/components/HostQueueTab.jsx', 'utf8');
+  const addPerformanceSource = readFileSync('src/apps/Host/components/AddToQueueFormBody.jsx', 'utf8');
+
+  assert.match(
+    addPerformanceSource,
+    /data-feature-id="host-add-youtube-playlist"/,
+    'Add Performance should expose playlist import beside its primary search controls',
+  );
+  assert.match(
+    addPerformanceSource,
+    /onQueueYouTubePlaylist\(singerName \? \{ name: singerName, uid: String\(manual\?\.singerUid \|\| ''\)\.trim\(\) \} : null\)/,
+    'Playlist import should carry the selected performer identity into the queue writer',
+  );
+  assert.match(
+    hostQueueSource,
+    /onQueueYouTubePlaylist=\{onQueueYouTubePlaylist\}/,
+    'The queue workspace should pass the playlist action into Add Performance',
+  );
+  assert.match(
+    hostAppSource,
+    /queueYouTubePlaylistItems\(items, singerOverride\)/,
+    'Playlist queueing should reuse the singer-aware batch queue writer',
+  );
+  assert.match(
+    hostAppSource,
+    /singerUid: singerIdentity\.singerUid \|\| null,\s*singerName,/,
+    'Playlist items should preserve a joined performer UID as well as their display name',
   );
 });
 

@@ -8,7 +8,7 @@ describe('Host workspace UX pass', () => {
     const host = readSource('src/apps/Host/HostApp.jsx');
     const queue = readSource('src/apps/Host/components/HostQueueTab.jsx');
 
-    expect(host).toMatch(/data-feature-id="host-catalog-scroll-region"[\s\S]*activeBrowseList \? 'overflow-hidden' : 'overflow-y-auto'/);
+    expect(host).toMatch(/data-feature-id="host-catalog-scroll-region"[\s\S]*activeBrowseList \? 'overflow-hidden' : 'overflow-y-auto overscroll-y-contain touch-scroll-y'/);
     expect(host).toMatch(/data-feature-id="host-catalog-category-scroll-content"[^>]*min-h-0 flex-1 overflow-y-auto/);
     expect(queue).toMatch(/data-feature-id="panel-catalog"[^>]*flex h-full flex-1 min-h-0 flex-col overflow-hidden/);
   });

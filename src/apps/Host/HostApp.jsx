@@ -15580,6 +15580,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     trackSource: 'youtube',
                     songTitle: item.title,
                     artist: item.channel || 'YouTube',
+                    singerUid: singerIdentity.singerUid || null,
                     singerName,
                     mediaUrl: item.url,
                     albumArtUrl: item.thumbnail || '',
@@ -15643,7 +15644,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
-    const loadAndQueueYouTubePlaylist = async () => {
+    const loadAndQueueYouTubePlaylist = async (singerOverride = null, { startWhenEmpty = true } = {}) => {
         const playlistId = parsePlaylistId(ytPlaylistUrl);
         if (!playlistId) {
             toast('Paste a valid YouTube playlist URL or ID');
@@ -15659,17 +15660,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setYtPlaylistStatus('Loading playlist and queueing...');
         try {
             const items = await indexYouTubePlaylist(playlistId);
-            const { queuedCount, firstQueuedSong } = await queueYouTubePlaylistItems(items);
+            const { queuedCount, firstQueuedSong } = await queueYouTubePlaylistItems(items, singerOverride);
             if (!roomRef.current?.autoDj) {
                 await updateRoom({ autoDj: true });
                 setAutoDj(true);
                 roomRef.current = { ...(roomRef.current || {}), autoDj: true };
             }
             let autoStarted = false;
-            if (!hadPerformer && !hadQueued && firstQueuedSong) {
+            if (startWhenEmpty && !hadPerformer && !hadQueued && firstQueuedSong) {
                 await activateQueueSong(firstQueuedSong, roomRef.current);
                 autoStarted = true;
-            } else if (!hadPerformer) {
+            } else if (startWhenEmpty && !hadPerformer) {
                 setTimeout(() => {
                     startNextFromQueue().catch((error) => {
                         hostLogger.warn('Playlist queue kickoff failed', error);
@@ -19291,13 +19292,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const catalogueHelperSingerSelection = resolveCatalogueSingerSelection();
     const catalogueHelperSingerName = catalogueHelperSingerSelection.name;
     const catalogueHelperSingerAssigned = !!catalogueHelperSingerName;
-    const catalogueHelperSingerBadge = catalogueUserId ? 'Joined guest' : 'Typed name';
     const catalogueHelperSingerLabel = catalogueHelperSingerAssigned
         ? (catalogueHelperSingerName.length > 20 ? `${catalogueHelperSingerName.slice(0, 19)}Ã¢â‚¬Â¦` : catalogueHelperSingerName)
         : '';
-    const catalogueAddButtonLabel = catalogueOnly
-        ? (catalogueHelperSingerAssigned ? `Add For ${catalogueHelperSingerLabel}` : 'Choose Singer')
-        : `+ ${HOST_LIVE_OPS_LANGUAGE.addPerformance}`;
+    const catalogueAddButtonLabel = catalogueHelperSingerAssigned
+        ? `Add For ${catalogueHelperSingerLabel}`
+        : 'Choose Singer';
     const cataloguePendingSongTitle = cataloguePendingSong
         ? (cataloguePendingSong.__yt ? cataloguePendingSong.item?.trackName : cataloguePendingSong.title)
         : '';
@@ -19326,7 +19326,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const confirmCatalogueQueue = async () => {
         if (!cataloguePendingSong || cataloguePromptBusy) return;
         const singerSelection = resolveCatalogueSingerSelection();
-        if (catalogueOnly && !singerSelection.name) {
+        if (!singerSelection.name) {
             toast('Choose who this song is for first.');
             return;
         }
@@ -19350,10 +19350,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const queueBrowseSongFromCatalog = async (song) => {
-        if (!catalogueOnly) {
-            await queueBrowseSong(song);
-            return;
-        }
         const singerSelection = resolveCatalogueSingerSelection();
         if (singerSelection.name) {
             try {
@@ -19369,10 +19365,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const queueYouTubeFromCatalog = async (item) => {
-        if (!catalogueOnly) {
-            await queueYouTubeIndexItem(item);
-            return;
-        }
         const singerSelection = resolveCatalogueSingerSelection();
         if (singerSelection.name) {
             try {
@@ -19388,22 +19380,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
     const _handleCatalogueResultClick = async (r) => {
         if (r.source === 'local') {
-            if (catalogueOnly) {
-                const singerSelection = resolveCatalogueSingerSelection();
-                if (singerSelection.name) await addLocalItemToQueue(r, singerSelection);
-                else {
-                    setCataloguePendingSong({
-                        title: r.trackName,
-                        artist: r.artistName,
-                        albumArtUrl: r.artworkUrl100 || '',
-                        __localLibrary: true,
-                        localItem: r
-                    });
-                    setShowCataloguePrompt(true);
-                    return;
-                }
-            } else {
-                await addLocalItemToQueue(r);
+            const singerSelection = resolveCatalogueSingerSelection();
+            if (singerSelection.name) await addLocalItemToQueue(r, singerSelection);
+            else {
+                setCataloguePendingSong({
+                    title: r.trackName,
+                    artist: r.artistName,
+                    albumArtUrl: r.artworkUrl100 || '',
+                    __localLibrary: true,
+                    localItem: r
+                });
+                setShowCataloguePrompt(true);
+                return;
             }
         } else if (r.source === 'youtube') {
             await queueYouTubeFromCatalog(r);
@@ -19419,107 +19407,99 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const browsePanel = (
-                    <div data-feature-id="host-catalog-scroll-region" className={`flex h-full min-h-0 flex-1 flex-col gap-3 overscroll-y-contain pb-4 pr-1.5 custom-scrollbar touch-scroll-y ${activeBrowseList ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-                        <div data-feature-id="host-catalog-source-filter" className="sticky top-0 z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#0b0b10]/95 px-3 py-2 shadow-[0_12px_28px_rgba(0,0,0,0.24)] backdrop-blur-xl">
-                            <div className="flex min-w-0 items-center gap-2.5">
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-300/18 bg-violet-500/10 text-violet-100">
-                                    <i className="fa-solid fa-book-open"></i>
+                    <div data-feature-id="host-catalog-scroll-region" className={`flex w-full min-h-0 flex-1 flex-col gap-3 pb-4 pr-1.5 custom-scrollbar ${activeBrowseList ? 'overflow-hidden' : 'overflow-y-auto overscroll-y-contain touch-scroll-y'}`}>
+                        <div data-feature-id="host-catalog-source-filter" className="sticky top-0 z-20 shrink-0 rounded-2xl border border-violet-300/16 bg-[#0b0b10]/95 px-3 py-2 shadow-[0_12px_28px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+                            <div className="grid gap-2 lg:grid-cols-[minmax(12rem,0.72fr)_minmax(12rem,0.72fr)_auto_auto] lg:items-end">
+                                <label className="min-w-0">
+                                    <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.18em] text-violet-200">Adding performances for</span>
+                                    <select
+                                        data-feature-id="host-catalog-performer-target"
+                                        value={catalogueUserId}
+                                        onChange={(event) => {
+                                            const nextUid = event.target.value;
+                                            setCatalogueUserId(nextUid);
+                                            if (nextUid) {
+                                                const matched = users.find((user) => resolveRoomUserUid(user) === nextUid);
+                                                setCatalogueName(matched?.name || '');
+                                            } else {
+                                                setCatalogueName('');
+                                            }
+                                        }}
+                                        className={`${STYLES.input} min-h-[38px] border-violet-300/20 bg-black/35 py-1.5 text-sm text-white`}
+                                    >
+                                        <option value="">Choose someone in the room</option>
+                                        {uid && !users.some((user) => resolveRoomUserUid(user) === uid) ? (
+                                            <option value={uid}>{room?.hostName || hostName || 'Host'} (Me)</option>
+                                        ) : null}
+                                        {users.map((user) => {
+                                            const uidValue = resolveRoomUserUid(user) || user.id || '';
+                                            if (!uidValue) return null;
+                                            return <option key={uidValue} value={uidValue}>{user.name || uidValue}</option>;
+                                        })}
+                                    </select>
+                                </label>
+                                <label className="min-w-0">
+                                    <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.18em] text-zinc-500">Or type a name</span>
+                                    <input
+                                        value={catalogueName}
+                                        onChange={(event) => {
+                                            setCatalogueName(event.target.value);
+                                            setCatalogueUserId('');
+                                        }}
+                                        className={`${STYLES.input} min-h-[38px] border-violet-300/20 bg-black/35 py-1.5 text-sm text-white`}
+                                        placeholder="Jordan at table 4"
+                                    />
+                                </label>
+                                <div className="flex gap-1.5">
+                                    <button
+                                        type="button"
+                                        data-feature-id="host-catalog-assign-self"
+                                        onClick={() => {
+                                            setCatalogueUserId(uid || '');
+                                            setCatalogueName(room?.hostName || hostName || 'Host');
+                                        }}
+                                        className="inline-flex min-h-[38px] items-center justify-center gap-1.5 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-300/45"
+                                    >
+                                        <i className="fa-solid fa-user-microphone"></i>
+                                        Me
+                                    </button>
+                                    {catalogueHelperSingerAssigned ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setCatalogueUserId('');
+                                                setCatalogueName('');
+                                            }}
+                                            className="inline-flex min-h-[38px] items-center justify-center rounded-xl border border-white/10 bg-white/5 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-300"
+                                            title="Clear performer"
+                                        >
+                                            Clear
+                                        </button>
+                                    ) : null}
                                 </div>
-                                <div className="min-w-0">
-                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-200">Karaoke Catalog</div>
-                                    <div className="truncate text-xs text-zinc-400">Verified TV-ready backings first</div>
+                                <div className="flex shrink-0 rounded-xl border border-white/10 bg-black/25 p-1" aria-label="Catalog backing availability">
+                                    <button
+                                        type="button"
+                                        onClick={() => setBrowseBackingFilter('ready')}
+                                        className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black transition-colors ${browseReadyOnly ? 'bg-emerald-500/18 text-emerald-100' : 'text-zinc-500 hover:text-white'}`}
+                                    >
+                                        <i className="fa-solid fa-tv mr-1.5"></i>TV Ready
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBrowseBackingFilter('all')}
+                                        className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black transition-colors ${!browseReadyOnly ? 'bg-amber-500/16 text-amber-100' : 'text-zinc-500 hover:text-white'}`}
+                                    >
+                                        All Ideas
+                                    </button>
                                 </div>
                             </div>
-                            <div className="flex shrink-0 rounded-xl border border-white/10 bg-black/25 p-1" aria-label="Catalog backing availability">
-                                <button
-                                    type="button"
-                                    onClick={() => setBrowseBackingFilter('ready')}
-                                    className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black transition-colors ${browseReadyOnly ? 'bg-emerald-500/18 text-emerald-100' : 'text-zinc-500 hover:text-white'}`}
-                                >
-                                    <i className="fa-solid fa-tv mr-1.5"></i>TV Ready
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setBrowseBackingFilter('all')}
-                                    className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black transition-colors ${!browseReadyOnly ? 'bg-amber-500/16 text-amber-100' : 'text-zinc-500 hover:text-white'}`}
-                                >
-                                    All Ideas
-                                </button>
+                            <div className={`mt-1.5 text-[11px] ${catalogueHelperSingerAssigned ? 'text-emerald-200/80' : 'text-amber-100/75'}`}>
+                                {catalogueHelperSingerAssigned
+                                    ? `Every catalog pick will be assigned to ${catalogueHelperSingerName}.`
+                                    : 'Choose a performer once; every catalog pick stays assigned until you change it.'}
                             </div>
                         </div>
-                        {catalogueOnly && (
-                            <div className="rounded-[28px] border border-yellow-300/20 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.24),transparent_34%),linear-gradient(145deg,rgba(24,24,27,0.96),rgba(10,10,16,0.92))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                        <div className="text-[11px] font-black uppercase tracking-[0.24em] text-yellow-200">Current Singer Target</div>
-                                        <div className="mt-1 text-lg font-black text-white">
-                                            {catalogueHelperSingerAssigned ? catalogueHelperSingerName : 'Choose who this browse session is adding for'}
-                                        </div>
-                                        <div className="mt-1 text-sm text-yellow-50/78">
-                                            Pick once, then tap album art or add. You can change the target any time.
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2.5">
-                                        <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${catalogueHelperSingerAssigned ? 'border-emerald-300/30 bg-emerald-500/12 text-emerald-100' : 'border-yellow-300/28 bg-yellow-500/12 text-yellow-100'}`}>
-                                            {catalogueHelperSingerAssigned ? catalogueHelperSingerBadge : 'Required for helper adds'}
-                                        </div>
-                                        {catalogueHelperSingerAssigned && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setCatalogueUserId('');
-                                                    setCatalogueName('');
-                                                }}
-                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-xs`}
-                                            >
-                                                <i className="fa-solid fa-rotate-left"></i>
-                                                Clear Singer
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.2fr),minmax(0,0.8fr)]">
-                                    <div>
-                                        <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.22em] text-yellow-100/72">Joined singer</label>
-                                        <select
-                                            value={catalogueUserId}
-                                            onChange={(event) => {
-                                                const nextUid = event.target.value;
-                                                setCatalogueUserId(nextUid);
-                                                if (nextUid) {
-                                                    const matched = users.find((u) => resolveRoomUserUid(u) === nextUid);
-                                                    setCatalogueName(matched?.name || '');
-                                                }
-                                            }}
-                                            className={`${STYLES.input} border-yellow-300/20 bg-black/35 text-white`}
-                                        >
-                                            <option value="">Pick someone already checked in</option>
-                                            {users.map((user) => {
-                                                const uidValue = resolveRoomUserUid(user) || user.id || '';
-                                                if (!uidValue) return null;
-                                                return (
-                                                    <option key={uidValue} value={uidValue}>
-                                                        {user.name || uidValue}
-                                                    </option>
-                                                );
-                                            })}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.22em] text-yellow-100/72">Or type singer name</label>
-                                        <input
-                                            value={catalogueName}
-                                            onChange={(event) => {
-                                                setCatalogueName(event.target.value);
-                                                setCatalogueUserId('');
-                                            }}
-                                            className={`${STYLES.input} border-yellow-300/20 bg-black/35 text-white`}
-                                            placeholder="Jordan at table 4"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                         {catalogueOnly && (
                             <div className="rounded-[28px] border border-yellow-300/18 bg-[linear-gradient(155deg,rgba(18,18,24,0.96),rgba(8,10,16,0.96))] p-4 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -19639,15 +19619,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 ))}
                             </div>
                         </section>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                             {visibleBrowseCategories.map((c) => (
-                                <div
+                                <button
+                                    type="button"
                                     key={c.title}
                                     onClick={() => { setActiveBrowseList(c); }}
-                                    className={`relative overflow-hidden rounded-2xl border transition-colors text-left cursor-pointer h-40 ${catalogueOnly ? 'border-yellow-300/16 hover:border-yellow-300/34' : 'border-cyan-500/10 hover:border-cyan-500/30'}`}
+                                    className={`relative min-h-[10rem] overflow-hidden rounded-2xl border text-left transition-colors ${catalogueOnly ? 'border-yellow-300/16 hover:border-yellow-300/34' : 'border-cyan-500/10 hover:border-cyan-500/30'}`}
                                 >
                                     {c.samples?.[0]?.art && (
-                                        <img src={c.samples[0].art} alt={c.title} className="absolute inset-0 w-full h-full object-cover" />
+                                        <img src={c.samples[0].art} alt={c.title} className="absolute inset-0 h-full w-full bg-black/45 object-contain" />
                                     )}
                                     <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/70 to-black/90"></div>
                                     <div className="absolute right-3 top-3 z-10 rounded-full border border-emerald-300/25 bg-black/65 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-100 backdrop-blur">
@@ -19660,7 +19641,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             {c.samples.slice(0, 3).map((sample) => (
                                                 <div key={`${c.title}_${sample.title}_${sample.artist}`} className="h-8 w-8 overflow-hidden rounded-lg border border-white/10 bg-black/30 shadow-lg">
                                                     {sample.art ? (
-                                                        <img src={sample.art} alt={`${sample.title} art`} className="h-full w-full object-cover" loading="lazy" />
+                                                        <img src={sample.art} alt={`${sample.title} art`} className="h-full w-full bg-black/35 object-contain" loading="lazy" />
                                                     ) : (
                                                         <div className="flex h-full w-full items-center justify-center text-[10px] text-zinc-500">
                                                             <i className="fa-solid fa-compact-disc"></i>
@@ -19670,7 +19651,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             ))}
                                         </div>
                                     </div>
-                                </div>
+                                </button>
                             ))}
                         </div>
                         <div>
@@ -19678,15 +19659,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="text-xl font-bold text-white">Topic Hits</div>
                                 <div className="text-sm text-zinc-500">Fast browse lists</div>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                                 {visibleTopicHits.map((hit) => (
-                                    <div
+                                    <button
+                                        type="button"
                                         key={hit.title}
                                         onClick={() => { setActiveBrowseList(hit); }}
-                                        className={`relative overflow-hidden rounded-xl border transition-colors cursor-pointer h-32 ${catalogueOnly ? 'border-yellow-300/12 hover:border-yellow-300/32' : 'border-zinc-800 hover:border-[#00C4D9]/40'}`}
+                                        className={`relative min-h-[8.5rem] overflow-hidden rounded-xl border text-left transition-colors ${catalogueOnly ? 'border-yellow-300/12 hover:border-yellow-300/32' : 'border-zinc-800 hover:border-[#00C4D9]/40'}`}
                                     >
                                         {hit.samples?.[0]?.art && (
-                                            <img src={hit.samples[0].art} alt={hit.title} className="absolute inset-0 w-full h-full object-cover" />
+                                            <img src={hit.samples[0].art} alt={hit.title} className="absolute inset-0 h-full w-full bg-black/45 object-contain" />
                                         )}
                                         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/60 to-black/90"></div>
                                         <div className="absolute right-2 top-2 z-10 rounded-full border border-emerald-300/20 bg-black/65 px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] text-emerald-100">
@@ -19698,13 +19680,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 {hit.samples.slice(0, 3).map((sample) => (
                                                     <div key={`${hit.title}_${sample.title}_${sample.artist}`} className="h-7 w-7 overflow-hidden rounded-md border border-white/10 bg-black/30">
                                                         {sample.art ? (
-                                                            <img src={sample.art} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                                            <img src={sample.art} alt="" className="h-full w-full bg-black/35 object-contain" loading="lazy" />
                                                         ) : null}
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
-                                    </div>
+                                    </button>
                                 ))}
                             </div>
                         </div>
@@ -19730,7 +19712,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             onClick={() => {
                                                 if (item.source === 'youtube') {
                                                     void queueYouTubeFromCatalog(item);
-                                                } else if (catalogueOnly && !catalogueHelperSingerAssigned) {
+                                                } else if (!catalogueHelperSingerAssigned) {
                                                     setCataloguePendingSong({
                                                         title: item.trackName,
                                                         artist: item.artistName,
@@ -19739,10 +19721,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         localItem: item
                                                     });
                                                     setShowCataloguePrompt(true);
-                                                } else if (catalogueOnly) {
-                                                    void addLocalItemToQueue(item, catalogueHelperSingerSelection);
                                                 } else {
-                                                    void addLocalItemToQueue(item);
+                                                    void addLocalItemToQueue(item, catalogueHelperSingerSelection);
                                                 }
                                             }}
                                             className={`rounded-xl px-3 py-3 text-left cursor-pointer ${catalogueOnly ? 'border border-yellow-300/14 bg-[linear-gradient(155deg,rgba(24,24,27,0.92),rgba(10,10,12,0.96))] hover:border-yellow-300/34' : 'bg-zinc-900/70 border border-zinc-800 hover:border-[#00C4D9]/40'}`}
@@ -19913,7 +19893,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 )}
                                             </div>
                                             <div className="min-w-0">
-                                                <div className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-200">Assign helper pick</div>
+                                                <div className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-200">Assign performance</div>
                                                 <div className="mt-2 text-2xl font-black text-white">
                                                     {cataloguePendingSongTitle}
                                                 </div>
@@ -19938,12 +19918,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     if (nextUid) {
                                                         const matched = users.find((u) => resolveRoomUserUid(u) === nextUid);
                                                         setCatalogueName(matched?.name || '');
+                                                    } else {
+                                                        setCatalogueName('');
                                                     }
                                                 }}
                                                 className={`${STYLES.input} bg-zinc-950 border-cyan-300/25`}
                                             disabled={cataloguePromptBusy}
                                         >
                                             <option value="">Type a singer name or pick someone already in the room</option>
+                                            {uid && !users.some((user) => resolveRoomUserUid(user) === uid) ? (
+                                                <option value={uid}>{room?.hostName || hostName || 'Host'} (Me)</option>
+                                            ) : null}
                                             {users.map((user) => {
                                                     const uidValue = resolveRoomUserUid(user) || user.id || '';
                                                     if (!uidValue) return null;
@@ -19967,9 +19952,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 placeholder={room?.hostName || hostName || 'Host'}
                                                 disabled={cataloguePromptBusy}
                                             />
-                                            <div className="mt-2 text-xs text-zinc-500">Required in helper mode so the queue reflects the correct singer.</div>
+                                            <div className="mt-2 text-xs text-zinc-500">The lineup and public TV will use this performer name.</div>
                                         </div>
                                         <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setCatalogueUserId(uid || '');
+                                                    setCatalogueName(room?.hostName || hostName || 'Host');
+                                                }}
+                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} mr-auto px-4`}
+                                                disabled={cataloguePromptBusy}
+                                            >
+                                                <i className="fa-solid fa-user-microphone"></i>
+                                                Assign To Me
+                                            </button>
                                             <button
                                                 type="button"
                                                 onClick={closeCataloguePrompt}
@@ -22797,6 +22794,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         tvBase,
         tvLaunchUrl: activeRoomLaunchUrls.tvUrl,
         catalogPanel: browsePanel,
+        youtubePlaylistUrl: ytPlaylistUrl,
+        setYoutubePlaylistUrl: setYtPlaylistUrl,
+        youtubePlaylistLoading: ytPlaylistLoading,
+        youtubePlaylistStatus: ytPlaylistStatus,
+        onQueueYouTubePlaylist: (singerOverride) => loadAndQueueYouTubePlaylist(singerOverride, { startWhenEmpty: false }),
         updateRoom,
         logActivity,
         localLibrary,
@@ -28067,7 +28069,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     {ytPlaylistLoading ? EMOJI.refresh : 'INDEX'}
                                 </button>
                                 <button
-                                    onClick={loadAndQueueYouTubePlaylist}
+                                    onClick={() => { void loadAndQueueYouTubePlaylist(); }}
                                     disabled={ytPlaylistLoading || !roomCode}
                                     className={`${STYLES.btnStd} ${ytPlaylistLoading || !roomCode ? STYLES.btnNeutral : STYLES.btnPrimary} px-4 flex-shrink-0 ${ytPlaylistLoading || !roomCode ? '' : 'bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent shadow-[0_0_24px_rgba(236,72,153,0.24)]'}`}
                                     title={!roomCode ? 'Create or open a room first' : 'Index playlist and queue every track'}

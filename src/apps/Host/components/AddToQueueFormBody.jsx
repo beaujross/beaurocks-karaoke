@@ -459,6 +459,11 @@ const AddToQueueFormBody = ({
     onQueueScenePreset,
     onAddQuickRunOfShowMoment,
     onQueuePerformanceResult,
+    youtubePlaylistUrl = '',
+    setYoutubePlaylistUrl = () => {},
+    youtubePlaylistLoading = false,
+    youtubePlaylistStatus = '',
+    onQueueYouTubePlaylist = async () => {},
     dockResults = false,
 }) => {
     const [manualEntryOpen, setManualEntryOpen] = React.useState(!dockResults);
@@ -470,6 +475,7 @@ const AddToQueueFormBody = ({
     const [gameSelectedPerformerByPack, setGameSelectedPerformerByPack] = React.useState({});
     const [searchOptionsOpen, setSearchOptionsOpen] = React.useState(false);
     const [momentTypeMenuOpen, setMomentTypeMenuOpen] = React.useState(false);
+    const [playlistImportOpen, setPlaylistImportOpen] = React.useState(false);
 
     React.useEffect(() => {
         if (!dockResults) {
@@ -482,11 +488,13 @@ const AddToQueueFormBody = ({
     const pushPerformerOption = (entry = {}, type = 'guest') => {
         const rawName = String(entry?.name || '').trim();
         if (!rawName) return;
+        const resolvedUid = String(resolveRoomUserUid(entry) || entry?.uid || '').trim();
         const normalizedName = normalizePerformerSearch(rawName);
         if (!normalizedName || seenPerformerNames.has(normalizedName)) return;
         seenPerformerNames.add(normalizedName);
         performerOptions.push({
-            key: String(entry?.uid || normalizedName),
+            key: resolvedUid || normalizedName,
+            uid: resolvedUid,
             name: rawName,
             avatar: String(entry?.avatar || '').trim(),
             type,
@@ -529,9 +537,13 @@ const AddToQueueFormBody = ({
     );
     const showCustomPerformerOption = normalizedPerformerQuery && !hasExactPerformerMatch;
     const showPerformerSuggestions = performerPickerOpen && (showCustomPerformerOption || filteredPerformerOptions.length > 0);
-    const applyPerformerSelection = (name = '', mode = 'select') => {
+    const applyPerformerSelection = (name = '', mode = 'select', performerUid = '') => {
         setManualSingerMode(mode);
-        setManual((prev) => ({ ...prev, singer: String(name || '').trim() }));
+        setManual((prev) => ({
+            ...prev,
+            singer: String(name || '').trim(),
+            singerUid: String(performerUid || '').trim(),
+        }));
         setPerformerPickerOpen(false);
     };
     const performerSelect = (
@@ -544,7 +556,7 @@ const AddToQueueFormBody = ({
                     onChange={(e) => {
                         const value = e.target.value;
                         setManualSingerMode('custom');
-                        setManual((prev) => ({ ...prev, singer: value }));
+                        setManual((prev) => ({ ...prev, singer: value, singerUid: '' }));
                         setPerformerPickerOpen(true);
                     }}
                     onFocus={() => setPerformerPickerOpen(true)}
@@ -596,7 +608,7 @@ const AddToQueueFormBody = ({
                                 key={option.key}
                                 type="button"
                                 onMouseDown={(event) => event.preventDefault()}
-                                onClick={() => applyPerformerSelection(option.name, 'select')}
+                                onClick={() => applyPerformerSelection(option.name, 'select', option.uid)}
                                 className="mb-2 flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-left transition last:mb-0 hover:border-cyan-300/25 hover:bg-white/5"
                             >
                                 <span className="min-w-0">
@@ -840,6 +852,17 @@ const AddToQueueFormBody = ({
                                 <div className="flex min-w-max items-center justify-end gap-1.5">
                                     <button
                                         type="button"
+                                        data-feature-id="host-add-youtube-playlist"
+                                        aria-expanded={playlistImportOpen}
+                                        onClick={() => setPlaylistImportOpen((value) => !value)}
+                                        className="inline-flex min-h-[38px] items-center justify-center gap-1.5 rounded-xl border border-red-300/20 bg-red-500/8 px-2.5 text-[10px] font-black uppercase tracking-[0.1em] text-red-100 transition hover:border-red-300/40"
+                                        title="Add every playable video from a YouTube playlist to the lineup"
+                                    >
+                                        <i className="fa-brands fa-youtube"></i>
+                                        Playlist
+                                    </button>
+                                    <button
+                                        type="button"
                                         data-feature-id="host-performance-search-tools"
                                         aria-expanded={searchOptionsOpen}
                                         onClick={() => setSearchOptionsOpen((value) => !value)}
@@ -860,6 +883,40 @@ const AddToQueueFormBody = ({
                                         <i className="fa-solid fa-shapes"></i>
                                         Other
                                     </button>
+                                </div>
+                            ) : null}
+                            {dockResults && playlistImportOpen ? (
+                                <div data-feature-id="host-youtube-playlist-import" className="md:col-span-3 rounded-xl border border-red-300/20 bg-[linear-gradient(135deg,rgba(127,29,29,0.18),rgba(9,9,11,0.92))] p-3">
+                                    <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                                        <label className="min-w-0">
+                                            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.16em] text-red-100">Queue a YouTube playlist</span>
+                                            <input
+                                                data-feature-id="host-youtube-playlist-url"
+                                                value={youtubePlaylistUrl}
+                                                onChange={(event) => setYoutubePlaylistUrl(event.target.value)}
+                                                className={`${styles.input} text-sm`}
+                                                placeholder="Paste a YouTube playlist URL or ID"
+                                                disabled={youtubePlaylistLoading}
+                                            />
+                                        </label>
+                                        <button
+                                            type="button"
+                                            data-feature-id="host-youtube-playlist-queue"
+                                            onClick={() => {
+                                                const singerName = String(manual?.singer || hostName || '').trim();
+                                                void onQueueYouTubePlaylist(singerName ? { name: singerName, uid: String(manual?.singerUid || '').trim() } : null);
+                                            }}
+                                            disabled={youtubePlaylistLoading || !String(youtubePlaylistUrl || '').trim()}
+                                            className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-red-300/30 bg-red-500/15 px-4 text-[10px] font-black uppercase tracking-[0.12em] text-red-50 transition hover:bg-red-500/25 ${(youtubePlaylistLoading || !String(youtubePlaylistUrl || '').trim()) ? 'cursor-not-allowed opacity-45' : ''}`}
+                                        >
+                                            <i className={`fa-solid ${youtubePlaylistLoading ? 'fa-spinner fa-spin' : 'fa-list-ol'}`}></i>
+                                            {youtubePlaylistLoading ? 'Adding...' : 'Add Playlist to Lineup'}
+                                        </button>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] leading-4 text-zinc-400">
+                                        <span>Playable videos are added in playlist order for <strong className="text-white">{String(manual?.singer || hostName || 'Host').trim()}</strong>. Auto-DJ turns on, but playback waits for you.</span>
+                                        {youtubePlaylistStatus ? <span className="text-red-100/80">{youtubePlaylistStatus}</span> : null}
+                                    </div>
                                 </div>
                             ) : null}
                             <div className={`${dockResults ? (searchOptionsOpen ? 'md:col-span-3' : 'hidden') : 'md:col-span-2'}`}>
