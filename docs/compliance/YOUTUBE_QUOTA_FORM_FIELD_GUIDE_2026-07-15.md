@@ -1,6 +1,6 @@
 # YouTube Data API Audit And Quota Form — Field Guide
 
-Last reviewed: 2026-08-07
+Last reviewed: 2026-08-10
 Official form: https://support.google.com/youtube/contact/yt_api_form?hl=en
 Google Cloud project ID: `beaurocks-karaoke-v2`
 Google Cloud project number: `426849563936`
@@ -95,7 +95,7 @@ Google relationship:
 
 Special access instructions:
 
-> Sign in at the Host URL with the supplied QA account. The account has access to the Host workspace and sample room data. Open Screens + Playback, then Room Library Curator, to review YouTube search, known-track reuse, quota-aware fallback, disclosure links, and content-agnostic alternatives. Audience and public TV surfaces can be opened from the room controls. The YouTube Data API flows use application credentials and do not request access to a reviewer’s YouTube account or channel.
+> Sign in at the Host URL with the supplied QA account. The account has access to the Host workspace and sample room data. Open Host Admin, select Open Media Setup (or Media + Apple Music when connected), and then select Open Curator. Room Library Curator shows YouTube search, explicit Public TV readiness, result provenance, verification freshness, known-track reuse, quota-aware fallback, and disclosure links. Audience and Public TV surfaces can be opened from the room controls. The YouTube Data API flows use application credentials and do not request access to a reviewer’s YouTube account or channel.
 
 Review and personally accept the demo-account waiver shown by Google before submitting.
 

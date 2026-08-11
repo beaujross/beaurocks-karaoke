@@ -1,10 +1,27 @@
 # YouTube Audit Packet Checklist
 
-Last updated: 2026-07-19
+Last updated: 2026-08-10
 
 ## Goal
 
 Prepare a clean, credible packet for a YouTube Data API compliance audit and quota-extension request.
+
+## Current Reviewer Follow-Up
+
+YouTube API Services requested a script or detailed English-language screencast showing the complete karaoke search and embedded-video workflow. The response package is now:
+
+- walkthrough and word-for-word narration: `docs/compliance/YOUTUBE_REVIEWER_SCREENCAST_SCRIPT_2026-08-10.md`
+- reply email: **Reviewer Screencast Follow-Up** in `docs/compliance/YOUTUBE_QUOTA_EMAIL_TEMPLATES_2026-07-15.md`
+- production commit: `c63d1da`
+- production Hosting release/version: `1786409192112000` / `8e3285f7dfc65739`
+
+Before replying:
+
+- [ ] record the English production walkthrough
+- [ ] confirm the final result visibly renders in YouTube's embedded player on Public TV
+- [ ] verify the shared video link in a private browser window
+- [ ] add the actual duration and link to the email draft
+- [ ] reply in the existing reviewer thread within seven business days
 
 ## Submission Narrative
 
@@ -24,7 +41,7 @@ Be prepared to explain the app in simple terms:
 - Privacy Policy: `https://beaurocks.app/karaoke/privacy`
 - Data deletion / data removal instructions: `https://beaurocks.app/karaoke/data-deletion`
 
-Verified HTTP 200 without login on 2026-07-06. Desktop and mobile screenshots are captured in `docs/compliance/evidence/2026-07-06-youtube-audit/`; QA product-surface screenshots are captured in `docs/compliance/evidence/2026-07-06-youtube-product-audit/`.
+Verified HTTP 200 without login again on 2026-08-10. Desktop and mobile screenshots are captured in `docs/compliance/evidence/2026-07-06-youtube-audit/`; QA product-surface screenshots are captured in `docs/compliance/evidence/2026-07-06-youtube-product-audit/`.
 
 ## Captured Evidence
 

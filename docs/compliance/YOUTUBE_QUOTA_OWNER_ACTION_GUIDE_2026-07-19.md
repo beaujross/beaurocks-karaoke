@@ -1,6 +1,6 @@
 # YouTube Quota Increase — Owner Action Guide
 
-Last reviewed: 2026-08-07
+Last reviewed: 2026-08-10
 Project ID: `beaurocks-karaoke-v2`
 Project number: `426849563936`
 Requested Search Queries quota: `5,000 calls/day`, `120 calls/minute`
@@ -8,9 +8,20 @@ General YouTube Data API quota: no increase requested from `10,000 units/day`
 
 ## Readiness
 
-The repository and evidence packet are technically ready. The live preflight passed every technical check on 2026-07-19: all required screenshots are present, all three public legal URLs return HTTP 200, the documented API methods remain in code, and the 30-day room-index retention control remains wired.
+The quota form has been submitted. YouTube API Services requested an English-language script or detailed screencast demonstrating the complete karaoke search and embedded-video workflow, with a seven-business-day response window.
 
-The only remaining blockers are owner attestations and submission:
+Current action:
+
+1. Use `docs/compliance/YOUTUBE_REVIEWER_SCREENCAST_SCRIPT_2026-08-10.md` to record the 4-to-6-minute production walkthrough.
+2. Upload it to a reviewer-accessible link and test that link in a private browser window.
+3. Use the **Reviewer Screencast Follow-Up** response in `docs/compliance/YOUTUBE_QUOTA_EMAIL_TEMPLATES_2026-07-15.md`.
+4. Reply in the existing YouTube thread. Do not submit a duplicate quota form unless requested.
+
+The repository and evidence packet remain technically ready. Production commit `c63d1da` is deployed in Hosting release `1786409192112000` (version `8e3285f7dfc65739`). All three public legal URLs returned HTTP 200 after deployment, the documented API methods remain in code, and the retention controls remain wired.
+
+The owner-attestation steps below are retained as a record of the original form submission process. They are not a reason to delay the requested reviewer reply.
+
+Original owner attestations:
 
 1. Confirm `hello@beaurocks.app` as the reviewer/audit contact.
 2. Enter the actual legal applicant/operator name, entity type, and legal address.
@@ -56,7 +67,7 @@ Sign into the Google account that owns or administers Google Cloud project `beau
 $env:YOUTUBE_AUDIT_CONTACT_CONFIRMED = "1"
 $env:YOUTUBE_AUDIT_LEGAL_IDENTITY_CONFIRMED = "1"
 $env:YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED = "5000"
-node scripts/ops/youtube-submission-preflight.mjs --live --strict
+node scripts/ops/youtube-submission-preflight.mjs --live --strict --initial-submission
 ```
 
 16. Submit the form. Save the confirmation page or PDF, submission date, submitting Google account, and Google case/reference ID.

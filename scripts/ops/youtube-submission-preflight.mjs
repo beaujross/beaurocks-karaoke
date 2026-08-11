@@ -4,9 +4,12 @@ import path from "node:path";
 const ROOT = process.cwd();
 const LIVE = process.argv.includes("--live");
 const STRICT = process.argv.includes("--strict");
+const INITIAL_SUBMISSION = process.argv.includes("--initial-submission");
 const EVIDENCE_HOSTING_RELEASE = "1784078708909000";
 const EVIDENCE_HOSTING_VERSION = "5bc48c15cd873eac";
-const CURRENT_PRODUCTION_APP_COMMIT = "4a9030a";
+const CURRENT_PRODUCTION_APP_COMMIT = "c63d1da";
+const CURRENT_PRODUCTION_HOSTING_RELEASE = "1786409192112000";
+const CURRENT_PRODUCTION_HOSTING_VERSION = "8e3285f7dfc65739";
 
 const checks = [];
 const humanBlockers = [];
@@ -79,11 +82,14 @@ for (const artifact of [...legalEvidence, ...productEvidence, ...liveEvidence]) 
 await verifyArtifact("docs/compliance/evidence/2026-07-06-youtube-audit/manifest.json", 500);
 await verifyArtifact("docs/compliance/evidence/2026-07-06-youtube-product-audit/manifest.json", 500);
 await verifyArtifact("docs/compliance/evidence/2026-07-06-youtube-live-evidence/manifest.md", 500);
+await verifyArtifact("docs/compliance/YOUTUBE_REVIEWER_SCREENCAST_SCRIPT_2026-08-10.md", 2_000);
 
 await verifyText("docs/compliance/YOUTUBE_AUDIT_SUBMISSION_DRAFT.md", [
   EVIDENCE_HOSTING_RELEASE,
   EVIDENCE_HOSTING_VERSION,
   CURRENT_PRODUCTION_APP_COMMIT,
+  CURRENT_PRODUCTION_HOSTING_RELEASE,
+  CURRENT_PRODUCTION_HOSTING_VERSION,
   "5,000 Search Queries/day",
   "search.list",
   "videos.list",
@@ -96,6 +102,18 @@ await verifyText("docs/compliance/YOUTUBE_QUOTA_EXTENSION_PACKET_2026-07-06.md",
   "5,000 Search Queries calls/day",
   "100 Search Queries/day",
   "10,000",
+]);
+await verifyText("docs/compliance/YOUTUBE_REVIEWER_SCREENCAST_SCRIPT_2026-08-10.md", [
+  "search.list",
+  "videos.list",
+  "playlistItems.list",
+  "Verified for Public TV",
+  "Public TV",
+]);
+await verifyText("docs/compliance/YOUTUBE_QUOTA_EMAIL_TEMPLATES_2026-07-15.md", [
+  "Reviewer Screencast Follow-Up",
+  "PASTE REVIEWER-ACCESSIBLE VIDEO LINK",
+  "426849563936",
 ]);
 
 const functionsSource = await readRepoFile("functions/index.js");
@@ -165,23 +183,38 @@ for (const capture of presentationCaptures) {
   }
 }
 
-if (process.env.YOUTUBE_AUDIT_CONTACT_CONFIRMED !== "1") {
-  humanBlockers.push({
-    id: "contact_confirmation",
-    action: "Confirm hello@beaurocks.app as the audit/legal contact, then set YOUTUBE_AUDIT_CONTACT_CONFIRMED=1 for the strict run.",
-  });
-}
-if (process.env.YOUTUBE_AUDIT_LEGAL_IDENTITY_CONFIRMED !== "1") {
-  humanBlockers.push({
-    id: "legal_identity_confirmation",
-    action: "Confirm the final legal operator and product naming, then set YOUTUBE_AUDIT_LEGAL_IDENTITY_CONFIRMED=1 for the strict run.",
-  });
-}
-if (String(process.env.YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED || "") !== "5000") {
-  humanBlockers.push({
-    id: "request_amount_approval",
-    action: "Approve 5,000 Search Queries/day with a 120/minute peak, then set YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED=5000 for the strict run.",
-  });
+if (INITIAL_SUBMISSION) {
+  if (process.env.YOUTUBE_AUDIT_CONTACT_CONFIRMED !== "1") {
+    humanBlockers.push({
+      id: "contact_confirmation",
+      action: "Confirm hello@beaurocks.app as the audit/legal contact, then set YOUTUBE_AUDIT_CONTACT_CONFIRMED=1 for the strict run.",
+    });
+  }
+  if (process.env.YOUTUBE_AUDIT_LEGAL_IDENTITY_CONFIRMED !== "1") {
+    humanBlockers.push({
+      id: "legal_identity_confirmation",
+      action: "Confirm the final legal operator and product naming, then set YOUTUBE_AUDIT_LEGAL_IDENTITY_CONFIRMED=1 for the strict run.",
+    });
+  }
+  if (String(process.env.YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED || "") !== "5000") {
+    humanBlockers.push({
+      id: "request_amount_approval",
+      action: "Approve 5,000 Search Queries/day with a 120/minute peak, then set YOUTUBE_SEARCH_QUOTA_REQUEST_APPROVED=5000 for the strict run.",
+    });
+  }
+} else {
+  if (process.env.YOUTUBE_REVIEWER_VIDEO_LINK_CONFIRMED !== "1") {
+    humanBlockers.push({
+      id: "reviewer_video_link",
+      action: "Record the English walkthrough, upload it, verify access in a private window, then set YOUTUBE_REVIEWER_VIDEO_LINK_CONFIRMED=1.",
+    });
+  }
+  if (process.env.YOUTUBE_REVIEWER_EMAIL_FINALIZED !== "1") {
+    humanBlockers.push({
+      id: "reviewer_email_finalized",
+      action: "Replace the video-link, duration, and legal-name placeholders in the reviewer reply, then set YOUTUBE_REVIEWER_EMAIL_FINALIZED=1.",
+    });
+  }
 }
 
 const technicalFailures = checks.filter((item) => !item.pass && !humanArtifactCheckNames.has(item.name));
@@ -189,9 +222,13 @@ const result = {
   ok: technicalFailures.length === 0 && humanBlockers.length === 0,
   technicalReady: technicalFailures.length === 0,
   submissionReady: technicalFailures.length === 0 && humanBlockers.length === 0,
+  reviewerResponseReady: !INITIAL_SUBMISSION && technicalFailures.length === 0 && humanBlockers.length === 0,
+  workflowStage: INITIAL_SUBMISSION ? "initial_submission" : "reviewer_screencast_follow_up",
   liveChecksEnabled: LIVE,
   productionBaseline: {
     appCommit: CURRENT_PRODUCTION_APP_COMMIT,
+    hostingRelease: CURRENT_PRODUCTION_HOSTING_RELEASE,
+    hostingVersion: CURRENT_PRODUCTION_HOSTING_VERSION,
     evidenceHostingRelease: EVIDENCE_HOSTING_RELEASE,
     evidenceHostingVersion: EVIDENCE_HOSTING_VERSION,
   },

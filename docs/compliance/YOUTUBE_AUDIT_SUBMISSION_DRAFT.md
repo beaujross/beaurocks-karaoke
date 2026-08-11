@@ -1,17 +1,19 @@
 # YouTube Audit Submission Draft
 
-Last reviewed: 2026-08-07
+Last reviewed: 2026-08-10
 
 ## Status
 
-This draft supports the YouTube Data API compliance audit and quota-extension request. The screenshot and deletion evidence is anchored to Hosting release `1784078708909000` (version `5bc48c15cd873eac`). The current production application is deployed from commit `4a9030a` (2026-08-06); the documented YouTube methods, Room Library Curator path, legal URLs, quota controls, and retention behavior remain present. The permanent-delete evidence remains independently verified.
+This draft supports the submitted YouTube Data API compliance audit and quota-extension request. YouTube API Services has requested an English-language screencast showing the complete search and embedded playback workflow within seven business days. Use `docs/compliance/YOUTUBE_REVIEWER_SCREENCAST_SCRIPT_2026-08-10.md` and reply in the existing reviewer email thread.
 
-Do not submit yet if the following are still missing:
-- final business/contact confirmation
-- final confirmation of the proposed `5,000 Search Queries/day` request with a `120/minute` peak
+The screenshot and deletion evidence remains anchored to Hosting release `1784078708909000` (version `5bc48c15cd873eac`). The current production application is deployed from commit `c63d1da` in Hosting release `1786409192112000` (version `8e3285f7dfc65739`); the documented YouTube methods, current Host Admin -> Open Media Setup -> Open Curator path, legal URLs, quota controls, explicit TV-readiness labels, provenance, freshness, and retention behavior are present. The permanent-delete evidence remains independently verified.
 
+Current reviewer follow-up requirement:
 
-Controlled cooldown, permanent-delete evidence, authenticated Quotas API evidence, the production usage-ledger baseline, and all current-form address-bar captures are complete. Business/contact and final request-amount confirmation remain open.
+- record the English production walkthrough
+- verify the video link works without requesting access
+- insert the link and duration into the Reviewer Screencast Follow-Up email
+- reply before the reviewer deadline
 
 ## Product Summary
 
@@ -170,4 +172,4 @@ Current note:
 - final business/contact confirmation
 - final confirmation of the proposed `5,000 Search Queries/day` request with a `120/minute` peak
 - add the confirmed upcoming-event dates, expected concurrent rooms, and expected attendance to the form justification
-- final audit narrative read-through completed against production app commit `4a9030a`; screenshot evidence remains anchored to release `1784078708909000` (version `5bc48c15cd873eac`)
+- record and send the requested English reviewer screencast against production app commit `c63d1da`; screenshot evidence remains anchored to release `1784078708909000` (version `5bc48c15cd873eac`)

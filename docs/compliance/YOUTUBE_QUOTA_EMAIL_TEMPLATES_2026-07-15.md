@@ -1,8 +1,47 @@
 # YouTube Quota Submission Email Templates
 
-Last reviewed: 2026-08-07
+Last reviewed: 2026-08-10
 
 The initial request is submitted through Google’s Audit and Quota Extension Form, not by unsolicited email. Use these drafts only for your internal record or when a Google/YouTube reviewer opens an email thread.
+
+## Reviewer Screencast Follow-Up
+
+Subject: `Re: YouTube Data API quota increase — BeauRocks Karaoke — Project 426849563936`
+
+> Hello YouTube API Services Team,
+>
+> Thank you for the follow-up. I have prepared an English-language screencast demonstrating the complete BeauRocks Karaoke YouTube API Client workflow you requested.
+>
+> Video: [PASTE REVIEWER-ACCESSIBLE VIDEO LINK]
+> Duration: [MM:SS]
+> Project ID: beaurocks-karaoke-v2
+> Project number: 426849563936
+>
+> The walkthrough shows:
+>
+> - a Host initiating a karaoke title-and-artist search;
+> - the result's live or cached search provenance, embeddability verification, and verification freshness;
+> - a verified result being saved to the temporary room library;
+> - the verified backing being added to the live performance queue and explicitly started by the Host;
+> - the final song result rendered on Public TV through YouTube's supported embedded player; and
+> - the Host-directed playlist indexing path.
+>
+> In the walkthrough I also identify the API methods used: `search.list` for Host-initiated discovery, `videos.list` for known-video details and embeddability/playability verification, and `playlistItems.list` for Host-supplied playlist indexing.
+>
+> BeauRocks does not download, restream, or alter YouTube audiovisual content. Videos remain hosted and delivered by YouTube. Repeated discovery is reduced through temporary cache and verified-index reuse, and non-embeddable or unverified results are not presented as playable inside Public TV.
+>
+> Public compliance URLs:
+>
+> Privacy Policy: https://beaurocks.app/karaoke/privacy
+> Terms of Service: https://beaurocks.app/karaoke/terms
+> Data deletion: https://beaurocks.app/karaoke/data-deletion
+>
+> Please let me know if you need a different file format, an additional workflow, or further supporting information to complete the compliance review.
+>
+> Best,
+> [FULL LEGAL NAME]
+> BeauRocks Karaoke
+> hello@beaurocks.app
 
 ## Submission Record
 
@@ -63,7 +102,7 @@ Subject: `Re: BeauRocks Karaoke review access — Project 426849563936`
 > Login URL: https://host.beaurocks.app
 > Demo username: beaujross+qa-host-20260407b@gmail.com
 >
-> After signing in, open Screens + Playback and then Room Library Curator. That surface demonstrates YouTube discovery, known backing reuse, embeddability checks, quota-aware fallback, disclosure links, and content-agnostic alternatives. Audience and public TV surfaces can be opened from the room controls.
+> After signing in, open Host Admin, select Open Media Setup (or Media + Apple Music when connected), and then select Open Curator. Room Library Curator demonstrates YouTube discovery, explicit Public TV readiness, result provenance, verification freshness, known-backing reuse, quota-aware fallback, and disclosure links. Audience and Public TV surfaces can be opened from the room controls.
 >
 > The YouTube Data API flows do not request access to the reviewer’s YouTube account or channel.
 >
