@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: deploy-hosting-main
@@ -25,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: UTC
+      FIREBASE_PROJECT_ID: beaurocks-karaoke-v2
 
     steps:
       - name: Checkout
@@ -45,9 +47,11 @@ jobs:
         run: npm run ci:build
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BEAUROCKS_KARAOKE_V2 }}
+          project_id: ${{ env.FIREBASE_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_FIREBASE_HOSTING_SERVICE_ACCOUNT }}
 
       - name: Deploy Hosting
-        run: npx firebase-tools deploy --only hosting --project beaurocks-karaoke-v2 --non-interactive
+        run: npx firebase-tools deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive
