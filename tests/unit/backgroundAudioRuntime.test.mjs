@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   buildLocalBackgroundPlayback,
   getBackgroundStageTransition,
+  getPersistableBackgroundAudioUrl,
   startBackgroundAudioElement,
 } from '../../src/lib/backgroundAudioRuntime.js';
 
@@ -44,6 +45,20 @@ describe('backgroundAudioRuntime', () => {
       status: 'playing',
       reason: '',
       lastReportedAt: 1234,
+    });
+  });
+
+  test('keeps browser-session blob URLs out of shared room state', () => {
+    expect(getPersistableBackgroundAudioUrl('blob:https://host.beaurocks.app/session-id')).toBe('');
+    expect(getPersistableBackgroundAudioUrl('https://cdn.test/house.mp3')).toBe('https://cdn.test/house.mp3');
+    expect(buildLocalBackgroundPlayback({
+      track: { id: 'upload_2', name: 'Local-only Mix', url: 'blob:https://host.beaurocks.app/session-id' },
+      status: 'paused',
+      nowMs: 2000,
+    })).toMatchObject({
+      id: 'upload_2',
+      url: '',
+      status: 'paused',
     });
   });
 

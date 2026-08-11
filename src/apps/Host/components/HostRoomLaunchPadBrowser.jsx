@@ -1293,50 +1293,53 @@ const HostRoomLaunchPadBrowser = ({
                                     </div>
                                 </div>
                                 <div className="mt-4 overflow-hidden rounded-2xl border border-fuchsia-300/22 bg-[radial-gradient(circle_at_88%_8%,rgba(244,114,182,0.13),transparent_34%),linear-gradient(145deg,rgba(88,28,78,0.18),rgba(8,16,27,0.76))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]" data-launch-points-setup="true">
-                                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.55fr)] lg:items-end">
+                                    <div>
                                         <div className="min-w-0">
                                             <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100/80"><span className="grid h-7 w-7 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-500/10 text-[10px] text-fuchsia-100">5</span><i className="fa-solid fa-coins text-fuchsia-300/82" /> Set how Points build</span>
-                                            <div className="mt-1 max-w-3xl text-sm leading-6 text-fuchsia-50/68">Choose whether guests begin with activity-earned Points only or a room balance, then decide if that balance refills while they stay.</div>
+                                            <div className="mt-1 max-w-3xl text-sm leading-6 text-fuchsia-50/68">Choose how guests enter the room economy, then decide whether time in the Room adds more Points automatically.</div>
                                         </div>
-                                        <div className="host-brand-tabs host-brand-tabs--fill host-brand-tabs--compact w-full" role="tablist" aria-label="Points setup mode">
-                                            <button type="button" role="tab" aria-selected={!eventCreditsEnabled} onClick={() => applyLaunchEconomy('standard')} className={`host-brand-tab text-[11px] ${!eventCreditsEnabled ? 'is-active' : ''}`}><i className="fa-solid fa-sparkles text-[10px]" /> Activities only</button>
-                                            <button type="button" role="tab" aria-selected={eventCreditsEnabled} onClick={() => !eventCreditsEnabled && updateLaunchPointSettings({ generalAdmissionPoints: 100 })} className={`host-brand-tab text-[11px] ${eventCreditsEnabled ? 'is-active' : ''}`}><i className="fa-solid fa-wallet text-[10px]" /> Starting balance</button>
+                                        <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="How guests enter the Points economy">
+                                            <button type="button" aria-pressed={!eventCreditsEnabled} onClick={() => applyLaunchEconomy('standard')} className={`flex min-h-[96px] items-center gap-3 rounded-2xl border p-3 text-left transition ${!eventCreditsEnabled ? 'border-cyan-300/45 bg-cyan-500/14 text-white shadow-[0_12px_30px_rgba(34,211,238,0.09)]' : 'border-white/10 bg-black/18 text-fuchsia-100/68 hover:border-cyan-300/25'}`}>
+                                                <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border text-lg ${!eventCreditsEnabled ? 'border-cyan-200/40 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/[0.04]'}`}><i className="fa-solid fa-gamepad" /></span>
+                                                <span className="min-w-0 flex-1"><span className="block text-[10px] font-black uppercase tracking-[0.15em] opacity-55">Earn as they play</span><span className="mt-0.5 block text-sm font-black">Start at zero</span><span className="mt-1 block text-xs leading-4 opacity-65">Activities and Host awards build the balance.</span></span>
+                                                <i className={`fa-solid ${!eventCreditsEnabled ? 'fa-circle-check text-cyan-200' : 'fa-circle text-white/15'}`} />
+                                            </button>
+                                            <button type="button" aria-pressed={eventCreditsEnabled} onClick={() => !eventCreditsEnabled && updateLaunchPointSettings({ generalAdmissionPoints: 100 })} className={`flex min-h-[96px] items-center gap-3 rounded-2xl border p-3 text-left transition ${eventCreditsEnabled ? 'border-fuchsia-300/45 bg-fuchsia-500/14 text-white shadow-[0_12px_30px_rgba(244,114,182,0.09)]' : 'border-white/10 bg-black/18 text-fuchsia-100/68 hover:border-fuchsia-300/25'}`}>
+                                                <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border text-lg ${eventCreditsEnabled ? 'border-fuchsia-200/40 bg-fuchsia-300 text-slate-950' : 'border-white/10 bg-white/[0.04]'}`}><i className="fa-solid fa-wallet" /></span>
+                                                <span className="min-w-0 flex-1"><span className="block text-[10px] font-black uppercase tracking-[0.15em] opacity-55">Welcome deposit</span><span className="mt-0.5 block text-sm font-black">Give starting Points</span><span className="mt-1 block text-xs leading-4 opacity-65">Every guest receives the same opening balance.</span></span>
+                                                <i className={`fa-solid ${eventCreditsEnabled ? 'fa-circle-check text-fuchsia-200' : 'fa-circle text-white/15'}`} />
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="mt-4 grid items-stretch gap-3 lg:grid-cols-[minmax(240px,0.75fr)_minmax(0,1.25fr)]">
-                                        <label className="flex min-h-[250px] flex-col rounded-xl border border-white/10 bg-black/22 p-4">
+                                        <div className={`flex min-h-[268px] flex-col rounded-xl border p-4 transition ${eventCreditsEnabled ? 'border-amber-300/22 bg-amber-500/[0.07]' : 'border-white/10 bg-black/22'}`}>
                                             <span className="flex items-center gap-2 text-sm font-black text-white"><i className="fa-solid fa-ticket text-amber-200/80" /> Starting Points</span>
                                             <span className="mt-0.5 block text-xs leading-5 text-fuchsia-100/52">Given once when each guest joins.</span>
-                                            <input type="number" min="0" max="100000" step="1" value={Math.max(0, Number(eventCreditsConfig?.generalAdmissionPoints || 0))} onChange={(event) => updateLaunchPointSettings({ generalAdmissionPoints: Math.min(100000, Math.max(0, Number(event.target.value || 0))) })} className={launchInputClass} aria-label="Starting Points per guest" />
+                                            <label className="mt-3 block"><span className="sr-only">Starting Points per guest</span><input disabled={!eventCreditsEnabled} type="number" min="0" max="100000" step="1" value={Math.max(0, Number(eventCreditsConfig?.generalAdmissionPoints || 0))} onChange={(event) => updateLaunchPointSettings({ generalAdmissionPoints: Math.min(100000, Math.max(0, Number(event.target.value || 0))) })} className={`${launchInputClass} mt-0 text-lg font-black disabled:cursor-not-allowed disabled:opacity-40`} aria-label="Starting Points per guest" /></label>
                                             <div className="mt-auto rounded-lg border border-white/[0.07] bg-black/18 px-3 py-2 text-xs leading-5 text-fuchsia-100/58">
                                                 {!eventCreditsEnabled ? 'Guests start at zero and build Points through room activity.' : `Each guest starts with ${Math.max(0, Number(eventCreditsConfig?.generalAdmissionPoints || 0)).toLocaleString()} Points.`}
                                             </div>
-                                        </label>
-                                        <div className="min-h-[250px] rounded-xl border border-white/10 bg-black/22 p-4">
-                                            <div className="flex min-h-[48px] items-center justify-between gap-3">
-                                                <div className="min-w-0">
-                                                    <div className="flex items-center gap-2 text-sm font-black text-white"><i className="fa-solid fa-clock-rotate-left text-fuchsia-200/80" /> Automatic refill</div>
-                                                    <div className="mt-0.5 text-xs leading-5 text-fuchsia-100/52">Reward guests for staying active in the Room.</div>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    role="switch"
-                                                    aria-checked={timedPointsRefillEnabled}
-                                                    aria-label="Automatic Points refill"
-                                                    onClick={() => {
-                                                        const nextEnabled = !timedPointsRefillEnabled;
-                                                        updateLaunchPointSettings({
-                                                            timedLobbyEnabled: nextEnabled,
-                                                            timedLobbyPoints: nextEnabled ? Math.max(25, Number(eventCreditsConfig?.timedLobbyPoints || 0)) : Math.max(0, Number(eventCreditsConfig?.timedLobbyPoints || 0)),
-                                                            timedLobbyIntervalMin: Math.max(1, Number(eventCreditsConfig?.timedLobbyIntervalMin || 10)),
-                                                            timedLobbyMaxPerGuest: nextEnabled ? Math.max(150, Number(eventCreditsConfig?.timedLobbyMaxPerGuest || 0)) : Math.max(0, Number(eventCreditsConfig?.timedLobbyMaxPerGuest || 0)),
-                                                        });
-                                                    }}
-                                                    className={`relative h-8 w-14 shrink-0 rounded-full border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 ${timedPointsRefillEnabled ? 'border-fuchsia-200/60 bg-fuchsia-400 shadow-[0_0_18px_rgba(244,114,182,0.2)]' : 'border-white/15 bg-slate-800'}`}
-                                                >
-                                                    <span className={`absolute top-[3px] h-6 w-6 rounded-full bg-white shadow transition-transform ${timedPointsRefillEnabled ? 'translate-x-[25px]' : 'translate-x-[3px]'}`} />
-                                                </button>
-                                            </div>
+                                        </div>
+                                        <div className="min-h-[268px] rounded-xl border border-white/10 bg-black/22 p-4">
+                                            <button
+                                                type="button"
+                                                aria-pressed={timedPointsRefillEnabled}
+                                                aria-label="Automatic Points refill"
+                                                onClick={() => {
+                                                    const nextEnabled = !timedPointsRefillEnabled;
+                                                    updateLaunchPointSettings({
+                                                        timedLobbyEnabled: nextEnabled,
+                                                        timedLobbyPoints: nextEnabled ? Math.max(25, Number(eventCreditsConfig?.timedLobbyPoints || 0)) : Math.max(0, Number(eventCreditsConfig?.timedLobbyPoints || 0)),
+                                                        timedLobbyIntervalMin: Math.max(1, Number(eventCreditsConfig?.timedLobbyIntervalMin || 10)),
+                                                        timedLobbyMaxPerGuest: nextEnabled ? Math.max(150, Number(eventCreditsConfig?.timedLobbyMaxPerGuest || 0)) : Math.max(0, Number(eventCreditsConfig?.timedLobbyMaxPerGuest || 0)),
+                                                    });
+                                                }}
+                                                className={`flex min-h-[76px] w-full items-center gap-3 rounded-xl border p-3 text-left transition ${timedPointsRefillEnabled ? 'border-emerald-300/28 bg-emerald-500/10 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/68'}`}
+                                            >
+                                                <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl border text-base ${timedPointsRefillEnabled ? 'border-emerald-200/35 bg-emerald-300 text-slate-950' : 'border-white/10 bg-white/[0.04]'}`}><i className="fa-solid fa-clock-rotate-left" /></span>
+                                                <span className="min-w-0 flex-1"><span className="block text-sm font-black">Reward time in the Room</span><span className="mt-0.5 block text-xs leading-4 opacity-60">{timedPointsRefillEnabled ? 'Automatic deposits are on.' : 'Guests earn only through activities and Host awards.'}</span></span>
+                                                <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${timedPointsRefillEnabled ? 'border-emerald-200/30 bg-emerald-500/12 text-emerald-50' : 'border-white/10 bg-black/20 text-zinc-400'}`}>{timedPointsRefillEnabled ? 'On' : 'Off'}</span>
+                                            </button>
                                             <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${timedPointsRefillEnabled ? 'border-emerald-300/16 bg-emerald-500/8 text-emerald-100/76' : 'border-white/[0.07] bg-black/18 text-fuchsia-100/52'}`} role="status">
                                                 {timedPointsRefillEnabled ? 'On · the values below control the refill cadence.' : 'Off · guests earn more through Room activities and Host awards.'}
                                             </div>

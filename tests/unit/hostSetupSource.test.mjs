@@ -44,6 +44,11 @@ test('mission setup keeps preset selection compact and applies full preset packa
     /snap-x snap-mandatory[\s\S]*?overflow-x-auto/,
     'Recipe choices should stay compact and horizontally browsable instead of stacking into a long setup form',
   );
+  assert.match(
+    primaryPicksSource,
+    /h-\[264px\][\s\S]*?Preview this plan/,
+    'Every recipe card should reserve the same preview space so selection does not resize the rail',
+  );
   assert.match(primaryPicksSource, /Save current recipe/);
   assert.doesNotMatch(primaryPicksSource, /Event Shortcut|Pick the queue pace|Change room package/);
   assert.match(
@@ -77,6 +82,16 @@ test('mission setup presents three plain-language decisions while preserving aut
     autopilotPreviewSource,
     /data-feature-id="setup-intermission-program"/,
     'Guided setup should keep the direct between-performance controls',
+  );
+  assert.match(
+    autopilotPreviewSource,
+    /aria-pressed=\{intermissionEnabled\}[\s\S]*?min-h-\[48px\][\s\S]*?Breaks on/,
+    'Between-performance activation should be a stable mobile tap target instead of a tiny switch',
+  );
+  assert.match(
+    autopilotPreviewSource,
+    /min-h-\[322px\][\s\S]*?min-h-\[72px\]/,
+    'Both Room Set decision panels should retain stable heights and touch-sized choices',
   );
   assert.match(
     autopilotPreviewSource,

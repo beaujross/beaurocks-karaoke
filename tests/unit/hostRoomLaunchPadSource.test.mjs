@@ -176,11 +176,15 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /data-launch-points-setup="true"/);
   assert.match(source, /Set how Points build/);
   assert.match(source, /Starting Points/);
-  assert.match(source, /Automatic refill/);
+  assert.match(source, /Earn as they play/);
+  assert.match(source, /Welcome deposit/);
+  assert.match(source, /Reward time in the Room/);
   assert.match(source, /const timedPointsRefillEnabled = eventCreditsConfig\?\.timedLobbyEnabled === true/);
   assert.match(source, /disabled=\{!timedPointsRefillEnabled\}/);
-  assert.match(source, /min-h-\[250px\]/);
-  assert.match(source, /host-brand-tabs--fill host-brand-tabs--compact/);
+  assert.match(source, /min-h-\[268px\]/);
+  assert.match(source, /aria-label="How guests enter the Points economy"/);
+  assert.doesNotMatch(source, /aria-label="Points setup mode"/);
+  assert.doesNotMatch(source, /role="switch"[\s\S]*aria-label="Automatic Points refill"/);
   assert.match(source, /fa-door-open/);
   assert.match(source, /fa-user-lock/);
   assert.match(source, /fa-key/);

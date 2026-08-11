@@ -112,15 +112,16 @@ const MissionSetupAutopilotPreview = ({
                     </div>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(280px,0.82fr)]">
-                    <div className="rounded-2xl border border-fuchsia-200/40 bg-fuchsia-500/[0.16] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_12px_32px_rgba(45,18,49,0.18)]" data-feature-id="setup-intermission-program">
+                <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(280px,0.82fr)]">
+                    <div className="min-h-[322px] rounded-2xl border border-fuchsia-200/40 bg-fuchsia-500/[0.16] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_12px_32px_rgba(45,18,49,0.18)]" data-feature-id="setup-intermission-program">
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <div className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-200">2 · Between performances</div>
                                 <div className="mt-1 text-lg font-black text-white">Shape the pauses.</div>
                             </div>
-                            <button type="button" onClick={onToggleIntermission} className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${intermissionEnabled ? 'border-fuchsia-300/40 bg-fuchsia-500/20 text-fuchsia-50' : 'border-white/10 bg-black/25 text-zinc-400'}`}>
-                                {intermissionEnabled ? 'On' : 'Off'}
+                            <button type="button" aria-pressed={intermissionEnabled} onClick={onToggleIntermission} className={`flex min-h-[48px] min-w-[116px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition ${intermissionEnabled ? 'border-fuchsia-300/40 bg-fuchsia-500/20 text-fuchsia-50' : 'border-white/10 bg-black/25 text-zinc-300'}`}>
+                                <i className={`fa-solid ${intermissionEnabled ? 'fa-wand-magic-sparkles' : 'fa-pause'}`} />
+                                {intermissionEnabled ? 'Breaks on' : 'No breaks'}
                             </button>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-1.5">
@@ -132,8 +133,9 @@ const MissionSetupAutopilotPreview = ({
                             ].map(([id, label, icon]) => {
                                 const selected = intermissionTypes.includes(id);
                                 return (
-                                    <button key={id} type="button" disabled={!intermissionEnabled} onClick={() => onToggleIntermissionType(id)} className={`min-h-[48px] rounded-xl border px-2 py-2 text-left text-[11px] font-bold transition disabled:opacity-45 ${selected ? 'border-fuchsia-300/35 bg-fuchsia-500/15 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}>
-                                        <i className={`fa-solid ${icon} mr-1.5`}></i>{label}
+                                    <button key={id} type="button" disabled={!intermissionEnabled} aria-pressed={selected} onClick={() => onToggleIntermissionType(id)} className={`flex min-h-[64px] items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left text-[11px] font-bold transition disabled:opacity-45 ${selected ? 'border-fuchsia-300/35 bg-fuchsia-500/15 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}>
+                                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${selected ? 'border-fuchsia-200/35 bg-fuchsia-300 text-slate-950' : 'border-white/10 bg-white/[0.04]'}`}><i className={`fa-solid ${icon}`}></i></span>
+                                        <span>{label}</span>
                                     </button>
                                 );
                             })}
@@ -161,7 +163,7 @@ const MissionSetupAutopilotPreview = ({
                         </div>
                     </div>
 
-                    <div className="rounded-2xl border border-cyan-200/35 bg-cyan-400/[0.12] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_12px_32px_rgba(10,54,67,0.16)]">
+                    <div className="min-h-[322px] rounded-2xl border border-cyan-200/35 bg-cyan-400/[0.12] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_12px_32px_rgba(10,54,67,0.16)]">
                         <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-200">3 · Host help</div>
                         <div className="mt-1 text-lg font-black text-white">Choose your comfort level.</div>
                         <div className="mt-1 text-xs leading-5 text-zinc-400">{activeMeta.detail}</div>
@@ -173,9 +175,11 @@ const MissionSetupAutopilotPreview = ({
                                         key={`autopilot-assist-${assist.id}`}
                                         type="button"
                                         onClick={() => onSelectAssistLevel(assist.id)}
-                                        className={`min-h-[52px] rounded-xl border px-2 py-2 text-center text-[11px] transition-all ${active ? 'border-cyan-300/55 bg-cyan-500/14 text-white shadow-[0_0_24px_rgba(34,211,238,0.08)]' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/30'}`}
+                                        aria-pressed={active}
+                                        className={`min-h-[72px] rounded-xl border px-2 py-2 text-center text-[11px] transition-all ${active ? 'border-cyan-300/55 bg-cyan-500/14 text-white shadow-[0_0_24px_rgba(34,211,238,0.08)]' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/30'}`}
                                     >
-                                        <span className="font-bold">{assist.label.replace(' First', '')}</span>
+                                        <i className={`fa-solid ${assist.id === 'manual_first' ? 'fa-hand' : assist.id === 'autopilot_first' ? 'fa-robot' : 'fa-wand-magic-sparkles'} mb-1 block text-sm`} />
+                                        <span className="block font-bold">{assist.label.replace(' First', '')}</span>
                                     </button>
                                 );
                             })}

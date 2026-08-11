@@ -2981,6 +2981,11 @@ const APPLE_MUSIC_AUTO_SOURCE_TYPE_VALUES = new Set([
   "library_playlist",
   "catalog_station",
 ]);
+const PERFORMANCE_MODE_VALUES = new Set([
+  "karaoke",
+  "sing_along",
+  "lip_sync",
+]);
 const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   'audienceJoinPasscode',
   "activeMode",
@@ -3126,6 +3131,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "oneMinuteMicOpeningWindowSec",
   "oneMinuteMicVoteWindowSec",
   "pausedAt",
+  "performanceMode",
   "performanceProgressionMode",
   "performanceRecapBreakdownMs",
   "performanceRecapScoreStepMs",
@@ -3329,6 +3335,7 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "lyricsScrollMode",
   "marqueeShowMode",
   "mediaUrl",
+  "performanceMode",
   "performanceProgressionMode",
   "programMode",
   "requestMode",
@@ -3626,6 +3633,12 @@ const validateHostRoomUpdateType = (key, value) => {
   }
   if (key === "appleMusicAutoPlaybackUrl" && typeof value === "string" && value.length > 2048) {
     throw new HttpsError("invalid-argument", 'Room field "appleMusicAutoPlaybackUrl" is too long.');
+  }
+  if (key === "performanceMode" && value !== null && !PERFORMANCE_MODE_VALUES.has(value)) {
+    throw new HttpsError(
+      "invalid-argument",
+      'Room field "performanceMode" must be karaoke, sing_along, or lip_sync.',
+    );
   }
 
   if (key === "backgroundAudioPlayback" && value !== null) {

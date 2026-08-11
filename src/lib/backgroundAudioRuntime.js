@@ -1,5 +1,10 @@
 const clean = (value = '') => String(value || '').trim();
 
+export const getPersistableBackgroundAudioUrl = (value = '') => {
+  const url = clean(value);
+  return /^blob:/i.test(url) ? '' : url;
+};
+
 const getPlaybackFailureReason = (error = null) => {
   const name = clean(error?.name).toLowerCase();
   const message = clean(error?.message || error);
@@ -56,7 +61,7 @@ export const buildLocalBackgroundPlayback = ({
     type: 'local_upload',
     id: clean(track?.id || track?.uploadId),
     title: clean(track?.name || track?.title) || 'Room upload',
-    url: clean(track?.url || track?.mediaUrl),
+    url: getPersistableBackgroundAudioUrl(track?.url || track?.mediaUrl),
     status: ['starting', 'playing', 'paused', 'blocked', 'error'].includes(normalizedStatus)
       ? normalizedStatus
       : 'paused',

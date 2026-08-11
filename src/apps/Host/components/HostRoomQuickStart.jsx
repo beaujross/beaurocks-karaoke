@@ -1,28 +1,48 @@
 import React from 'react';
 import { getHostRoomLaunchProgress } from '../hostRoomQuickStartModel';
 
-const EssentialAction = ({
+const ReadinessAction = ({
   completed = false,
   disabled = false,
   icon,
   label,
   repeatLabel,
+  detail,
+  eyebrow,
+  tone = 'cyan',
   onClick,
-}) => (
+}) => {
+  const toneClasses = {
+    cyan: completed
+      ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-50'
+      : 'border-cyan-300/30 bg-cyan-500/10 text-cyan-50 hover:border-cyan-200/50 hover:bg-cyan-500/16',
+    fuchsia: completed
+      ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-50'
+      : 'border-fuchsia-300/30 bg-fuchsia-500/10 text-fuchsia-50 hover:border-fuchsia-200/50 hover:bg-fuchsia-500/16',
+    amber: completed
+      ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-50'
+      : 'border-amber-300/30 bg-amber-500/10 text-amber-50 hover:border-amber-200/50 hover:bg-amber-500/16',
+  };
+  return (
   <button
     type="button"
     onClick={onClick}
     disabled={disabled}
-    className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-black transition ${
-      completed
-        ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-50 hover:bg-emerald-500/18'
-        : 'border-cyan-300/32 bg-cyan-500/12 text-cyan-50 hover:border-fuchsia-300/45 hover:bg-cyan-500/18'
-    } ${disabled ? 'cursor-not-allowed opacity-45' : ''}`}
+    aria-pressed={completed}
+    className={`group flex min-h-[92px] w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${toneClasses[tone] || toneClasses.cyan} ${disabled ? 'cursor-not-allowed opacity-45' : ''}`}
   >
-    <i className={`fa-solid ${completed ? 'fa-check' : icon}`} aria-hidden="true" />
-    {completed ? repeatLabel : label}
+    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/12 bg-black/20 text-base shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <i className={`fa-solid ${completed ? 'fa-check' : icon}`} aria-hidden="true" />
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="block text-[9px] font-black uppercase tracking-[0.16em] opacity-55">{completed ? 'Ready' : eyebrow}</span>
+      <span className="mt-0.5 block text-sm font-black leading-5">{completed ? repeatLabel : label}</span>
+      <span className="mt-0.5 block text-[11px] leading-4 opacity-60">{detail}</span>
+    </span>
+    <i className="fa-solid fa-arrow-right text-[10px] opacity-35 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
   </button>
-);
+  );
+};
 
 const HostRoomQuickStart = ({
   roomCode = '',
@@ -38,7 +58,7 @@ const HostRoomQuickStart = ({
   onConnectAppleMusic,
   onDismiss,
 }) => {
-  const progress = getHostRoomLaunchProgress({ tvOpened, joinLinkCopied });
+  const progress = getHostRoomLaunchProgress({ tvOpened, joinLinkCopied, roomSetupReviewed });
 
   return (
     <section
@@ -57,61 +77,31 @@ const HostRoomQuickStart = ({
             {roomCode ? <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 tracking-[0.14em] text-white/65">{roomCode}</span> : null}
           </div>
           <div className="mt-0.5 text-base font-black text-white">
-            {progress.complete ? 'Room launch essentials complete' : 'Open your Room to guests'}
+            {progress.complete ? 'Your Room is ready for guests' : 'Finish opening your Room'}
           </div>
           <div className="mt-0.5 text-xs text-cyan-50/68">
             {progress.complete
-              ? 'Public TV is open and the Join Link is ready to share. Keep running the Room from the Live Queue.'
-              : 'Open Public TV, then copy the Join Link. Everything else can wait.'}
+              ? 'The room plan, Public TV, and guest link are ready. Keep running the night from the Live Queue.'
+              : 'Complete these three readiness steps. Your soundtrack is an optional finishing touch.'}
           </div>
         </div>
-
-        <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto">
-          <EssentialAction
-            completed={tvOpened}
-            disabled={!tvReady}
-            icon="fa-tv"
-            label="Open Public TV"
-            repeatLabel="Open TV Again"
-            onClick={onOpenTv}
-          />
-          <EssentialAction
-            completed={joinLinkCopied}
-            disabled={!joinLinkReady}
-            icon="fa-link"
-            label="Copy Join Link"
-            repeatLabel="Copy Link Again"
-            onClick={onCopyJoinLink}
-          />
-          <details className="group relative">
-            <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-white/12 bg-black/20 px-3 py-2.5 text-xs font-bold text-cyan-50/72 hover:border-cyan-300/28 hover:text-white">
-              <i className="fa-solid fa-sliders" aria-hidden="true" />
-              Optional setup
-              <i className="fa-solid fa-chevron-down text-[9px] transition group-open:rotate-180" aria-hidden="true" />
-            </summary>
-            <div className="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-white/12 bg-slate-950/98 p-2 shadow-2xl">
-              <div className="px-2 pb-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100/48">Fine-tune only if needed</div>
-              <button type="button" onClick={onOpenRoomSetup} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-semibold text-cyan-50/78 hover:bg-cyan-500/10 hover:text-white">
-                <i className={`fa-solid ${roomSetupReviewed ? 'fa-check text-emerald-300' : 'fa-sliders text-cyan-300'}`} aria-hidden="true" />
-                {roomSetupReviewed ? 'Review Room Setup Again' : 'Adjust Room Setup'}
-              </button>
-              <button type="button" onClick={onConnectAppleMusic} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-semibold text-cyan-50/78 hover:bg-cyan-500/10 hover:text-white">
-                <i className={`fa-solid ${appleMusicConnected ? 'fa-check text-emerald-300' : 'fa-music text-fuchsia-300'}`} aria-hidden="true" />
-                {appleMusicConnected ? 'Apple Music Connected' : 'Connect Apple Music'}
-              </button>
-            </div>
-          </details>
-          <button type="button" onClick={onDismiss} className="min-h-11 rounded-xl px-3 py-2 text-xs font-bold text-cyan-100/58 hover:bg-white/5 hover:text-white" aria-label="Dismiss Room launch guide">
-            {progress.complete ? 'Done' : 'Hide'}
-          </button>
-        </div>
+        <button type="button" onClick={onDismiss} className="ml-auto min-h-11 rounded-xl px-3 py-2 text-xs font-bold text-cyan-100/58 hover:bg-white/5 hover:text-white" aria-label="Dismiss Room launch guide">
+          {progress.complete ? 'Done' : 'Hide'}
+        </button>
       </div>
 
-      <div className="relative mt-2 flex items-center gap-2" aria-label={`${progress.completedCount} of ${progress.totalCount} essential launch steps complete`}>
+      <div className="relative mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" data-room-readiness-actions="true">
+        <ReadinessAction completed={roomSetupReviewed} icon="fa-wand-magic-sparkles" eyebrow="1 · Room plan" label="Set the Night" repeatLabel="Review Room Plan" detail="Vibe, pacing, and between-song moments" tone="fuchsia" onClick={onOpenRoomSetup} />
+        <ReadinessAction completed={tvOpened} disabled={!tvReady} icon="fa-tv" eyebrow="2 · Stage screen" label="Open Public TV" repeatLabel="Open TV Again" detail="Put the live room on the big screen" tone="cyan" onClick={onOpenTv} />
+        <ReadinessAction completed={joinLinkCopied} disabled={!joinLinkReady} icon="fa-link" eyebrow="3 · Guest access" label="Copy Join Link" repeatLabel="Copy Link Again" detail="Share the door your guests will use" tone="cyan" onClick={onCopyJoinLink} />
+        <ReadinessAction completed={appleMusicConnected} icon="fa-music" eyebrow="Optional · Soundtrack" label="Connect Apple Music" repeatLabel="Apple Music Connected" detail="Bring music back between performances" tone="amber" onClick={onConnectAppleMusic} />
+      </div>
+
+      <div className="relative mt-2 flex items-center gap-2" aria-label={`${progress.completedCount} of ${progress.totalCount} room readiness steps complete`}>
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/30">
           <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-400 transition-all" style={{ width: `${progress.percent}%` }} />
         </div>
-        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/52">{progress.completedCount} of 2 essential</span>
+        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/52">{progress.completedCount} of {progress.totalCount} ready</span>
       </div>
     </section>
   );

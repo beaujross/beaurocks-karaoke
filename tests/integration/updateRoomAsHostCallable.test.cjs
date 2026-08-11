@@ -128,6 +128,25 @@ async function run() {
       assert.equal(snap.get("appleMusicAutoPlaybackUrl"), "https://music.apple.com/us/station/example/ra.978194965");
     }],
 
+    ["host can persist the validated room performance format", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        performanceMode: "sing_along",
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, ["performanceMode"]);
+      assert.equal((await roomRef.get()).get("performanceMode"), "sing_along");
+    }],
+
+    ["unknown room performance formats are rejected", async () => {
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          performanceMode: "anything_goes",
+        })),
+        "invalid-argument"
+      );
+    }],
+
     ["invalid Apple Music automatic background source types are rejected", async () => {
       await expectHttpsError(
         () => updateRoomAsHost.run(requestFor(HOST_UID, {

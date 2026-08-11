@@ -373,6 +373,7 @@ import {
 } from './hostPlaybackAutomation';
 import {
     buildLocalBackgroundPlayback,
+    getPersistableBackgroundAudioUrl,
     startBackgroundAudioElement,
 } from '../../lib/backgroundAudioRuntime';
 import {
@@ -12912,7 +12913,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             appleMusicAutoSourceType: '',
             appleMusicAutoPlaybackUrl: '',
             bgMusicPlaying: result.ok,
-            bgMusicUrl: url,
+            bgMusicUrl: observation.url,
             backgroundAudioPlayback: observation,
         });
         if (!result.ok) hostLogger.warn('Local background playback was not confirmed', observation);
@@ -12960,7 +12961,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setPlayingBg(false);
         await updateRoom({
             bgMusicPlaying: false,
-            bgMusicUrl: activeBgTrack?.url || '',
+            bgMusicUrl: getPersistableBackgroundAudioUrl(activeBgTrack?.url),
             backgroundAudioPlayback: activeBgTrack?.url
                 ? buildLocalBackgroundPlayback({ track: activeBgTrack, status: 'paused' })
                 : null,
@@ -12994,7 +12995,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (syncRoom) {
                 await updateRoom({
                     bgMusicPlaying: false,
-                    bgMusicUrl: nextTrack.url,
+                    bgMusicUrl: getPersistableBackgroundAudioUrl(nextTrack.url),
                     backgroundAudioPlayback: buildLocalBackgroundPlayback({ track: nextTrack, status: 'paused' }),
                 });
             }
@@ -13021,7 +13022,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (syncRoom) {
                 await updateRoom({
                     bgMusicPlaying: false,
-                    bgMusicUrl: nextTrack.url,
+                    bgMusicUrl: getPersistableBackgroundAudioUrl(nextTrack.url),
                     backgroundAudioPlayback: buildLocalBackgroundPlayback({ track: nextTrack, status: 'paused' }),
                 });
             }
@@ -16723,6 +16724,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await deleteLocalVideo(item.id);
             setLocalLibrary((prev) => prev.filter((entry) => entry.id !== item.id));
             if (item.url && String(item.url).startsWith('blob:')) {
+                const activeAudioUrl = String(bgAudio.current?.currentSrc || bgAudio.current?.src || '').trim();
+                if (activeAudioUrl === item.url) clearMediaElementSource(bgAudio.current);
                 URL.revokeObjectURL(item.url);
                 localUploadsRef.current = localUploadsRef.current.filter((url) => url !== item.url);
             }

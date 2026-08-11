@@ -73,12 +73,12 @@ const MissionSetupPrimaryPicks = ({
                             data-room-recipe-card={recipe.id}
                             aria-pressed={selected}
                             onClick={() => onApplyRecipe(recipe)}
-                            className={`relative min-h-[176px] w-[min(76vw,248px)] shrink-0 snap-start overflow-hidden rounded-2xl border p-3 text-left transition-all md:w-[238px] ${selected
+                            className={`relative h-[264px] w-[min(78vw,256px)] shrink-0 snap-start overflow-hidden rounded-2xl border p-3 text-left transition-all md:w-[248px] ${selected
                                 ? 'border-cyan-300/60 bg-cyan-500/14 shadow-[0_0_0_1px_rgba(34,211,238,0.22),0_16px_34px_rgba(0,0,0,0.22)]'
                                 : 'border-white/15 bg-slate-800/55 hover:border-pink-300/36 hover:bg-slate-700/60'}`}
                         >
                             <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${recipe.accent}`} />
-                            <div className="relative">
+                            <div className="relative flex h-full flex-col">
                                 <div className="flex items-start justify-between gap-3">
                                     <span className="flex min-w-0 items-start gap-3">
                                         <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${selected ? 'border-cyan-200/40 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/[0.06] text-cyan-100'}`}>
@@ -98,24 +98,26 @@ const MissionSetupPrimaryPicks = ({
                                     </span>
                                 </div>
                                 <span className="mt-2 line-clamp-2 block text-xs leading-5 text-zinc-300">{recipe.description}</span>
-                                {preflight ? (
-                                    <span className={`mt-3 flex items-start gap-2 rounded-xl border px-2.5 py-2 ${preflight.status === 'ready'
+                                <span className={`mt-3 flex min-h-[58px] items-start gap-2 rounded-xl border px-2.5 py-2 ${preflight?.status === 'ready'
                                         ? 'border-emerald-300/25 bg-emerald-500/8'
-                                        : preflight.status === 'review'
+                                        : preflight?.status === 'review'
                                             ? 'border-amber-300/25 bg-amber-500/8'
-                                            : 'border-fuchsia-300/25 bg-fuchsia-500/8'}`}>
-                                        {preflight.provider ? (
+                                            : selected
+                                                ? 'border-fuchsia-300/25 bg-fuchsia-500/8'
+                                                : 'border-white/8 bg-black/12'}`}>
+                                        {preflight?.provider ? (
                                             <ContentSourceBadge source={preflight.provider} compact />
-                                        ) : (
+                                        ) : selected ? (
                                             <i className="fa-solid fa-link mt-1 text-[10px] text-fuchsia-200" />
+                                        ) : (
+                                            <i className="fa-solid fa-hand-pointer mt-1 text-[10px] text-cyan-100/35" />
                                         )}
                                         <span className="min-w-0">
-                                            <span className="block text-[10px] font-black text-white">{preflight.title}</span>
-                                            <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">{preflight.detail}</span>
+                                            <span className="block text-[10px] font-black text-white">{preflight?.title || 'Preview this plan'}</span>
+                                            <span className="mt-0.5 line-clamp-2 block text-[10px] leading-4 text-zinc-400">{preflight?.detail || 'Tap once to see how this recipe fits your connected media.'}</span>
                                         </span>
-                                    </span>
-                                ) : null}
-                                <span className="mt-3 grid grid-cols-2 gap-1.5">
+                                </span>
+                                <span className="mt-auto grid grid-cols-2 gap-1.5 pt-3">
                                     {recipe.facts
                                         .filter((fact) => ['Format', 'Between songs'].includes(fact.label))
                                         .map((fact) => (
