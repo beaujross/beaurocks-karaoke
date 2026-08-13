@@ -326,8 +326,16 @@ async function run() {
               flowRule: "balanced",
               assistLevel: "smart_assist",
               spotlightMode: "karaoke",
-              performanceMode: "karaoke",
+              performanceMode: "sing_along",
+              requirements: {
+                originalRecording: true,
+                lyrics: "preferred",
+              },
               party: {
+                karaokeFirst: true,
+                minSingingSharePct: 80,
+                maxBreakDurationSec: 15,
+                maxConsecutiveNonKaraokeModes: 2,
                 autoCrowdMomentsEnabled: true,
                 autoCrowdMomentEverySongs: 3,
                 autoCrowdMomentPreferredTypes: ["trivia", "would_you_rather"],
@@ -358,6 +366,13 @@ async function run() {
       assert.equal(roomSnap.get("audienceBrandTheme.appTitle"), "AAHF Festival");
       assert.equal(roomSnap.get("missionControl.enabled"), true);
       assert.equal(roomSnap.get("missionControl.setupDraft.assistLevel"), "smart_assist");
+      assert.equal(roomSnap.get("missionControl.setupDraft.performanceMode"), "sing_along");
+      assert.equal(roomSnap.get("hostNightPresetConfig.recipe.requirements.originalRecording"), true);
+      assert.equal(roomSnap.get("hostNightPresetConfig.recipe.requirements.lyrics"), "preferred");
+      assert.equal(roomSnap.get("missionControl.party.karaokeFirst"), true);
+      assert.equal(roomSnap.get("missionControl.party.minSingingSharePct"), 80);
+      assert.equal(roomSnap.get("missionControl.party.maxBreakDurationSec"), 15);
+      assert.equal(roomSnap.get("missionControl.party.maxConsecutiveNonKaraokeModes"), 2);
       assert.equal(roomSnap.get("missionControl.party.autoCrowdMomentsEnabled"), true);
       assert.equal(roomSnap.get("missionControl.party.autoCrowdMomentEverySongs"), 3);
       assert.deepEqual(roomSnap.get("missionControl.party.autoCrowdMomentPreferredTypes"), ["trivia", "would_you_rather"]);

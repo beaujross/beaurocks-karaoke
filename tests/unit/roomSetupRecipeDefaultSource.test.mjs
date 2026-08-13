@@ -16,7 +16,9 @@ describe('recipe-first room setup source', () => {
   it('keeps the visible setup flow free of nested room-type and queue-pace prompts', () => {
     expect(primaryPicksSource).toContain('data-room-setup-recipes="true"');
     expect(primaryPicksSource).not.toMatch(/Event Shortcut|Pick the queue pace|Change room package/);
-    expect(launchPadSource).toContain('data-launch-room-recipe={option.id}');
+    expect(launchPadSource).toContain('<MissionSetupPrimaryPicks');
+    expect(launchPadSource).toContain('selectedRecipeId={launchNightType}');
+    expect(launchPadSource).toContain('data-launch-fine-tune="true"');
     expect(launchPadSource).toContain('data-branded-room-sort="true"');
   });
 

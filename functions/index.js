@@ -3889,6 +3889,7 @@ const normalizeProvisionNightPresetPayload = (input = {}) => {
   const gameDefaults = isPlainObject(settings.gameDefaults) ? settings.gameDefaults : {};
   const hasRecipe = isPlainObject(input.recipe) && Object.keys(input.recipe).length > 0;
   const recipeInput = hasRecipe ? input.recipe : {};
+  const requirementsInput = isPlainObject(recipeInput.requirements) ? recipeInput.requirements : {};
   const partyInput = isPlainObject(recipeInput.party) ? recipeInput.party : {};
   const allowedCrowdMomentTypes = new Set(["trivia", "would_you_rather", "ready_check", "volley"]);
   const crowdMomentTypes = Array.isArray(partyInput.autoCrowdMomentPreferredTypes)
@@ -3921,7 +3922,18 @@ const normalizeProvisionNightPresetPayload = (input = {}) => {
       performanceMode: ["karaoke", "sing_along", "lip_sync"].includes(String(recipeInput.performanceMode || "").trim().toLowerCase())
         ? String(recipeInput.performanceMode).trim().toLowerCase()
         : "karaoke",
+      requirements: {
+        originalRecording: requirementsInput.originalRecording === true,
+        lyrics: ["required", "preferred", "optional"].includes(String(requirementsInput.lyrics || "").trim().toLowerCase())
+          ? String(requirementsInput.lyrics).trim().toLowerCase()
+          : "optional",
+      },
       party: {
+        karaokeFirst: partyInput.karaokeFirst !== false,
+        minSingingSharePct: clampNumber(partyInput.minSingingSharePct, 50, 95, 70),
+        maxBreakDurationSec: clampNumber(partyInput.maxBreakDurationSec, 3, 120, 20),
+        maxConsecutiveNonKaraokeModes: clampNumber(partyInput.maxConsecutiveNonKaraokeModes, 1, 4, 1),
+        queueDepthGuardThreshold: clampNumber(partyInput.queueDepthGuardThreshold, 1, 30, 8),
         autoCrowdMomentsEnabled: partyInput.autoCrowdMomentsEnabled === true,
         autoCrowdMomentEverySongs: clampNumber(partyInput.autoCrowdMomentEverySongs, 1, 5, 3),
         autoCrowdMomentPreferredTypes: crowdMomentTypes.length ? crowdMomentTypes : ["trivia", "would_you_rather"],
