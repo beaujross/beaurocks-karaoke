@@ -46,9 +46,11 @@ test('mission setup keeps preset selection compact and applies full preset packa
   );
   assert.match(
     primaryPicksSource,
-    /h-\[96px\][\s\S]*?line-clamp-2/,
-    'Every recipe choice should stay dense and reserve the same height so selection does not resize the rail',
+    /h-\[116px\][\s\S]*?line-clamp-2/,
+    'Every recipe choice should preserve a readable fixed height so selection does not resize the rail',
   );
+  assert.match(primaryPicksSource, /2xl:grid 2xl:grid-cols-5/);
+  assert.match(primaryPicksSource, /selectedRecipeAdjusted/);
   assert.match(primaryPicksSource, /Save current recipe/);
   assert.doesNotMatch(primaryPicksSource, /Event Shortcut|Pick the queue pace|Change room package/);
   assert.match(

@@ -6,6 +6,8 @@ import {
 
 const MissionSetupPrimaryPicks = ({
     presets = [],
+    recipes: recipeOverrides = null,
+    selectedRecipeId = '',
     selectedArchetype = '',
     selectedFlowRule = '',
     selectedAssistLevel = '',
@@ -13,12 +15,20 @@ const MissionSetupPrimaryPicks = ({
     selectedPerformanceMode = 'karaoke',
     onApplyRecipe = () => {},
     onSaveRecipe = () => {},
+    allowSaveRecipe = true,
+    selectedRecipeAdjusted = false,
+    wideGrid = false,
+    title = 'Room recipe',
+    description = 'One compact choice sets format, pacing, and helpful defaults.',
+    footerHint = 'Exact queue, scoring, and screen controls remain under Advanced.',
     recipeStorageLabel = 'this Host browser',
     recipeSyncStatus = 'browser',
 }) => {
     const recipes = useMemo(
-        () => buildRoomSetupRecipeCards({ presets }),
-        [presets],
+        () => (Array.isArray(recipeOverrides) && recipeOverrides.length
+            ? recipeOverrides
+            : buildRoomSetupRecipeCards({ presets })),
+        [presets, recipeOverrides],
     );
     const savedRecipeCount = recipes.filter((recipe) => recipe.isSaved).length;
     const recipeSyncSuffix = ['loading', 'ready', 'syncing'].includes(recipeSyncStatus)
@@ -39,27 +49,32 @@ const MissionSetupPrimaryPicks = ({
 
     return (
         <section
-            className="border-b border-cyan-100/12 pb-3"
+            className="min-w-0 border-b border-cyan-100/12 pb-3"
             data-room-setup-recipes="true"
         >
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-200">Room recipe</div>
-                    <div className="mt-0.5 text-xs text-zinc-400">One compact choice sets format, pacing, and helpful defaults.</div>
+                    <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">{title}</div>
+                    <div className="mt-0.5 text-sm text-zinc-400">{description}</div>
                 </div>
-                <button
-                    type="button"
-                    onClick={onSaveRecipe}
-                    className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-bold text-zinc-300 transition hover:border-fuchsia-200/40 hover:bg-fuchsia-500/10 hover:text-fuchsia-50"
-                >
-                    <i className="fa-solid fa-bookmark" />
-                    Save current recipe
-                </button>
+                {allowSaveRecipe ? (
+                    <button
+                        type="button"
+                        onClick={onSaveRecipe}
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-zinc-300 transition hover:border-fuchsia-200/40 hover:bg-fuchsia-500/10 hover:text-fuchsia-50"
+                    >
+                        <i className="fa-solid fa-bookmark" />
+                        Save current recipe
+                    </button>
+                ) : null}
             </div>
 
-            <div className="mt-2 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1.5 pr-2 [scrollbar-color:rgba(34,211,238,0.35)_transparent]">
+            <div className={`mt-2 flex max-w-full snap-x snap-mandatory gap-2 overflow-x-auto pb-1.5 pr-2 [scrollbar-color:rgba(34,211,238,0.35)_transparent] ${wideGrid ? '2xl:grid 2xl:grid-cols-5 2xl:overflow-visible 2xl:pr-0' : ''}`}>
                 {recipes.map((recipe) => {
-                    const selected = isRoomSetupRecipeSelected(recipe, selection);
+                    const selected = selectedRecipeId
+                        ? selectedRecipeId === recipe.id
+                        : isRoomSetupRecipeSelected(recipe, selection);
+                    const adjusted = selected && selectedRecipeAdjusted;
                     const sameBase = !selected && selectedArchetype === recipe.presetId;
                     return (
                         <button
@@ -68,7 +83,7 @@ const MissionSetupPrimaryPicks = ({
                             data-room-recipe-card={recipe.id}
                             aria-pressed={selected}
                             onClick={() => onApplyRecipe(recipe)}
-                            className={`relative h-[96px] w-[min(72vw,220px)] shrink-0 snap-start overflow-hidden rounded-xl border p-2.5 text-left transition-all md:w-[210px] ${selected
+                            className={`relative h-[116px] w-[min(82vw,250px)] shrink-0 snap-start overflow-hidden rounded-xl border p-3 text-left transition-all md:w-[230px] ${wideGrid ? '2xl:w-auto' : ''} ${selected
                                 ? 'border-cyan-300/60 bg-cyan-500/14 shadow-[0_0_0_1px_rgba(34,211,238,0.22),0_16px_34px_rgba(0,0,0,0.22)]'
                                 : 'border-white/15 bg-slate-800/55 hover:border-pink-300/36 hover:bg-slate-700/60'}`}
                         >
@@ -80,28 +95,30 @@ const MissionSetupPrimaryPicks = ({
                                             <i className={`fa-solid ${recipe.icon}`} />
                                         </span>
                                         <span className="min-w-0">
-                                            <span className="block text-[8px] font-black uppercase tracking-[0.16em] text-cyan-100/58">{recipe.eyebrow}</span>
+                                            <span className="block text-xs font-black uppercase tracking-[0.12em] text-cyan-100/68">{recipe.eyebrow}</span>
                                             <span className="block truncate text-sm font-black text-white">{recipe.label}</span>
                                         </span>
                                     </span>
-                                    <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ${selected
-                                        ? 'border-cyan-200/35 bg-cyan-300/14 text-cyan-50'
+                                    <span className={`shrink-0 rounded-full border px-2 py-1 text-xs font-black uppercase tracking-[0.08em] ${adjusted
+                                        ? 'border-amber-300/35 bg-amber-500/12 text-amber-50'
+                                        : selected
+                                            ? 'border-cyan-200/35 bg-cyan-300/14 text-cyan-50'
                                         : sameBase
                                             ? 'border-amber-300/30 bg-amber-500/10 text-amber-100'
                                             : 'border-white/10 bg-black/20 text-zinc-400'}`}>
-                                        {selected ? 'Selected' : sameBase ? 'Adjusted' : 'Choose'}
+                                        {adjusted ? 'Customized' : selected ? 'Selected' : sameBase ? 'Adjusted' : 'Choose'}
                                     </span>
                                 </div>
-                                <span className="mt-1 line-clamp-2 block text-[10px] leading-4 text-zinc-300">{recipe.description}</span>
+                                <span className="mt-1.5 line-clamp-2 block text-xs leading-4 text-zinc-300">{recipe.description}</span>
                             </div>
                         </button>
                     );
                 })}
             </div>
 
-            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-zinc-500">
-                <span>Exact queue, scoring, and screen controls remain under Advanced.</span>
-                <span>{savedRecipeSummary}</span>
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+                <span>{footerHint}</span>
+                {allowSaveRecipe ? <span>{savedRecipeSummary}</span> : null}
             </div>
         </section>
     );

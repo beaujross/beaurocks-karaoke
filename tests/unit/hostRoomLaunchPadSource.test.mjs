@@ -158,16 +158,16 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /data-launch-core-setup="true"/);
   assert.match(source, /data-room-create-premium="true"/);
   assert.doesNotMatch(source, /Build the room guests will enter/);
-  assert.match(source, /Set the essentials, then launch\./);
+  assert.match(source, /Everything needed to create and launch the room now lives on this screen\./);
   assert.match(source, /data-launch-create-header="true"/);
   assert.match(source, /data-launch-readiness="true"/);
   assert.match(source, /data-launch-room-identity="true"/);
   assert.match(source, /data-launch-access-details="true"/);
   assert.match(source, /data-launch-primary-bar="true"/);
-  assert.match(source, /lg:grid-cols-12/);
-  assert.match(source, /lg:col-span-8/);
-  assert.match(source, /lg:col-span-4/);
-  assert.match(source, /xl:grid-cols-5/);
+  assert.match(source, /xl:grid-cols-12/);
+  assert.match(source, /xl:col-span-8/);
+  assert.match(source, /xl:col-span-4/);
+  assert.match(source, /wideGrid/);
   assert.doesNotMatch(source, /lg:grid-cols-\[minmax\(250px,0\.76fr\)_minmax\(0,1\.35fr\)\]/);
   assert.match(source, /data-launch-room-control="true"/);
   assert.match(source, /data-launch-guest-access="true"/);
@@ -181,7 +181,7 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /Reward time in the Room/);
   assert.match(source, /const timedPointsRefillEnabled = eventCreditsConfig\?\.timedLobbyEnabled === true/);
   assert.match(source, /disabled=\{!timedPointsRefillEnabled\}/);
-  assert.match(source, /min-h-\[268px\]/);
+  assert.match(source, /xl:min-h-\[240px\]/);
   assert.match(source, /aria-label="How guests enter the Points economy"/);
   assert.doesNotMatch(source, /aria-label="Points setup mode"/);
   assert.doesNotMatch(source, /role="switch"[\s\S]*aria-label="Automatic Points refill"/);
@@ -191,14 +191,27 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
   assert.match(source, /openNightSetup: false, launchTarget: 'stage'/);
   assert.match(source, /Create \+ Open Host Panel/);
-  assert.match(source, /You can fine-tune everything later in Room Settings\./);
+  assert.match(source, /Setup is complete\. Room Settings remains available for future changes\./);
   assert.match(source, /Custom room code/);
   assert.match(source, /data-launch-configuration-contract="true"/);
   assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Party Karaoke[\s\S]*Crowd Sing-Along[\s\S]*Score Challenge[\s\S]*Karaoke \+ Trivia/);
-  assert.match(source, /data-launch-room-recipe=\{option\.id\}/);
+  assert.match(source, /<MissionSetupPrimaryPicks[\s\S]*recipes=\{LAUNCH_NIGHT_TYPE_RECIPE_CARDS\}/);
+  assert.match(source, /selectedRecipeId=\{launchNightType\}/);
+  assert.match(source, /selectedRecipeAdjusted=\{launchCustomizationCount > 0\}/);
+  assert.match(source, /Reset to recipe/);
   assert.match(source, /data-launch-night-controls="true"/);
   assert.match(source, /data-launch-intermission-program="true"/);
   assert.match(source, /data-launch-operating-model-quick=\{option\.id\}/);
+  assert.match(source, /data-launch-fine-tune="true"/);
+  assert.match(source, /data-launch-queue-live-controls="true"/);
+  assert.match(source, /data-launch-karaoke-guardrails="true"/);
+  assert.match(source, /data-launch-schedule="true"/);
+  assert.match(source, /Queue, live controls, song sources, and Points/);
+  assert.match(source, /Queue rules/);
+  assert.match(source, /Live switches/);
+  assert.match(source, /Prioritize first-time singers/);
+  assert.match(source, /data-launch-mobile-action="true"/);
+  assert.match(source, /creatingRoom \? 'Creating room' : roomLaunchDisabled \? 'Not ready' : 'Ready to create'/);
   assert.match(
     source,
     /const applyLaunchNightType =[\s\S]*setLaunchOperatingModel\(option\.operatingModel\);[\s\S]*applyLaunchEconomy\(option\.economyMode\);[\s\S]*setHostNightPreset\(option\.presetId\)/,
@@ -230,7 +243,7 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /buildHostLaunchDraftKey/);
   assert.match(
     source,
-    /persistHostLaunchDraftPart\(launchExperienceDraftKey, \{\s*joinAccessMode: launchJoinAccessMode,\s*operatingModel: launchOperatingModel,\s*nightType: launchNightType,\s*party: launchParty,\s*mediaSources: launchMediaSources,\s*\}\);/,
-    'Recovered experience drafts should store only non-secret setup choices',
+    /persistHostLaunchDraftPart\(launchExperienceDraftKey, \{\s*joinAccessMode: launchJoinAccessMode,\s*operatingModel: launchOperatingModel,\s*nightType: launchNightType,\s*party: launchParty,\s*mediaSources: launchMediaSources,\s*settingsOverrides: launchSettingsOverrides,\s*\}\);/,
+    'Recovered experience drafts should store all non-secret choices from the consolidated setup screen',
   );
 });

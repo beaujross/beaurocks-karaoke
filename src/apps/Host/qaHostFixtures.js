@@ -362,6 +362,12 @@ const buildWyrDataFixture = (nowMs = FIXED_QA_HOST_NOW_MS, overrides = {}) => ({
 
 export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS } = {}) => {
     const safeId = String(fixtureId || '').trim().toLowerCase();
+    if (safeId === 'room-manager') {
+        return {
+            ...buildBaseFixture(roomCode, nowMs),
+            view: 'landing',
+        };
+    }
     if (safeId === 'room-setup-recipes') {
         return {
             ...buildBaseFixture(roomCode, nowMs),

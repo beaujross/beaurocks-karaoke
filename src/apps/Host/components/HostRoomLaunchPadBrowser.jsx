@@ -11,6 +11,7 @@ import { applyEventCreditsPreset } from '../hostLaunchHelpers';
 import { getRoomEconomySummary } from '../../../lib/roomEconomySummary';
 import RoomJoinPosterModal from './RoomJoinPosterModal';
 import HostWorkspaceHeader from './HostWorkspaceHeader';
+import MissionSetupPrimaryPicks from './setup/MissionSetupPrimaryPicks';
 import { AAHF_FESTIVAL_LOGO_URL } from '../hostAppData';
 import {
     HOST_LAUNCH_EXPERIENCE_DRAFT_KEY,
@@ -30,8 +31,13 @@ const REQUEST_POLICY_OPTIONS = [
 ];
 const QUEUE_ROTATION_OPTIONS = [
     { id: 'round_robin', label: 'Round Robin' },
-    { id: 'fifo', label: 'First In / First Out' },
-    { id: 'weighted_first_time', label: 'Weighted First-Time' },
+    { id: 'first_come', label: 'First Come' },
+];
+const QUEUE_LIMIT_OPTIONS = [
+    { id: 'none', label: 'No limit' },
+    { id: 'per_night', label: 'Per singer' },
+    { id: 'per_hour', label: 'Per hour' },
+    { id: 'soft', label: 'Soft limit' },
 ];
 const ROOM_BROWSER_SORT_OPTIONS = Object.freeze([
     { id: 'newest', label: 'Newest Rooms First' },
@@ -220,6 +226,19 @@ const LAUNCH_NIGHT_TYPE_OPTIONS = Object.freeze([
         effects: ['Balanced turns', 'Trivia ready', 'Auto-DJ assist'],
     },
 ]);
+const LAUNCH_NIGHT_TYPE_RECIPE_CARDS = Object.freeze(LAUNCH_NIGHT_TYPE_OPTIONS.map((option) => Object.freeze({
+    ...option,
+    description: option.summary,
+    accent: option.id === 'score_challenge'
+        ? 'from-amber-500/26 via-yellow-500/8 to-transparent'
+        : option.id === 'karaoke_trivia'
+            ? 'from-emerald-500/24 via-cyan-500/8 to-transparent'
+            : option.id === 'crowd_singalong'
+                ? 'from-fuchsia-500/24 via-violet-500/8 to-transparent'
+                : option.id === 'lip_sync_night'
+                    ? 'from-violet-500/24 via-pink-500/10 to-transparent'
+                    : 'from-cyan-500/24 via-sky-500/8 to-transparent',
+})));
 const LAUNCH_INTERMISSION_TYPE_OPTIONS = Object.freeze([
     { id: 'trivia', label: 'Trivia', icon: 'fa-lightbulb' },
     { id: 'would_you_rather', label: 'Would You Rather', icon: 'fa-shuffle' },
@@ -232,6 +251,10 @@ const normalizeLaunchParty = (value = {}) => {
         ? source.autoCrowdMomentPreferredTypes.filter((type) => LAUNCH_INTERMISSION_TYPE_OPTIONS.some((option) => option.id === type))
         : [];
     return {
+        karaokeFirst: source.karaokeFirst !== false,
+        minSingingSharePct: Math.max(50, Math.min(95, Number(source.minSingingSharePct || 70) || 70)),
+        maxBreakDurationSec: Math.max(3, Math.min(120, Number(source.maxBreakDurationSec || 20) || 20)),
+        maxConsecutiveNonKaraokeModes: Math.max(1, Math.min(4, Number(source.maxConsecutiveNonKaraokeModes || 1) || 1)),
         autoCrowdMomentsEnabled: source.autoCrowdMomentsEnabled === true,
         autoCrowdMomentEverySongs: Math.max(1, Math.min(5, Number(source.autoCrowdMomentEverySongs || 3) || 3)),
         autoCrowdMomentPreferredTypes: preferredTypes.length ? preferredTypes : ['trivia', 'would_you_rather'],
@@ -246,6 +269,16 @@ const getLaunchAssistLevel = (operatingModel = 'assisted_host') => (
 const getOptionLabel = (options = [], id = '', fallback = 'Default') => (
     options.find((option) => option.id === id)?.label || fallback
 );
+
+const countObjectLeaves = (value = {}) => Object.values(value || {}).reduce((count, entry) => (
+    entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? count + countObjectLeaves(entry)
+        : count + 1
+), 0);
+
+const countChangedKeys = (current = {}, baseline = {}, keys = []) => keys.reduce((count, key) => (
+    JSON.stringify(current?.[key]) === JSON.stringify(baseline?.[key]) ? count : count + 1
+), 0);
 
 const buildLaunchOperatingModelSettings = (modelId = 'host_led') => {
     const safeModel = ['host_led', 'assisted_host', 'crowd_driven'].includes(String(modelId || '').trim().toLowerCase())
@@ -267,7 +300,9 @@ const formatPresetQueueSummary = (queueSettings = {}) => {
     const limitCount = Math.max(0, Number(queueSettings?.limitCount || 0));
     const limit = limitMode === 'none'
         ? 'Open queue'
-        : `${limitCount || 'Set'} ${limitMode === 'per_rotation' ? 'per rotation' : 'per night'}`;
+        : limitMode === 'soft'
+            ? `${limitCount || 'Set'} suggested per singer`
+            : `${limitCount || 'Set'} ${limitMode === 'per_hour' ? 'per hour' : 'per singer tonight'}`;
     const rotationLabel = getOptionLabel(QUEUE_ROTATION_OPTIONS, rotation, 'Round Robin');
     return `${limit}; ${rotationLabel.toLowerCase()}`;
 };
@@ -398,8 +433,10 @@ const HostRoomLaunchPadBrowser = ({
     }));
     const [joinPosterRoom, setJoinPosterRoom] = useState(null);
     const [roomSetupMode, setRoomSetupMode] = useState('manage');
+    const [showMobileLaunchJump, setShowMobileLaunchJump] = useState(false);
     const roomBrowserResultsRef = useRef(null);
     const createRoomSectionRef = useRef(null);
+    const launchReviewRef = useRef(null);
     const selectedPresetBaseId = selectedLaunchPreset?.basePresetId || selectedLaunchPreset?.id || 'casual';
     const selectedPresetJoinPolicy = normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {});
     const recoveredJoinAccessMode = AUDIENCE_JOIN_ACCESS_OPTIONS.some(
@@ -415,6 +452,13 @@ const HostRoomLaunchPadBrowser = ({
     const launchNeedsPasscode = launchJoinAccessMode === AUDIENCE_JOIN_ACCESS_MODES.passcodeRequired;
     const launchPasscodeValid = !launchNeedsPasscode || normalizedLaunchJoinPasscode.length >= 4;
     const roomLaunchDisabled = launchDisabled || !launchPasscodeValid;
+    const launchReadinessMessage = creatingRoom
+        ? 'Creating the room and applying this setup.'
+        : !launchPasscodeValid
+        ? 'Add a guest passcode with at least 4 letters or numbers.'
+        : launchDisabled
+            ? 'Complete the required room details above.'
+            : 'Setup is complete. Room Settings remains available for future changes.';
     const selectedPresetImpactRows = useMemo(
         () => buildPresetImpactRows(selectedLaunchPreset || {}, launchJoinAccessMode),
         [launchJoinAccessMode, selectedLaunchPreset]
@@ -456,15 +500,27 @@ const HostRoomLaunchPadBrowser = ({
         recoveredExperienceDraft?.mediaSources
         || selectedLaunchPreset?.searchSources
     ));
+    const [launchSettingsOverrides, setLaunchSettingsOverrides] = useState(() => (
+        recoveredExperienceDraft?.settingsOverrides
+        && typeof recoveredExperienceDraft.settingsOverrides === 'object'
+        && !Array.isArray(recoveredExperienceDraft.settingsOverrides)
+            ? recoveredExperienceDraft.settingsOverrides
+            : {}
+    ));
     const [showAdvancedSetup, setShowAdvancedSetup] = useState(false);
     useEffect(() => {
         const experienceIsDefault = launchJoinAccessMode === AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed
             && launchOperatingModel === 'assisted_host'
             && launchNightType === 'party_karaoke'
+            && launchParty.karaokeFirst !== false
+            && launchParty.minSingingSharePct === 70
+            && launchParty.maxBreakDurationSec === 20
+            && launchParty.maxConsecutiveNonKaraokeModes === 1
             && launchParty.autoCrowdMomentsEnabled !== true
             && launchMediaSources.local
             && launchMediaSources.youtube
-            && launchMediaSources.itunes;
+            && launchMediaSources.itunes
+            && Object.keys(launchSettingsOverrides || {}).length === 0;
         if (experienceIsDefault) {
             clearHostLaunchDraftPart(launchExperienceDraftKey);
             return;
@@ -475,8 +531,9 @@ const HostRoomLaunchPadBrowser = ({
             nightType: launchNightType,
             party: launchParty,
             mediaSources: launchMediaSources,
+            settingsOverrides: launchSettingsOverrides,
         });
-    }, [launchExperienceDraftKey, launchJoinAccessMode, launchMediaSources, launchNightType, launchOperatingModel, launchParty]);
+    }, [launchExperienceDraftKey, launchJoinAccessMode, launchMediaSources, launchNightType, launchOperatingModel, launchParty, launchSettingsOverrides]);
     const toggleLaunchMediaSource = (sourceId = '') => {
         if (!['local', 'youtube', 'itunes'].includes(sourceId)) return;
         setLaunchMediaSources((current) => {
@@ -490,8 +547,9 @@ const HostRoomLaunchPadBrowser = ({
     };
     const selectedOperatingModelOption = LAUNCH_OPERATING_MODEL_OPTIONS.find((option) => option.id === launchOperatingModel) || LAUNCH_OPERATING_MODEL_OPTIONS[0];
     const selectedNightType = LAUNCH_NIGHT_TYPE_OPTIONS.find((option) => option.id === launchNightType) || LAUNCH_NIGHT_TYPE_OPTIONS[0];
-    const buildLaunchPresetPayload = () => buildHostNightPresetConfig({
-        ...(selectedLaunchPreset || {}),
+    const selectedNightTypePreset = presets.find((preset) => preset.id === selectedNightType?.presetId) || selectedLaunchPreset || {};
+    const buildLaunchPresetPayload = (settingsOverrideInput = launchSettingsOverrides) => buildHostNightPresetConfig({
+        ...(selectedNightTypePreset || {}),
         searchSources: launchMediaSources,
         recipe: {
             flowRule: selectedNightType?.flowRule || 'balanced',
@@ -503,21 +561,72 @@ const HostRoomLaunchPadBrowser = ({
             party: { ...launchParty },
         },
         settings: {
-            ...(selectedLaunchPreset?.settings || {}),
+            ...(selectedNightTypePreset?.settings || {}),
             ...buildLaunchOperatingModelSettings(launchOperatingModel),
             ...(selectedNightType?.settingsOverrides || {}),
+            ...(settingsOverrideInput || {}),
+            queueSettings: {
+                ...(selectedNightTypePreset?.settings?.queueSettings || {}),
+                ...(selectedNightType?.settingsOverrides?.queueSettings || {}),
+                ...(settingsOverrideInput?.queueSettings || {}),
+            },
             audienceJoinPolicy: {
-                ...normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {}),
+                ...normalizeAudienceJoinPolicy(selectedNightTypePreset?.settings?.audienceJoinPolicy || {}),
                 accessMode: launchJoinAccessMode,
             },
         },
     });
+    const launchPresetPayloadBaseline = buildLaunchPresetPayload({});
     const launchPresetPayloadPreview = buildLaunchPresetPayload();
+    const launchBaselineSettings = launchPresetPayloadBaseline?.settings || {};
+    const launchBaselineQueue = launchBaselineSettings.queueSettings || {};
+    const launchPreviewSettings = launchPresetPayloadPreview?.settings || {};
+    const launchPreviewQueue = launchPreviewSettings.queueSettings || {};
+    const launchPartyBaseline = normalizeLaunchParty(selectedNightType?.party || {});
+    const launchMediaBaseline = normalizeLaunchMediaSources(selectedNightTypePreset?.searchSources || {});
+    const launchCustomizationCount = (launchOperatingModel === selectedNightType?.operatingModel ? 0 : 1)
+        + countObjectLeaves(launchSettingsOverrides)
+        + countChangedKeys(launchParty, launchPartyBaseline, [
+            'karaokeFirst',
+            'minSingingSharePct',
+            'maxBreakDurationSec',
+            'maxConsecutiveNonKaraokeModes',
+            'autoCrowdMomentsEnabled',
+            'autoCrowdMomentEverySongs',
+            'autoCrowdMomentPreferredTypes',
+        ])
+        + countChangedKeys(launchMediaSources, launchMediaBaseline, ['local', 'youtube', 'itunes'])
+        + (launchEconomyMode === selectedNightType?.economyMode ? 0 : 1);
+    const updateLaunchSetting = (key, value) => {
+        setLaunchSettingsOverrides((current) => {
+            const next = { ...(current || {}) };
+            if (JSON.stringify(value) === JSON.stringify(launchBaselineSettings?.[key])) delete next[key];
+            else next[key] = value;
+            return next;
+        });
+    };
+    const updateLaunchQueueSetting = (key, value) => {
+        setLaunchSettingsOverrides((current) => {
+            const nextQueue = { ...(current?.queueSettings || {}) };
+            if (JSON.stringify(value) === JSON.stringify(launchBaselineQueue?.[key])) delete nextQueue[key];
+            else nextQueue[key] = value;
+            const next = { ...(current || {}) };
+            if (Object.keys(nextQueue).length) next.queueSettings = nextQueue;
+            else delete next.queueSettings;
+            return next;
+        });
+    };
+    const updateLaunchPartySetting = (key, value) => {
+        setLaunchParty((current) => normalizeLaunchParty({
+            ...(current || {}),
+            [key]: value,
+        }));
+    };
     const launchEffectiveBehavior = resolveRoomSetupEffectiveBehavior({
         layers: [
             {
                 id: 'launch_plan',
-                label: `${selectedLaunchPreset?.label || 'Starting plan'} + ${selectedOperatingModelOption.label}`,
+                label: `${selectedNightTypePreset?.label || 'Starting plan'} + ${selectedOperatingModelOption.label}`,
                 type: 'provisioning',
                 values: {
                     ...(launchPresetPayloadPreview?.settings || {}),
@@ -539,7 +648,10 @@ const HostRoomLaunchPadBrowser = ({
     });
     const launchSummaryItems = [
         launchRoomSummaryName,
+        selectedNightType?.label || 'Party Karaoke',
         selectedOperatingModelOption?.label,
+        formatPresetQueueSummary(launchPreviewQueue),
+        launchPreviewSettings.showScoring === false ? 'Scoring off' : 'Scoring on',
         `${getLaunchMediaSourceLabels(launchMediaSources).join(' + ')} search`,
         hasRequestedLaunchRoomCode ? `Code ${requestedLaunchRoomCodeCandidate}` : 'Auto room code',
         discoveryListingEnabled ? 'Discoverable' : 'Private link',
@@ -547,6 +659,14 @@ const HostRoomLaunchPadBrowser = ({
         selectedJoinOption?.label,
         launchNeedsPasscode ? 'Separate guest passcode' : '',
         selectedEconomyOption?.label,
+    ].filter(Boolean);
+    const launchPrimarySummaryItems = [
+        selectedNightType?.label || 'Party Karaoke',
+        selectedOperatingModelOption?.label,
+        selectedJoinOption?.label,
+        discoveryListingEnabled ? 'Discoverable' : 'Private link',
+        hasLaunchStartTime ? `Starts ${launchStartSummary}` : 'Starts now',
+        formatPresetQueueSummary(launchPreviewQueue),
     ].filter(Boolean);
     const applyLaunchEconomy = (mode = 'standard') => {
         setEventCreditsConfig((prev) => {
@@ -581,6 +701,13 @@ const HostRoomLaunchPadBrowser = ({
             return applyEventCreditsPreset('custom_event_credits', prev);
         });
     };
+    const resetLaunchFineTune = () => {
+        setLaunchOperatingModel(selectedNightType?.operatingModel || 'assisted_host');
+        setLaunchSettingsOverrides({});
+        setLaunchParty(launchPartyBaseline);
+        setLaunchMediaSources(launchMediaBaseline);
+        applyLaunchEconomy(selectedNightType?.economyMode || 'standard');
+    };
     const updateLaunchPointSettings = (patch = {}) => {
         setEventCreditsConfig((prev) => {
             const current = prev && typeof prev === 'object' ? prev : {};
@@ -604,6 +731,7 @@ const HostRoomLaunchPadBrowser = ({
         setLaunchNightType(option.id);
         setLaunchOperatingModel(option.operatingModel);
         setLaunchParty(normalizeLaunchParty(option.party || {}));
+        setLaunchSettingsOverrides({});
         applyLaunchEconomy(option.economyMode);
         if (presets.some((preset) => preset.id === option.presetId)) setHostNightPreset(option.presetId);
     };
@@ -674,6 +802,19 @@ const HostRoomLaunchPadBrowser = ({
     const activeRoomSetupTab = ROOM_SETUP_TABS.find((tab) => tab.id === roomSetupMode) || ROOM_SETUP_TABS[0];
     const normalizedActiveRoomCode = String(activeRoomCode || '').trim().toUpperCase();
     const timedPointsRefillEnabled = eventCreditsConfig?.timedLobbyEnabled === true;
+    useEffect(() => {
+        if (!createModeActive || typeof IntersectionObserver === 'undefined') {
+            const resetTimer = window.setTimeout(() => setShowMobileLaunchJump(false), 0);
+            return () => window.clearTimeout(resetTimer);
+        }
+        const target = launchReviewRef.current;
+        if (!target) return undefined;
+        const observer = new IntersectionObserver(([entry]) => {
+            setShowMobileLaunchJump(!entry?.isIntersecting);
+        }, { threshold: 0.15 });
+        observer.observe(target);
+        return () => observer.disconnect();
+    }, [createModeActive]);
     const getRoomSetupTabButtonClass = (active = false) => (
         `host-brand-tab px-3 py-2 text-[11px] font-black uppercase tracking-[0.13em] ${
             active ? 'is-active' : ''
@@ -1183,7 +1324,7 @@ const HostRoomLaunchPadBrowser = ({
                         id="launchpad-create-room"
                         ref={createRoomSectionRef}
                         data-room-create-premium="true"
-                        className="relative isolate overflow-hidden rounded-[1.75rem] border border-fuchsia-300/20 bg-[radial-gradient(circle_at_12%_12%,rgba(236,72,153,0.18),transparent_31%),radial-gradient(circle_at_88%_18%,rgba(34,211,238,0.16),transparent_32%),linear-gradient(145deg,rgba(12,15,29,0.98),rgba(8,19,29,0.98)_52%,rgba(24,10,29,0.98))] p-3 shadow-[0_28px_80px_rgba(0,0,0,0.42),0_0_48px_rgba(34,211,238,0.055)] sm:p-5 lg:p-6"
+                        className="relative isolate overflow-hidden rounded-[1.75rem] border border-cyan-200/28 bg-[radial-gradient(circle_at_10%_4%,rgba(34,211,238,0.34),transparent_34%),radial-gradient(circle_at_92%_8%,rgba(244,114,182,0.3),transparent_38%),linear-gradient(145deg,#13243c_0%,#18233e_48%,#351d3d_100%)] p-2 shadow-[0_28px_80px_rgba(8,15,34,0.48)] sm:p-3 lg:p-4"
                     >
                         <div aria-hidden="true" className="pointer-events-none absolute -left-20 top-24 h-52 w-52 rounded-full bg-fuchsia-500/10 blur-3xl" />
                         <div aria-hidden="true" className="pointer-events-none absolute -right-20 bottom-0 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
@@ -1198,70 +1339,56 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
                         ) : null}
 
-                        <div className="relative overflow-hidden rounded-[1.45rem] border border-white/10 bg-black/24 shadow-[0_18px_50px_rgba(0,0,0,0.28)]" data-launch-core-setup="true">
-                            <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[linear-gradient(115deg,rgba(236,72,153,0.11),rgba(9,20,31,0.28)_52%,rgba(34,211,238,0.08))] px-4 py-2.5 sm:px-5" data-launch-create-header="true">
-                                <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-fuchsia-50/78">
-                                    <span className="grid h-7 w-7 place-items-center rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/10 text-fuchsia-100"><i className="fa-solid fa-sparkles" /></span>
-                                    New Room
-                                    <span className="font-semibold normal-case tracking-normal text-cyan-50/52">Set the essentials, then launch.</span>
+                        <div className="relative overflow-hidden rounded-[1.35rem] border border-cyan-200/28 bg-[linear-gradient(145deg,rgba(25,43,70,0.98),rgba(52,29,62,0.98))] shadow-[0_26px_70px_rgba(8,15,34,0.42)]" data-launch-core-setup="true">
+                            <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[radial-gradient(circle_at_12%_0%,rgba(34,211,238,0.14),transparent_34%),radial-gradient(circle_at_84%_0%,rgba(236,72,153,0.12),transparent_32%),linear-gradient(180deg,rgba(17,24,39,0.96),rgba(9,9,11,0.9))] px-4 py-3 sm:px-5" data-launch-create-header="true">
+                                <div className="min-w-0">
+                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">Room Setup · New Room</div>
+                                    <div className="mt-0.5 text-xl font-black text-white md:text-2xl">Tune this room</div>
+                                    <div className="mt-0.5 text-xs text-zinc-400">Everything needed to create and launch the room now lives on this screen.</div>
                                 </div>
-                                <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${launchDisabled ? 'border-amber-300/24 bg-amber-500/9 text-amber-50' : 'border-emerald-300/24 bg-emerald-500/9 text-emerald-50'}`} data-launch-readiness="true">
-                                    <i className={`fa-solid ${launchDisabled ? 'fa-pen-to-square' : 'fa-circle-check'}`} />
-                                    {launchDisabled ? 'Needs input' : 'Ready to create'}
+                                <div className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-3 py-2 text-sm font-bold ${creatingRoom ? 'border-cyan-300/28 bg-cyan-500/10 text-cyan-50' : roomLaunchDisabled ? 'border-amber-300/24 bg-amber-500/9 text-amber-50' : 'border-emerald-300/24 bg-emerald-500/9 text-emerald-50'}`} data-launch-readiness="true">
+                                    <i className={`fa-solid ${creatingRoom ? 'fa-circle-notch animate-spin' : roomLaunchDisabled ? 'fa-pen-to-square' : 'fa-circle-check'}`} />
+                                    {creatingRoom ? 'Creating room' : roomLaunchDisabled ? 'Not ready' : 'Ready to create'}
                                 </div>
                             </div>
-                            <div className="bg-[linear-gradient(150deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-4 sm:p-5 lg:p-6">
+                            <div className="bg-[linear-gradient(150deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-3 sm:p-4">
                                 {launchDraftRecovered ? (
                                     <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-3 py-1 text-xs uppercase tracking-[0.14em] text-emerald-50" role="status">
                                         <i className="fa-solid fa-rotate-left"></i>
                                         Saved choices restored
                                     </div>
                                 ) : null}
-                                <div className="grid gap-4 lg:grid-cols-12">
-                                    <label className="block rounded-2xl border border-white/10 bg-black/18 p-4 lg:col-span-12" data-launch-room-identity="true">
+                                <div className="grid gap-4 xl:grid-cols-12">
+                                    <label className="block rounded-2xl border border-white/10 bg-black/18 p-4 xl:col-span-12" data-launch-room-identity="true">
                                         <span className="flex flex-wrap items-center justify-between gap-2">
-                                            <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70"><span className="grid h-7 w-7 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[10px] text-cyan-100">1</span><i className="fa-solid fa-signature text-cyan-300/72" /> Name the Room</span>
+                                            <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70"><span className="grid h-8 w-8 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-xs text-cyan-100"><i className="fa-solid fa-signature text-cyan-300/72" /></span> Name the Room</span>
                                             <span className="text-sm text-cyan-100/52">This is what guests and hosts will recognize.</span>
                                         </span>
                                         <input value={launchRoomName} onChange={(e) => setLaunchRoomName(e.target.value)} placeholder="Friday Karaoke" autoFocus className={`${launchInputClass} max-w-3xl`} />
                                     </label>
-                                    <div className="rounded-2xl border border-fuchsia-300/14 bg-fuchsia-500/[0.045] p-4 lg:col-span-12" data-launch-room-control="true">
-                                        <div className="flex flex-wrap items-end justify-between gap-2">
-                                            <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100/78"><span className="grid h-7 w-7 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-500/10 text-[10px] text-fuchsia-100">2</span><i className="fa-solid fa-layer-group text-fuchsia-300/78" /> Choose the kind of night</span>
-                                            <span className="text-sm text-fuchsia-100/56">Sets sensible defaults for pacing, automation, and rewards.</span>
-                                        </div>
-                                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-                                            {LAUNCH_NIGHT_TYPE_OPTIONS.map((option) => {
-                                                const selected = option.id === launchNightType;
-                                                return (
-                                                    <button
-                                                        key={option.id}
-                                                        type="button"
-                                                        data-launch-room-recipe={option.id}
-                                                        aria-pressed={selected}
-                                                        onClick={() => applyLaunchNightType(option.id)}
-                                                        className={`min-h-[76px] rounded-xl border p-2.5 text-left transition ${selected ? 'border-fuchsia-300/48 bg-fuchsia-500/14 text-white shadow-[0_14px_30px_rgba(217,70,239,0.1)]' : 'border-white/10 bg-black/18 text-cyan-100/72 hover:border-cyan-300/25 hover:bg-white/[0.04]'}`}
-                                                    >
-                                                        <span className="flex items-start justify-between gap-2">
-                                                            <span className="inline-flex items-center gap-2 text-sm font-black"><i className={`fa-solid ${option.icon}`} />{option.label}</span>
-                                                            <span className="rounded-full border border-white/10 bg-black/20 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.1em]">{option.eyebrow}</span>
-                                                        </span>
-                                                        <span className="mt-1 line-clamp-2 block text-[10px] leading-4 opacity-72">{option.summary}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                        <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(260px,0.72fr)_minmax(0,1.28fr)]" data-launch-night-controls="true">
+                                    <div className="min-w-0 rounded-2xl border border-fuchsia-300/14 bg-black/20 p-4 xl:col-span-12" data-launch-room-control="true">
+                                        <MissionSetupPrimaryPicks
+                                            recipes={LAUNCH_NIGHT_TYPE_RECIPE_CARDS}
+                                            selectedRecipeId={launchNightType}
+                                            onApplyRecipe={(recipe) => applyLaunchNightType(recipe.id)}
+                                            allowSaveRecipe={false}
+                                            selectedRecipeAdjusted={launchCustomizationCount > 0}
+                                            wideGrid
+                                            title="Room recipe"
+                                            description="One choice sets the recommended pacing, automation, rewards, and performance style."
+                                            footerHint="Adjust host help and between-performance activities below."
+                                        />
+                                        <div className="mt-3 grid gap-2 xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.28fr)]" data-launch-night-controls="true">
                                             <div className="rounded-xl border border-cyan-300/14 bg-black/18 p-2.5">
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <span className="text-[9px] font-black uppercase tracking-[0.15em] text-cyan-100/62">How much help?</span>
-                                                    <span className="text-[10px] text-cyan-100/42">You can step in anytime</span>
+                                                    <span className="text-xs font-black uppercase tracking-[0.12em] text-cyan-100/72">How much help?</span>
+                                                    <span className="text-xs text-cyan-100/52">You can step in anytime</span>
                                                 </div>
                                                 <div className="mt-1.5 grid grid-cols-3 gap-1">
                                                     {LAUNCH_OPERATING_MODEL_OPTIONS.map((option) => {
                                                         const selected = option.id === launchOperatingModel;
                                                         return (
-                                                            <button key={option.id} type="button" data-launch-operating-model-quick={option.id} aria-pressed={selected} onClick={() => setLaunchOperatingModel(option.id)} className={`min-h-[42px] rounded-lg border px-1.5 py-1.5 text-center text-[10px] font-bold transition ${selected ? 'border-cyan-300/42 bg-cyan-500/14 text-white' : 'border-white/10 bg-black/18 text-cyan-100/58 hover:border-cyan-300/22'}`}>
+                                                            <button key={option.id} type="button" data-launch-operating-model-quick={option.id} aria-pressed={selected} onClick={() => setLaunchOperatingModel(option.id)} className={`min-h-[48px] rounded-lg border px-2 py-2 text-center text-xs font-bold transition ${selected ? 'border-cyan-300/42 bg-cyan-500/14 text-white' : 'border-white/10 bg-black/18 text-cyan-100/68 hover:border-cyan-300/22'}`}>
                                                                 <i className={`fa-solid ${option.icon} mr-1`} />{option.label.replace(' Host', '')}
                                                             </button>
                                                         );
@@ -1270,8 +1397,8 @@ const HostRoomLaunchPadBrowser = ({
                                             </div>
                                             <div className="rounded-xl border border-fuchsia-300/14 bg-black/18 p-2.5" data-launch-intermission-program="true">
                                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <span className="text-[9px] font-black uppercase tracking-[0.15em] text-fuchsia-100/64">Between performances</span>
-                                                    <button type="button" aria-pressed={launchParty.autoCrowdMomentsEnabled} onClick={() => setLaunchParty((current) => ({ ...current, autoCrowdMomentsEnabled: current.autoCrowdMomentsEnabled !== true }))} className={`min-h-[30px] rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${launchParty.autoCrowdMomentsEnabled ? 'border-fuchsia-300/38 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/20 text-zinc-400'}`}>
+                                                    <span className="text-xs font-black uppercase tracking-[0.12em] text-fuchsia-100/72">Between performances</span>
+                                                    <button type="button" aria-pressed={launchParty.autoCrowdMomentsEnabled} onClick={() => setLaunchParty((current) => ({ ...current, autoCrowdMomentsEnabled: current.autoCrowdMomentsEnabled !== true }))} className={`min-h-[44px] rounded-lg border px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${launchParty.autoCrowdMomentsEnabled ? 'border-fuchsia-300/38 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/20 text-zinc-300'}`}>
                                                         {launchParty.autoCrowdMomentsEnabled ? 'Activities on' : 'No activities'}
                                                     </button>
                                                 </div>
@@ -1283,21 +1410,21 @@ const HostRoomLaunchPadBrowser = ({
                                                                 const hasType = current.autoCrowdMomentPreferredTypes.includes(option.id);
                                                                 const nextTypes = hasType ? current.autoCrowdMomentPreferredTypes.filter((type) => type !== option.id) : [...current.autoCrowdMomentPreferredTypes, option.id];
                                                                 return { ...current, autoCrowdMomentPreferredTypes: nextTypes.length ? nextTypes : [option.id] };
-                                                            })} className={`min-h-[32px] rounded-lg border px-2 py-1 text-[9px] font-bold transition disabled:opacity-35 ${selected ? 'border-fuchsia-300/35 bg-fuchsia-500/13 text-white' : 'border-white/10 bg-black/18 text-zinc-400'}`}>
+                                                            })} className={`min-h-[44px] rounded-lg border px-3 py-2 text-xs font-bold transition disabled:opacity-35 ${selected ? 'border-fuchsia-300/35 bg-fuchsia-500/13 text-white' : 'border-white/10 bg-black/18 text-zinc-300'}`}>
                                                                 <i className={`fa-solid ${option.icon} mr-1`} />{option.label}
                                                             </button>
                                                         );
                                                     })}
-                                                    <span className="ml-auto text-[9px] uppercase tracking-[0.12em] text-zinc-500">Every</span>
+                                                    <span className="basis-full text-xs font-bold uppercase tracking-[0.1em] text-zinc-400 sm:ml-auto sm:basis-auto">Every</span>
                                                     {[1, 2, 3, 4, 5].map((count) => (
-                                                        <button key={count} type="button" disabled={!launchParty.autoCrowdMomentsEnabled} aria-pressed={launchParty.autoCrowdMomentEverySongs === count} onClick={() => setLaunchParty((current) => ({ ...current, autoCrowdMomentEverySongs: count }))} className={`h-8 w-8 rounded-lg border text-[10px] font-black disabled:opacity-35 ${launchParty.autoCrowdMomentEverySongs === count ? 'border-fuchsia-300/38 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/18 text-zinc-400'}`}>{count}</button>
+                                                        <button key={count} type="button" disabled={!launchParty.autoCrowdMomentsEnabled} aria-pressed={launchParty.autoCrowdMomentEverySongs === count} onClick={() => setLaunchParty((current) => ({ ...current, autoCrowdMomentEverySongs: count }))} className={`h-11 w-11 rounded-lg border text-xs font-black disabled:opacity-35 ${launchParty.autoCrowdMomentEverySongs === count ? 'border-fuchsia-300/38 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/18 text-zinc-300'}`}>{count}</button>
                                                     ))}
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="rounded-2xl border border-cyan-300/14 bg-cyan-500/[0.04] p-4 lg:col-span-8" data-launch-guest-access="true">
-                                        <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/76"><span className="grid h-7 w-7 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[10px] text-cyan-100">3</span><i className="fa-solid fa-user-group text-cyan-300/72" /> Choose the front door</span>
+                                    <div className="rounded-2xl border border-cyan-300/14 bg-black/20 p-4 xl:col-span-8" data-launch-guest-access="true">
+                                        <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/76"><span className="grid h-8 w-8 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-xs text-cyan-100"><i className="fa-solid fa-user-group text-cyan-300/72" /></span> Choose the front door</span>
                                         <div className="mt-1 text-sm text-cyan-100/54">Control what guests need before they can enter and request songs.</div>
                                         <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
                                             {AUDIENCE_JOIN_ACCESS_OPTIONS.map((option) => {
@@ -1316,16 +1443,16 @@ const HostRoomLaunchPadBrowser = ({
                                             })}
                                         </div>
                                     </div>
-                                    <div className="rounded-2xl border border-white/10 bg-black/18 p-4 lg:col-span-4" data-launch-room-privacy="true">
+                                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 xl:col-span-4" data-launch-room-privacy="true">
                                         <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70"><i className="fa-solid fa-eye text-cyan-300/72" /> Who can find it?</span>
-                                        <div className="mt-2 inline-flex min-h-[50px] w-full rounded-[0.95rem] border border-white/10 bg-slate-950/60 p-1">
+                                        <div className="mt-2 inline-flex min-h-[58px] w-full rounded-[0.95rem] border border-white/10 bg-slate-950/60 p-1">
                                             <button type="button" onClick={() => setDiscoveryListingMode(false)} aria-pressed={!discoveryListingEnabled} className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold transition ${!discoveryListingEnabled ? 'bg-white text-slate-950' : 'text-cyan-100/62 hover:text-white'}`}>Private</button>
                                             <button type="button" onClick={() => setDiscoveryListingMode(true)} aria-pressed={discoveryListingEnabled} className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold transition ${discoveryListingEnabled ? 'bg-gradient-to-r from-cyan-300 to-fuchsia-300 text-slate-950' : 'text-cyan-100/62 hover:text-white'}`}>Discover</button>
                                         </div>
-                                        <div className="mt-2 text-xs leading-5 text-cyan-100/52">{discoveryListingEnabled ? 'List this Room in Discover. You can add venue and schedule details later.' : 'Only people with the Room code or Audience App link can find it.'}</div>
+                                        <div className="mt-2 text-xs leading-5 text-cyan-100/62">{discoveryListingEnabled ? 'List this Room in Discover. Add an optional start time below.' : 'Only people with the Room code or Audience App link can find it.'}</div>
                                     </div>
                                 </div>
-                                <div className={`mt-4 grid gap-3 ${launchNeedsPasscode ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`} data-launch-access-details="true">
+                                <div className={`mt-4 grid gap-3 ${launchNeedsPasscode ? 'xl:grid-cols-3' : 'xl:grid-cols-2'}`} data-launch-access-details="true">
                                 {launchNeedsPasscode ? (
                                     <label className="block rounded-2xl border border-fuchsia-300/16 bg-fuchsia-500/[0.045] p-4">
                                         <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70"><i className="fa-solid fa-lock text-fuchsia-300/78" /> Guest passcode</span>
@@ -1334,7 +1461,7 @@ const HostRoomLaunchPadBrowser = ({
                                     </label>
                                 ) : null}
                                 <details className="group rounded-2xl border border-white/[0.08] bg-black/18 px-4 py-3 transition open:border-cyan-300/15 open:bg-cyan-500/[0.035]">
-                                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-cyan-50/72 transition hover:text-white">
+                                    <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-cyan-50/72 transition hover:text-white">
                                         <span className="inline-flex items-center gap-2"><i className="fa-solid fa-hashtag text-cyan-300/58" /> Custom room code <span className="font-normal text-cyan-100/34">Optional</span></span>
                                         <i className="fa-solid fa-chevron-down text-[9px] text-cyan-100/42 transition group-open:rotate-180" />
                                     </summary>
@@ -1343,11 +1470,141 @@ const HostRoomLaunchPadBrowser = ({
                                         <div className="mt-2 text-xs text-cyan-100/48">Leave blank and we&apos;ll create one.</div>
                                     </label>
                                 </details>
+                                <details className="group rounded-2xl border border-white/[0.08] bg-black/18 px-4 py-3 transition open:border-cyan-300/15 open:bg-cyan-500/[0.035]" data-launch-schedule="true">
+                                    <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-cyan-50/72 transition hover:text-white">
+                                        <span className="inline-flex items-center gap-2"><i className="fa-solid fa-calendar-clock text-cyan-300/58" /> Schedule <span className="font-normal text-cyan-100/34">Optional</span></span>
+                                        <i className="fa-solid fa-chevron-down text-[9px] text-cyan-100/42 transition group-open:rotate-180" />
+                                    </summary>
+                                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                        <label className="block">
+                                            <span className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Room starts</span>
+                                            <input type="datetime-local" value={String(quickLaunchDiscovery?.roomStartsAtLocal || '')} onChange={(event) => setQuickLaunchDiscovery((current) => ({ ...current, roomStartsAtLocal: event.target.value }))} className={`${launchInputClass} mt-1`} />
+                                            <span className="mt-1 block text-xs text-cyan-100/48">{hasLaunchStartTime ? launchStartSummary : 'Start now'}</span>
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Repeats</span>
+                                            <select value={String(quickLaunchDiscovery?.recurringRule || 'one_time')} onChange={(event) => setQuickLaunchDiscovery((current) => ({ ...current, recurringRule: event.target.value }))} className={`${launchInputClass} mt-1`}>
+                                                <option value="one_time">One-time room</option>
+                                                <option value="weekly">Weekly night</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                </details>
                                 </div>
-                                <div className="mt-4 rounded-2xl border border-cyan-300/18 bg-cyan-500/[0.07] px-4 py-4" data-launch-media-readiness="true">
+                                <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950/28" data-launch-fine-tune="true">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAdvancedSetup((current) => !current)}
+                                        aria-expanded={showAdvancedSetup}
+                                        className="flex min-h-[68px] w-full flex-col items-stretch justify-between gap-3 px-4 py-3 text-left transition hover:bg-white/[0.035] sm:flex-row sm:items-center"
+                                    >
+                                        <span>
+                                            <span className="block text-xs font-black uppercase tracking-[0.18em] text-zinc-300">Fine-tune</span>
+                                            <span className="mt-0.5 block text-sm font-black text-white">Queue, live controls, song sources, and Points</span>
+                                            <span className="mt-0.5 block text-xs text-zinc-400">Optional controls stay on this screen without getting in the way of launch.</span>
+                                        </span>
+                                        <span className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+                                            <span className={`rounded-full border px-2.5 py-1.5 text-xs font-black uppercase tracking-[0.1em] ${launchCustomizationCount > 0 ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-cyan-300/20 bg-cyan-500/10 text-cyan-100'}`}>
+                                                {launchCustomizationCount > 0 ? `${launchCustomizationCount} customized` : `${getLaunchMediaSourceLabels(launchMediaSources).length} sources · ${eventCreditsEnabled ? 'Starting Points' : 'Earn Points'}`}
+                                            </span>
+                                            <i className={`fa-solid fa-chevron-${showAdvancedSetup ? 'up' : 'down'} text-zinc-500`} />
+                                        </span>
+                                    </button>
+                                    {showAdvancedSetup ? (
+                                    <div className="border-t border-white/10 px-3 pb-3">
+                                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.08] bg-black/18 px-3 py-2">
+                                    <span className="text-sm text-zinc-300">Everything below is optional.</span>
+                                    {launchCustomizationCount > 0 ? (
+                                        <button type="button" onClick={resetLaunchFineTune} className="min-h-[44px] rounded-lg border border-amber-300/24 bg-amber-500/8 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-amber-100 transition hover:bg-amber-500/14">
+                                            Reset to recipe
+                                        </button>
+                                    ) : null}
+                                </div>
+                                <div className="mt-3 grid gap-3 xl:grid-cols-2" data-launch-queue-live-controls="true">
+                                    <section className="rounded-2xl border border-white/10 bg-black/22 p-4">
+                                        <div className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">Queue rules</div>
+                                        <div className="mt-1 text-xs text-zinc-400">Set the singer cap and rotation before the room opens.</div>
+                                        <div className="mt-3 grid grid-cols-2 gap-1.5">
+                                            {QUEUE_LIMIT_OPTIONS.map((option) => {
+                                                const selected = String(launchPreviewQueue.limitMode || 'none') === option.id;
+                                                return (
+                                                    <button key={option.id} type="button" aria-pressed={selected} onClick={() => {
+                                                        updateLaunchQueueSetting('limitMode', option.id);
+                                                        if (option.id === 'none') updateLaunchQueueSetting('limitCount', 0);
+                                                    }} className={`min-h-[44px] rounded-lg border px-2 py-2 text-xs font-bold transition ${selected ? 'border-cyan-300/45 bg-cyan-500/15 text-white' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/25'}`}>
+                                                        {option.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {String(launchPreviewQueue.limitMode || 'none') !== 'none' ? (
+                                            <label className="mt-3 block">
+                                                <span className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Songs allowed</span>
+                                                <input type="number" min="1" max="50" value={Math.max(1, Number(launchPreviewQueue.limitCount || 1))} onChange={(event) => updateLaunchQueueSetting('limitCount', Math.max(1, Math.min(50, Number(event.target.value || 1))))} className={`${launchInputClass} mt-1`} />
+                                            </label>
+                                        ) : null}
+                                        <div className="mt-3 grid grid-cols-2 gap-1.5">
+                                            {QUEUE_ROTATION_OPTIONS.map((option) => {
+                                                const selected = String(launchPreviewQueue.rotation || 'round_robin') === option.id;
+                                                return (
+                                                    <button key={option.id} type="button" aria-pressed={selected} onClick={() => updateLaunchQueueSetting('rotation', option.id)} className={`min-h-[44px] rounded-lg border px-2 py-2 text-xs font-bold transition ${selected ? 'border-fuchsia-300/40 bg-fuchsia-500/14 text-white' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-fuchsia-300/22'}`}>
+                                                        {option.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <button type="button" aria-pressed={launchPreviewQueue.firstTimeBoost !== false} onClick={() => updateLaunchQueueSetting('firstTimeBoost', launchPreviewQueue.firstTimeBoost === false)} className={`mt-2 flex min-h-[44px] w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs font-bold transition ${launchPreviewQueue.firstTimeBoost !== false ? 'border-cyan-300/36 bg-cyan-500/12 text-white' : 'border-white/10 bg-black/20 text-zinc-300'}`}>
+                                            <span>Prioritize first-time singers</span>
+                                            <span className="uppercase tracking-[0.14em]">{launchPreviewQueue.firstTimeBoost !== false ? 'On' : 'Off'}</span>
+                                        </button>
+                                    </section>
+                                    <section className="rounded-2xl border border-white/10 bg-black/22 p-4">
+                                        <div className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-200">Live switches</div>
+                                        <div className="mt-1 text-xs text-zinc-400">The same room controls are available later, but they start here.</div>
+                                        <div className="mt-3 grid grid-cols-2 gap-1.5">
+                                            {[
+                                                ['autoPlayMedia', 'Auto stage playback', launchPreviewSettings.autoPlayMedia !== false],
+                                                ['showScoring', 'Live scoring', launchPreviewSettings.showScoring !== false],
+                                                ['chatShowOnTv', 'Audience chat on TV', launchPreviewSettings.chatShowOnTv === true],
+                                                ['marqueeEnabled', 'Marquee messages', launchPreviewSettings.marqueeEnabled === true],
+                                                ['popTriviaEnabled', 'Pop-Up Trivia', launchPreviewSettings.popTriviaEnabled === true],
+                                            ].map(([key, label, enabled]) => (
+                                                <button key={key} type="button" aria-pressed={enabled} onClick={() => updateLaunchSetting(key, !enabled)} className={`min-h-[48px] rounded-lg border px-2.5 py-2 text-left text-xs font-bold transition ${enabled ? 'border-fuchsia-300/36 bg-fuchsia-500/14 text-white' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-fuchsia-300/22'}`}>
+                                                    <i className={`fa-solid ${enabled ? 'fa-circle-check text-fuchsia-200' : 'fa-circle text-zinc-600'} mr-1.5`} />{label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </section>
+                                </div>
+                                <section className="mt-3 rounded-2xl border border-white/10 bg-black/22 p-4" data-launch-karaoke-guardrails="true">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/78"><span className="grid h-7 w-7 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-[10px] text-cyan-100">4</span><i className="fa-solid fa-music" /> Choose where song search looks</span>
-                                        <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-cyan-50">{getLaunchMediaSourceLabels(launchMediaSources).length} enabled</span>
+                                        <div>
+                                            <div className="text-xs font-black uppercase tracking-[0.16em] text-amber-200">Karaoke-first guardrails</div>
+                                            <div className="mt-1 text-xs text-zinc-400">Keep side activities from taking over the singing queue.</div>
+                                        </div>
+                                        <button type="button" aria-pressed={launchParty.karaokeFirst !== false} onClick={() => updateLaunchPartySetting('karaokeFirst', launchParty.karaokeFirst === false)} className={`min-h-[44px] rounded-lg border px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${launchParty.karaokeFirst !== false ? 'border-amber-300/34 bg-amber-500/12 text-amber-50' : 'border-white/10 bg-black/20 text-zinc-300'}`}>
+                                            Karaoke-first {launchParty.karaokeFirst !== false ? 'on' : 'off'}
+                                        </button>
+                                    </div>
+                                    <div className={`mt-3 grid gap-2 md:grid-cols-3 ${launchParty.karaokeFirst !== false ? '' : 'opacity-45'}`} aria-disabled={launchParty.karaokeFirst === false}>
+                                        <label className="block">
+                                            <span className="text-xs font-bold text-zinc-300">Minimum singing share (%)</span>
+                                            <input disabled={launchParty.karaokeFirst === false} type="number" min="50" max="95" value={launchParty.minSingingSharePct} onChange={(event) => updateLaunchPartySetting('minSingingSharePct', event.target.value)} className={`${launchInputClass} mt-1 disabled:cursor-not-allowed`} />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-xs font-bold text-zinc-300">Max break duration (sec)</span>
+                                            <input disabled={launchParty.karaokeFirst === false} type="number" min="3" max="120" value={launchParty.maxBreakDurationSec} onChange={(event) => updateLaunchPartySetting('maxBreakDurationSec', event.target.value)} className={`${launchInputClass} mt-1 disabled:cursor-not-allowed`} />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-xs font-bold text-zinc-300">Consecutive side activities</span>
+                                            <input disabled={launchParty.karaokeFirst === false} type="number" min="1" max="4" value={launchParty.maxConsecutiveNonKaraokeModes} onChange={(event) => updateLaunchPartySetting('maxConsecutiveNonKaraokeModes', event.target.value)} className={`${launchInputClass} mt-1 disabled:cursor-not-allowed`} />
+                                        </label>
+                                    </div>
+                                </section>
+                                <div className="mt-3 rounded-2xl border border-white/10 bg-black/22 px-4 py-4" data-launch-media-readiness="true">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/78"><span className="grid h-8 w-8 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-xs text-cyan-100"><i className="fa-solid fa-music" /></span> Choose where song search looks</span>
+                                        <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1.5 text-xs font-black uppercase tracking-[0.1em] text-cyan-50">{getLaunchMediaSourceLabels(launchMediaSources).length} enabled</span>
                                     </div>
                                     <div className="mt-2 text-sm leading-6 text-cyan-50/66">Choose where Host and Audience searches may look. This sets guardrails, not a catalog lock; every performance still needs playable backing.</div>
                                     <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -1355,34 +1612,34 @@ const HostRoomLaunchPadBrowser = ({
                                             const selected = !option.disabled && launchMediaSources?.[option.id] !== false;
                                             return (
                                                 <button key={option.id} type="button" disabled={option.disabled} aria-pressed={selected} onClick={() => toggleLaunchMediaSource(option.id)} className={`min-h-[58px] rounded-xl border px-3 py-2 text-left transition ${option.disabled ? 'cursor-not-allowed border-white/6 bg-black/15 text-zinc-500' : selected ? 'border-cyan-300/40 bg-cyan-400/12 text-white' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/25'}`}>
-                                                    <span className="flex items-center justify-between gap-2"><span className="inline-flex items-center gap-2 text-sm font-black"><i className={`${option.icon.startsWith('fa-brands') ? '' : 'fa-solid '}${option.icon}`} />{option.label}</span><span className="text-[9px] font-black uppercase tracking-[0.14em]">{option.disabled ? 'Coming soon' : selected ? 'Included' : 'Off'}</span></span>
+                                                    <span className="flex items-center justify-between gap-2"><span className="inline-flex items-center gap-2 text-sm font-black"><i className={`${option.icon.startsWith('fa-brands') ? '' : 'fa-solid '}${option.icon}`} />{option.label}</span><span className="text-xs font-black uppercase tracking-[0.08em]">{option.disabled ? 'Coming soon' : selected ? 'Included' : 'Off'}</span></span>
                                                     <span className="mt-1 block text-xs leading-5 opacity-68">{option.helper}</span>
                                                 </button>
                                             );
                                         })}
                                     </div>
                                 </div>
-                                <div className="mt-4 overflow-hidden rounded-2xl border border-fuchsia-300/22 bg-[radial-gradient(circle_at_88%_8%,rgba(244,114,182,0.13),transparent_34%),linear-gradient(145deg,rgba(88,28,78,0.18),rgba(8,16,27,0.76))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]" data-launch-points-setup="true">
+                                <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/22 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]" data-launch-points-setup="true">
                                     <div>
                                         <div className="min-w-0">
-                                            <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100/80"><span className="grid h-7 w-7 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-500/10 text-[10px] text-fuchsia-100">5</span><i className="fa-solid fa-coins text-fuchsia-300/82" /> Set how Points build</span>
+                                            <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100/80"><span className="grid h-8 w-8 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-500/10 text-xs text-fuchsia-100"><i className="fa-solid fa-coins text-fuchsia-300/82" /></span> Set how Points build</span>
                                             <div className="mt-1 max-w-3xl text-sm leading-6 text-fuchsia-50/68">Choose how guests enter the room economy, then decide whether time in the Room adds more Points automatically.</div>
                                         </div>
                                         <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="How guests enter the Points economy">
                                             <button type="button" aria-pressed={!eventCreditsEnabled} onClick={() => applyLaunchEconomy('standard')} className={`flex min-h-[96px] items-center gap-3 rounded-2xl border p-3 text-left transition ${!eventCreditsEnabled ? 'border-cyan-300/45 bg-cyan-500/14 text-white shadow-[0_12px_30px_rgba(34,211,238,0.09)]' : 'border-white/10 bg-black/18 text-fuchsia-100/68 hover:border-cyan-300/25'}`}>
                                                 <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border text-lg ${!eventCreditsEnabled ? 'border-cyan-200/40 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/[0.04]'}`}><i className="fa-solid fa-gamepad" /></span>
-                                                <span className="min-w-0 flex-1"><span className="block text-[10px] font-black uppercase tracking-[0.15em] opacity-55">Earn as they play</span><span className="mt-0.5 block text-sm font-black">Start at zero</span><span className="mt-1 block text-xs leading-4 opacity-65">Activities and Host awards build the balance.</span></span>
+                                                <span className="min-w-0 flex-1"><span className="block text-xs font-black uppercase tracking-[0.1em] opacity-65">Earn as they play</span><span className="mt-0.5 block text-sm font-black">Start at zero</span><span className="mt-1 block text-xs leading-4 opacity-75">Activities and Host awards build the balance.</span></span>
                                                 <i className={`fa-solid ${!eventCreditsEnabled ? 'fa-circle-check text-cyan-200' : 'fa-circle text-white/15'}`} />
                                             </button>
                                             <button type="button" aria-pressed={eventCreditsEnabled} onClick={() => !eventCreditsEnabled && updateLaunchPointSettings({ generalAdmissionPoints: 100 })} className={`flex min-h-[96px] items-center gap-3 rounded-2xl border p-3 text-left transition ${eventCreditsEnabled ? 'border-fuchsia-300/45 bg-fuchsia-500/14 text-white shadow-[0_12px_30px_rgba(244,114,182,0.09)]' : 'border-white/10 bg-black/18 text-fuchsia-100/68 hover:border-fuchsia-300/25'}`}>
                                                 <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border text-lg ${eventCreditsEnabled ? 'border-fuchsia-200/40 bg-fuchsia-300 text-slate-950' : 'border-white/10 bg-white/[0.04]'}`}><i className="fa-solid fa-wallet" /></span>
-                                                <span className="min-w-0 flex-1"><span className="block text-[10px] font-black uppercase tracking-[0.15em] opacity-55">Welcome deposit</span><span className="mt-0.5 block text-sm font-black">Give starting Points</span><span className="mt-1 block text-xs leading-4 opacity-65">Every guest receives the same opening balance.</span></span>
+                                                <span className="min-w-0 flex-1"><span className="block text-xs font-black uppercase tracking-[0.1em] opacity-65">Welcome deposit</span><span className="mt-0.5 block text-sm font-black">Give starting Points</span><span className="mt-1 block text-xs leading-4 opacity-75">Every guest receives the same opening balance.</span></span>
                                                 <i className={`fa-solid ${eventCreditsEnabled ? 'fa-circle-check text-fuchsia-200' : 'fa-circle text-white/15'}`} />
                                             </button>
                                         </div>
                                     </div>
-                                    <div className="mt-4 grid items-stretch gap-3 lg:grid-cols-[minmax(240px,0.75fr)_minmax(0,1.25fr)]">
-                                        <div className={`flex min-h-[268px] flex-col rounded-xl border p-4 transition ${eventCreditsEnabled ? 'border-amber-300/22 bg-amber-500/[0.07]' : 'border-white/10 bg-black/22'}`}>
+                                    <div className="mt-4 grid items-stretch gap-3 xl:grid-cols-[minmax(240px,0.75fr)_minmax(0,1.25fr)]">
+                                        <div className={`flex flex-col rounded-xl border p-4 transition xl:min-h-[240px] ${eventCreditsEnabled ? 'border-amber-300/22 bg-amber-500/[0.07]' : 'border-white/10 bg-black/22'}`}>
                                             <span className="flex items-center gap-2 text-sm font-black text-white"><i className="fa-solid fa-ticket text-amber-200/80" /> Starting Points</span>
                                             <span className="mt-0.5 block text-xs leading-5 text-fuchsia-100/52">Given once when each guest joins.</span>
                                             <label className="mt-3 block"><span className="sr-only">Starting Points per guest</span><input disabled={!eventCreditsEnabled} type="number" min="0" max="100000" step="1" value={Math.max(0, Number(eventCreditsConfig?.generalAdmissionPoints || 0))} onChange={(event) => updateLaunchPointSettings({ generalAdmissionPoints: Math.min(100000, Math.max(0, Number(event.target.value || 0))) })} className={`${launchInputClass} mt-0 text-lg font-black disabled:cursor-not-allowed disabled:opacity-40`} aria-label="Starting Points per guest" /></label>
@@ -1390,7 +1647,7 @@ const HostRoomLaunchPadBrowser = ({
                                                 {!eventCreditsEnabled ? 'Guests start at zero and build Points through room activity.' : `Each guest starts with ${Math.max(0, Number(eventCreditsConfig?.generalAdmissionPoints || 0)).toLocaleString()} Points.`}
                                             </div>
                                         </div>
-                                        <div className="min-h-[268px] rounded-xl border border-white/10 bg-black/22 p-4">
+                                        <div className="rounded-xl border border-white/10 bg-black/22 p-4 xl:min-h-[240px]">
                                             <button
                                                 type="button"
                                                 aria-pressed={timedPointsRefillEnabled}
@@ -1408,7 +1665,7 @@ const HostRoomLaunchPadBrowser = ({
                                             >
                                                 <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl border text-base ${timedPointsRefillEnabled ? 'border-emerald-200/35 bg-emerald-300 text-slate-950' : 'border-white/10 bg-white/[0.04]'}`}><i className="fa-solid fa-clock-rotate-left" /></span>
                                                 <span className="min-w-0 flex-1"><span className="block text-sm font-black">Reward time in the Room</span><span className="mt-0.5 block text-xs leading-4 opacity-60">{timedPointsRefillEnabled ? 'Automatic deposits are on.' : 'Guests earn only through activities and Host awards.'}</span></span>
-                                                <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${timedPointsRefillEnabled ? 'border-emerald-200/30 bg-emerald-500/12 text-emerald-50' : 'border-white/10 bg-black/20 text-zinc-400'}`}>{timedPointsRefillEnabled ? 'On' : 'Off'}</span>
+                                                <span className={`rounded-full border px-2 py-1 text-xs font-black uppercase tracking-[0.08em] ${timedPointsRefillEnabled ? 'border-emerald-200/30 bg-emerald-500/12 text-emerald-50' : 'border-white/10 bg-black/20 text-zinc-300'}`}>{timedPointsRefillEnabled ? 'On' : 'Off'}</span>
                                             </button>
                                             <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${timedPointsRefillEnabled ? 'border-emerald-300/16 bg-emerald-500/8 text-emerald-100/76' : 'border-white/[0.07] bg-black/18 text-fuchsia-100/52'}`} role="status">
                                                 {timedPointsRefillEnabled ? 'On · the values below control the refill cadence.' : 'Off · guests earn more through Room activities and Host awards.'}
@@ -1421,12 +1678,15 @@ const HostRoomLaunchPadBrowser = ({
                                         </div>
                                     </div>
                                 </div>
-                                <div className="mt-4 grid gap-4 rounded-2xl border border-emerald-300/18 bg-[linear-gradient(110deg,rgba(16,185,129,0.09),rgba(8,16,27,0.78)_46%,rgba(236,72,153,0.08))] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.55fr)] lg:items-center" data-launch-primary-bar="true">
+                                    </div>
+                                    ) : null}
+                                </div>
+                                <div ref={launchReviewRef} className="mt-4 grid gap-4 rounded-2xl border border-emerald-300/22 bg-[linear-gradient(110deg,rgba(16,185,129,0.11),rgba(8,16,27,0.86)_52%,rgba(34,211,238,0.07))] p-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.55fr)] xl:items-center" data-launch-primary-bar="true">
                                     <div className="min-w-0">
                                         <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-100/68">Review and launch</div>
                                         <div className="mt-1 text-lg font-black text-white">{launchRoomName.trim() || 'Name your room to continue'}</div>
                                         <div className="mt-2 flex flex-wrap gap-1.5">
-                                            {launchSummaryItems.slice(0, 4).map((item) => <span key={item} className="rounded-full border border-white/10 bg-black/22 px-2.5 py-1 text-xs text-cyan-50/72">{item}</span>)}
+                                            {launchPrimarySummaryItems.map((item) => <span key={item} className="rounded-full border border-white/10 bg-black/22 px-2.5 py-1.5 text-xs text-cyan-50/82">{item}</span>)}
                                         </div>
                                     </div>
                                     <div>
@@ -1435,7 +1695,7 @@ const HostRoomLaunchPadBrowser = ({
                                             <span>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</span>
                                             {!creatingRoom ? <i className="fa-solid fa-arrow-right text-[10px] transition-transform group-hover/launch:translate-x-1" /> : null}
                                         </button>
-                                        <div className="mt-2 flex items-center justify-center gap-2 text-center text-xs text-cyan-100/48"><i className="fa-solid fa-shield-check text-[10px]" /> You can fine-tune everything later in Room Settings.</div>
+                                        <div className={`mt-2 flex items-center justify-center gap-2 text-center text-xs ${creatingRoom ? 'text-cyan-100/72' : roomLaunchDisabled ? 'text-amber-100/72' : 'text-cyan-100/62'}`} role="status"><i className={`fa-solid ${creatingRoom ? 'fa-circle-notch animate-spin' : roomLaunchDisabled ? 'fa-circle-exclamation' : 'fa-shield-check'} text-xs`} /> {launchReadinessMessage}</div>
                                     </div>
                                 </div>
                             </div>
@@ -1704,6 +1964,33 @@ const HostRoomLaunchPadBrowser = ({
                 {hostUpdateDeploymentBanner ? <div>{hostUpdateDeploymentBanner}</div> : null}
             </div>
         </div>
+        {createModeActive && showMobileLaunchJump ? (
+            <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-3 right-3 z-[60] lg:hidden" data-launch-mobile-action="true">
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (roomLaunchDisabled) {
+                            launchReviewRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                            return;
+                        }
+                        handleStartLauncherRoom({
+                            openNightSetup: false,
+                            launchTarget: 'stage',
+                            nightPresetPayload: launchPresetPayloadPreview,
+                            audienceJoinPasscode: normalizedLaunchJoinPasscode,
+                        });
+                    }}
+                    aria-disabled={roomLaunchDisabled}
+                    className={`flex min-h-[52px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left shadow-[0_18px_46px_rgba(0,0,0,0.5)] backdrop-blur-xl ${creatingRoom ? 'border-cyan-300/28 bg-zinc-950/95 text-cyan-50' : roomLaunchDisabled ? 'border-amber-300/28 bg-zinc-950/95 text-amber-50' : 'border-cyan-200/30 bg-[linear-gradient(100deg,rgba(219,39,119,0.96),rgba(20,184,166,0.96))] text-white'}`}
+                >
+                    <span className="min-w-0">
+                        <span className="block text-xs font-black uppercase tracking-[0.12em]">{creatingRoom ? 'Creating room' : roomLaunchDisabled ? 'Finish room setup' : 'Ready to create'}</span>
+                        <span className="mt-0.5 block truncate text-xs opacity-75">{launchRoomName.trim() || 'Name your room to continue'}</span>
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-2 text-sm font-black">{roomLaunchDisabled ? 'Review' : creatingRoom ? 'Creating...' : 'Create'} <i className={`fa-solid ${roomLaunchDisabled ? 'fa-arrow-down' : creatingRoom ? 'fa-circle-notch animate-spin' : 'fa-arrow-right'}`} /></span>
+                </button>
+            </div>
+        ) : null}
         {activeJoinPosterRoom?.audienceUrl ? (
             <RoomJoinPosterModal
                 roomCode={activeJoinPosterRoom.code}
