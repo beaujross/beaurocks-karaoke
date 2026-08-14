@@ -10,7 +10,6 @@ import { resolveRoomSetupEffectiveBehavior } from '../roomSetupEffectiveBehavior
 import { applyEventCreditsPreset } from '../hostLaunchHelpers';
 import { getRoomEconomySummary } from '../../../lib/roomEconomySummary';
 import RoomJoinPosterModal from './RoomJoinPosterModal';
-import HostWorkspaceHeader from './HostWorkspaceHeader';
 import MissionSetupPrimaryPicks from './setup/MissionSetupPrimaryPicks';
 import { AAHF_FESTIVAL_LOGO_URL } from '../hostAppData';
 import {
@@ -45,6 +44,12 @@ const ROOM_BROWSER_SORT_OPTIONS = Object.freeze([
     { id: 'upcoming', label: 'Upcoming First' },
     { id: 'name', label: 'Room Name' },
 ]);
+const ROOM_BROWSER_BUCKET_VISUALS = Object.freeze({
+    ready: { icon: 'fa-bolt', tone: 'from-emerald-300 to-cyan-300', glow: 'shadow-[0_8px_22px_rgba(52,211,153,0.16)]' },
+    upcoming: { icon: 'fa-clock', tone: 'from-cyan-300 to-sky-400', glow: 'shadow-[0_8px_22px_rgba(34,211,238,0.16)]' },
+    past: { icon: 'fa-box-archive', tone: 'from-violet-300 to-fuchsia-400', glow: 'shadow-[0_8px_22px_rgba(192,132,252,0.16)]' },
+    all: { icon: 'fa-folder-open', tone: 'from-amber-300 to-pink-400', glow: 'shadow-[0_8px_22px_rgba(251,191,36,0.16)]' },
+});
 const ROOM_SETUP_TABS = Object.freeze([
     {
         id: 'manage',
@@ -816,35 +821,29 @@ const HostRoomLaunchPadBrowser = ({
         return () => observer.disconnect();
     }, [createModeActive]);
     const getRoomSetupTabButtonClass = (active = false) => (
-        `host-brand-tab px-3 py-2 text-[11px] font-black uppercase tracking-[0.13em] ${
+        `host-brand-tab px-3 py-2 text-xs font-black uppercase tracking-[0.13em] ${
             active ? 'is-active' : ''
         }`
     );
 
     return (
     <div className="relative z-10 mx-auto w-full max-w-[1680px] scroll-mt-4" data-host-workspace-shell="room-setup">
-        <div className="rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_85%_6%,rgba(236,72,153,0.09),transparent_28%),linear-gradient(145deg,rgba(22,36,58,0.94),rgba(12,18,31,0.98))] p-2 shadow-[0_24px_70px_rgba(0,0,0,0.36)] backdrop-blur-xl md:p-3">
-            <HostWorkspaceHeader
-                compact
-                eyebrow="Host Panel · Room operations"
-                title="Room Setup"
-                description={activeRoomSetupTab.helper}
-                icon="fa-door-open"
-                badge={launchAccessPending ? 'Syncing access' : 'Ready to launch'}
-                actions={normalizedActiveRoomCode ? (
-                    <button
-                        type="button"
-                        onClick={() => openExistingRoomWorkspace(normalizedActiveRoomCode, 'queue.live_run')}
-                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} min-h-[44px] px-4 py-2 text-[11px] uppercase tracking-[0.13em]`}
-                    >
-                        <i className="fa-solid fa-arrow-left" />
-                        Return to {normalizedActiveRoomCode}
-                    </button>
-                ) : null}
-            />
-            <div className="mt-3">
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-                <div className="host-brand-tabs host-brand-tabs--fill host-brand-tabs--workspace w-full lg:max-w-[620px]" role="tablist" aria-label="Room setup workspace">
+        <div className="rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_85%_6%,rgba(236,72,153,0.09),transparent_28%),linear-gradient(145deg,rgba(22,36,58,0.94),rgba(12,18,31,0.98))] p-1.5 text-left shadow-[0_24px_70px_rgba(0,0,0,0.36)] backdrop-blur-xl sm:p-2">
+            <div className="relative overflow-hidden rounded-[1.1rem] border border-cyan-200/18 bg-[radial-gradient(circle_at_0%_0%,rgba(34,211,238,0.16),transparent_36%),radial-gradient(circle_at_100%_0%,rgba(236,72,153,0.14),transparent_38%),rgba(8,15,28,0.82)] p-2.5 sm:p-3" data-room-setup-compact-header="true">
+                <div aria-hidden="true" className="pointer-events-none absolute -left-8 -top-10 h-24 w-24 rounded-full border border-cyan-300/20" />
+                <div aria-hidden="true" className="pointer-events-none absolute -right-6 -top-12 h-28 w-28 rounded-full border border-fuchsia-300/16" />
+                <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 lg:flex lg:items-center">
+                    <div className="flex min-w-0 items-center gap-2.5 lg:w-[245px] lg:shrink-0">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[0.9rem] border border-cyan-200/28 bg-gradient-to-br from-cyan-300/20 to-fuchsia-400/16 text-cyan-100 shadow-[0_8px_22px_rgba(34,211,238,0.12)]">
+                            <i className="fa-solid fa-door-open" />
+                        </span>
+                        <div className="min-w-0">
+                            <div className="text-xs font-black uppercase tracking-[0.2em] text-cyan-100/55">Room operations</div>
+                            <div className="text-lg font-black leading-tight text-white">Room Setup</div>
+                            <div className="truncate text-xs text-cyan-100/58">{activeRoomSetupTab.helper}</div>
+                        </div>
+                    </div>
+                    <div className="host-brand-tabs host-brand-tabs--fill host-brand-tabs--workspace order-3 col-span-2 min-w-0 lg:order-none lg:col-span-1 lg:flex-1" role="tablist" aria-label="Room setup workspace">
                     {ROOM_SETUP_TABS.map((tab) => {
                         const active = roomSetupMode === tab.id;
                         return (
@@ -856,91 +855,95 @@ const HostRoomLaunchPadBrowser = ({
                                 onClick={() => setRoomSetupMode(tab.id)}
                                 className={getRoomSetupTabButtonClass(active)}
                             >
-                                <i className={`fa-solid ${tab.icon} text-[10px]`} />
+                                <i className={`fa-solid ${tab.icon} text-xs`} />
                                 <span>{tab.label}</span>
                                 {tab.id === 'manage' ? (
-                                    <span className={`rounded-full border px-1.5 py-0.5 text-[9px] ${tab.badgeToneClass}`}>
+                                    <span className={`rounded-full border px-1.5 py-0.5 text-xs ${tab.badgeToneClass}`}>
                                         {recentHostRoomsLoading ? '...' : existingRoomCount}
                                     </span>
                                 ) : null}
                             </button>
                         );
                     })}
-                </div>
-                    <div className="flex min-h-[44px] flex-wrap items-center gap-2 lg:pb-1">
-                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.13em] ${launchStateTone}`}>{launchState}</span>
-                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.13em] ${launchAccessPending ? 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100' : 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100'}`}>
-                            {launchAccessPending ? 'Syncing access' : 'Access ready'}
-                        </span>
                     </div>
-                </div>
-                <div className="-mt-px flex min-h-[48px] flex-wrap items-center gap-2 rounded-b-2xl border border-cyan-300/18 bg-[linear-gradient(90deg,rgba(34,211,238,0.08),rgba(15,23,42,0.5),rgba(236,72,153,0.06))] px-3 py-2 text-xs text-cyan-50/68">
-                    <i className={`fa-solid ${activeRoomSetupTab.icon} text-cyan-200/70`} />
-                    <span className="font-semibold text-cyan-50/82">{activeRoomSetupTab.label}</span>
-                    <span aria-hidden="true" className="text-cyan-100/28">·</span>
-                    <span>{activeRoomSetupTab.helper}</span>
-                    {normalizedActiveRoomCode ? (
-                        <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-100">
-                            <i className="fa-solid fa-circle text-[6px]" /> Room {normalizedActiveRoomCode} stays open
-                        </span>
-                    ) : null}
+                    <div className="flex min-h-[40px] flex-wrap items-center justify-end gap-1.5">
+                        {!normalizedActiveRoomCode ? (
+                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-black uppercase tracking-[0.12em] ${launchStateTone}`}>
+                                <i className={`fa-solid ${launchAccessPending ? 'fa-circle-notch animate-spin' : 'fa-bolt'}`} />
+                                {launchAccessPending ? 'Syncing access' : launchState}
+                            </span>
+                        ) : null}
+                        {normalizedActiveRoomCode ? (
+                            <button
+                                type="button"
+                                onClick={() => openExistingRoomWorkspace(normalizedActiveRoomCode, 'queue.live_run')}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} min-h-[44px] px-3 py-1.5 text-xs uppercase tracking-[0.12em]`}
+                            >
+                                <i className="fa-solid fa-arrow-left" />
+                                Return to {normalizedActiveRoomCode}
+                            </button>
+                        ) : null}
+                    </div>
                 </div>
             </div>
             <div className="mt-2 space-y-3">
 
                 {manageModeActive ? (
                     <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]">
-                        <aside className="order-1 rounded-[1.15rem] border border-white/10 bg-black/22 p-3 xl:col-span-2 xl:row-start-1">
-                            <div className="flex flex-wrap items-end justify-between gap-2 px-1">
-                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Folders</div>
-                                <div className="mt-1 text-lg font-black text-white">Existing rooms</div>
-                                <div className="mt-1 text-sm text-cyan-100/68">Ready and upcoming rooms stay separate. Closed and archived rooms live together under Past.</div>
+                        <aside className="relative order-1 overflow-hidden rounded-[1.25rem] border border-cyan-200/16 bg-[radial-gradient(circle_at_0%_0%,rgba(34,211,238,0.14),transparent_34%),radial-gradient(circle_at_100%_0%,rgba(236,72,153,0.1),transparent_34%),rgba(0,0,0,0.22)] p-3 xl:col-span-2 xl:row-start-1" data-room-browser-visual-shelf="true">
+                            <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-12 h-28 w-28 rounded-full border border-fuchsia-300/14" />
+                            <div className="relative flex flex-wrap items-center justify-between gap-3 px-1">
+                                <div className="flex items-center gap-2.5">
+                                    <span className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-200/25 bg-gradient-to-br from-cyan-300/22 to-fuchsia-400/18 text-cyan-100"><i className="fa-solid fa-music" /></span>
+                                    <div><div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100/52">Your room shelf</div><div className="text-lg font-black text-white">Pick up where you left off</div></div>
+                                </div>
+                                <div className="max-w-xl text-sm text-cyan-100/62">Ready, scheduled, and past rooms stay organized without leaving Room Setup.</div>
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                                 {roomBrowserBuckets.map((bucket) => {
                                     const selected = activeRoomBucket?.id === bucket.id;
+                                    const visual = ROOM_BROWSER_BUCKET_VISUALS[bucket.id] || ROOM_BROWSER_BUCKET_VISUALS.all;
                                     return (
                                         <button
                                             key={bucket.id}
                                             type="button"
                                             onClick={() => handleRoomBrowserBucketClick(bucket.id)}
                                             data-room-browser-bucket={bucket.id}
-                                            className={`flex min-h-[58px] w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition ${selected
-                                                ? 'border-cyan-300/35 bg-cyan-500/12 text-white'
-                                                : 'border-transparent bg-white/[0.03] text-cyan-100/76 hover:border-white/10 hover:bg-white/[0.05]'}`}
+                                            className={`group flex min-h-[72px] w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition ${selected
+                                                ? 'border-cyan-200/35 bg-white/[0.075] text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)]'
+                                                : 'border-white/[0.07] bg-black/16 text-cyan-100/72 hover:-translate-y-0.5 hover:border-white/15 hover:bg-white/[0.05]'}`}
                                         >
+                                            <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${visual.tone} text-slate-950 ${visual.glow}`}><i className={`fa-solid ${visual.icon}`} /></span>
                                             <div className="min-w-0">
-                                                <div className="text-sm font-semibold">{bucket.label}</div>
-                                                <div className="mt-0.5 text-xs text-cyan-100/52">{bucket.detail}</div>
+                                                <div className="flex items-center gap-1.5 text-sm font-black"><span>{bucket.label}</span><span className={`rounded-full border px-1.5 py-0.5 text-xs ${selected ? 'border-white/18 bg-white/10 text-white' : 'border-white/10 bg-black/18 text-cyan-100/58'}`}>{bucket.rooms.length}</span></div>
+                                                <div className="mt-0.5 line-clamp-1 text-xs text-cyan-100/48">{bucket.detail}</div>
                                             </div>
-                                            <span className={`ml-3 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${selected ? 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100' : 'border-white/10 bg-black/20 text-cyan-100/58'}`}>
-                                                {bucket.rooms.length}
-                                            </span>
                                         </button>
                                     );
                                 })}
                             </div>
                         </aside>
 
-                        <section ref={roomBrowserResultsRef} className="order-2 min-w-0 overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/22 xl:col-start-1 xl:row-start-2">
+                        <section ref={roomBrowserResultsRef} className="order-2 min-w-0 overflow-hidden rounded-[1.4rem] border border-cyan-200/14 bg-[radial-gradient(circle_at_0%_0%,rgba(34,211,238,0.08),transparent_30%),rgba(0,0,0,0.24)] xl:col-start-1 xl:row-start-2" data-room-browser-library="true">
                             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-                                <div>
-                                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">{activeRoomBucket?.label || 'Rooms'}</div>
-                                    <div className="mt-1 text-xl font-black text-white">
+                                <div className="flex items-center gap-2.5">
+                                    <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-200/20 bg-cyan-500/10 text-cyan-200"><i className="fa-solid fa-music" /></span>
+                                    <div><div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100/52">{activeRoomBucket?.label || 'Rooms'} collection</div>
+                                    <div className="text-xl font-black text-white">
                                         {recentHostRoomsLoading ? 'Syncing rooms...' : `${roomBrowserResults.length} room${roomBrowserResults.length === 1 ? '' : 's'}`}
-                                    </div>
+                                    </div></div>
                                 </div>
                                 <div className="flex min-w-full flex-col gap-2 sm:min-w-[520px] sm:flex-row">
                                     <input
                                         value={roomBrowserSearch}
                                         onChange={(e) => setRoomBrowserSearch(e.target.value)}
                                         placeholder="Search by room name, code, preset, or status"
-                                        className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-300/45"
+                                        className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-300/45"
                                     />
                                     <details className="group relative min-w-[170px]" data-branded-room-sort="true">
-                                        <summary className="flex min-h-[42px] cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-cyan-400/20 bg-zinc-950 px-3 py-2 text-sm font-semibold text-white outline-none transition hover:border-cyan-300/40">
+                                        <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-cyan-400/20 bg-zinc-950 px-3 py-2 text-sm font-semibold text-white outline-none transition hover:border-cyan-300/40">
                                             <span>{ROOM_BROWSER_SORT_OPTIONS.find((option) => option.id === roomBrowserSort)?.label || 'Sort rooms'}</span>
-                                            <i className="fa-solid fa-chevron-down text-[9px] text-cyan-200/60 transition group-open:rotate-180" />
+                                            <i className="fa-solid fa-chevron-down text-xs text-cyan-200/60 transition group-open:rotate-180" />
                                         </summary>
                                         <div className="absolute right-0 z-30 mt-1 min-w-full overflow-hidden rounded-xl border border-cyan-300/25 bg-zinc-950 p-1.5 shadow-[0_18px_40px_rgba(0,0,0,0.55)]">
                                             {ROOM_BROWSER_SORT_OPTIONS.map((option) => {
@@ -953,10 +956,10 @@ const HostRoomLaunchPadBrowser = ({
                                                             setRoomBrowserSort(option.id);
                                                             event.currentTarget.closest('details')?.removeAttribute('open');
                                                         }}
-                                                        className={`flex min-h-[38px] w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${selected ? 'bg-cyan-500/16 text-cyan-50' : 'text-zinc-300 hover:bg-white/[0.06] hover:text-white'}`}
+                                                        className={`flex min-h-[44px] w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${selected ? 'bg-cyan-500/16 text-cyan-50' : 'text-zinc-300 hover:bg-white/[0.06] hover:text-white'}`}
                                                     >
                                                         {option.label}
-                                                        {selected ? <i className="fa-solid fa-check text-[10px] text-cyan-300" /> : null}
+                                                        {selected ? <i className="fa-solid fa-check text-xs text-cyan-300" /> : null}
                                                     </button>
                                                 );
                                             })}
@@ -966,7 +969,7 @@ const HostRoomLaunchPadBrowser = ({
                                         <button
                                             type="button"
                                             onClick={() => setRoomBrowserSearch('')}
-                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-xs uppercase tracking-[0.18em]`}
                                         >
                                             Clear
                                         </button>
@@ -974,7 +977,7 @@ const HostRoomLaunchPadBrowser = ({
                                 </div>
                             </div>
 
-                            <div className="hidden grid-cols-[minmax(210px,2fr)_104px_104px_150px_minmax(180px,0.8fr)] gap-3 border-b border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-cyan-100/48 md:grid">
+                            <div className="hidden grid-cols-[minmax(210px,2fr)_104px_104px_150px_minmax(180px,0.8fr)] gap-3 border-b border-white/10 px-4 py-2 text-xs uppercase tracking-[0.18em] text-cyan-100/48 md:grid">
                                 <div>Room</div>
                                 <div>Status</div>
                                 <div>Visibility</div>
@@ -982,7 +985,7 @@ const HostRoomLaunchPadBrowser = ({
                                 <div className="text-right">Actions</div>
                             </div>
 
-                            <div className="max-h-[min(720px,calc(100vh-260px))] overflow-y-auto">
+                            <div className="max-h-[min(720px,calc(100vh-260px))] space-y-2 overflow-y-auto p-2 md:space-y-0 md:p-0">
                                 {recentHostRoomsLoading ? (
                                     <div className="px-4 py-12 text-center text-sm text-cyan-100/72">
                                         Syncing your room browser...
@@ -998,7 +1001,7 @@ const HostRoomLaunchPadBrowser = ({
                                         <div
                                             key={roomItem.code}
                                             onClick={() => handleSelectRoom(roomItem.code)}
-                                            className={`grid cursor-pointer gap-3 border-b border-white/6 px-4 py-3 transition md:grid-cols-[minmax(210px,2fr)_104px_104px_150px_minmax(180px,0.8fr)] ${selected ? 'bg-cyan-500/10' : 'hover:bg-white/[0.04]'}`}
+                                            className={`grid cursor-pointer gap-3 rounded-xl border px-3 py-3 transition md:rounded-none md:border-x-0 md:border-t-0 md:px-4 md:grid-cols-[minmax(210px,2fr)_104px_104px_150px_minmax(180px,0.8fr)] ${selected ? 'border-cyan-300/28 bg-[linear-gradient(100deg,rgba(34,211,238,0.12),rgba(236,72,153,0.06))] shadow-[0_10px_26px_rgba(0,0,0,0.16)]' : 'border-white/[0.07] bg-white/[0.025] hover:border-cyan-300/18 hover:bg-white/[0.05]'}`}
                                         >
                                             <div className="min-w-0">
                                                 <div className="flex items-start gap-2">
@@ -1009,12 +1012,12 @@ const HostRoomLaunchPadBrowser = ({
                                                         {roomItem.roomName || roomItem.code}
                                                     </div>
                                                     {roomPinned ? (
-                                                        <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-100">
+                                                        <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-0.5 text-xs uppercase tracking-[0.16em] text-amber-100">
                                                             Pinned
                                                         </span>
                                                     ) : null}
                                                     {isAahfRoom(roomItem) ? (
-                                                        <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100">
+                                                        <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-2 py-0.5 text-xs uppercase tracking-[0.16em] text-fuchsia-100">
                                                             AAHF
                                                         </span>
                                                     ) : null}
@@ -1025,12 +1028,12 @@ const HostRoomLaunchPadBrowser = ({
                                                 </div>
                                             </div>
                                             <div className="md:self-center">
-                                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${lifecycle.chipClass}`}>
+                                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs uppercase tracking-[0.16em] ${lifecycle.chipClass}`}>
                                                     {lifecycle.label}
                                                 </span>
                                             </div>
                                             <div className="md:self-center">
-                                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${visibility.chipClass}`}>
+                                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs uppercase tracking-[0.16em] ${visibility.chipClass}`}>
                                                     {visibility.label}
                                                 </span>
                                             </div>
@@ -1043,7 +1046,7 @@ const HostRoomLaunchPadBrowser = ({
                                                         openExistingRoomWorkspace(roomItem.code, 'queue.live_run');
                                                     }}
                                                     disabled={joiningRoom}
-                                                    className={`${STYLES.btnStd} ${selected ? STYLES.btnHighlight : STYLES.btnSecondary} px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    className={`${STYLES.btnStd} ${selected ? STYLES.btnHighlight : STYLES.btnSecondary} px-3 py-1.5 text-xs uppercase tracking-[0.16em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
                                                     Open
                                                 </button>
@@ -1054,7 +1057,7 @@ const HostRoomLaunchPadBrowser = ({
                                                         openExistingRoomWorkspace(roomItem.code, 'ops.room_setup');
                                                     }}
                                                     disabled={joiningRoom}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-xs uppercase tracking-[0.16em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
                                                     Settings
                                                 </button>
@@ -1065,7 +1068,7 @@ const HostRoomLaunchPadBrowser = ({
                                                             e.stopPropagation();
                                                             runFeaturedAction('recap', roomItem);
                                                         }}
-                                                        className="rounded-full border border-fuchsia-300/28 bg-fuchsia-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100"
+                                                        className="rounded-full border border-fuchsia-300/28 bg-fuchsia-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-fuchsia-100"
                                                     >
                                                         Recap
                                                     </button>
@@ -1076,7 +1079,7 @@ const HostRoomLaunchPadBrowser = ({
                                                         e.stopPropagation();
                                                         togglePinnedRoom?.(roomItem.code);
                                                     }}
-                                                    className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${roomPinned ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
+                                                    className={`rounded-full border px-3 py-1.5 text-xs uppercase tracking-[0.16em] ${roomPinned ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
                                                 >
                                                     {roomPinned ? 'Pinned' : 'Pin'}
                                                 </button>
@@ -1087,7 +1090,7 @@ const HostRoomLaunchPadBrowser = ({
                                                         setRoomArchivedState?.(roomItem.code, !roomItem.archived);
                                                     }}
                                                     disabled={joiningRoom || roomBusy}
-                                                    className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${(joiningRoom || roomBusy) ? 'cursor-not-allowed opacity-60' : ''} ${roomItem.archived ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
+                                                    className={`rounded-full border px-3 py-1.5 text-xs uppercase tracking-[0.16em] ${(joiningRoom || roomBusy) ? 'cursor-not-allowed opacity-60' : ''} ${roomItem.archived ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
                                                 >
                                                     {roomItem.archived ? 'Restore' : 'Archive'}
                                                 </button>
@@ -1102,30 +1105,31 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
                         </section>
                         <aside className="order-3 self-start xl:col-start-2 xl:row-start-2 xl:sticky xl:top-4">
-                            <div className="rounded-[1.4rem] border border-cyan-300/22 bg-[linear-gradient(145deg,rgba(10,18,28,0.94),rgba(12,21,34,0.92))] p-4 shadow-[0_20px_48px_rgba(0,0,0,0.24)]">
+                            <div className="relative overflow-hidden rounded-[1.4rem] border border-fuchsia-300/20 bg-[radial-gradient(circle_at_100%_0%,rgba(236,72,153,0.16),transparent_38%),radial-gradient(circle_at_0%_100%,rgba(34,211,238,0.1),transparent_42%),linear-gradient(145deg,rgba(10,18,28,0.96),rgba(20,18,38,0.94))] p-4 shadow-[0_20px_48px_rgba(0,0,0,0.28)]" data-room-control-deck="true">
+                                <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full border border-fuchsia-300/14" />
                                 <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Selected room</div>
-                                        <div className="mt-1 text-xl font-black text-white">Room controls</div>
+                                    <div className="relative flex items-center gap-2.5">
+                                        <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-400 to-cyan-300 text-slate-950 shadow-[0_10px_24px_rgba(236,72,153,0.2)]"><i className="fa-solid fa-sliders" /></span>
+                                        <div><div className="text-xs font-black uppercase tracking-[0.22em] text-fuchsia-100/52">Selected room</div><div className="text-xl font-black text-white">Control deck</div></div>
                                     </div>
                                 </div>
                                 {selectedRoom ? (
                                     <>
-                                        <div className="mt-3 rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3">
+                                        <div className="relative mt-3 overflow-hidden rounded-xl border border-cyan-300/20 bg-[linear-gradient(115deg,rgba(34,211,238,0.12),rgba(236,72,153,0.08))] px-3 py-3">
                                             <div className="text-lg font-black text-white">{selectedRoom.roomName || selectedRoom.code}</div>
                                             <div className="mt-1 text-xs uppercase tracking-[0.18em] text-cyan-100/58">{selectedRoom.code}</div>
                                             <div className="mt-2 flex flex-wrap gap-2">
-                                                <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${selectedRoomLifecycle?.chipClass || 'border-white/10 bg-white/5 text-cyan-100/70'}`}>
+                                                <span className={`rounded-full border px-2.5 py-1 text-xs uppercase tracking-[0.16em] ${selectedRoomLifecycle?.chipClass || 'border-white/10 bg-white/5 text-cyan-100/70'}`}>
                                                     {selectedRoomLifecycle?.label || 'Room'}
                                                 </span>
                                                 {selectedRoomPinned ? (
-                                                    <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">Pinned</span>
+                                                    <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2.5 py-1 text-xs uppercase tracking-[0.16em] text-amber-100">Pinned</span>
                                                 ) : null}
-                                                <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${selectedRoomVisibility?.chipClass || 'border-white/10 bg-white/5 text-cyan-100/70'}`}>
+                                                <span className={`rounded-full border px-2.5 py-1 text-xs uppercase tracking-[0.16em] ${selectedRoomVisibility?.chipClass || 'border-white/10 bg-white/5 text-cyan-100/70'}`}>
                                                     {selectedRoomVisibility?.label || 'Private'}
                                                 </span>
                                                 {selectedRoomSchedule ? (
-                                                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/70">{selectedRoomSchedule}</span>
+                                                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs uppercase tracking-[0.16em] text-cyan-100/70">{selectedRoomSchedule}</span>
                                                 ) : null}
                                             </div>
                                         </div>
@@ -1135,7 +1139,7 @@ const HostRoomLaunchPadBrowser = ({
                                                 type="button"
                                                 onClick={() => openExistingRoomWorkspace(selectedRoom.code, 'ops.room_setup')}
                                                 disabled={joiningRoom}
-                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full px-4 py-2.5 text-[11px] uppercase tracking-[0.18em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full px-4 py-2.5 text-xs uppercase tracking-[0.18em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             >
                                                 Room Settings
                                             </button>
@@ -1144,7 +1148,7 @@ const HostRoomLaunchPadBrowser = ({
                                                     type="button"
                                                     onClick={() => runFeaturedAction(selectedRoomAction?.action || 'live', selectedRoom)}
                                                     disabled={joiningRoom}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[11px] uppercase tracking-[0.18em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-xs uppercase tracking-[0.18em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
                                                     {selectedRoomAction?.label || 'Open Host Panel'}
                                                 </button>
@@ -1152,7 +1156,7 @@ const HostRoomLaunchPadBrowser = ({
                                                     type="button"
                                                     onClick={() => openExistingRoomWorkspace(selectedRoom.code, 'show.timeline')}
                                                     disabled={joiningRoom}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[11px] uppercase tracking-[0.18em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-xs uppercase tracking-[0.18em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
                                                     Show Plan
                                                 </button>
@@ -1160,7 +1164,7 @@ const HostRoomLaunchPadBrowser = ({
                                                     <button
                                                         type="button"
                                                         onClick={() => runFeaturedAction('recap', selectedRoom)}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-fuchsia-100`}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-xs uppercase tracking-[0.18em] text-fuchsia-100`}
                                                     >
                                                         View Recap
                                                     </button>
@@ -1169,7 +1173,7 @@ const HostRoomLaunchPadBrowser = ({
                                         </div>
 
                                         <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-3">
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Recommended next</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Recommended next</div>
                                             <div className="mt-1 text-sm font-semibold text-white">{selectedRoomAction?.label || 'Open Host Panel'}</div>
                                             <div className="mt-1 text-xs text-cyan-100/62">{selectedRoomAction?.detail || 'Jump back into the room.'}</div>
                                         </div>
@@ -1182,7 +1186,7 @@ const HostRoomLaunchPadBrowser = ({
 
                                         {selectedRoom.recurringRule === 'weekly' && selectedRoom.occurrenceId ? (
                                             <div className="mt-3 rounded-xl border border-cyan-300/20 bg-cyan-500/8 px-3 py-3">
-                                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/66">Weekly night</div>
+                                                <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/66">Weekly night</div>
                                                 <div className="mt-1 text-sm text-cyan-50">
                                                     Next occurrence: {formatRoomSchedule(selectedRoom) || 'Schedule pending'}
                                                 </div>
@@ -1191,7 +1195,7 @@ const HostRoomLaunchPadBrowser = ({
                                                     type="button"
                                                     onClick={() => setRoomOccurrenceStatus?.(selectedRoom, 'cancel')}
                                                     disabled={joiningRoom || roomManagerBusyCode === selectedRoom.code || selectedRoom.archived}
-                                                    className={'mt-3 rounded-full border border-amber-300/30 bg-amber-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-amber-100 ' + ((joiningRoom || roomManagerBusyCode === selectedRoom.code || selectedRoom.archived) ? 'cursor-not-allowed opacity-60' : '')}
+                                                    className={'mt-3 rounded-full border border-amber-300/30 bg-amber-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-amber-100 ' + ((joiningRoom || roomManagerBusyCode === selectedRoom.code || selectedRoom.archived) ? 'cursor-not-allowed opacity-60' : '')}
                                                 >
                                                     {roomManagerBusyCode === selectedRoom.code && roomManagerBusyAction === 'skip_occurrence'
                                                         ? 'Skipping'
@@ -1201,13 +1205,13 @@ const HostRoomLaunchPadBrowser = ({
                                         ) : null}
 
                                         <details className="mt-3 rounded-xl border border-rose-300/20 bg-rose-500/8 px-3 py-3">
-                                            <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-rose-100/70">More room actions</summary>
+                                            <summary className="cursor-pointer list-none text-xs uppercase tracking-[0.18em] text-rose-100/70">More room actions</summary>
                                             <div className="mt-3 text-sm text-rose-50/88">Archive rooms you want to keep, reset closed rooms you want to reuse, or permanently delete archived rooms you no longer need.</div>
                                             <div className="mt-3 flex flex-wrap gap-2">
                                                 <button
                                                     type="button"
                                                     onClick={() => togglePinnedRoom?.(selectedRoom.code)}
-                                                    className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${selectedRoomPinned ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
+                                                    className={`rounded-full border px-3 py-1.5 text-xs uppercase tracking-[0.16em] ${selectedRoomPinned ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
                                                 >
                                                     {selectedRoomPinned ? 'Pinned Room' : 'Pin Room'}
                                                 </button>
@@ -1215,7 +1219,7 @@ const HostRoomLaunchPadBrowser = ({
                                                     type="button"
                                                     onClick={() => (selectedRoom.archived ? setRoomArchivedState?.(selectedRoom.code, false) : setRoomArchivedState?.(selectedRoom.code, true))}
                                                     disabled={joiningRoom || roomManagerBusyCode === selectedRoom.code}
-                                                    className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''} ${selectedRoom.archived ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
+                                                    className={`rounded-full border px-3 py-1.5 text-xs uppercase tracking-[0.16em] ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''} ${selectedRoom.archived ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
                                                 >
                                                     {selectedRoom.archived ? 'Restore Room' : 'Archive Room'}
                                                 </button>
@@ -1223,7 +1227,7 @@ const HostRoomLaunchPadBrowser = ({
                                                     type="button"
                                                     onClick={() => setRoomDiscoverability?.(selectedRoom, !selectedRoom.publicRoom)}
                                                     disabled={joiningRoom || roomManagerBusyCode === selectedRoom.code || selectedRoom.archived}
-                                                    className={`rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code || selectedRoom.archived) ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                    className={`rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-cyan-100 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code || selectedRoom.archived) ? 'cursor-not-allowed opacity-60' : ''}`}
                                                 >
                                                     {selectedRoom.publicRoom ? 'Make Private' : 'Make Discoverable'}
                                                 </button>
@@ -1232,20 +1236,20 @@ const HostRoomLaunchPadBrowser = ({
                                                         type="button"
                                                         onClick={() => runLandingRoomCleanup?.(selectedRoom.code)}
                                                         disabled={joiningRoom || roomManagerBusyCode === selectedRoom.code}
-                                                        className={`rounded-full border border-rose-300/28 bg-rose-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-rose-100 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                        className={`rounded-full border border-rose-300/28 bg-rose-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-rose-100 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''}`}
                                                     >
                                                         Reset Room
                                                     </button>
                                                 ) : null}
                                                 {selectedRoom.hasRecap && audienceBase ? (
-                                                    <button type="button" onClick={() => runFeaturedAction('recap', selectedRoom)} className="rounded-full border border-fuchsia-300/28 bg-fuchsia-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100">Open Recap</button>
+                                                    <button type="button" onClick={() => runFeaturedAction('recap', selectedRoom)} className="rounded-full border border-fuchsia-300/28 bg-fuchsia-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-fuchsia-100">Open Recap</button>
                                                 ) : null}
                                                 {!selectedRoom.archived ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => resetRoomToCurrentTemplate?.(selectedRoom)}
                                                         disabled={joiningRoom || roomManagerBusyCode === selectedRoom.code}
-                                                        className={`rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100/76 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                        className={`rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-cyan-100/76 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''}`}
                                                     >
                                                         Reset to Template
                                                     </button>
@@ -1255,7 +1259,7 @@ const HostRoomLaunchPadBrowser = ({
                                                         type="button"
                                                         onClick={() => seedAahfKickoffRoom?.(selectedRoom)}
                                                         disabled={joiningRoom || roomManagerBusyCode === selectedRoom.code}
-                                                        className={`rounded-full border border-fuchsia-300/28 bg-fuchsia-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                        className={`rounded-full border border-fuchsia-300/28 bg-fuchsia-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-fuchsia-100 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''}`}
                                                     >
                                                         Seed Kickoff
                                                     </button>
@@ -1264,7 +1268,7 @@ const HostRoomLaunchPadBrowser = ({
                                                     type="button"
                                                     onClick={() => setJoinPosterRoom(selectedRoom)}
                                                     disabled={!audienceBase}
-                                                    className={`rounded-full border border-cyan-300/28 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100 ${!audienceBase ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                    className={`rounded-full border border-cyan-300/28 bg-cyan-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-cyan-100 ${!audienceBase ? 'cursor-not-allowed opacity-60' : ''}`}
                                                 >
                                                     Join Poster
                                                 </button>
@@ -1273,7 +1277,7 @@ const HostRoomLaunchPadBrowser = ({
                                                         type="button"
                                                         onClick={() => runLandingRoomPermanentDelete?.(selectedRoom.code)}
                                                         disabled={joiningRoom || roomManagerBusyCode === selectedRoom.code}
-                                                        className={`rounded-full border border-rose-300/28 bg-rose-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-rose-100 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                        className={`rounded-full border border-rose-300/28 bg-rose-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-rose-100 ${(joiningRoom || roomManagerBusyCode === selectedRoom.code) ? 'cursor-not-allowed opacity-60' : ''}`}
                                                     >
                                                         Delete Forever
                                                     </button>
@@ -1291,7 +1295,7 @@ const HostRoomLaunchPadBrowser = ({
                                 )}
 
                                 <details className="mt-3 rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3" {...(!selectedRoom ? { open: true } : {})}>
-                                    <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Open by room code</summary>
+                                    <summary className="flex min-h-[44px] cursor-pointer list-none items-center text-xs uppercase tracking-[0.18em] text-cyan-100/58">Open by room code</summary>
                                     <div className="mt-1 text-sm text-cyan-100/72">Use this when you already know the room code and want the live host panel immediately.</div>
                                     <div className="mt-3 flex flex-col gap-2">
                                         <input
@@ -1303,13 +1307,13 @@ const HostRoomLaunchPadBrowser = ({
                                                 }
                                             }}
                                             placeholder="Open by room code"
-                                            className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm uppercase tracking-[0.18em] text-white outline-none transition focus:border-cyan-300/45"
+                                            className="min-h-[44px] min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm uppercase tracking-[0.18em] text-white outline-none transition focus:border-cyan-300/45"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => openExistingRoomWorkspace(launchRoomCodeCandidate, 'queue.live_run')}
                                             disabled={!hasLaunchRoomCode || joiningRoom}
-                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!hasLaunchRoomCode || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} min-h-[44px] px-4 py-2 text-xs uppercase tracking-[0.18em] ${!hasLaunchRoomCode || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
                                             Open Room
                                         </button>
@@ -1335,18 +1339,17 @@ const HostRoomLaunchPadBrowser = ({
                                 <div className="mt-1 text-sm text-amber-100/78">
                                     Your workspace and host identity need one quick setup pass before you can create rooms.
                                 </div>
-                                <button type="button" onClick={openOnboardingWizard} disabled={!canUseWorkspaceOnboarding} className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 px-4 py-2 text-[11px] uppercase tracking-[0.18em] ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}>Finish Setup</button>
+                                <button type="button" onClick={openOnboardingWizard} disabled={!canUseWorkspaceOnboarding} className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 px-4 py-2 text-xs uppercase tracking-[0.18em] ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}>Finish Setup</button>
                             </div>
                         ) : null}
 
                         <div className="relative overflow-hidden rounded-[1.35rem] border border-cyan-200/28 bg-[linear-gradient(145deg,rgba(25,43,70,0.98),rgba(52,29,62,0.98))] shadow-[0_26px_70px_rgba(8,15,34,0.42)]" data-launch-core-setup="true">
-                            <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[radial-gradient(circle_at_12%_0%,rgba(34,211,238,0.14),transparent_34%),radial-gradient(circle_at_84%_0%,rgba(236,72,153,0.12),transparent_32%),linear-gradient(180deg,rgba(17,24,39,0.96),rgba(9,9,11,0.9))] px-4 py-3 sm:px-5" data-launch-create-header="true">
-                                <div className="min-w-0">
-                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200/80">Room Setup · New Room</div>
-                                    <div className="mt-0.5 text-xl font-black text-white md:text-2xl">Tune this room</div>
-                                    <div className="mt-0.5 text-xs text-zinc-400">Everything needed to create and launch the room now lives on this screen.</div>
+                            <div className="relative flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[linear-gradient(90deg,rgba(34,211,238,0.08),rgba(9,9,11,0.86),rgba(236,72,153,0.08))] px-3 py-2 sm:px-4" data-launch-create-header="true">
+                                <div className="flex min-w-0 items-center gap-2 text-xs text-cyan-100/66">
+                                    <i className="fa-solid fa-layer-group text-cyan-300/72" />
+                                    <span><strong className="text-cyan-50">One-screen setup</strong><span className="hidden sm:inline"> · Name it, shape the night, choose access, and launch.</span></span>
                                 </div>
-                                <div className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-3 py-2 text-sm font-bold ${creatingRoom ? 'border-cyan-300/28 bg-cyan-500/10 text-cyan-50' : roomLaunchDisabled ? 'border-amber-300/24 bg-amber-500/9 text-amber-50' : 'border-emerald-300/24 bg-emerald-500/9 text-emerald-50'}`} data-launch-readiness="true">
+                                <div className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-black uppercase tracking-[0.1em] ${creatingRoom ? 'border-cyan-300/28 bg-cyan-500/10 text-cyan-50' : roomLaunchDisabled ? 'border-amber-300/24 bg-amber-500/9 text-amber-50' : 'border-emerald-300/24 bg-emerald-500/9 text-emerald-50'}`} data-launch-readiness="true">
                                     <i className={`fa-solid ${creatingRoom ? 'fa-circle-notch animate-spin' : roomLaunchDisabled ? 'fa-pen-to-square' : 'fa-circle-check'}`} />
                                     {creatingRoom ? 'Creating room' : roomLaunchDisabled ? 'Not ready' : 'Ready to create'}
                                 </div>
@@ -1359,14 +1362,18 @@ const HostRoomLaunchPadBrowser = ({
                                     </div>
                                 ) : null}
                                 <div className="grid gap-4 xl:grid-cols-12">
-                                    <label className="block rounded-2xl border border-white/10 bg-black/18 p-4 xl:col-span-12" data-launch-room-identity="true">
+                                    <label className="relative block overflow-hidden rounded-2xl border border-cyan-300/18 bg-[radial-gradient(circle_at_0%_0%,rgba(34,211,238,0.16),transparent_40%),rgba(0,0,0,0.18)] p-4 xl:col-span-12" data-launch-room-identity="true" data-launch-visual-section="identity">
                                         <span className="flex flex-wrap items-center justify-between gap-2">
-                                            <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70"><span className="grid h-8 w-8 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-xs text-cyan-100"><i className="fa-solid fa-signature text-cyan-300/72" /></span> Name the Room</span>
+                                            <span className="flex items-center gap-2.5 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/76"><span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-200/30 bg-gradient-to-br from-cyan-300 to-teal-400 text-xs font-black text-slate-950 shadow-[0_8px_18px_rgba(34,211,238,0.18)]">01</span><span><span className="block text-xs tracking-[0.16em] text-cyan-200/54">First beat</span>Name the room</span></span>
                                             <span className="text-sm text-cyan-100/52">This is what guests and hosts will recognize.</span>
                                         </span>
                                         <input value={launchRoomName} onChange={(e) => setLaunchRoomName(e.target.value)} placeholder="Friday Karaoke" autoFocus className={`${launchInputClass} max-w-3xl`} />
                                     </label>
-                                    <div className="min-w-0 rounded-2xl border border-fuchsia-300/14 bg-black/20 p-4 xl:col-span-12" data-launch-room-control="true">
+                                    <div className="relative min-w-0 overflow-hidden rounded-2xl border border-fuchsia-300/18 bg-[radial-gradient(circle_at_100%_0%,rgba(236,72,153,0.14),transparent_40%),rgba(0,0,0,0.2)] p-4 xl:col-span-12" data-launch-room-control="true" data-launch-visual-section="vibe">
+                                        <div className="mb-3 flex items-center gap-2.5">
+                                            <span className="grid h-9 w-9 place-items-center rounded-xl border border-fuchsia-200/30 bg-gradient-to-br from-fuchsia-400 to-violet-400 text-xs font-black text-white shadow-[0_8px_18px_rgba(236,72,153,0.2)]">02</span>
+                                            <span><span className="block text-xs font-black uppercase tracking-[0.16em] text-fuchsia-200/54">Set the vibe</span><span className="text-sm font-black text-white">Shape the night</span></span>
+                                        </div>
                                         <MissionSetupPrimaryPicks
                                             recipes={LAUNCH_NIGHT_TYPE_RECIPE_CARDS}
                                             selectedRecipeId={launchNightType}
@@ -1423,8 +1430,8 @@ const HostRoomLaunchPadBrowser = ({
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="rounded-2xl border border-cyan-300/14 bg-black/20 p-4 xl:col-span-8" data-launch-guest-access="true">
-                                        <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/76"><span className="grid h-8 w-8 place-items-center rounded-full border border-cyan-300/20 bg-cyan-500/10 text-xs text-cyan-100"><i className="fa-solid fa-user-group text-cyan-300/72" /></span> Choose the front door</span>
+                                    <div className="relative overflow-hidden rounded-2xl border border-cyan-300/18 bg-[radial-gradient(circle_at_0%_100%,rgba(34,211,238,0.15),transparent_46%),rgba(0,0,0,0.2)] p-4 xl:col-span-8" data-launch-guest-access="true" data-launch-visual-section="access">
+                                        <span className="flex items-center gap-2.5 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/76"><span className="grid h-9 w-9 place-items-center rounded-xl border border-amber-200/30 bg-gradient-to-br from-amber-300 to-fuchsia-400 text-xs font-black text-slate-950 shadow-[0_8px_18px_rgba(251,191,36,0.16)]">03</span><span><span className="block text-xs tracking-[0.16em] text-amber-100/54">Open the doors</span>Choose guest access</span></span>
                                         <div className="mt-1 text-sm text-cyan-100/54">Control what guests need before they can enter and request songs.</div>
                                         <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
                                             {AUDIENCE_JOIN_ACCESS_OPTIONS.map((option) => {
@@ -1443,7 +1450,7 @@ const HostRoomLaunchPadBrowser = ({
                                             })}
                                         </div>
                                     </div>
-                                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 xl:col-span-4" data-launch-room-privacy="true">
+                                    <div className="rounded-2xl border border-fuchsia-300/14 bg-[radial-gradient(circle_at_100%_0%,rgba(236,72,153,0.12),transparent_46%),rgba(0,0,0,0.2)] p-4 xl:col-span-4" data-launch-room-privacy="true" data-launch-visual-section="discovery">
                                         <span className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70"><i className="fa-solid fa-eye text-cyan-300/72" /> Who can find it?</span>
                                         <div className="mt-2 inline-flex min-h-[58px] w-full rounded-[0.95rem] border border-white/10 bg-slate-950/60 p-1">
                                             <button type="button" onClick={() => setDiscoveryListingMode(false)} aria-pressed={!discoveryListingEnabled} className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold transition ${!discoveryListingEnabled ? 'bg-white text-slate-950' : 'text-cyan-100/62 hover:text-white'}`}>Private</button>
@@ -1463,7 +1470,7 @@ const HostRoomLaunchPadBrowser = ({
                                 <details className="group rounded-2xl border border-white/[0.08] bg-black/18 px-4 py-3 transition open:border-cyan-300/15 open:bg-cyan-500/[0.035]">
                                     <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-cyan-50/72 transition hover:text-white">
                                         <span className="inline-flex items-center gap-2"><i className="fa-solid fa-hashtag text-cyan-300/58" /> Custom room code <span className="font-normal text-cyan-100/34">Optional</span></span>
-                                        <i className="fa-solid fa-chevron-down text-[9px] text-cyan-100/42 transition group-open:rotate-180" />
+                                        <i className="fa-solid fa-chevron-down text-xs text-cyan-100/42 transition group-open:rotate-180" />
                                     </summary>
                                     <label className="mt-4 block max-w-md">
                                         <input value={launchRequestedRoomCode} onChange={(e) => setLaunchRequestedRoomCode(e.target.value.toUpperCase())} placeholder="Choose a memorable code" maxLength={10} className={`${launchInputClass} mt-0 uppercase tracking-[0.18em]`} />
@@ -1473,7 +1480,7 @@ const HostRoomLaunchPadBrowser = ({
                                 <details className="group rounded-2xl border border-white/[0.08] bg-black/18 px-4 py-3 transition open:border-cyan-300/15 open:bg-cyan-500/[0.035]" data-launch-schedule="true">
                                     <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-cyan-50/72 transition hover:text-white">
                                         <span className="inline-flex items-center gap-2"><i className="fa-solid fa-calendar-clock text-cyan-300/58" /> Schedule <span className="font-normal text-cyan-100/34">Optional</span></span>
-                                        <i className="fa-solid fa-chevron-down text-[9px] text-cyan-100/42 transition group-open:rotate-180" />
+                                        <i className="fa-solid fa-chevron-down text-xs text-cyan-100/42 transition group-open:rotate-180" />
                                     </summary>
                                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                         <label className="block">
@@ -1491,7 +1498,7 @@ const HostRoomLaunchPadBrowser = ({
                                     </div>
                                 </details>
                                 </div>
-                                <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-950/28" data-launch-fine-tune="true">
+                                <div className="mt-4 overflow-hidden rounded-2xl border border-violet-300/18 bg-[radial-gradient(circle_at_100%_0%,rgba(139,92,246,0.12),transparent_42%),rgba(9,9,11,0.3)]" data-launch-fine-tune="true" data-launch-visual-section="fine-tune">
                                     <button
                                         type="button"
                                         onClick={() => setShowAdvancedSetup((current) => !current)}
@@ -1499,7 +1506,7 @@ const HostRoomLaunchPadBrowser = ({
                                         className="flex min-h-[68px] w-full flex-col items-stretch justify-between gap-3 px-4 py-3 text-left transition hover:bg-white/[0.035] sm:flex-row sm:items-center"
                                     >
                                         <span>
-                                            <span className="block text-xs font-black uppercase tracking-[0.18em] text-zinc-300">Fine-tune</span>
+                                            <span className="block text-xs font-black uppercase tracking-[0.18em] text-violet-200"><i className="fa-solid fa-wand-magic-sparkles mr-2" />Fine-tune</span>
                                             <span className="mt-0.5 block text-sm font-black text-white">Queue, live controls, song sources, and Points</span>
                                             <span className="mt-0.5 block text-xs text-zinc-400">Optional controls stay on this screen without getting in the way of launch.</span>
                                         </span>
@@ -1693,7 +1700,7 @@ const HostRoomLaunchPadBrowser = ({
                                         <button type="button" data-host-create-room-primary="true" aria-busy={creatingRoom} onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`group/launch flex min-h-[56px] w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-[linear-gradient(100deg,#db2777_0%,#ec4899_35%,#14b8a6_78%,#22d3ee_100%)] px-5 py-3 text-sm font-black uppercase tracking-[0.14em] text-white shadow-[0_14px_34px_rgba(236,72,153,0.18),0_0_28px_rgba(34,211,238,0.1)] transition hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_42px_rgba(236,72,153,0.24),0_0_34px_rgba(34,211,238,0.16)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:brightness-100 ${roomLaunchDisabled ? 'cursor-not-allowed opacity-45' : ''}`}>
                                             {creatingRoom ? <i className="fa-solid fa-circle-notch animate-spin" /> : <i className="fa-solid fa-wand-magic-sparkles" />}
                                             <span>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</span>
-                                            {!creatingRoom ? <i className="fa-solid fa-arrow-right text-[10px] transition-transform group-hover/launch:translate-x-1" /> : null}
+                                            {!creatingRoom ? <i className="fa-solid fa-arrow-right text-xs transition-transform group-hover/launch:translate-x-1" /> : null}
                                         </button>
                                         <div className={`mt-2 flex items-center justify-center gap-2 text-center text-xs ${creatingRoom ? 'text-cyan-100/72' : roomLaunchDisabled ? 'text-amber-100/72' : 'text-cyan-100/62'}`} role="status"><i className={`fa-solid ${creatingRoom ? 'fa-circle-notch animate-spin' : roomLaunchDisabled ? 'fa-circle-exclamation' : 'fa-shield-check'} text-xs`} /> {launchReadinessMessage}</div>
                                     </div>
@@ -1706,11 +1713,11 @@ const HostRoomLaunchPadBrowser = ({
                                 <section className="rounded-xl border border-cyan-300/22 bg-cyan-500/8 px-3 py-3" data-launch-night-type>
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Quick setup</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Quick setup</div>
                                             <div className="mt-1 text-lg font-black text-white">What kind of night is this?</div>
                                             <div className="mt-1 text-sm text-cyan-100/68">One choice sets the recommended queue, host style, automation, and economy defaults.</div>
                                         </div>
-                                        <span className="rounded-full border border-cyan-300/25 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/72">{selectedNightType.eyebrow}</span>
+                                        <span className="rounded-full border border-cyan-300/25 bg-black/20 px-2.5 py-1 text-xs uppercase tracking-[0.16em] text-cyan-100/72">{selectedNightType.eyebrow}</span>
                                     </div>
                                     {launchDraftRecovered ? (
                                         <div className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-50" role="status">
@@ -1725,7 +1732,7 @@ const HostRoomLaunchPadBrowser = ({
                                                     <span className="flex items-start gap-3">
                                                         <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${selected ? 'border-cyan-200/40 bg-cyan-300 text-slate-950' : 'border-white/10 bg-white/[0.05] text-cyan-100'}`}><i className={`fa-solid ${option.icon}`}></i></span>
                                                         <span className="min-w-0">
-                                                            <span className="flex flex-wrap items-center gap-2"><span className="text-sm font-black text-inherit">{option.label}</span><span className="rounded-full border border-white/10 bg-black/18 px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] opacity-72">{option.eyebrow}</span></span>
+                                                            <span className="flex flex-wrap items-center gap-2"><span className="text-sm font-black text-inherit">{option.label}</span><span className="rounded-full border border-white/10 bg-black/18 px-2 py-0.5 text-xs uppercase tracking-[0.14em] opacity-72">{option.eyebrow}</span></span>
                                                             <span className="mt-1 block text-xs leading-5 opacity-82">{option.summary}</span>
                                                         </span>
                                                     </span>
@@ -1734,21 +1741,21 @@ const HostRoomLaunchPadBrowser = ({
                                         })}
                                     </div>
                                     <button type="button" onClick={() => setShowAdvancedSetup((current) => !current)} aria-expanded={showAdvancedSetup} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-cyan-100/72 hover:text-white">
-                                        <i className={`fa-solid fa-chevron-${showAdvancedSetup ? 'up' : 'down'} text-[10px]`}></i>
+                                        <i className={`fa-solid fa-chevron-${showAdvancedSetup ? 'up' : 'down'} text-xs`}></i>
                                         {showAdvancedSetup ? 'Hide advanced setup' : 'Customize advanced setup'}
                                     </button>
                                 </section>
 
                                 <section className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Step 1 - Room identity</div>
+                                    <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Step 1 - Room identity</div>
                                     <div className="mt-1 text-sm text-cyan-100/66">Give guests a recognizable room and optionally reserve a memorable code.</div>
                                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                                         <label className="block">
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Room name</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Room name</div>
                                             <input value={launchRoomName} onChange={(e) => setLaunchRoomName(e.target.value)} placeholder="Friday Karaoke" className={inputClass} />
                                         </label>
                                         <label className="block">
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Room code</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Room code</div>
                                             <input value={launchRequestedRoomCode} onChange={(e) => setLaunchRequestedRoomCode(e.target.value.toUpperCase())} placeholder={resolvedLaunchPresetId === 'aahf' ? 'AAHF' : 'Optional'} maxLength={10} className={`${inputClass} uppercase tracking-[0.18em]`} />
                                             <div className="mt-2 text-xs text-cyan-100/58">
                                                 {hasRequestedLaunchRoomCode
@@ -1762,30 +1769,30 @@ const HostRoomLaunchPadBrowser = ({
                                 </section>
 
                                 <section className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Step 2 - Guest entry</div>
+                                    <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Step 2 - Guest entry</div>
                                     <div className="mt-1 text-sm text-cyan-100/66">Decide when the room appears and how easily guests can get in.</div>
                                     <div className="mt-3 grid gap-3 lg:grid-cols-4">
                                         <label className="block lg:col-span-1">
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Start</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Start</div>
                                             <input type="datetime-local" value={String(quickLaunchDiscovery?.roomStartsAtLocal || '')} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, roomStartsAtLocal: e.target.value }))} className={inputClass} />
                                             <div className="mt-2 text-xs text-cyan-100/58">{hasLaunchStartTime ? launchStartSummary : 'Start now'}</div>
                                         </label>
                                         <div className="lg:col-span-1">
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Visibility</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Visibility</div>
                                             <div className="mt-2 inline-flex w-full rounded-xl border border-white/10 bg-black/20 p-1">
-                                                <button type="button" onClick={() => setDiscoveryListingMode(false)} className={`flex-1 rounded-lg px-3 py-2 text-[11px] uppercase tracking-[0.16em] transition ${!discoveryListingEnabled ? 'bg-white text-black' : 'text-cyan-100/72'}`}>Private</button>
-                                                <button type="button" onClick={() => setDiscoveryListingMode(true)} className={`flex-1 rounded-lg px-3 py-2 text-[11px] uppercase tracking-[0.16em] transition ${discoveryListingEnabled ? 'bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black' : 'text-cyan-100/72'}`}>Discoverable</button>
+                                                <button type="button" onClick={() => setDiscoveryListingMode(false)} className={`flex-1 rounded-lg px-3 py-2 text-xs uppercase tracking-[0.16em] transition ${!discoveryListingEnabled ? 'bg-white text-black' : 'text-cyan-100/72'}`}>Private</button>
+                                                <button type="button" onClick={() => setDiscoveryListingMode(true)} className={`flex-1 rounded-lg px-3 py-2 text-xs uppercase tracking-[0.16em] transition ${discoveryListingEnabled ? 'bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black' : 'text-cyan-100/72'}`}>Discoverable</button>
                                             </div>
                                         </div>
                                         <label className="block lg:col-span-1">
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Who can join?</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Who can join?</div>
                                             <select value={launchJoinAccessMode} onChange={(e) => setLaunchJoinAccessMode(e.target.value)} className={inputClass}>
                                                 {AUDIENCE_JOIN_ACCESS_OPTIONS.map((option) => (<option key={option.id} value={option.id}>{option.label}</option>))}
                                             </select>
                                             <div className="mt-2 text-xs text-cyan-100/58">{selectedJoinOption?.description}</div>
                                         </label>
                                         <label className="block lg:col-span-1">
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Repeats</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Repeats</div>
                                             <select value={String(quickLaunchDiscovery?.recurringRule || 'one_time')} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, recurringRule: e.target.value }))} className={inputClass}>
                                                 <option value="one_time">One-time room</option>
                                                 <option value="weekly">Weekly night</option>
@@ -1795,7 +1802,7 @@ const HostRoomLaunchPadBrowser = ({
                                     </div>
                                     {launchNeedsPasscode ? (
                                         <label className="mt-3 block max-w-md">
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Guest passcode</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Guest passcode</div>
                                             <input type="password" value={launchJoinPasscode} onChange={(e) => setLaunchJoinPasscode(String(e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24))} placeholder="4-24 letters or numbers" minLength={4} maxLength={24} autoComplete="new-password" className={inputClass} />
                                             <div className={`mt-2 text-xs ${launchPasscodeValid ? 'text-cyan-100/58' : 'text-amber-200'}`}>The room code locates the room. This separate passcode admits a new guest and is stored only as a server-side hash.</div>
                                         </label>
@@ -1805,11 +1812,11 @@ const HostRoomLaunchPadBrowser = ({
                                 <section className={`${showAdvancedSetup ? '' : 'hidden'} rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3`} data-launch-operating-model>
                                     <div className="flex flex-wrap items-start justify-between gap-2">
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/62">Advanced host style</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-fuchsia-100/62">Advanced host style</div>
                                             <div className="mt-1 text-lg font-black text-white">Who drives the night?</div>
                                             <div className="mt-1 text-sm text-fuchsia-100/68">Choose this when the room is created because it changes pacing, automation, and crowd prompts from the start.</div>
                                         </div>
-                                        <span className="rounded-full border border-fuchsia-300/25 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100/72">{selectedOperatingModelOption.eyebrow}</span>
+                                        <span className="rounded-full border border-fuchsia-300/25 bg-black/20 px-2.5 py-1 text-xs uppercase tracking-[0.16em] text-fuchsia-100/72">{selectedOperatingModelOption.eyebrow}</span>
                                     </div>
                                     <div className="mt-3 grid gap-2 lg:grid-cols-3">
                                         {LAUNCH_OPERATING_MODEL_OPTIONS.map((option) => {
@@ -1828,10 +1835,10 @@ const HostRoomLaunchPadBrowser = ({
                                                             <div className="inline-flex items-center gap-2 text-sm font-black leading-tight"><i className={`fa-solid ${option.icon} text-[12px]`}></i>{option.label}</div>
                                                             <div className="mt-1 text-xs leading-5 opacity-82">{option.summary}</div>
                                                         </div>
-                                                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${selected ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/58'}`}>{option.eyebrow}</span>
+                                                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs uppercase tracking-[0.14em] ${selected ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/58'}`}>{option.eyebrow}</span>
                                                     </div>
                                                     <div className="mt-3 flex flex-wrap gap-1.5">
-                                                        {option.details.map((detail) => (<span key={detail} className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] text-fuchsia-50/76">{detail}</span>))}
+                                                        {option.details.map((detail) => (<span key={detail} className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-1 text-xs text-fuchsia-50/76">{detail}</span>))}
                                                     </div>
                                                 </button>
                                             );
@@ -1841,10 +1848,10 @@ const HostRoomLaunchPadBrowser = ({
                                 <section className={`${showAdvancedSetup ? '' : 'hidden'} rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3`} data-launch-template-options>
                                     <div className="flex flex-wrap items-start justify-between gap-2">
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Optional template</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Optional template</div>
                                             <div className="mt-1 text-sm text-cyan-100/66">Choose the starting behavior for queue, requests, search, TV/crowd layers, automation, and guest access. You can refine these after the room exists.</div>
                                         </div>
-                                        {selectedPresetUi?.eyebrow ? (<span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/62">{selectedPresetUi.eyebrow}</span>) : null}
+                                        {selectedPresetUi?.eyebrow ? (<span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs uppercase tracking-[0.16em] text-cyan-100/62">{selectedPresetUi.eyebrow}</span>) : null}
                                     </div>
                                     <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                                         {presets.map((preset) => {
@@ -1866,10 +1873,10 @@ const HostRoomLaunchPadBrowser = ({
                                                             <div className="text-sm font-black leading-tight">{preset.label}</div>
                                                             <div className="mt-1 text-xs leading-5 opacity-82">{presetUi?.summary || preset.description || 'A reusable room package for queue, request, search, and TV defaults.'}</div>
                                                         </div>
-                                                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${selected ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 bg-black/18 text-cyan-100/58'}`}>{preset.isBuiltIn ? 'Built-in' : 'Custom'}</span>
+                                                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs uppercase tracking-[0.14em] ${selected ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 bg-black/18 text-cyan-100/58'}`}>{preset.isBuiltIn ? 'Built-in' : 'Custom'}</span>
                                                     </div>
                                                     <div className="mt-3 flex flex-wrap gap-1.5">
-                                                        {chips.slice(0, 3).map((chip) => (<span key={chip} className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] text-cyan-50/76">{chip}</span>))}
+                                                        {chips.slice(0, 3).map((chip) => (<span key={chip} className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-1 text-xs text-cyan-50/76">{chip}</span>))}
                                                     </div>
                                                 </button>
                                             );
@@ -1881,10 +1888,10 @@ const HostRoomLaunchPadBrowser = ({
                                                 <div className="text-base font-semibold text-white">{selectedLaunchPreset?.label || 'Starting point'}</div>
                                                 <div className="mt-1 text-sm text-cyan-100/66">{selectedPresetMeta.summary}</div>
                                             </div>
-                                            {selectedLaunchPreset?.isBuiltIn ? (<span className="rounded-full border border-cyan-300/24 bg-cyan-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/72">Built-in</span>) : (<span className="rounded-full border border-fuchsia-300/24 bg-fuchsia-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100/72">Custom</span>)}
+                                            {selectedLaunchPreset?.isBuiltIn ? (<span className="rounded-full border border-cyan-300/24 bg-cyan-500/10 px-2.5 py-1 text-xs uppercase tracking-[0.16em] text-cyan-100/72">Built-in</span>) : (<span className="rounded-full border border-fuchsia-300/24 bg-fuchsia-500/10 px-2.5 py-1 text-xs uppercase tracking-[0.16em] text-fuchsia-100/72">Custom</span>)}
                                         </div>
                                         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                                            {selectedPresetImpactRows.map((row) => (<div key={row.label} className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2"><div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/48">{row.label}</div><div className="mt-1 text-sm text-cyan-50/86">{row.value}</div></div>))}
+                                            {selectedPresetImpactRows.map((row) => (<div key={row.label} className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2"><div className="text-xs uppercase tracking-[0.16em] text-cyan-100/48">{row.label}</div><div className="mt-1 text-sm text-cyan-50/86">{row.value}</div></div>))}
                                         </div>
                                     </div>
                                 </section>
@@ -1892,24 +1899,24 @@ const HostRoomLaunchPadBrowser = ({
 
                             <div className="space-y-3">
                                 <section className="rounded-xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/62">Step 3 - Points & rewards</div>
+                                    <div className="text-xs uppercase tracking-[0.18em] text-fuchsia-100/62">Step 3 - Points & rewards</div>
                                     <div className="mt-1 text-lg font-black text-white">Choose tonight&apos;s rewards</div>
                                     <div className="mt-1 text-sm text-fuchsia-100/68">Points run live participation. You can also open account-owned BeauBucks cosmetics, ticket perks, or fundraiser support without changing performance scores.</div>
                                     <div className="mt-3 grid gap-2">
                                         {LAUNCH_ECONOMY_OPTIONS.filter((option) => option.id !== 'beaubucks' && (showAdvancedSetup || option.id !== 'custom')).map((option) => {
                                             const selected = option.id === launchEconomyMode;
-                                            return (<button key={option.id} type="button" onClick={() => applyLaunchEconomy(option.id)} className={`rounded-xl border px-3 py-3 text-left transition ${selected ? 'border-fuchsia-300/45 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/72 hover:border-fuchsia-300/24 hover:bg-fuchsia-500/8'}`}><div className="flex items-center justify-between gap-3"><div className="text-sm font-semibold">{option.label}</div><span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${selected ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/58'}`}>{option.eyebrow}</span></div><div className="mt-1 text-xs leading-5 opacity-82">{option.summary}</div></button>);
+                                            return (<button key={option.id} type="button" onClick={() => applyLaunchEconomy(option.id)} className={`rounded-xl border px-3 py-3 text-left transition ${selected ? 'border-fuchsia-300/45 bg-fuchsia-500/16 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/72 hover:border-fuchsia-300/24 hover:bg-fuchsia-500/8'}`}><div className="flex items-center justify-between gap-3"><div className="text-sm font-semibold">{option.label}</div><span className={`rounded-full border px-2 py-0.5 text-xs uppercase tracking-[0.16em] ${selected ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 bg-black/18 text-fuchsia-100/58'}`}>{option.eyebrow}</span></div><div className="mt-1 text-xs leading-5 opacity-82">{option.summary}</div></button>);
                                         })}
                                     </div>
                                     <div className="mt-3 rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/[0.06] px-3 py-2 text-xs leading-5 text-fuchsia-100/72">
                                         Eligible Rooms get one separate <strong className="text-fuchsia-50">BeauBucks cosmetics</strong> switch after creation. It never changes Points or performance scoring.
                                     </div>
                                     <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3" data-launch-economy-preview="true">
-                                        <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/58">What guests experience</div>
+                                        <div className="text-xs uppercase tracking-[0.18em] text-fuchsia-100/58">What guests experience</div>
                                         <div className="mt-2 grid gap-2 sm:grid-cols-3">
                                             {launchEconomySummary.cards.map((card) => (
                                                 <div key={card.id} className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
-                                                    <div className="text-[9px] uppercase tracking-[0.15em] text-fuchsia-100/48">{card.eyebrow}</div>
+                                                    <div className="text-xs uppercase tracking-[0.15em] text-fuchsia-100/48">{card.eyebrow}</div>
                                                     <div className="mt-1 text-xs font-semibold text-white">{card.value}</div>
                                                 </div>
                                             ))}
@@ -1919,15 +1926,15 @@ const HostRoomLaunchPadBrowser = ({
                                 </section>
 
                                 <section className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Launch summary</div>
+                                    <div className="text-xs uppercase tracking-[0.18em] text-cyan-100/58">Launch summary</div>
                                     <div className="mt-1 text-sm text-cyan-100/66">Confirm the room guests will enter first. Everything below can still be adjusted from the host panel.</div>
                                     <div className="mt-3 flex flex-wrap gap-2">{launchSummaryItems.map((item) => (<span key={item} className="rounded-full border border-white/10 bg-black/24 px-3 py-1.5 text-xs text-cyan-50/82">{item}</span>))}</div>
                                     <div className="mt-3 grid gap-2" data-launch-effective-behavior="true">
                                         {launchEffectiveBehavior.domains.map((domain) => (
                                             <div key={domain.key} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5" data-launch-effective-domain={domain.key}>
                                                 <div className="flex items-start justify-between gap-2">
-                                                    <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/58">{domain.label}</div>
-                                                    <div className="max-w-[46%] truncate text-[9px] uppercase tracking-[0.12em] text-zinc-500" title={domain.provenance?.sourceLabel || 'Launch plan'}>From {domain.provenance?.sourceLabel || 'launch plan'}</div>
+                                                    <div className="text-xs uppercase tracking-[0.16em] text-cyan-100/58">{domain.label}</div>
+                                                    <div className="max-w-[46%] truncate text-xs uppercase tracking-[0.12em] text-zinc-500" title={domain.provenance?.sourceLabel || 'Launch plan'}>From {domain.provenance?.sourceLabel || 'launch plan'}</div>
                                                 </div>
                                                 <div className="mt-1 text-xs leading-5 text-cyan-50/82">{domain.summary}</div>
                                             </div>
@@ -1936,12 +1943,12 @@ const HostRoomLaunchPadBrowser = ({
                                 </section>
 
                                 <div className="grid gap-2">
-                                    <button type="button" data-host-create-room-primary="true" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full justify-center px-4 py-3 text-[11px] uppercase tracking-[0.18em] ${roomLaunchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</button>
+                                    <button type="button" data-host-create-room-primary="true" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full justify-center px-4 py-3 text-xs uppercase tracking-[0.18em] ${roomLaunchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>{creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}</button>
                                     <details className="rounded-xl border border-white/10 bg-black/18 px-3 py-2">
-                                        <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.16em] text-cyan-100/62">Planning ahead?</summary>
+                                        <summary className="cursor-pointer list-none text-xs uppercase tracking-[0.16em] text-cyan-100/62">Planning ahead?</summary>
                                         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                                             <div className="text-sm text-cyan-100/66">Create the room and open the Show Plan when you want to sequence moments before guests arrive.</div>
-                                            <button type="button" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'show', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${roomLaunchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>Create + Prepare Room</button>
+                                            <button type="button" onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'show', nightPresetPayload: launchPresetPayloadPreview, audienceJoinPasscode: normalizedLaunchJoinPasscode })} disabled={roomLaunchDisabled} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-xs uppercase tracking-[0.18em] ${roomLaunchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}>Create + Prepare Room</button>
                                         </div>
                                     </details>
                                     <div className="text-xs text-cyan-100/58">Room creation stays focused on launch decisions. Use the host panel for detailed room settings, rewards tuning, and show planning.</div>
@@ -1956,7 +1963,7 @@ const HostRoomLaunchPadBrowser = ({
                 {entryError ? (
                     <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-left text-xs text-rose-200">
                         <div>{entryError}</div>
-                        <button type="button" onClick={retryLastHostAction} className="mt-2 inline-flex items-center rounded-full border border-rose-300/40 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-rose-100">
+                        <button type="button" onClick={retryLastHostAction} className="mt-2 inline-flex items-center rounded-full border border-rose-300/40 px-3 py-1 text-xs uppercase tracking-[0.16em] text-rose-100">
                             Retry last action
                         </button>
                     </div>

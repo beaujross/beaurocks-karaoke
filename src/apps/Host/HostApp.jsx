@@ -8,13 +8,6 @@ import HostQueueHorizon from './components/HostQueueHorizon';
 import ComplimentaryHostSetupReady from './components/ComplimentaryHostSetupReady';
 import { getHostSetupSteps } from './hostSetupFlowModel';
 import { buildQaHostFixture } from './qaHostFixtures';
-import MissionSetupShell from './components/setup/MissionSetupShell';
-import MissionSetupHeader from './components/setup/MissionSetupHeader';
-import MissionSetupAutopilotPreview from './components/setup/MissionSetupAutopilotPreview';
-import MissionSetupPrimaryPicks from './components/setup/MissionSetupPrimaryPicks';
-import MissionSetupAdvancedDrawer from './components/setup/MissionSetupAdvancedDrawer';
-import MissionSetupPlanPreview from './components/setup/MissionSetupPlanPreview';
-import MissionSetupFooter from './components/setup/MissionSetupFooter';
 import FeatureGate from '../../components/FeatureGate';
 import useHostChat from './hooks/useHostChat';
 import useModerationInboxState from './hooks/useModerationInboxState';
@@ -307,7 +300,6 @@ import {
 import HostWorkspaceShell from './workspace/HostWorkspaceShell';
 import { resolveInitialHostWorkspaceRoute } from './workspace/initialRoute';
 import {
-    MISSION_ASSIST_LEVELS,
     MISSION_FLOW_RULES,
     buildMissionPartyFromRoom,
     buildMissionPartyPayload,
@@ -316,7 +308,6 @@ import {
     mergePayloadWithOverrides,
     getRecommendedHostAction
 } from './missionControl';
-import { resolveRoomSetupEffectiveBehavior } from './roomSetupEffectiveBehavior';
 import {
     AUTO_PARTY_STAGE_SETTLE_MS,
     canLaunchScheduledAutoCrowdMoment,
@@ -538,7 +529,6 @@ const HostRoomQuickStart = lazyHostSurface(() => import('./components/HostRoomQu
 const EventCreditsConfigPanel = lazyHostSurface(() => import('./components/EventCreditsConfigPanel'), 'Audience store settings updated');
 const UnifiedGameLauncher = lazyHostSurface(() => import('../../components/UnifiedGameLauncher'), 'Game launcher updated');
 const HostChatPanel = lazyHostSurface(() => import('./components/HostChatPanel'), 'Host chat updated');
-const SelfServeModeLauncher = lazyHostSurface(() => import('./components/SelfServeModeLauncher'), 'Room format tools updated');
 
 const DeferredHostSurfaceFallback = ({ label = 'Loading host tools...' }) => (
     <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-400">
@@ -1694,44 +1684,6 @@ const NIGHT_SETUP_PRIMARY_MODES = [
         accent: 'from-lime-500/25 via-lime-500/10 to-transparent'
     }
 ];
-
-const NIGHT_SETUP_STEPS = [
-    {
-        id: 0,
-        label: 'Defaults',
-        subtitle: 'Choose room defaults',
-        sections: ['Section 1: Room Defaults', 'Section 2: Live Defaults']
-    },
-    {
-        id: 1,
-        label: 'Queue',
-        subtitle: 'Set queue and live defaults',
-        sections: ['Section 1: Request Limits', 'Section 2: Live Defaults']
-    }
-];
-
-const NIGHT_SETUP_PRESET_META = {
-    casual: {
-        icon: 'fa-glass-cheers',
-        accent: 'from-cyan-500/30 via-sky-500/10 to-transparent'
-    },
-    competition: {
-        icon: 'fa-trophy',
-        accent: 'from-amber-500/30 via-yellow-500/10 to-transparent'
-    },
-    bingo: {
-        icon: 'fa-table-cells-large',
-        accent: 'from-emerald-500/30 via-lime-500/10 to-transparent'
-    },
-    trivia: {
-        icon: 'fa-bolt',
-        accent: 'from-fuchsia-500/30 via-violet-500/10 to-transparent'
-    },
-    aahf: {
-        icon: 'fa-star',
-        accent: 'from-pink-500/30 via-cyan-500/10 to-transparent'
-    }
-};
 
 const NIGHT_SETUP_QUEUE_LIMIT_OPTIONS = [
     { id: 'none', label: 'No Limits', description: 'Let guests request freely all night.', icon: 'fa-infinity' },
@@ -6582,7 +6534,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [hostNightPreset, setHostNightPreset] = useState('custom');
     const [customHostPresetState, setCustomHostPresetState] = useState(() => loadHostNightRecipeSyncState());
     const customHostPresets = customHostPresetState.presets;
-    const hostNightRecipeStorage = useAccountHostNightRecipes({
+    useAccountHostNightRecipes({
         uid,
         recipeState: customHostPresetState,
         setRecipeState: setCustomHostPresetState,
@@ -6939,7 +6891,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         : supportDropSuggestedPoints;
     const supportDropReady = supportDropEffectivePoints > 0 || supportDropAmountValue > 0;
     const lobbyActionGiftPreviewPoints = Math.max(1, Math.round(Number(tipGiftAmount || 100) || 100));
-    const [nightSetupApplying, setNightSetupApplying] = useState(false);
+    const [, setNightSetupApplying] = useState(false);
     const [nightSetupPresetId, setNightSetupPresetId] = useState('casual');
     const [nightSetupQueueLimitMode, setNightSetupQueueLimitMode] = useState('none');
     const [nightSetupQueueLimitCount, setNightSetupQueueLimitCount] = useState(0);
@@ -6950,8 +6902,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [nightSetupAutoPlayMedia, setNightSetupAutoPlayMedia] = useState(true);
     const [nightSetupChatOnTv, setNightSetupChatOnTv] = useState(false);
     const [nightSetupMarqueeEnabled, setNightSetupMarqueeEnabled] = useState(false);
-    const [nightSetupRecommendation, setNightSetupRecommendation] = useState({ presetId: 'casual', reason: '' });
-    const [nightSetupPlanPulse, setNightSetupPlanPulse] = useState({
+    const [, setNightSetupRecommendation] = useState({ presetId: 'casual', reason: '' });
+    const [, setNightSetupPlanPulse] = useState({
         night: 0,
         pacing: 0,
         spotlight: 0,
@@ -6967,11 +6919,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     });
     const [missionPartyDraft, setMissionPartyDraft] = useState(() => buildMissionPartyPayload());
     const [missionAdvancedOverrides, setMissionAdvancedOverrides] = useState({});
-    const [missionAdvancedOpen, setMissionAdvancedOpen] = useState(false);
-    const [missionAdvancedQueueOpen, setMissionAdvancedQueueOpen] = useState(false);
-    const [missionAdvancedPartyOpen, setMissionAdvancedPartyOpen] = useState(false);
-    const [missionAdvancedTogglesOpen, setMissionAdvancedTogglesOpen] = useState(false);
-    const [missionShowAllSpotlightModes, setMissionShowAllSpotlightModes] = useState(false);
+    const [, setMissionAdvancedOpen] = useState(false);
+    const [, setMissionAdvancedQueueOpen] = useState(false);
+    const [, setMissionAdvancedPartyOpen] = useState(false);
+    const [, setMissionAdvancedTogglesOpen] = useState(false);
+    const [, setMissionShowAllSpotlightModes] = useState(false);
     const eventCreditsRemoteSyncKeyRef = useRef('');
     const hostUpdateDeploymentBanner = hostUpdateDeploymentWarning ? (
         <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 flex items-start justify-between gap-3">
@@ -7084,7 +7036,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (fixture.view) setView(fixture.view);
         else setView('workspace');
         if (fixture.tab) setTab(fixture.tab);
-        if (fixture.openNightSetupWizard === true) setShowSettings(false);
         if (fixture.settingsTab) setSettingsTab(fixture.settingsTab);
         if (fixture.lobbyTab) setLobbyTab(fixture.lobbyTab);
         const fixtureWorkspaceView = String(fixture.activeWorkspaceView || fixtureParams.get('view') || '').trim();
@@ -7132,16 +7083,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (['off', '0', 'false', 'legacy'].includes(value)) return false;
         return null;
     }, []);
-    const missionAssistLabel = useMemo(() => {
-        const found = MISSION_ASSIST_LEVELS.find((assist) => assist.id === missionDraft.assistLevel);
-        return found?.label || 'Smart Assist';
-    }, [missionDraft.assistLevel]);
-    const missionStatusLabel = useMemo(() => {
-        if (nightSetupApplying) return 'Live';
-        if (!String(roomCode || '').trim()) return 'Needs Attention';
-        if (nightSetupQueueLimitMode === 'none' && !nightSetupQueueFirstTimeBoost) return 'Needs Attention';
-        return 'Ready';
-    }, [nightSetupApplying, roomCode, nightSetupQueueLimitMode, nightSetupQueueFirstTimeBoost]);
     const usageMeters = useMemo(() => {
         const meters = Object.values(usageSummary?.meters || {});
         return meters.sort((a, b) => String(a?.label || '').localeCompare(String(b?.label || '')));
@@ -12861,26 +12802,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return merged;
     }, [compileMissionPayloadWithAssist, missionAdvancedOverrides, missionDraft]);
 
-    const setMissionOverrideValue = useCallback((path, value) => {
-        setMissionAdvancedOverrides((prev) => {
-            const next = { ...(prev || {}), [path]: value };
-            trackEvent('host_mission_advanced_toggled', {
-                room_code: roomCode || '',
-                path,
-                feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
-                cohort: missionControlCohort,
-                timestamp: nowMs()
-            });
-            return next;
-        });
-    }, [roomCode, missionControlEnabled, missionControlCohort]);
-
-    const resetMissionAdvancedOverrides = useCallback(() => {
-        setMissionAdvancedOverrides({});
-        setMissionPartyDraft(buildMissionPartyFromRoom(room));
-        applyMissionDraftToNightSetupState(missionDraft, {});
-    }, [applyMissionDraftToNightSetupState, missionDraft, room]);
-
     useEffect(() => {
         if (!missionControlEnabled) return;
         try {
@@ -13126,14 +13047,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
     }, [advanceBgTrack]);
 
-    const {
-        applyNightSetupWizard,
-        launchNightSetupPackage,
-        openNightSetupWizard,
-        openSpotlightFlowFromSetup,
-        resolveNightSetupRecommendation,
-        seedNightSetupFromPreset,
-    } = useHostNightSetupFlow({
+    const { openSpotlightFlowFromSetup } = useHostNightSetupFlow({
         applyMissionDraftToNightSetupState,
         buildMissionDraftFromRoom,
         buildMissionPartyFromRoom,
@@ -13245,49 +13159,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         trackEvent,
     });
 
-    const qaNightSetupFixtureOpenedRef = useRef(false);
-    useEffect(() => {
-        if (!isMarketingDemoFixture || demoFixture?.openNightSetupWizard !== true) return;
-        if (qaNightSetupFixtureOpenedRef.current) return;
-        qaNightSetupFixtureOpenedRef.current = true;
-        openNightSetupWizard(demoFixture?.room?.hostNightPreset || 'casual');
-    }, [demoFixture, isMarketingDemoFixture, openNightSetupWizard]);
-
-    const updateMissionDraftPick = useCallback((patch = {}, reason = 'manual') => {
-        setMissionDraft((prev) => {
-            const next = {
-                ...(prev || {}),
-                ...patch,
-                assistLevel: patch.assistLevel || prev?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL
-            };
-            applyMissionDraftToNightSetupState(next, missionAdvancedOverrides);
-            trackEvent('host_mission_pick_changed', {
-                room_code: roomCode || '',
-                reason,
-                archetype: next.archetype,
-                flow_rule: next.flowRule,
-                spotlight_mode: next.spotlightMode,
-                feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
-                cohort: missionControlCohort,
-                timestamp: nowMs()
-            });
-            return next;
-        });
-    }, [applyMissionDraftToNightSetupState, missionAdvancedOverrides, roomCode, missionControlEnabled, missionControlCohort]);
-
     const {
-        closeNightSetupWizard,
         createRoom,
         launchOnboardingRoom,
         openHostRoomDashboard,
     } = useHostLaunchSession({
         fallbackLogoUrl: ASSETS.logo,
         hostNightPreset,
-        nightSetupApplying,
         onboardingHostName,
         onboardingLogoUrl,
         onboardingWorkspaceName,
-        openNightSetupWizard,
         provisionRoom,
         roomCode,
         setEntryError,
@@ -13297,9 +13178,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setQuickStartChecklistProgress,
         setQuickStartChecklistRoomCode,
         setRoomCodeInput,
-        setShowNightSetupWizard,
         setShowSettings,
-        setNightSetupStep,
         setView,
     });
 
@@ -17485,15 +17364,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         toast,
         uid,
     });
-    useEffect(() => {
-        if (!showNightSetupWizard) return undefined;
-        const handleKeyDown = (event) => {
-            if (event.key !== 'Escape' || nightSetupApplying) return;
-            closeNightSetupWizard();
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [closeNightSetupWizard, nightSetupApplying, showNightSetupWizard]);
     const focusQueueLiveControls = useCallback(() => {
         handleTopChromeTabChange('stage');
         if (typeof window === 'undefined') return;
@@ -17545,8 +17415,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             action: 'adjust_room_setup',
         });
         updateStageQuickStartProgress({ roomSetupOpened: true });
-        openNightSetupWizard(room?.hostNightPreset || hostNightPreset || 'casual');
-    }, [hostNightPreset, openNightSetupWizard, room?.hostNightPreset, roomCode, updateStageQuickStartProgress]);
+        openAdminWorkspace('ops.room_setup');
+    }, [openAdminWorkspace, roomCode, updateStageQuickStartProgress]);
     const runMissionDeckAction = async (actionId = '') => {
         const action = String(actionId || '').trim();
         if (!action) return;
@@ -20086,886 +19956,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
     );
 
-    const renderNightSetupWizard = () => {
-        const selectedPreset = hostNightPresets[nightSetupPresetId] || hostNightPresets.casual || BUILTIN_HOST_NIGHT_PRESETS.casual;
-        const limitOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === nightSetupQueueLimitMode) || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
-        const rotationOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === nightSetupQueueRotation) || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
-        const activeStep = NIGHT_SETUP_STEPS[nightSetupStep] || NIGHT_SETUP_STEPS[0];
-        const presetFeaturePills = [
-            { label: 'Auto DJ', enabled: !!selectedPreset?.settings?.autoDj },
-            { label: 'Background Music', enabled: !!selectedPreset?.settings?.autoBgMusic },
-            { label: 'Guests Pick Track', enabled: normalizeRoomRequestMode(selectedPreset?.settings?.requestMode, selectedPreset?.settings?.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional },
-            { label: 'Host Approves Queue', enabled: !!selectedPreset?.settings?.bouncerMode },
-            { label: 'Auto Lyrics', enabled: !!selectedPreset?.settings?.autoLyricsOnQueue },
-            { label: 'Pop Trivia', enabled: selectedPreset?.settings?.popTriviaEnabled === true }
-        ];
-        const enabledPresetFeatureCount = presetFeaturePills.filter((item) => item.enabled).length;
-        const recommendation = (() => {
-            const recommendedId = nightSetupRecommendation?.presetId;
-            if (recommendedId && hostNightPresets[recommendedId]) return nightSetupRecommendation;
-            return resolveNightSetupRecommendation();
-        })();
-        const readinessChecks = [
-            { label: 'Host identity', ok: !!String(hostName || '').trim() },
-            { label: 'Room code assigned', ok: !!String(roomCode || '').trim() },
-            { label: 'Starting template selected', ok: !!String(selectedPreset?.id || '').trim() },
-            { label: 'Queue policy set', ok: !!String(nightSetupQueueLimitMode || '').trim() && !!String(nightSetupQueueRotation || '').trim() },
-            { label: 'Branding logo', ok: !!String(logoUrl || '').trim() },
-            {
-                label: 'At least one live toggle',
-                ok: !!nightSetupAutoPlayMedia || !!nightSetupShowScoring || !!nightSetupQueueFirstTimeBoost || !!nightSetupChatOnTv || !!nightSetupMarqueeEnabled
-            }
-        ];
-        const readinessComplete = readinessChecks.filter((item) => item.ok).length;
-        const readinessScore = Math.round((readinessComplete / readinessChecks.length) * 100);
-        const readinessMissing = readinessChecks.filter((item) => !item.ok).map((item) => item.label).slice(0, 2);
-        const getQueueLimitLabel = (modeId = 'none') =>
-            NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === modeId)?.label || 'No Limits';
-        const getQueueRotationLabel = (rotationId = 'round_robin') =>
-            NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === rotationId)?.label || 'Round Robin';
-        const formatBoolean = (value) => (value ? 'On' : 'Off');
-        const formatQueueSummary = (modeId = 'none', limitCount = 0, rotationId = 'round_robin', firstTimeBoost = false) => {
-            const limitLabel = getQueueLimitLabel(modeId);
-            const rotationLabel = getQueueRotationLabel(rotationId);
-            const countPart = modeId !== 'none' ? ` (${Math.max(0, Number(limitCount || 0))})` : '';
-            const boostPart = firstTimeBoost ? ' + First-Time Boost' : '';
-            return `${limitLabel}${countPart} | ${rotationLabel}${boostPart}`;
-        };
-        const currentSetupSnapshot = {
-            showScoring: !!nightSetupShowScoring,
-            autoPlayMedia: !!nightSetupAutoPlayMedia,
-            chatShowOnTv: !!nightSetupChatOnTv,
-            marqueeEnabled: !!nightSetupMarqueeEnabled,
-            queueLimitMode: String(nightSetupQueueLimitMode || 'none'),
-            queueLimitCount: Math.max(0, Number(nightSetupQueueLimitCount || 0)),
-            queueRotation: String(nightSetupQueueRotation || 'round_robin'),
-            queueFirstTimeBoost: !!nightSetupQueueFirstTimeBoost
-        };
-        const getPresetSnapshot = (presetInput = selectedPreset) => {
-            const presetSettings = presetInput?.settings || {};
-            const queue = presetSettings?.queueSettings || {};
-            const limitMode = String(queue?.limitMode || 'none');
-            const limitCount = Math.max(0, Number(queue?.limitCount || 0));
-            const queueRotation = String(queue?.rotation || 'round_robin');
-            const firstTimeBoost = queue?.firstTimeBoost !== false;
-            return {
-                showScoring: presetSettings.showScoring !== false,
-                autoPlayMedia: presetSettings.autoPlayMedia !== false,
-                chatShowOnTv: !!presetSettings.chatShowOnTv,
-                marqueeEnabled: !!presetSettings.marqueeEnabled,
-                queueLimitMode: limitMode,
-                queueLimitCount: limitCount,
-                queueRotation,
-                queueFirstTimeBoost: firstTimeBoost,
-                queueSummary: formatQueueSummary(limitMode, limitCount, queueRotation, firstTimeBoost)
-            };
-        };
-        const getPresetChangeSummary = (presetInput = selectedPreset) => {
-            const presetSnapshot = getPresetSnapshot(presetInput);
-            const chips = [];
-            const pushChip = (label, value) => chips.push({ label, value });
-            if (presetSnapshot.queueSummary !== formatQueueSummary(
-                currentSetupSnapshot.queueLimitMode,
-                currentSetupSnapshot.queueLimitCount,
-                currentSetupSnapshot.queueRotation,
-                currentSetupSnapshot.queueFirstTimeBoost
-            )) {
-                pushChip('Queue', presetSnapshot.queueSummary);
-            }
-            if (presetSnapshot.showScoring !== currentSetupSnapshot.showScoring) {
-                pushChip('Scoring', formatBoolean(presetSnapshot.showScoring));
-            }
-            if (presetSnapshot.autoPlayMedia !== currentSetupSnapshot.autoPlayMedia) {
-                pushChip('Auto-Play', formatBoolean(presetSnapshot.autoPlayMedia));
-            }
-            if (presetSnapshot.chatShowOnTv !== currentSetupSnapshot.chatShowOnTv) {
-                pushChip('TV Chat', formatBoolean(presetSnapshot.chatShowOnTv));
-            }
-            if (presetSnapshot.marqueeEnabled !== currentSetupSnapshot.marqueeEnabled) {
-                pushChip('Marquee', formatBoolean(presetSnapshot.marqueeEnabled));
-            }
-            return {
-                count: chips.length,
-                chips: chips.slice(0, 3),
-                hiddenCount: Math.max(0, chips.length - 3),
-                queueSummary: presetSnapshot.queueSummary
-            };
-        };
-        const selectedPresetSnapshot = getPresetSnapshot(selectedPreset);
-        const selectedPresetChangeSummary = getPresetChangeSummary(selectedPreset);
-        const clampOneLine = {
-            display: '-webkit-box',
-            WebkitLineClamp: 1,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden'
-        };
-        const clampTwoLines = {
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden'
-        };
-        const canContinueNightSetupStep = nightSetupStep === 0
-            ? !!String(nightSetupPresetId || '').trim()
-            : !!String(nightSetupQueueLimitMode || '').trim() && !!String(nightSetupQueueRotation || '').trim();
-        const isPlanFieldUpdated = (fieldKey) => (nowMs() - Number(nightSetupPlanPulse?.[fieldKey] || 0)) < 1500;
-        const pacingLabel = `${limitOption.label}${nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''} | ${rotationOption.label}`;
-        const readinessLabel = `${readinessScore}% Ready${readinessMissing.length > 0 ? ` (${readinessMissing.length} missing)` : ''}`;
-        const tonightPlanFields = [
-            { key: 'night', label: 'Defaults', value: selectedPreset.label },
-            { key: 'pacing', label: 'Queue', value: pacingLabel },
-            { key: 'readiness', label: 'Readiness', value: readinessLabel }
-        ];
-        const roomFormatLauncher = roomCode ? (
-            <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading room format tools..." />}>
-                <SelfServeModeLauncher
-                    room={room}
-                    roomCode={roomCode}
-                    updateRoom={updateRoom}
-                    toast={toast}
-                    context="setup"
-                />
-            </React.Suspense>
-        ) : null;
-
-        if (missionControlEnabled) {
-            const missionPreset = hostNightPresets[missionDraft?.archetype] || hostNightPresets.casual || BUILTIN_HOST_NIGHT_PRESETS.casual;
-            const missionMode = NIGHT_SETUP_PRIMARY_MODES.find((mode) => mode.id === missionDraft?.spotlightMode) || NIGHT_SETUP_PRIMARY_MODES[0];
-            const flowRule = MISSION_FLOW_RULE_OPTIONS.find((rule) => rule.id === missionDraft?.flowRule) || MISSION_FLOW_RULE_OPTIONS[0];
-            const assistLevel = MISSION_ASSIST_LEVELS.find((assist) => assist.id === missionDraft?.assistLevel) || MISSION_ASSIST_LEVELS[1];
-            const statusClass = missionStatusLabel === 'Ready'
-                ? 'text-emerald-200 border-emerald-400/35 bg-emerald-500/15'
-                : missionStatusLabel === 'Live'
-                    ? 'text-cyan-100 border-cyan-400/35 bg-cyan-500/15'
-                    : 'text-amber-100 border-amber-400/35 bg-amber-500/15';
-            const missionPartyBaseline = buildMissionPartyFromRoom(room);
-            const missionPartyPreview = buildMissionPartyPayload(missionPartyDraft);
-            const missionPartyOverrideCount = [
-                missionPartyPreview.karaokeFirst !== missionPartyBaseline.karaokeFirst,
-                missionPartyPreview.minSingingSharePct !== missionPartyBaseline.minSingingSharePct,
-                missionPartyPreview.maxBreakDurationSec !== missionPartyBaseline.maxBreakDurationSec,
-                missionPartyPreview.maxConsecutiveNonKaraokeModes !== missionPartyBaseline.maxConsecutiveNonKaraokeModes
-            ].filter(Boolean).length;
-            const missionOverrideCount = Object.keys(missionAdvancedOverrides || {}).length + missionPartyOverrideCount;
-            const featuredSpotlightModeIds = ['karaoke', 'bingo', 'team_pong', 'trivia_pop', 'karaoke_bracket'];
-            const missionVisibleSpotlightModes = missionShowAllSpotlightModes
-                ? NIGHT_SETUP_PRIMARY_MODES
-                : NIGHT_SETUP_PRIMARY_MODES.filter((mode) => featuredSpotlightModeIds.includes(mode.id) || mode.id === missionDraft?.spotlightMode);
-            const canToggleSpotlightList = NIGHT_SETUP_PRIMARY_MODES.length > missionVisibleSpotlightModes.length || missionShowAllSpotlightModes;
-            const missionBasePayloadPreview = compileMissionPayloadWithAssist(missionDraft || {}, {});
-            const missionPayloadPreview = compileMissionPayloadWithAssist(missionDraft || {}, missionAdvancedOverrides || {});
-            const missionEffectiveBehavior = resolveRoomSetupEffectiveBehavior({
-                layers: [
-                    {
-                        id: room?.eventProfileId ? 'event_profile_room' : 'provisioned_room',
-                        label: room?.eventProfileLabel ? `${room.eventProfileLabel} live room` : 'Provisioned room',
-                        type: room?.eventProfileId ? 'event_profile' : 'provisioning',
-                        values: room || {},
-                    },
-                    {
-                        id: 'mission_plan',
-                        label: `${missionPreset.label} + ${assistLevel.label}`,
-                        type: 'mission',
-                        values: {
-                            ...missionBasePayloadPreview,
-                            missionControl: {
-                                setupDraft: {
-                                    archetype: missionDraft?.archetype || 'casual',
-                                    flowRule: missionDraft?.flowRule || 'balanced',
-                                    spotlightMode: missionDraft?.spotlightMode || 'karaoke',
-                                    assistLevel: missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL,
-                                },
-                            },
-                        },
-                    },
-                    ...(missionOverrideCount > 0 ? [{
-                        id: 'tonight_exceptions',
-                        label: 'Tonight exceptions',
-                        type: 'direct_edit',
-                        values: mergePayloadWithOverrides({
-                            missionControl: { party: missionPartyPreview },
-                        }, missionAdvancedOverrides || {}),
-                    }] : []),
-                ],
-                exceptionCount: missionOverrideCount,
-                context: {
-                    eventProfileLabel: room?.eventProfileLabel || '',
-                    spotlightMode: missionDraft?.spotlightMode || 'karaoke',
-                },
-            });
-            const previewQueue = missionPayloadPreview?.queueSettings || {};
-            const previewQueueSummary = formatQueueSummary(
-                previewQueue?.limitMode || 'none',
-                Math.max(0, Number(previewQueue?.limitCount || 0)),
-                previewQueue?.rotation || 'round_robin',
-                previewQueue?.firstTimeBoost !== false
-            );
-            const missionImpactItems = [
-                { label: 'Queue', value: previewQueueSummary },
-                { label: 'Auto DJ', value: missionPayloadPreview?.autoDj ? 'On' : 'Off' },
-                { label: 'Dead Air', value: assistLevel.id === 'autopilot_first' ? 'Auto-fill' : assistLevel.id === 'manual_first' ? 'Off' : 'Suggest' },
-                { label: 'Auto-Play', value: missionPayloadPreview?.autoPlayMedia ? 'On' : 'Off' },
-                { label: 'Scoring', value: missionPayloadPreview?.showScoring ? 'On' : 'Off' },
-                { label: 'TV Chat', value: missionPayloadPreview?.chatShowOnTv ? 'On' : 'Off' },
-                { label: 'Marquee', value: missionPayloadPreview?.marqueeEnabled ? 'On' : 'Off' },
-                { label: 'Pop Trivia', value: missionPayloadPreview?.popTriviaEnabled ? 'On' : 'Off' },
-                { label: 'Karaoke-First', value: missionPartyPreview?.karaokeFirst ? 'On' : 'Off' },
-                { label: 'Singing Floor', value: `${missionPartyPreview?.minSingingSharePct || 70}%` },
-                { label: 'Max Break', value: `${missionPartyPreview?.maxBreakDurationSec || 20}s` },
-                { label: 'Group Streak', value: `x${missionPartyPreview?.maxConsecutiveNonKaraokeModes || 1}` }
-            ];
-            const intermissionSummary = missionPartyPreview?.autoCrowdMomentsEnabled
-                ? `activities every ${missionPartyPreview.autoCrowdMomentEverySongs || 1} singer${Number(missionPartyPreview.autoCrowdMomentEverySongs || 1) === 1 ? '' : 's'}`
-                : 'no scheduled breaks';
-            const missionSummary = `${missionPreset.label} · ${missionAssistLabel} · ${intermissionSummary}`;
-
-            return (
-                <MissionSetupShell
-                    header={(
-                        <MissionSetupHeader
-                            styles={STYLES}
-                            statusClass={statusClass}
-                            statusLabel={missionStatusLabel}
-                            onSkip={closeNightSetupWizard}
-                            applying={nightSetupApplying}
-                        />
-                    )}
-                    primaryContent={(
-                        <>
-                            <MissionSetupPrimaryPicks
-                                presets={hostNightPresetList}
-                                selectedArchetype={missionDraft?.archetype}
-                                selectedFlowRule={missionDraft?.flowRule}
-                                selectedAssistLevel={missionDraft?.assistLevel}
-                                selectedSpotlightMode={missionDraft?.spotlightMode || 'karaoke'}
-                                selectedPerformanceMode={missionDraft?.performanceMode || 'karaoke'}
-                                recipeStorageLabel={hostNightRecipeStorage.storageLabel}
-                                recipeSyncStatus={hostNightRecipeStorage.syncStatus}
-                                sourceContext={{
-                                    searchSources: missionPreset?.searchSources || searchSources,
-                                    appleMusicAuthorized,
-                                    localTrackCount: localLibrary.length,
-                                }}
-                                onApplyRecipe={(recipe) => {
-                                    const nextOverrides = recipe?.overrides && typeof recipe.overrides === 'object'
-                                        ? { ...recipe.overrides }
-                                        : {};
-                                    const nextDraft = {
-                                        ...(missionDraft || {}),
-                                        archetype: recipe?.presetId || 'casual',
-                                        flowRule: recipe?.flowRule || 'balanced',
-                                        assistLevel: recipe?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL,
-                                        spotlightMode: recipe?.spotlightMode || 'karaoke',
-                                        performanceMode: recipe?.performanceMode || 'karaoke',
-                                    };
-                                    setMissionAdvancedOverrides(nextOverrides);
-                                    setMissionPartyDraft((previous) => buildMissionPartyPayload({
-                                        ...(previous || {}),
-                                        ...(recipe?.party || {}),
-                                    }));
-                                    setMissionDraft(nextDraft);
-                                    applyMissionDraftToNightSetupState(nextDraft, nextOverrides);
-                                    trackEvent('host_room_recipe_selected', {
-                                        room_code: roomCode || '',
-                                        recipe_id: recipe?.id || '',
-                                        preset_id: nextDraft.archetype,
-                                        timestamp: nowMs(),
-                                    });
-                                }}
-                                onSaveRecipe={() => {
-                                    if (typeof window === 'undefined') return;
-                                    const suggestedName = `My ${missionPreset.label || 'Karaoke Night'}`;
-                                    const label = String(window.prompt('Name this room recipe', suggestedName) || '').trim().slice(0, 64);
-                                    if (!label) return;
-                                    const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'night';
-                                    const saved = saveCustomHostPreset({
-                                        id: `recipe_${slug}_${nowMs().toString(36)}`,
-                                        label,
-                                        description: 'Saved from Room Readiness.',
-                                        basePresetId: missionPreset.basePresetId || missionPreset.id || 'casual',
-                                        searchSources: { ...(missionPreset.searchSources || {}) },
-                                        settings: {
-                                            ...(missionPreset.settings || {}),
-                                            ...(missionPayloadPreview || {}),
-                                            queueSettings: { ...(missionPayloadPreview?.queueSettings || {}) },
-                                        },
-                                        recipe: {
-                                            flowRule: missionDraft?.flowRule || 'balanced',
-                                            assistLevel: missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL,
-                                            spotlightMode: missionDraft?.spotlightMode || 'karaoke',
-                                            performanceMode: missionDraft?.performanceMode || 'karaoke',
-                                            requirements: missionDraft?.performanceMode === 'sing_along'
-                                                ? { originalRecording: true, lyrics: 'preferred' }
-                                                : missionDraft?.performanceMode === 'lip_sync' ? { originalRecording: true, lyrics: 'optional' } : {},
-                                            overrides: { ...(missionAdvancedOverrides || {}) },
-                                            party: { ...(missionPartyPreview || {}) },
-                                        },
-                                        autoStartApplePlaylist: !!missionPreset.autoStartApplePlaylist,
-                                    });
-                                    if (saved) toast(`${saved.label} saved as a room recipe.`);
-                                }}
-                            />
-                            <MissionSetupAutopilotPreview
-                                assistLevels={MISSION_ASSIST_LEVELS}
-                                selectedAssistLevel={missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL}
-                                onSelectAssistLevel={(assistLevelId) => updateMissionDraftPick({ assistLevel: assistLevelId }, 'assist_level')}
-                                presetLabel={missionPreset.label}
-                                flowRuleLabel={flowRule.label}
-                                spotlightLabel={missionMode.label}
-                                queueSummary={previewQueueSummary}
-                                deadAirSongs={missionDeadAirFillerSongs}
-                                intermissionEnabled={missionPartyPreview.autoCrowdMomentsEnabled}
-                                intermissionEverySongs={missionPartyPreview.autoCrowdMomentEverySongs}
-                                intermissionTypes={missionPartyPreview.autoCrowdMomentPreferredTypes}
-                                onToggleIntermission={() => setMissionPartyDraft((previous) => buildMissionPartyPayload({
-                                    ...(previous || {}),
-                                    autoCrowdMomentsEnabled: previous?.autoCrowdMomentsEnabled !== true
-                                }))}
-                                onSetIntermissionEverySongs={(nextValue) => setMissionPartyDraft((previous) => buildMissionPartyPayload({
-                                    ...(previous || {}),
-                                    autoCrowdMomentEverySongs: nextValue
-                                }))}
-                                onToggleIntermissionType={(type) => setMissionPartyDraft((previous) => {
-                                    const currentTypes = Array.isArray(previous?.autoCrowdMomentPreferredTypes) ? previous.autoCrowdMomentPreferredTypes : [];
-                                    const hasType = currentTypes.includes(type);
-                                    const nextTypes = hasType ? currentTypes.filter((item) => item !== type) : [...currentTypes, type];
-                                    return buildMissionPartyPayload({
-                                        ...(previous || {}),
-                                        autoCrowdMomentPreferredTypes: nextTypes.length ? nextTypes : [type]
-                                    });
-                                })}
-                            />
-                            <MissionSetupAdvancedDrawer
-                                styles={STYLES}
-                                isOpen={missionAdvancedOpen}
-                                onToggleOpen={() => setMissionAdvancedOpen((prev) => !prev)}
-                                overrideCount={missionOverrideCount}
-                                onResetAdvanced={resetMissionAdvancedOverrides}
-                                spotlightModes={missionVisibleSpotlightModes}
-                                selectedSpotlightMode={missionDraft?.spotlightMode}
-                                onSelectSpotlightMode={(spotlightModeId) => updateMissionDraftPick({ spotlightMode: spotlightModeId }, 'spotlight_mode')}
-                                canToggleSpotlightList={canToggleSpotlightList}
-                                showAllSpotlightModes={missionShowAllSpotlightModes}
-                                onToggleShowAllSpotlightModes={() => setMissionShowAllSpotlightModes((prev) => !prev)}
-                                queueOpen={missionAdvancedQueueOpen}
-                                onToggleQueueOpen={() => setMissionAdvancedQueueOpen((prev) => !prev)}
-                                queueLimitOptions={NIGHT_SETUP_QUEUE_LIMIT_OPTIONS}
-                                queueLimitMode={nightSetupQueueLimitMode}
-                                onSetQueueLimitMode={(nextValue) => {
-                                    setNightSetupQueueLimitMode(nextValue);
-                                    setMissionOverrideValue('queueSettings.limitMode', nextValue);
-                                    if (nextValue === 'none') {
-                                        setNightSetupQueueLimitCount(0);
-                                        setMissionOverrideValue('queueSettings.limitCount', 0);
-                                    }
-                                }}
-                                queueLimitCount={nightSetupQueueLimitCount}
-                                onSetQueueLimitCount={(nextValue) => {
-                                    setNightSetupQueueLimitCount(nextValue);
-                                    setMissionOverrideValue('queueSettings.limitCount', nextValue);
-                                }}
-                                queueRotationOptions={NIGHT_SETUP_QUEUE_ROTATION_OPTIONS}
-                                queueRotation={nightSetupQueueRotation}
-                                onSetQueueRotation={(nextValue) => {
-                                    setNightSetupQueueRotation(nextValue);
-                                    setMissionOverrideValue('queueSettings.rotation', nextValue);
-                                }}
-                                queueFirstTimeBoost={nightSetupQueueFirstTimeBoost}
-                                onToggleQueueFirstTimeBoost={() => {
-                                    const nextValue = !nightSetupQueueFirstTimeBoost;
-                                    setNightSetupQueueFirstTimeBoost(nextValue);
-                                    setMissionOverrideValue('queueSettings.firstTimeBoost', nextValue);
-                                }}
-                                partyOpen={missionAdvancedPartyOpen}
-                                onTogglePartyOpen={() => setMissionAdvancedPartyOpen((prev) => !prev)}
-                                karaokeFirst={missionPartyDraft?.karaokeFirst !== false}
-                                onToggleKaraokeFirst={() => {
-                                    setMissionPartyDraft((prev) => buildMissionPartyPayload({
-                                        ...(prev || {}),
-                                        karaokeFirst: !(prev?.karaokeFirst !== false)
-                                    }));
-                                }}
-                                minSingingSharePct={missionPartyDraft?.minSingingSharePct || 70}
-                                onSetMinSingingSharePct={(nextValue) => {
-                                    const normalized = Math.max(50, Math.min(95, Number(nextValue || 70)));
-                                    setMissionPartyDraft((prev) => buildMissionPartyPayload({
-                                        ...(prev || {}),
-                                        minSingingSharePct: normalized
-                                    }));
-                                }}
-                                maxBreakDurationSec={missionPartyDraft?.maxBreakDurationSec || 20}
-                                onSetMaxBreakDurationSec={(nextValue) => {
-                                    const normalized = Math.max(3, Math.min(120, Number(nextValue || 20)));
-                                    setMissionPartyDraft((prev) => buildMissionPartyPayload({
-                                        ...(prev || {}),
-                                        maxBreakDurationSec: normalized
-                                    }));
-                                }}
-                                maxConsecutiveNonKaraokeModes={missionPartyDraft?.maxConsecutiveNonKaraokeModes || 1}
-                                onSetMaxConsecutiveNonKaraokeModes={(nextValue) => {
-                                    const normalized = Math.max(1, Math.min(4, Number(nextValue || 1)));
-                                    setMissionPartyDraft((prev) => buildMissionPartyPayload({
-                                        ...(prev || {}),
-                                        maxConsecutiveNonKaraokeModes: normalized
-                                    }));
-                                }}
-                                togglesOpen={missionAdvancedTogglesOpen}
-                                onToggleTogglesOpen={() => setMissionAdvancedTogglesOpen((prev) => !prev)}
-                                liveToggles={[
-                                    {
-                                        key: 'autoPlayMedia',
-                                        label: 'Auto Stage Playback',
-                                        value: nightSetupAutoPlayMedia,
-                                        onToggle: () => {
-                                            const nextValue = !nightSetupAutoPlayMedia;
-                                            setNightSetupAutoPlayMedia(nextValue);
-                                            setMissionOverrideValue('autoPlayMedia', nextValue);
-                                        }
-                                    },
-                                    {
-                                        key: 'showScoring',
-                                        label: 'Live Scoring',
-                                        value: nightSetupShowScoring,
-                                        onToggle: () => {
-                                            const nextValue = !nightSetupShowScoring;
-                                            setNightSetupShowScoring(nextValue);
-                                            setMissionOverrideValue('showScoring', nextValue);
-                                        }
-                                    },
-                                    {
-                                        key: 'chatShowOnTv',
-                                        label: 'Audience Chat on TV',
-                                        value: nightSetupChatOnTv,
-                                        onToggle: () => {
-                                            const nextValue = !nightSetupChatOnTv;
-                                            setNightSetupChatOnTv(nextValue);
-                                            setMissionOverrideValue('chatShowOnTv', nextValue);
-                                        }
-                                    },
-                                    {
-                                        key: 'marqueeEnabled',
-                                        label: 'Marquee Messages',
-                                        value: nightSetupMarqueeEnabled,
-                                        onToggle: () => {
-                                            const nextValue = !nightSetupMarqueeEnabled;
-                                            setNightSetupMarqueeEnabled(nextValue);
-                                            setMissionOverrideValue('marqueeEnabled', nextValue);
-                                        }
-                                    },
-                                    {
-                                        key: 'popTriviaEnabled',
-                                        label: 'Pop-Up Trivia',
-                                        value: missionPayloadPreview?.popTriviaEnabled === true,
-                                        onToggle: () => {
-                                            const nextValue = missionPayloadPreview?.popTriviaEnabled !== true;
-                                            setMissionOverrideValue('popTriviaEnabled', nextValue);
-                                        }
-                                    }
-                                ]}
-                            />
-                            {roomFormatLauncher && (
-                                <details className="group rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                                    <summary className="flex min-h-[40px] cursor-pointer list-none items-center justify-between gap-3 text-xs font-black text-zinc-300">
-                                        More room formats
-                                        <i className="fa-solid fa-chevron-down text-[10px] text-cyan-200 transition-transform group-open:rotate-180" />
-                                    </summary>
-                                    <div className="mt-3 border-t border-white/8 pt-3">
-                                        {roomFormatLauncher}
-                                    </div>
-                                </details>
-                            )}
-                        </>
-                    )}
-                    sideContent={(
-                        <MissionSetupPlanPreview
-                            missionPresetLabel={missionPreset.label}
-                            flowRuleLabel={flowRule.label}
-                            assistLabel={assistLevel.label}
-                            spotlightLabel={missionMode.label}
-                            readinessScore={readinessScore}
-                            readinessMissing={readinessMissing}
-                            overrideCount={missionOverrideCount}
-                            planImpactItems={missionImpactItems}
-                            effectiveBehaviorDomains={missionEffectiveBehavior.domains}
-                        />
-                    )}
-                    footer={(
-                        <MissionSetupFooter
-                            styles={STYLES}
-                            applying={nightSetupApplying}
-                            summaryText={missionSummary}
-                            onClose={closeNightSetupWizard}
-                            onOpenAdmin={() => {
-                                setShowNightSetupWizard(false);
-                                setShowSettings(true);
-                                setSettingsTab('general');
-                            }}
-                            onSaveDraft={() => applyNightSetupWizard({ intent: 'save' })}
-                            onLaunchPackage={launchNightSetupPackage}
-                        />
-                    )}
-                />
-            );
-
-        }
-
-        return (
-            <div
-                className="fixed inset-0 z-[92] overflow-y-auto overscroll-y-contain p-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-[calc(env(safe-area-inset-bottom)+6.5rem)] md:p-6"
-                onClick={(event) => {
-                    if (event.target !== event.currentTarget || nightSetupApplying) return;
-                    closeNightSetupWizard();
-                }}
-                style={{
-                    background:
-                        'radial-gradient(circle at 12% 6%, rgba(0,196,217,0.26), transparent 32%), radial-gradient(circle at 90% 10%, rgba(236,72,153,0.22), transparent 34%), linear-gradient(180deg, #06070d 0%, #090b14 45%, #05060c 100%)',
-                }}
-            >
-                <div className="mx-auto flex min-h-full w-full max-w-6xl items-start">
-                    <div className="w-full bg-zinc-950/94 border border-white/15 rounded-3xl shadow-[0_28px_80px_rgba(0,0,0,0.55)] overflow-visible md:overflow-hidden max-h-none md:max-h-[88vh] flex flex-col">
-                        <div className="px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
-                            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-                                <div className="min-w-0">
-                                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Room Setup</div>
-                                    <div className="text-2xl md:text-3xl font-black text-white mt-1">Run Tonight</div>
-                                    <div className="text-sm text-zinc-400 mt-1">Set room defaults, queue behavior, and live TV basics.</div>
-                                </div>
-                                <div className="flex-1 min-w-0 lg:px-4">
-                                    <div className="host-brand-tabs host-brand-tabs--steps" role="tablist" aria-label="Room setup steps">
-                                        {NIGHT_SETUP_STEPS.map((step, idx) => {
-                                            const active = nightSetupStep === step.id;
-                                            const complete = nightSetupStep > step.id;
-                                            return (
-                                                <button
-                                                    key={`night-setup-step-${step.id}`}
-                                                    type="button"
-                                                    role="tab"
-                                                    aria-selected={active}
-                                                    onClick={() => setNightSetupStep(step.id)}
-                                                    className={`host-brand-tab min-w-[124px] flex-1 px-3 py-1.5 text-xs ${
-                                                        active ? 'is-active' : ''
-                                                    } ${complete ? 'is-complete' : ''}`}
-                                                >
-                                                    <span className="host-brand-tab__index">
-                                                        {idx + 1}
-                                                    </span>
-                                                    <span className="font-bold uppercase tracking-[0.2em]">{step.label}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                <button
-                                    data-host-setup-skip-intro
-                                    onClick={closeNightSetupWizard}
-                                    disabled={nightSetupApplying}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    Close
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 min-h-0">
-                            <div
-                                className="px-4 py-5 pb-24 md:px-6 md:py-6 md:pb-6 min-h-0 space-y-4 md:overflow-y-auto md:custom-scrollbar overscroll-y-contain"
-                                style={{ WebkitOverflowScrolling: 'touch' }}
-                            >
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">
-                                        Step {activeStep.id + 1}: {activeStep.label}
-                                    </div>
-                                    {nightSetupStep === 0 && recommendation.presetId && recommendation.presetId !== nightSetupPresetId && (
-                                        <button
-                                            onClick={() => seedNightSetupFromPreset(recommendation.presetId, { keepQueueDraft: false })}
-                                            className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
-                                        >
-                                            Apply {hostNightPresets[recommendation.presetId]?.label || 'Recommended'} Defaults
-                                        </button>
-                                    )}
-                                </div>
-                                {nightSetupStep === 0 && (
-                                    <div className="space-y-4">
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Room Defaults</div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {hostNightPresetList.map((preset) => {
-                                                const active = nightSetupPresetId === preset.id;
-                                                const meta = NIGHT_SETUP_PRESET_META[preset.id] || NIGHT_SETUP_PRESET_META.casual;
-                                                const changeSummary = getPresetChangeSummary(preset);
-                                                return (
-                                                    <button
-                                                        key={`night-setup-preset-${preset.id}`}
-                                                        onClick={() => seedNightSetupFromPreset(preset.id, { keepQueueDraft: false })}
-                                                        className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[112px] ${
-                                                            active
-                                                                ? 'border-cyan-300/70 bg-cyan-500/12 shadow-[0_0_24px_rgba(34,211,238,0.16)]'
-                                                                : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'
-                                                        }`}
-                                                    >
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="min-w-0">
-                                                                <div className="flex items-center gap-2 text-white font-bold">
-                                                                    <i className={`fa-solid ${meta.icon} text-cyan-200`}></i>
-                                                                    <span>{preset.label}</span>
-                                                                </div>
-                                                                <div className="mt-1 text-xs text-zinc-400" style={clampOneLine}>Queue: {changeSummary.queueSummary}</div>
-                                                            </div>
-                                                            <span
-                                                                className={`shrink-0 rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.18em] ${
-                                                                    active
-                                                                        ? 'border-cyan-300/40 bg-cyan-500/20 text-cyan-100'
-                                                                        : 'border-zinc-700 bg-zinc-950/60 text-zinc-500'
-                                                                }`}
-                                                            >
-                                                                {active ? 'Selected' : 'Use'}
-                                                            </span>
-                                                        </div>
-                                                        {changeSummary.count > 0 && (
-                                                            <div className="mt-3 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-                                                                {changeSummary.count} default change{changeSummary.count === 1 ? '' : 's'}
-                                                            </div>
-                                                        )}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Selected Defaults</div>
-                                            <div className="text-sm text-zinc-200 mt-1">{selectedPreset.label}</div>
-                                            <div className="text-xs text-zinc-400 mt-1" style={clampOneLine}>Queue: {selectedPresetSnapshot.queueSummary}</div>
-                                            <div className="text-xs text-zinc-400 mt-1">
-                                                Default toggles: {enabledPresetFeatureCount}/{presetFeaturePills.length}
-                                                {selectedPresetChangeSummary.count > 0 ? ` | ${selectedPresetChangeSummary.count} change${selectedPresetChangeSummary.count === 1 ? '' : 's'} pending` : ''}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {nightSetupStep === 1 && (
-                                    <div className="space-y-4">
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Queue Rules</div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.map((option) => (
-                                                <button
-                                                    key={`queue-limit-${option.id}`}
-                                                    onClick={() => setNightSetupQueueLimitMode(option.id)}
-                                                    className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupQueueLimitMode === option.id ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <i className={`fa-solid ${option.icon} text-cyan-200`}></i>
-                                                        <span className="font-bold text-white">{option.label}</span>
-                                                    </div>
-                                                    <div className="text-xs text-zinc-400 mt-2" style={clampTwoLines}>{option.description}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.map((option) => (
-                                                <button
-                                                    key={`queue-rotation-${option.id}`}
-                                                    onClick={() => setNightSetupQueueRotation(option.id)}
-                                                    className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupQueueRotation === option.id ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <i className={`fa-solid ${option.icon} text-cyan-200`}></i>
-                                                        <span className="font-bold text-white">{option.label}</span>
-                                                    </div>
-                                                    <div className="text-xs text-zinc-400 mt-2" style={clampTwoLines}>{option.description}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                        {nightSetupQueueLimitMode !== 'none' && (
-                                            <div className="rounded-2xl border border-zinc-700 bg-zinc-900/60 p-3">
-                                                <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Limit Count</div>
-                                                <div className="flex items-center gap-2 mt-2">
-                                                    <button
-                                                        onClick={() => setNightSetupQueueLimitCount((prev) => Math.max(0, Number(prev || 0) - 1))}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3`}
-                                                    >
-                                                        <i className="fa-solid fa-minus"></i>
-                                                    </button>
-                                                    <input
-                                                        value={nightSetupQueueLimitCount}
-                                                        onChange={(event) => setNightSetupQueueLimitCount(event.target.value)}
-                                                        className={`${STYLES.input} text-center`}
-                                                        placeholder="0"
-                                                    />
-                                                    <button
-                                                        onClick={() => setNightSetupQueueLimitCount((prev) => Math.max(0, Number(prev || 0) + 1))}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3`}
-                                                    >
-                                                        <i className="fa-solid fa-plus"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-                                        <button
-                                            onClick={() => setNightSetupQueueFirstTimeBoost((prev) => !prev)}
-                                            className={`w-full text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupQueueFirstTimeBoost ? 'border-amber-400/60 bg-amber-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
-                                        >
-                                            <div className="flex items-center gap-2 text-white font-bold">
-                                                <i className="fa-solid fa-star text-amber-200"></i>
-                                                First-Time Singer Boost
-                                            </div>
-                                            <div className="text-xs text-zinc-400 mt-2">
-                                                {nightSetupQueueFirstTimeBoost ? 'ON: New singers get priority uplift.' : 'OFF: Queue order runs without boost.'}
-                                            </div>
-                                        </button>
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Live Defaults</div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <button
-                                                onClick={() => setNightSetupAutoPlayMedia((prev) => !prev)}
-                                                className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupAutoPlayMedia ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
-                                            >
-                                                <div className="flex items-center gap-2 text-white font-bold">
-                                                    <i className="fa-solid fa-forward-step text-cyan-200"></i>
-                                                    Auto Stage Playback
-                                                </div>
-                                                <div className="text-xs text-zinc-400 mt-2">Start stage media cues automatically when performers begin.</div>
-                                            </button>
-                                            <button
-                                                onClick={() => setNightSetupShowScoring((prev) => !prev)}
-                                                className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupShowScoring ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
-                                            >
-                                                <div className="flex items-center gap-2 text-white font-bold">
-                                                    <i className="fa-solid fa-ranking-star text-cyan-200"></i>
-                                                    Live Scoring
-                                                </div>
-                                                <div className="text-xs text-zinc-400 mt-2">Display score and performance momentum in real time.</div>
-                                            </button>
-                                            <button
-                                                onClick={() => setNightSetupChatOnTv((prev) => !prev)}
-                                                className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupChatOnTv ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
-                                            >
-                                                <div className="flex items-center gap-2 text-white font-bold">
-                                                    <i className="fa-solid fa-comments text-cyan-200"></i>
-                                                    Audience Chat on TV
-                                                </div>
-                                                <div className="text-xs text-zinc-400 mt-2">Show room chat in the public display feed.</div>
-                                            </button>
-                                            <button
-                                                onClick={() => setNightSetupMarqueeEnabled((prev) => !prev)}
-                                                className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupMarqueeEnabled ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
-                                            >
-                                                <div className="flex items-center gap-2 text-white font-bold">
-                                                    <i className="fa-solid fa-panorama text-cyan-200"></i>
-                                                    Marquee Messages
-                                                </div>
-                                                <div className="text-xs text-zinc-400 mt-2">Run scheduled banners for promos, reminders, and calls to action.</div>
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {roomFormatLauncher && (
-                                    <details className="rounded-2xl border border-zinc-800 bg-zinc-900/50 px-3 py-3">
-                                        <summary className="cursor-pointer list-none text-[11px] uppercase tracking-[0.24em] text-zinc-500">
-                                            Optional room formats
-                                        </summary>
-                                        <div className="mt-3">
-                                            {roomFormatLauncher}
-                                        </div>
-                                    </details>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="px-4 py-3 md:px-6 border-t border-white/10 sticky bottom-0 bg-zinc-950/95 backdrop-blur-md mt-auto z-10">
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-                            <button
-                                data-host-open-full-admin
-                                onClick={() => {
-                                    setShowNightSetupWizard(false);
-                                    setShowSettings(true);
-                                    setSettingsTab('general');
-                                }}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
-                            >
-                                Open Full Admin
-                            </button>
-                                <div className="min-w-0 flex-1 overflow-x-auto custom-scrollbar touch-scroll-x">
-                                    <div className="inline-flex min-w-max items-center gap-2">
-                                        <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 pr-1">Tonight&apos;s Plan</div>
-                                        {tonightPlanFields.map((field) => {
-                                            const updated = isPlanFieldUpdated(field.key);
-                                            return (
-                                                <div
-                                                    key={`night-setup-plan-${field.key}`}
-                                                    className={`inline-flex min-w-0 max-w-[240px] items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-all duration-300 ${
-                                                        updated
-                                                            ? 'border-cyan-300/65 bg-cyan-500/20 shadow-[0_0_16px_rgba(34,211,238,0.26)]'
-                                                            : 'border-zinc-700/80 bg-zinc-900/70'
-                                                    }`}
-                                                >
-                                                    <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-400">{field.label}</span>
-                                                    <span
-                                                        className="text-xs text-zinc-100 truncate max-w-[150px]"
-                                                        title={field.value}
-                                                    >
-                                                        {field.value}
-                                                    </span>
-                                                    {updated && (
-                                                        <span className="text-[9px] uppercase tracking-[0.14em] text-cyan-100 animate-pulse">Updated</span>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            <div className="flex items-center justify-end gap-2">
-                                {nightSetupStep > 0 && (
-                                    <button onClick={() => setNightSetupStep((prev) => Math.max(0, prev - 1))} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>
-                                        Back
-                                    </button>
-                                )}
-                                {nightSetupStep < 1 ? (
-                                    <button
-                                        onClick={() => setNightSetupStep((prev) => Math.min(1, prev + 1))}
-                                        disabled={!canContinueNightSetupStep}
-                                        className={`${STYLES.btnStd} ${
-                                            canContinueNightSetupStep
-                                                ? 'bg-gradient-to-r from-cyan-400 via-sky-400 to-fuchsia-400 text-black border-transparent shadow-[0_0_24px_rgba(34,211,238,0.28)]'
-                                                : `${STYLES.btnNeutral} opacity-60 cursor-not-allowed`
-                                        }`}
-                                    >
-                                        Continue
-                                    </button>
-                                ) : (
-                                    <div className="flex items-center gap-2 flex-wrap justify-end">
-                                        <button
-                                            onClick={() => applyNightSetupWizard({ intent: 'save' })}
-                                            disabled={nightSetupApplying}
-                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                        >
-                                            {nightSetupApplying ? 'Saving...' : 'Save + Close'}
-                                        </button>
-                                        <button
-                                            onClick={launchNightSetupPackage}
-                                            disabled={nightSetupApplying}
-                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                        >
-                                            {nightSetupApplying ? 'Launching...' : 'Launch Room'}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    };
 
     const landingView = view === 'landing' ? ( 
         <div
-            className="relative min-h-screen overflow-x-hidden flex flex-col items-center justify-start p-4 pt-6 md:p-8 text-center"
+            className="relative min-h-screen overflow-x-hidden flex flex-col items-center justify-start p-2 pt-2 sm:p-3 md:p-4 text-center"
             style={{
                 background:
                     'radial-gradient(circle at 12% 8%, rgba(0,196,217,0.35), transparent 34%), radial-gradient(circle at 86% 10%, rgba(236,72,153,0.3), transparent 32%), radial-gradient(circle at 52% 92%, rgba(251,191,36,0.14), transparent 34%), linear-gradient(160deg, #050612 0%, #0b1020 48%, #130a1c 100%)'
@@ -22273,7 +21267,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     >
                         <span className="inline-flex items-center gap-2">
                             <i className="fa-solid fa-sliders text-zinc-500"></i>
-                            Night Setup
+                            Room Setup
                         </span>
                     </button>
                     <button
@@ -29302,7 +28296,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 </div>
             )}
-            {showNightSetupWizard && renderNightSetupWizard()}
             {showAiSetupGuide && (
                 <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-4">
                     <div className="w-full max-w-2xl rounded-2xl border border-cyan-300/35 bg-gradient-to-br from-[#151026]/95 via-[#101a2c]/95 to-[#0b121e]/95 p-5 shadow-[0_30px_85px_rgba(0,0,0,0.6),0_0_48px_rgba(236,72,153,0.16)]">

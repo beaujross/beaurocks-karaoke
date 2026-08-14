@@ -12,9 +12,9 @@ test('Queue workspace separates performance and moment preparation without addin
   assert.match(languageSource, /autoAdvance: 'Auto-Advance'/);
   assert.match(queueSource, /label: HOST_LIVE_OPS_LANGUAGE\.addPerformance/);
   assert.match(queueSource, /label: HOST_LIVE_OPS_LANGUAGE\.showPlan/);
-  assert.match(queueSource, /data-feature-id="host-performance-prep-header"/);
+  assert.notMatch(queueSource, /data-feature-id="host-performance-prep-header"/);
   assert.match(queueSource, /data-feature-id="host-moment-prep-header"/);
-  assert.match(queueSource, /adding the performance to \{HOST_LIVE_OPS_LANGUAGE\.lineup\}/);
+  assert.notMatch(queueSource, /adding the performance to \{HOST_LIVE_OPS_LANGUAGE\.lineup\}/);
   assert.match(queueSource, /Build moments and arrange tonight/);
   assert.match(queueSource, /data-feature-id="moment-prep-timeline"/);
   assert.match(queueSource, /HOST_LIVE_OPS_LANGUAGE\.lineup/);

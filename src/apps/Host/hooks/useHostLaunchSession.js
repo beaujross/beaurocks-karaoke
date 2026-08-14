@@ -3,11 +3,9 @@ import { useCallback } from 'react';
 const useHostLaunchSession = ({
     fallbackLogoUrl = '',
     hostNightPreset = 'custom',
-    nightSetupApplying = false,
     onboardingHostName = '',
     onboardingLogoUrl = '',
     onboardingWorkspaceName = '',
-    openNightSetupWizard,
     provisionRoom,
     roomCode = '',
     setEntryError,
@@ -17,22 +15,14 @@ const useHostLaunchSession = ({
     setQuickStartChecklistProgress,
     setQuickStartChecklistRoomCode,
     setRoomCodeInput,
-    setShowNightSetupWizard,
     setShowSettings,
-    setNightSetupStep,
     setView,
 }) => {
     const createRoom = useCallback(async (options = {}) => {
-        const result = await provisionRoom({ ...options, openNightSetup: false });
-        const shouldOpenNightSetup = options?.openNightSetup !== false;
-        if (!result?.roomCode || !shouldOpenNightSetup) return result;
-        openNightSetupWizard(
-            String(options?.nightPresetId || '').trim()
-            || String(result?.presetId || '').trim()
-            || 'casual'
-        );
-        return result;
-    }, [openNightSetupWizard, provisionRoom]);
+        // Room creation is fully configured by the consolidated launch screen.
+        // Never fall through to the retired post-create Night Setup wizard.
+        return provisionRoom({ ...options, openNightSetup: false });
+    }, [provisionRoom]);
 
     const launchOnboardingRoom = useCallback(async () => {
         const trimmedHost = onboardingHostName.trim();
@@ -49,7 +39,7 @@ const useHostLaunchSession = ({
             orgName: trimmedWorkspace,
             logoUrl: trimmedLogo || fallbackLogoUrl,
             nightPresetId: hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual',
-            openNightSetup: true,
+            openNightSetup: false,
         });
     }, [
         createRoom,
@@ -62,14 +52,7 @@ const useHostLaunchSession = ({
         setOnboardingStep,
     ]);
 
-    const closeNightSetupWizard = useCallback(() => {
-        if (nightSetupApplying) return;
-        setShowNightSetupWizard(false);
-        setNightSetupStep(0);
-    }, [nightSetupApplying, setNightSetupStep, setShowNightSetupWizard]);
-
     const openHostRoomDashboard = useCallback(() => {
-        setShowNightSetupWizard(false);
         setShowSettings(false);
         setQuickStartChecklistRoomCode('');
         setQuickStartChecklistProgress({
@@ -91,13 +74,11 @@ const useHostLaunchSession = ({
         setQuickStartChecklistProgress,
         setQuickStartChecklistRoomCode,
         setRoomCodeInput,
-        setShowNightSetupWizard,
         setShowSettings,
         setView,
     ]);
 
     return {
-        closeNightSetupWizard,
         createRoom,
         launchOnboardingRoom,
         openHostRoomDashboard,

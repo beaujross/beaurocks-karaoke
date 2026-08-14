@@ -4597,19 +4597,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
 
     const addToQueueSection = (
         <div className={`border-b border-white/10 relative ${addToQueueWorkspaceActive ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3' : 'p-3'} ${addToQueueWorkspaceActive ? 'bg-fuchsia-500/[0.04]' : 'bg-black/20'}`}>
-            {addToQueueWorkspaceActive ? (
-                <div data-feature-id="host-performance-prep-header" className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-500/8 px-3 py-2.5">
-                    <div className="min-w-0">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-200">{HOST_LIVE_OPS_LANGUAGE.addPerformance}</div>
-                        <div className="mt-0.5 text-sm text-zinc-300">Choose the singer, song, and backing before adding the performance to {HOST_LIVE_OPS_LANGUAGE.lineup}.</div>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-[0.14em]">
-                        <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-1 text-amber-100">{pending.length + reviewQueueItems.length} need review</span>
-                        <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-cyan-100">{queue.length} ready</span>
-                        {assigned.length ? <span className="rounded-full border border-violet-300/20 bg-violet-500/10 px-2 py-1 text-violet-100">{assigned.length} assigned</span> : null}
-                    </div>
-                </div>
-            ) : null}
             {!addToQueueWorkspaceActive ? (
                 <SectionHeader
                     label="Prep a Performance or Moment"

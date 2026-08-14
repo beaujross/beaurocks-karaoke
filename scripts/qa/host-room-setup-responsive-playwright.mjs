@@ -23,7 +23,7 @@ const viewports = Object.freeze([
 
 const route = "/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=room-manager&hostUiVersion=v2";
 
-const inspectSetup = async (page, state) => page.locator('[data-launch-core-setup="true"]').evaluate((scope, nextState) => {
+const inspectSetup = async (scope, state) => scope.evaluate((root, nextState) => {
   const visible = (element) => {
     if (!(element instanceof Element)) return false;
     const style = window.getComputedStyle(element);
@@ -32,7 +32,7 @@ const inspectSetup = async (page, state) => page.locator('[data-launch-core-setu
   };
   const cleanText = (value) => String(value || "").replace(/\s+/g, " ").trim();
   const smallText = [];
-  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
     const parent = walker.currentNode.parentElement;
     const text = cleanText(walker.currentNode.nodeValue);
@@ -40,7 +40,7 @@ const inspectSetup = async (page, state) => page.locator('[data-launch-core-setu
     const fontPx = Number.parseFloat(window.getComputedStyle(parent).fontSize);
     if (Number.isFinite(fontPx) && fontPx < 12) smallText.push({ text: text.slice(0, 80), fontPx });
   }
-  const smallControls = Array.from(scope.querySelectorAll("button, input, select, summary"))
+  const smallControls = Array.from(root.querySelectorAll("button, input, select, summary"))
     .filter(visible)
     .map((element) => {
       const rect = element.getBoundingClientRect();
@@ -77,11 +77,19 @@ try {
     await page.goto(`${server.baseUrl}${route}`, { waitUntil: "domcontentloaded", timeout: 120000 });
     const shell = page.locator('[data-host-workspace-shell="room-setup"]').first();
     await shell.waitFor({ state: "visible", timeout: 45000 });
+    await page.getByRole("tab", { name: /Existing Rooms/i }).click();
+    await page.locator('[data-room-browser-visual-shelf="true"]').waitFor({ state: "visible", timeout: 30000 });
+    results.push({ viewport: viewport.id, ...(await inspectSetup(shell, "manage")) });
+    await page.screenshot({
+      path: path.join(outputDir, `${viewport.id}-manage.png`),
+      fullPage: true,
+    });
+
     await page.getByRole("tab", { name: /Create Room/i }).click();
     const setup = page.locator('[data-launch-core-setup="true"]').first();
     await setup.waitFor({ state: "visible", timeout: 30000 });
 
-    results.push({ viewport: viewport.id, ...(await inspectSetup(page, "collapsed")) });
+    results.push({ viewport: viewport.id, ...(await inspectSetup(setup, "collapsed")) });
     await page.screenshot({
       path: path.join(outputDir, `${viewport.id}-collapsed.png`),
       fullPage: true,
@@ -89,7 +97,7 @@ try {
 
     await setup.getByRole("button", { name: /Fine-tune/i }).click();
     await setup.getByText("Queue rules", { exact: true }).waitFor({ state: "visible" });
-    results.push({ viewport: viewport.id, ...(await inspectSetup(page, "expanded")) });
+    results.push({ viewport: viewport.id, ...(await inspectSetup(setup, "expanded")) });
     await page.screenshot({
       path: path.join(outputDir, `${viewport.id}-expanded.png`),
       fullPage: true,

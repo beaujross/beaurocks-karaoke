@@ -110,14 +110,13 @@ test('AAHF rooms still drive the default launchpad focus without a dedicated bro
   assert.match(launchPadSource, /const \[selectedRoomCode, setSelectedRoomCode\] = useState\(\(\) => String\(featuredRoom\?\.code \|\| ''\)\.trim\(\)\.toUpperCase\(\)\);/);
   assert.match(launchPadSource, /setRoomBrowserFilter\(targetBucketId\);/);
   assert.doesNotMatch(browserSource, /Event Focus/);
-  assert.match(browserSource, /Room controls/);
+  assert.match(browserSource, /Control deck/);
   assert.match(browserSource, />\s*Room Settings\s*</);
   assert.match(browserSource, />\s*Reset Room\s*</);
 });
 
 test('room setup rail keeps one workspace open at a time so the browser stays primary', () => {
   const browserSource = readFileSync(launchPadBrowserPath, 'utf8');
-  const workspaceHeaderSource = readFileSync('src/apps/Host/components/HostWorkspaceHeader.jsx', 'utf8');
 
   assert.match(browserSource, /const \[roomSetupMode, setRoomSetupMode\] = useState\('manage'\);/);
   assert.match(browserSource, /Existing Rooms/);
@@ -135,13 +134,15 @@ test('room setup rail keeps one workspace open at a time so the browser stays pr
   assert.match(browserSource, /activeRoomSetupTab\.helper/);
   assert.match(browserSource, /host-brand-tabs--workspace/);
   assert.match(browserSource, /Return to \{normalizedActiveRoomCode\}/);
-  assert.match(browserSource, /Room \{normalizedActiveRoomCode\} stays open/);
   assert.doesNotMatch(browserSource, /Pick a task/);
   assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\(tab\.id\)\}/);
   assert.match(browserSource, /data-host-workspace-shell="room-setup"/);
-  assert.match(browserSource, /<HostWorkspaceHeader/);
-  assert.match(browserSource, /Host Panel · Room operations/);
-  assert.match(workspaceHeaderSource, /data-host-workspace-horizon="true"/);
+  assert.match(browserSource, /data-room-setup-compact-header="true"/);
+  assert.match(browserSource, /data-room-browser-visual-shelf="true"/);
+  assert.match(browserSource, /data-room-browser-library="true"/);
+  assert.match(browserSource, /data-room-control-deck="true"/);
+  assert.doesNotMatch(browserSource, /<HostWorkspaceHeader/);
+  assert.match(browserSource, /Room operations/);
 
   assert.match(browserSource, /ROOM_SETUP_TABS = Object\.freeze\(\[/);
   assert.match(browserSource, /id: 'manage'/);
@@ -158,10 +159,15 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /data-launch-core-setup="true"/);
   assert.match(source, /data-room-create-premium="true"/);
   assert.doesNotMatch(source, /Build the room guests will enter/);
-  assert.match(source, /Everything needed to create and launch the room now lives on this screen\./);
+  assert.match(source, /One-screen setup/);
+  assert.match(source, /Name it, shape the night, choose access, and launch\./);
   assert.match(source, /data-launch-create-header="true"/);
   assert.match(source, /data-launch-readiness="true"/);
   assert.match(source, /data-launch-room-identity="true"/);
+  assert.match(source, /data-launch-visual-section="identity"/);
+  assert.match(source, /First beat/);
+  assert.match(source, /Shape the night/);
+  assert.match(source, /Open the doors/);
   assert.match(source, /data-launch-access-details="true"/);
   assert.match(source, /data-launch-primary-bar="true"/);
   assert.match(source, /xl:grid-cols-12/);
