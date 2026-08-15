@@ -20,8 +20,8 @@ describe('shared Host tab language', () => {
     const topChrome = readSource('src/apps/Host/components/HostTopChrome.jsx');
 
     expect(host).toContain("import './hostBrandTabs.css';");
-    expect(host).toContain('host-brand-tabs host-brand-tabs--steps');
-    expect(roomSetup).toContain('host-brand-tabs host-brand-tabs--fill');
+    expect(host).not.toContain('host-brand-tabs--steps');
+    expect(roomSetup).toContain('host-brand-tabs host-brand-tabs--fill host-brand-tabs--workspace');
     expect(topChrome).toContain('host-brand-tabs host-brand-tabs--compact');
     expect(topChrome).toContain('aria-label="Host workspace"');
   });

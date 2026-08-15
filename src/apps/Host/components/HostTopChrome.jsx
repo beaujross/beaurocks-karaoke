@@ -148,7 +148,11 @@ const HostTopChrome = ({
     playingBg,
     backgroundSourceType = 'local',
     backgroundSourceStatus = 'stopped',
+    switchBackgroundAudioSource,
+    previousBg,
     skipBg,
+    canToggleBg = true,
+    canPreviousBg = true,
     canSkipBg = true,
     autoBgMusic,
     setAutoBgMusic,
@@ -284,6 +288,10 @@ const HostTopChrome = ({
     const [showStatusQuickMenu, setShowStatusQuickMenu] = React.useState(false);
     const [quickRewardTargetUid, setQuickRewardTargetUid] = React.useState('');
     const [quickRewardCustomPoints, setQuickRewardCustomPoints] = React.useState('100');
+    const [quickAutoTipPoints, setQuickAutoTipPoints] = React.useState(() => String(quickAutomationControls?.autoBonusPoints ?? 25));
+    React.useEffect(() => {
+        setQuickAutoTipPoints(String(Math.max(0, Math.min(1000, Math.round(Number(quickAutomationControls?.autoBonusPoints ?? 25) || 0)))));
+    }, [quickAutomationControls?.autoBonusPoints]);
     const quickEventCredits = createEventCreditsDraft(room?.eventCredits || {});
     const quickTimedLobbyEnabled = quickEventCredits.enabled === true && quickEventCredits.timedLobbyEnabled === true && Number(quickEventCredits.timedLobbyPoints || 0) > 0;
     const quickRefillSummary = quickTimedLobbyEnabled
@@ -812,6 +820,11 @@ const HostTopChrome = ({
         });
         commitRoomPatch({ eventCredits: buildProvisionEventCreditsPayload(nextCredits) });
     }, [commitRoomPatch, room?.eventCredits]);
+    const commitQuickAutoTipPoints = React.useCallback((value) => {
+        const amount = clampNumber(Math.round(Number(value || 0) || 0), 0, 1000, 25);
+        setQuickAutoTipPoints(String(amount));
+        quickAutomationControls?.onSetAutoBonusPoints?.(amount);
+    }, [quickAutomationControls]);
     const blockRangeWheelDefault = React.useCallback((event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1664,10 +1677,13 @@ const HostTopChrome = ({
                                         <div className="flex flex-wrap items-center gap-3">
                                             <div className="min-w-[72px] text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">BG</div>
                                             <SmallWaveform level={bgAnalyserActive ? bgMeterLevel : Math.round(bgVolume * 100)} className="h-10 w-20" color="rgba(0,196,217,0.95)" />
-                                            <button onClick={toggleBgMusic} className={`${styles.btnStd} ${playingBg ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`} title="Toggle BG music">
+                                            <button onClick={previousBg} disabled={!canPreviousBg} className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100 ${canPreviousBg ? '' : 'opacity-45 cursor-not-allowed'}`} title={canPreviousBg ? 'Previous BG track' : 'Previous is unavailable while the performance owns playback or for this source'}>
+                                                <i className="fa-solid fa-backward-step w-4 text-center"></i>
+                                            </button>
+                                            <button onClick={toggleBgMusic} disabled={!canToggleBg} className={`${styles.btnStd} ${playingBg ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100 ${canToggleBg ? '' : 'opacity-45 cursor-not-allowed'}`} title={canToggleBg ? 'Toggle BG music' : 'Background transport is locked while the performance owns playback'}>
                                                 <i className={`fa-solid ${playingBg ? 'fa-pause' : 'fa-play'} w-4 text-center`}></i>
                                             </button>
-                                            <button onClick={skipBg} disabled={!canSkipBg} className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100 ${canSkipBg ? '' : 'opacity-45 cursor-not-allowed'}`} title={canSkipBg ? "Skip BG track" : "Apple Music playlist skipping stays in Apple Music"}>
+                                            <button onClick={skipBg} disabled={!canSkipBg} className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100 ${canSkipBg ? '' : 'opacity-45 cursor-not-allowed'}`} title={canSkipBg ? 'Next BG track' : 'Background controls pause while the performance owns playback'}>
                                                 <i className="fa-solid fa-forward-step w-4 text-center"></i>
                                             </button>
                                             <button
@@ -1736,19 +1752,32 @@ const HostTopChrome = ({
                                                 ) : null}
                                             </div>
                                             {backgroundSourceType === 'apple' ? (
-                                                <div className='mt-2 flex items-center justify-between gap-2 rounded-lg border border-pink-300/15 bg-pink-500/8 px-2.5 py-2'>
+                                                <div className='mt-2 rounded-lg border border-pink-300/15 bg-pink-500/8 px-2.5 py-2'>
+                                                    <div className='flex items-center justify-between gap-2'>
                                                     <div className='min-w-0'>
                                                         <div className='text-[10px] font-black uppercase tracking-[0.12em] text-pink-100/60'>BG player - {backgroundSourceStatus}</div>
-                                                        <div className='truncate text-xs text-pink-100/80'>Apple Music owns background audio</div>
+                                                        <div className='truncate text-xs text-pink-100/80'>Apple Music is the selected background source</div>
                                                     </div>
                                                     <button
                                                         type='button'
                                                         data-feature-id='deck-apple-background-transport'
                                                         onClick={toggleBgMusic}
-                                                        className='host-btn flex-none rounded-lg border border-pink-300/30 bg-pink-500/12 px-2.5 py-1.5 text-xs font-bold text-pink-100'
+                                                        disabled={!canToggleBg}
+                                                        className={`host-btn flex-none rounded-lg border border-pink-300/30 bg-pink-500/12 px-2.5 py-1.5 text-xs font-bold text-pink-100 ${canToggleBg ? '' : 'cursor-not-allowed opacity-45'}`}
+                                                        title={canToggleBg ? 'Control Apple Music background playback' : 'Background transport is locked while the performance owns playback'}
                                                     >
                                                         <i className={playingBg ? 'fa-solid fa-pause' : 'fa-solid fa-play'}></i>
-                                                        {playingBg ? 'Stop Apple BG' : 'Start Apple BG'}
+                                                        {playingBg ? 'Pause Apple BG' : 'Start Apple BG'}
+                                                    </button>
+                                                    </div>
+                                                    <button
+                                                        type='button'
+                                                        data-feature-id='deck-use-beaurocks-background'
+                                                        onClick={() => { void switchBackgroundAudioSource?.('beaurocks_loop', { shouldPlay: true }); }}
+                                                        className='host-btn mt-2 w-full justify-center rounded-lg border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1.5 text-xs font-bold text-cyan-100'
+                                                    >
+                                                        <i className='fa-solid fa-rotate'></i>
+                                                        Use BeauRocks Loop
                                                     </button>
                                                 </div>
                                             ) : null}
@@ -1809,7 +1838,7 @@ const HostTopChrome = ({
                                                             {appleMusicPickerItems.map((choice) => {
                                                                 const choicePlaylistId = String(choice.id || '').trim();
                                                                 const choiceIsPending = !!choicePlaylistId && appleMusicBgPendingId === choicePlaylistId;
-                                                                const choiceIsActive = !!choicePlaylistId && !choiceIsPending && choicePlaylistId === String(appleMusicAutoPlaylistId || '').trim();
+                                                                const choiceIsActive = backgroundSourceType === 'apple' && !!choicePlaylistId && !choiceIsPending && choicePlaylistId === String(appleMusicAutoPlaylistId || '').trim();
                                                                 return (
                                                                 <div key={`top-${choice.sourceType}-${choice.id}`} className="flex items-center gap-2 border-b border-white/10 px-2.5 py-2 last:border-b-0">
                                                                     {choice.artworkUrl ? (
@@ -2502,6 +2531,64 @@ const HostTopChrome = ({
                         <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(430px,94vw)] max-h-[74vh] p-3.5`}>
                             <div className={quickMenuSectionTitleClass}>Quick Rewards</div>
                             <div className={quickMenuSectionHintClass}>Gift one guest or drop points to every phone without leaving the live deck.</div>
+                            <div data-feature-id="deck-auto-tip-controls" className={`${quickMenuCardClass} mt-2 space-y-3 border-amber-300/20 bg-amber-500/[0.07]`}>
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className={quickMenuLabelClass}>Automatic performance tip</div>
+                                        <div className="mt-1 text-xs leading-5 text-zinc-400">Adds this host bonus when a performance finishes without a manual bonus.</div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={!!quickAutomationControls?.autoBonusEnabled}
+                                        data-feature-id="deck-auto-tip-toggle"
+                                        onClick={() => { quickAutomationControls?.onToggleAutoBonus?.(); }}
+                                        className={`${styles.btnStd} ${quickAutomationControls?.autoBonusEnabled ? styles.btnHighlight : styles.btnNeutral} min-h-[36px] px-3 py-1.5 text-xs normal-case tracking-[0.03em]`}
+                                    >
+                                        <i className={`fa-solid ${quickAutomationControls?.autoBonusEnabled ? 'fa-toggle-on' : 'fa-toggle-off'}`}></i>
+                                        {quickAutomationControls?.autoBonusEnabled ? `On · +${Math.max(0, Number(quickAutomationControls?.autoBonusPoints || 0))}` : 'Off'}
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {[10, 25, 50, 100].map((points) => (
+                                        <button
+                                            key={`top-auto-tip-${points}`}
+                                            type="button"
+                                            onClick={() => commitQuickAutoTipPoints(points)}
+                                            className={`${styles.btnStd} ${Number(quickAutoTipPoints) === points ? styles.btnHighlight : styles.btnNeutral} justify-center py-2 text-xs normal-case tracking-[0.03em]`}
+                                        >
+                                            +{points}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-[1fr_auto] gap-2">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="1000"
+                                        inputMode="numeric"
+                                        value={quickAutoTipPoints}
+                                        onChange={(event) => setQuickAutoTipPoints(event.target.value)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter') {
+                                                event.preventDefault();
+                                                commitQuickAutoTipPoints(event.currentTarget.value);
+                                            }
+                                        }}
+                                        onBlur={(event) => commitQuickAutoTipPoints(event.target.value)}
+                                        className={`${styles.input} min-h-[42px] bg-zinc-950/95 border border-amber-300/30 px-3 text-sm`}
+                                        aria-label="Automatic performance tip points"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => commitQuickAutoTipPoints(quickAutoTipPoints)}
+                                        className={`${styles.btnStd} ${styles.btnNeutral} justify-center px-3 py-2 text-xs normal-case tracking-[0.03em]`}
+                                    >
+                                        Save value
+                                    </button>
+                                </div>
+                                <span className={quickMenuHelperClass}>The value is remembered while auto-tip is off. Restarting a performance does not award it.</span>
+                            </div>
                             <div className={`${quickMenuCardClass} mt-2 space-y-3`}>
                                 <div>
                                     <div className={quickMenuLabelClass}>Reward room</div>

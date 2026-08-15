@@ -108,6 +108,11 @@ import {
 } from '../../../lib/selfServeKaraoke';
 import { BG_TRACK_OPTIONS } from '../../../lib/bgTrackOptions';
 import {
+  BACKGROUND_AUDIO_SOURCES,
+  isAppleBackgroundAudioSource,
+  resolveBackgroundAudioSource,
+} from '../../../lib/backgroundAudioSource';
+import {
   HOST_AUDIO_LIBRARY_CATEGORY_OPTIONS,
   HOST_AUDIO_MOMENT_CUE_OPTIONS,
   normalizeHostAudioLibraryCategory,
@@ -753,7 +758,7 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, youtubePlaylistUrl = '', setYoutubePlaylistUrl = () => {}, youtubePlaylistLoading = false, youtubePlaylistStatus = '', onQueueYouTubePlaylist = async () => {}, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onFocusRunOfShowItem, onPreviewRunOfShowItem, onUpdateRunOfShowItem, onAddQuickRunOfShowMoment, onPromotePreparedRunOfShowItems, runOfShowDirectorPanel = null, onStartRunOfShow, onAdvanceRunOfShow, onToggleRunOfShowPause, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, youtubePlaylistUrl = '', setYoutubePlaylistUrl = () => {}, youtubePlaylistLoading = false, youtubePlaylistStatus = '', onQueueYouTubePlaylist = async () => {}, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onFocusRunOfShowItem, onPreviewRunOfShowItem, onUpdateRunOfShowItem, onAddQuickRunOfShowMoment, onPromotePreparedRunOfShowItems, runOfShowDirectorPanel = null, onStartRunOfShow, onAdvanceRunOfShow, onToggleRunOfShowPause, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, backgroundAudioSource = '', switchBackgroundAudioSource = async () => ({ ok: false }), currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -1626,7 +1631,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         (async () => {
             try {
                 if (appleBackgroundSourceActive) {
-                    await pauseAppleMusic?.();
+                    await pauseAppleMusic?.({
+                        reason: 'performance',
+                        performanceSessionId: room?.currentPerformanceSession?.sessionId || '',
+                    });
                 } else {
                     await stopAppleMusic?.();
                 }
@@ -4051,9 +4059,19 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 lastControlCommandAtMs: now,
                 ...(seekToSec !== null ? { playerPositionSec: seekToSec, lastReportedAtMs: now } : {}),
                 ...(type === 'pause' ? { pausedAtMs: now, playerPositionSec: currentPositionSec, lastReportedAtMs: now } : {}),
-                ...(type === 'resume' ? { pausedAtMs: null, lastHeartbeatAtMs: now } : {})
+                ...(type === 'resume' ? { pausedAtMs: null, lastHeartbeatAtMs: now } : {}),
+                ...(type === 'restart' ? {
+                    pausedAtMs: null,
+                    endedAtMs: null,
+                    completionReason: '',
+                    playbackStartedAtMs: now,
+                    lastHeartbeatAtMs: now,
+                    restartGuardUntilMs: now + 2500,
+                    watchdogDeadlineMs: now + ((Math.max(30, Number(session?.expectedDurationSec || 180)) + 90) * 1000),
+                } : {})
             };
         }
+        const shouldClearApplePerformancePlayback = String(room?.appleMusicPlayback?.type || '').trim().toLowerCase() === 'song';
         if (type === 'pause') {
             updates.videoPlaying = true;
             updates.pausedAt = now;
@@ -4066,21 +4084,21 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             updates.videoPlaying = true;
             updates.videoStartTimestamp = newStart;
             updates.pausedAt = null;
-            updates.appleMusicPlayback = null;
+            if (shouldClearApplePerformancePlayback) updates.appleMusicPlayback = null;
         } else if (type === 'restart') {
             updates.videoPlaying = true;
             updates.videoStartTimestamp = now;
             updates.pausedAt = null;
-            updates.appleMusicPlayback = null;
+            if (shouldClearApplePerformancePlayback) updates.appleMusicPlayback = null;
         } else if ((type === 'seek' || type === 'jump') && seekToSec !== null) {
             updates.videoPlaying = true;
             updates.videoStartTimestamp = now - (seekToSec * 1000);
             updates.pausedAt = null;
-            updates.appleMusicPlayback = null;
+            if (shouldClearApplePerformancePlayback) updates.appleMusicPlayback = null;
         }
         await updateRoom(updates);
         return command;
-    }, [current, getCurrentPlaybackPositionSec, room?.currentPerformanceMeta?.startedAtMs, room?.currentPerformanceSession, room?.pausedAt, room?.videoStartTimestamp, updateRoom]);
+    }, [current, getCurrentPlaybackPositionSec, room?.appleMusicPlayback?.type, room?.currentPerformanceMeta?.startedAtMs, room?.currentPerformanceSession, room?.pausedAt, room?.videoStartTimestamp, updateRoom]);
     // Unified play/pause for the current backing source (Apple or media URL).
     async function togglePlay() {
         if (!current) return;
@@ -4205,24 +4223,26 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const restartCurrentPlayback = useCallback(async () => {
         if (!current) return;
         if (currentUsesAppleBacking) {
-            await playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist });
+            await issuePlaybackControlCommand('restart', { seekToSec: 0 });
+            await playAppleMusicTrack(current.appleMusicId, {
+                title: current.songTitle,
+                artist: current.artist,
+                performanceSessionId: room?.currentPerformanceSession?.sessionId || '',
+            });
             await updateRoom({ mediaUrl: '', videoPlaying: false, videoStartTimestamp: null, pausedAt: null });
             return;
         }
-        await stopAppleMusic?.();
         await issuePlaybackControlCommand('restart', { seekToSec: 0 });
-    }, [current, currentUsesAppleBacking, issuePlaybackControlCommand, playAppleMusicTrack, stopAppleMusic, updateRoom]);
+    }, [current, currentUsesAppleBacking, issuePlaybackControlCommand, playAppleMusicTrack, room?.currentPerformanceSession?.sessionId, updateRoom]);
     const jumpCurrentPlayback = useCallback(async (deltaSec = 0) => {
         if (!current || currentUsesAppleBacking) return;
-        await stopAppleMusic?.();
         await issuePlaybackControlCommand('jump', { deltaSec });
-    }, [current, currentUsesAppleBacking, issuePlaybackControlCommand, stopAppleMusic]);
+    }, [current, currentUsesAppleBacking, issuePlaybackControlCommand]);
 
     const seekCurrentPlayback = useCallback(async (seekToSec = 0) => {
         if (!current || currentUsesAppleBacking) return;
-        await stopAppleMusic?.();
         await issuePlaybackControlCommand('seek', { seekToSec });
-    }, [current, currentUsesAppleBacking, issuePlaybackControlCommand, stopAppleMusic]);
+    }, [current, currentUsesAppleBacking, issuePlaybackControlCommand]);
     const openCurrentBackingWindow = useCallback(() => {
         if (!currentMediaUrl) {
             toast('Backing link is unavailable right now.');
@@ -4950,6 +4970,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         const timer = window.setInterval(() => setBackgroundAudioObservedAtMs(Date.now()), 15000);
         return () => window.clearInterval(timer);
     }, [room?.appleMusicPlayback?.id, room?.appleMusicPlayback?.status, room?.appleMusicPlayback?.type]);
+    const selectedBackgroundAudioSource = resolveBackgroundAudioSource({
+        source: backgroundAudioSource,
+        room,
+        applePlaylistId: appleMusicAutoPlaylistId,
+    });
+    const appleBackgroundSourceSelected = isAppleBackgroundAudioSource(selectedBackgroundAudioSource);
     const backgroundAudioState = deriveBackgroundAudioState({
         room,
         performanceActive: (Array.isArray(songs) ? songs : []).some((song) => song?.status === 'performing'),
@@ -4957,6 +4983,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         applePendingId: appleMusicBgPendingId,
         applePlaylistId: appleMusicAutoPlaylistId,
         applePlaylistTitle: appleMusicAutoPlaylistTitle,
+        activeSource: selectedBackgroundAudioSource,
         localTrackId: currentBgTrackUploadId,
         localTrackTitle: (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).find((item) => String(item?.id || '').trim() === String(currentBgTrackUploadId || '').trim())?.name || '',
         statusMessage: appleMusicStatus,
@@ -5019,9 +5046,15 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 <div className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">{backgroundAudioCapability.label}</div>
                 <div className="mt-1 text-[11px] leading-4 text-zinc-400">{backgroundAudioCapability.detail}</div>
             </div>
-            {backgroundAudioState.actionKey && backgroundAudioState.actionLabel ? <button type="button" onClick={recoverBackgroundAudio} className={`${STYLES.btnStd} ${backgroundAudioState.tone === 'error' ? STYLES.btnHighlight : STYLES.btnSecondary} mt-3 px-3 py-2 text-[10px]`}>
-                {backgroundAudioState.actionLabel}
-            </button> : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+                {backgroundAudioState.actionKey && backgroundAudioState.actionLabel ? <button type="button" onClick={recoverBackgroundAudio} className={`${STYLES.btnStd} ${backgroundAudioState.tone === 'error' ? STYLES.btnHighlight : STYLES.btnSecondary} px-3 py-2 text-[10px]`}>
+                    {backgroundAudioState.actionLabel}
+                </button> : null}
+                {appleBackgroundSourceSelected ? <button type="button" data-feature-id="background-audio-fallback-beaurocks" onClick={() => { void switchBackgroundAudioSource?.(BACKGROUND_AUDIO_SOURCES.beaurocks, { shouldPlay: true }); }} className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-2 text-[10px]`}>
+                    <i className="fa-solid fa-rotate"></i>
+                    Use BeauRocks Loop
+                </button> : null}
+            </div>
         </div>
     );
     const bgLoopExcludedTrackIdSet = new Set(
@@ -5065,6 +5098,40 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 >
                     <i className={`fa-solid ${autoBgMusic ? 'fa-rotate' : 'fa-pause'}`}></i>
                     Auto BG {autoBgMusic ? 'On' : 'Off'}
+                </button>
+            </div>
+            <div data-feature-id="background-audio-source-selector" className="mt-4 grid gap-2 sm:grid-cols-2">
+                <button
+                    type="button"
+                    aria-pressed={selectedBackgroundAudioSource === BACKGROUND_AUDIO_SOURCES.beaurocks}
+                    onClick={() => { void switchBackgroundAudioSource?.(BACKGROUND_AUDIO_SOURCES.beaurocks, { shouldPlay: true }); }}
+                    className={`rounded-2xl border p-3 text-left transition ${selectedBackgroundAudioSource === BACKGROUND_AUDIO_SOURCES.beaurocks ? 'border-cyan-300/45 bg-cyan-500/14 shadow-[0_0_24px_rgba(34,211,238,0.08)]' : 'border-white/10 bg-black/20 hover:border-cyan-300/25'}`}
+                >
+                    <div className="flex items-center justify-between gap-3">
+                        <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-500/10 text-cyan-100"><i className="fa-solid fa-compact-disc"></i></span>
+                        <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${selectedBackgroundAudioSource === BACKGROUND_AUDIO_SOURCES.beaurocks ? 'bg-cyan-300 text-zinc-950' : 'bg-white/8 text-zinc-400'}`}>{selectedBackgroundAudioSource === BACKGROUND_AUDIO_SOURCES.beaurocks ? 'Active source' : 'Switch source'}</span>
+                    </div>
+                    <div className="mt-3 text-base font-black text-white">BeauRocks Loop</div>
+                    <div className="mt-1 text-xs leading-5 text-zinc-400">Play the included room loop and eligible uploads. Your Apple soundtrack stays remembered.</div>
+                </button>
+                <button
+                    type="button"
+                    aria-pressed={selectedBackgroundAudioSource === BACKGROUND_AUDIO_SOURCES.appleMusic}
+                    onClick={() => {
+                        if (!appleMusicAutoPlaylistId) {
+                            setMediaLibraryTab('apple');
+                            return;
+                        }
+                        void switchBackgroundAudioSource?.(BACKGROUND_AUDIO_SOURCES.appleMusic, { shouldPlay: true });
+                    }}
+                    className={`rounded-2xl border p-3 text-left transition ${selectedBackgroundAudioSource === BACKGROUND_AUDIO_SOURCES.appleMusic ? 'border-pink-300/45 bg-pink-500/14 shadow-[0_0_24px_rgba(244,114,182,0.08)]' : 'border-white/10 bg-black/20 hover:border-pink-300/25'}`}
+                >
+                    <div className="flex items-center justify-between gap-3">
+                        <span className="grid h-9 w-9 place-items-center rounded-xl border border-pink-300/25 bg-pink-500/10 text-pink-100"><i className="fa-brands fa-apple"></i></span>
+                        <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${selectedBackgroundAudioSource === BACKGROUND_AUDIO_SOURCES.appleMusic ? 'bg-pink-300 text-zinc-950' : 'bg-white/8 text-zinc-400'}`}>{selectedBackgroundAudioSource === BACKGROUND_AUDIO_SOURCES.appleMusic ? 'Active source' : (appleMusicAutoPlaylistId ? 'Switch source' : 'Choose music')}</span>
+                    </div>
+                    <div className="mt-3 text-base font-black text-white">Apple Music</div>
+                    <div className="mt-1 truncate text-xs leading-5 text-zinc-400">{appleMusicAutoPlaylistTitle || (appleMusicAuthorized ? 'Choose a playlist or recent station' : 'Connect an account to choose a soundtrack')}</div>
                 </button>
             </div>
             <div className="mt-4">
@@ -5130,9 +5197,22 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-300">{appleMusicStatus}</div>
                 ) : null}
                 {appleMusicAutoPlaylistId ? (
-                    <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-500/10 px-4 py-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100">Current Room Soundtrack</div>
-                        <div className="mt-1 truncate text-base font-black text-white">{appleMusicAutoPlaylistTitle || appleMusicAutoPlaylistId}</div>
+                    <div className={`mt-4 rounded-2xl border px-4 py-3 ${appleBackgroundSourceSelected ? 'border-emerald-300/20 bg-emerald-500/10' : 'border-white/10 bg-black/20'}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${appleBackgroundSourceSelected ? 'text-emerald-100' : 'text-zinc-400'}`}>{appleBackgroundSourceSelected ? 'Active Room Soundtrack' : 'Remembered Apple Soundtrack'}</div>
+                                <div className="mt-1 truncate text-base font-black text-white">{appleMusicAutoPlaylistTitle || appleMusicAutoPlaylistId}</div>
+                            </div>
+                            {appleBackgroundSourceSelected ? (
+                                <button type="button" onClick={() => { void switchBackgroundAudioSource?.(BACKGROUND_AUDIO_SOURCES.beaurocks, { shouldPlay: true }); }} className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-2 text-[10px]`}>
+                                    Use BeauRocks Loop
+                                </button>
+                            ) : (
+                                <button type="button" onClick={() => { void switchBackgroundAudioSource?.(BACKGROUND_AUDIO_SOURCES.appleMusic, { shouldPlay: true }); }} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px]`}>
+                                    Use Apple Music
+                                </button>
+                            )}
+                        </div>
                     </div>
                 ) : null}
             </div>
@@ -5184,7 +5264,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             {appleMusicPickerItems.map((choice) => {
                                 const choicePlaylistId = String(choice.id || '').trim();
                                 const choiceIsPending = !!choicePlaylistId && appleMusicBgPendingId === choicePlaylistId;
-                                const choiceIsActive = !!choicePlaylistId && !choiceIsPending && choicePlaylistId === String(appleMusicAutoPlaylistId || room?.appleMusicAutoPlaylistId || '').trim();
+                                const choiceIsActive = appleBackgroundSourceSelected && !!choicePlaylistId && !choiceIsPending && choicePlaylistId === String(appleMusicAutoPlaylistId || room?.appleMusicAutoPlaylistId || '').trim();
                                 return (
                                 <div key={`media_apple_choice_${choice.sourceType}_${choice.id}`} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-950/55 p-3">
                                     {choice.artworkUrl ? (
@@ -5387,13 +5467,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     );
     const scenePresetLibrarySection = (
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(145deg,rgba(9,16,28,0.98),rgba(18,12,27,0.96))]">
-            <div className="sticky top-0 z-10 border-b border-white/10 bg-[linear-gradient(145deg,rgba(9,16,28,0.985),rgba(18,12,27,0.985))] px-4 py-3 backdrop-blur sm:px-5 sm:py-3.5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="sticky top-0 z-10 border-b border-white/10 bg-[linear-gradient(145deg,rgba(9,16,28,0.985),rgba(18,12,27,0.985))] px-3 py-3 pr-14 backdrop-blur sm:px-5 sm:py-3.5 sm:pr-20">
+                <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
                         <button
                             type="button"
                             onClick={closeSceneLibrary}
-                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[42px] flex-none px-3 py-2 text-[10px] sm:text-xs`}
+                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[42px] flex-none self-start px-3 py-2 text-[10px] sm:text-xs`}
                             data-feature-id="host-media-library-back-to-host"
                         >
                             <i className="fa-solid fa-arrow-left mr-2"></i>
@@ -5404,7 +5484,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             <div className="mt-1 max-w-2xl text-xs text-zinc-300 sm:text-sm">Reusable host media for every night: Public TV scenes, soundboard drops, and background beds.</div>
                         </div>
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
+                    <div className="flex flex-wrap items-center justify-start gap-2 text-[10px] font-black uppercase tracking-[0.16em] sm:justify-end">
                         <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">{scenePresetCount} saved</span>
                         <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-zinc-200">{Math.max(5, Math.min(600, Number(scenePresetDurationSec || 20) || 20))}s default</span>
                         {activeMediaScene ? (
@@ -5416,7 +5496,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         <button
                             type="button"
                             onClick={closeSceneLibrary}
-                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} hidden px-3 py-2 text-[10px] lg:inline-flex`}
                         >
                             Close Media Library
                         </button>
@@ -5425,7 +5505,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 <div
                     role="tablist"
                     aria-label="Account media library sections"
-                    className="host-brand-tabs host-brand-tabs--workspace mt-3 min-h-[46px] custom-scrollbar"
+                    className="host-brand-tabs host-brand-tabs--workspace host-brand-tabs--media-library mt-3 min-h-[46px] max-w-full overflow-x-auto overscroll-x-contain custom-scrollbar"
                     data-feature-id="host-media-library-tabs"
                 >
                     {mediaLibraryTabs.map((tabItem) => {
@@ -5437,11 +5517,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 role="tab"
                                 aria-selected={active}
                                 onClick={() => setMediaLibraryTab(tabItem.id)}
-                                className={`host-brand-tab inline-flex min-h-[38px] min-w-max items-center gap-2 px-3 py-2 text-sm font-black ${active ? 'is-active' : ''}`}
+                                className={`host-brand-tab inline-flex min-h-[42px] min-w-max flex-none items-center gap-2 px-3 py-2 text-sm font-black ${active ? 'is-active' : ''}`}
                             >
                                 <i className={`fa-solid ${tabItem.icon}`}></i>
                                 <span>{tabItem.label}</span>
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] ${active ? 'bg-zinc-950/12 text-zinc-900' : 'bg-white/8 text-zinc-400'}`}>{tabItem.helper}</span>
+                                <span className={`host-brand-tab__helper rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] ${active ? 'bg-zinc-950/12 text-zinc-900' : 'bg-white/8 text-zinc-400'}`}>{tabItem.helper}</span>
                             </button>
                         );
                     })}
@@ -6976,16 +7056,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         className="fixed right-3 z-[365] inline-flex min-h-[42px] items-center justify-center gap-2 rounded-full border border-cyan-300/35 bg-black/75 px-3 text-xs font-black uppercase tracking-[0.12em] text-white shadow-[0_12px_28px_rgba(0,0,0,0.38)] backdrop-blur-sm transition hover:border-cyan-300/60 hover:text-cyan-100 sm:right-4"
                         style={{ top: `calc(${sceneLibraryViewportInsetTop} + 0.75rem)` }}
                     >
-                        <i className="fa-solid fa-xmark text-sm"></i><span>Close</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={closeSceneLibrary}
-                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} fixed bottom-3 left-3 right-3 z-[365] min-h-[46px] justify-center px-4 py-2 text-xs shadow-[0_14px_34px_rgba(0,0,0,0.42)] sm:left-auto sm:right-4 sm:w-auto`}
-                        data-feature-id="host-media-library-bottom-close"
-                    >
-                        <i className="fa-solid fa-arrow-left mr-2"></i>
-                        Back to Host
+                        <i className="fa-solid fa-xmark text-sm"></i><span className="hidden sm:inline">Close</span>
                     </button>
                     <div
                         className="flex h-full w-full min-h-0 min-w-0 flex-col overflow-hidden"

@@ -177,6 +177,26 @@
   }
 }
 
+@media (max-width: 520px) {
+  .host-brand-tabs--media-library {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-x: visible;
+    border-radius: 15px;
+  }
+
+  .host-brand-tabs--media-library .host-brand-tab {
+    min-width: 0;
+    width: 100%;
+    padding-inline: 0.65rem;
+    border-radius: 11px;
+  }
+
+  .host-brand-tabs--media-library .host-brand-tab__helper {
+    display: none;
+  }
+}
+
 /* Host palette: operational contrast without returning to flat black.
    Teal establishes structure, pink marks energy and premium actions, and
    lifted blue-violet surfaces keep dense controls easy to scan. */

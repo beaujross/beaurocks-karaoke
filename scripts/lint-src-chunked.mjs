@@ -4,6 +4,10 @@ import { join } from 'node:path';
 
 const SOURCE_ROOT = 'src';
 const CHUNK_SIZE = 1;
+const ESLINT_MAX_OLD_SPACE_MB = Math.max(
+  2048,
+  Number(process.env.LINT_ESLINT_MAX_OLD_SPACE_MB || 8192) || 8192,
+);
 
 const collectSourceFiles = (dir) => {
   const entries = readdirSync(dir);
@@ -39,7 +43,13 @@ const printMessages = (results = []) => {
 
 for (let i = 0; i < files.length; i += CHUNK_SIZE) {
   const chunk = files.slice(i, i + CHUNK_SIZE);
-  const result = spawnSync(process.execPath, [eslintBin, '--format', 'json', ...chunk], {
+  const result = spawnSync(process.execPath, [
+    `--max-old-space-size=${ESLINT_MAX_OLD_SPACE_MB}`,
+    eslintBin,
+    '--format',
+    'json',
+    ...chunk,
+  ], {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024 * 16,
     stdio: ['ignore', 'pipe', 'pipe'],

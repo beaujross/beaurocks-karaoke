@@ -11,13 +11,13 @@ const automationControlsSource = readSource('src/apps/Host/components/Automation
 const hostTopChromeSource = readSource('src/apps/Host/components/HostTopChrome.jsx');
 
 test('Apple playlist background playback is routed through shared BG controls', () => {
-    assert.match(hostAppSource, /const appleMusicBackgroundSelected = useMemo\(\(\) => \{[\s\S]*configuredPlaylistId[\s\S]*\['playing', 'paused'\]\.includes\(status\)/);
+    assert.match(hostAppSource, /const appleMusicBackgroundSelected = useMemo\(\(\) => \{[\s\S]*isAppleBackgroundAudioSource\(backgroundAudioSource\)[\s\S]*\['playing', 'paused'\]\.includes\(status\)/);
     assert.match(hostAppSource, /const appleMusicBackgroundPlaying = useMemo\(\(\) => \{[\s\S]*status \|\| ''\)[\s\S]*playing/);
-    assert.match(hostAppSource, /const backgroundMusicActive = !!playingBg \|\| \(appleMusicBackgroundPlaying && appleMusicPlaying\);/);
+    assert.match(hostAppSource, /const backgroundMusicActive = isAppleBackgroundAudioSource\(backgroundAudioSource\)[\s\S]*appleMusicBackgroundPlaying && appleMusicPlaying[\s\S]*: !!playingBg;/);
     assert.match(hostAppSource, /playingBg=\{backgroundMusicActive\}/);
-    assert.match(hostAppSource, /if \(!next && applePlaylistIsActive\) \{\s*await pauseAppleMusic\(\);\s*return;/);
+    assert.match(hostAppSource, /if \(!next && isAppleBackgroundAudioSource\(backgroundAudioSource\) && applePlaylistIsActive\) \{\s*await pauseAppleMusic\(\{[\s\S]*reason:[\s\S]*performanceSessionId:/);
     assert.match(hostAppSource, /configuredApplePlaylistIsActive && livePlaybackStatus === 'paused'[\s\S]*await resumeAppleMusic\(\);/);
-    assert.doesNotMatch(hostAppSource, /if \(!next && applePlaylistIsActive\) \{[\s\S]{0,180}appleMusicPlayback: null/);
+    assert.doesNotMatch(hostAppSource, /if \(!next && isAppleBackgroundAudioSource\(backgroundAudioSource\) && applePlaylistIsActive\) \{[\s\S]{0,180}appleMusicPlayback: null/);
     assert.doesNotMatch(hostAppSource, /appleMusicPlaying \? 'Pause' : 'Resume'/);
 });
 
@@ -62,7 +62,8 @@ test('Apple Music setup exposes playlist and station choices without adding sepa
     assert.match(hostAppSource, /const musicKitVolume = Number\.isFinite\(currentVolume\) && currentVolume > 1 \? Math\.round\(volume \* 100\) : volume;/);
     assert.match(hostAppSource, /const hasLoadedItem = !!\([\s\S]*instance\?\.player\?\.nowPlayingItem[\s\S]*instance\?\.player\?\.queue\?\.currentItem[\s\S]*snapshot\?\.trackId/);
     assert.match(hostAppSource, /const playAppleMusicPlaylistQueueWithFallback = async/);
-    assert.match(hostAppSource, /for \(const descriptor of attempts\) \{[\s\S]*const queue = await instance\.setQueue\(descriptor\);[\s\S]*await startAppleMusicQueuePlayback\(instance, queue\);[\s\S]*await waitForAppleMusicPlaybackStart\(instance\);[\s\S]*await stopAppleMusicForQueueRetry\(instance\);/);
+    assert.match(hostAppSource, /for \(const descriptor of attempts\) \{[\s\S]*queue = await instance\.setQueue\(descriptor\);[\s\S]*await startAppleMusicQueuePlayback\(instance, queue\);[\s\S]*waitForAppleMusicPlaybackStart\(instance, \{ contentLabel: 'playlist or station' \}\)/);
+    assert.doesNotMatch(hostAppSource, /stopAppleMusicForQueueRetry/);
     assert.match(hostAppSource, /const appleMusicPlaylistStartRef = useRef\(\{ key: '', promise: null, failedAtMs: 0 \}\);/);
     assert.match(hostAppSource, /currentStart\.promise && \(currentStart\.key === startKey \|\| meta\.automatic === true\)/);
     assert.match(hostAppSource, /isAppleMusicAutomaticRetryCoolingDown\(currentStart, startKey\)/);
@@ -87,19 +88,26 @@ test('Apple Music setup exposes playlist and station choices without adding sepa
     assert.match(hostAppSource, /Paste playlist URL or ID/);
     assert.match(hostAppSource, /min-h-\[42px\][\s\S]*Connect/);
     assert.match(hostAppSource, /text-base font-semibold text-white truncate/);
-    assert.match(hostAppSource, /canSkipBg=\{!appleMusicBackgroundSelected\}/);
+    assert.match(hostAppSource, /previousBg=\{previousBg\}/);
+    assert.match(hostAppSource, /canToggleBg=\{!currentSong\}/);
+    assert.match(hostAppSource, /canSkipBg=\{!currentSong\}/);
+    assert.match(hostAppSource, /controlAppleBackgroundQueue[\s\S]*skipToPreviousItem[\s\S]*skipToNextItem/);
     assert.match(hostTopChromeSource, /disabled=\{!canSkipBg\}/);
+    assert.match(hostTopChromeSource, /data-feature-id='deck-apple-background-transport'[\s\S]*disabled=\{!canToggleBg\}/);
     assert.match(hostTopChromeSource, /data-feature-id='deck-apple-background-transport'/);
-    assert.match(hostTopChromeSource, /Apple Music owns background audio/);
+    assert.match(hostTopChromeSource, /Apple Music is the selected background source/);
+    assert.match(hostTopChromeSource, /Use BeauRocks Loop/);
+    assert.match(hostAppSource, /VITE_MUSICKIT_WEB_VERSION \|\| 'v3'/);
+    assert.match(hostAppSource, /'playbackStateDidChange', 'nowPlayingItemDidChange', 'queueItemsDidChange'/);
     assert.match(hostAppSource, /instance\?\.player\?\.nowPlayingItem/);
     assert.match(hostAppSource, /instance\?\.player\?\.queue\?\.currentItem/);
-    assert.match(hostAppSource, /bgPlaybackOperationRef\.current \+= 1;[\s\S]*clearMediaElementSource\(bgAudio\.current\);[\s\S]*backgroundAudioPlayback: null/);
+    assert.match(hostAppSource, /const nextBackgroundSession = buildAppleBackgroundSession\([\s\S]*backgroundAudioPlayback: nextBackgroundSession/);
     assert.match(hostAppSource, /const authorizeAppleMusicInstance = async[\s\S]*await instance\.authorize\(\)/);
     assert.match(hostAppSource, /__beauRocksMusicUserToken/);
     assert.match(hostAppSource, /headers\['Music-User-Token'\] = userToken/);
     assert.match(hostAppSource, /buildAppleMusicPlaylistQueueAttempts/);
     assert.match(hostAppSource, /Apple Music pause failed/);
-    assert.match(hostAppSource, /if \(!shouldPauseApplePlaybackTransport\(instance\)\) return;/);
+    assert.match(hostAppSource, /if \(!shouldPauseApplePlaybackTransport\(instance\)\) \{[\s\S]*setAppleMusicPlaying\(false\);[\s\S]*return;/);
     assert.match(hostAppSource, /if \(shouldPauseApplePlaybackTransport\(instance\)\) \{\s*await instance\.pause\(\);/);
     assert.doesNotMatch(appleMusicPlaylistPlaybackSource, /libraryPlaylist/);
     assert.match(appleMusicPlaylistPlaybackSource, /return \{ playlist: id \};/);
@@ -119,9 +127,21 @@ test('background audio checks stale Apple playback only while a playlist claims 
 test('stage transitions preserve and resume an Apple background soundtrack checkpoint', () => {
     const queueSource = readSource('src/apps/Host/components/HostQueueTab.jsx');
     const stageHelperSource = readSource('src/apps/Host/startQueueSongOnStage.js');
-    assert.match(stageHelperSource, /if \(pauseAppleMusic\) \{\s*await pauseAppleMusic\(\);/);
+    assert.match(stageHelperSource, /if \(pauseAppleMusic\) \{\s*await pauseAppleMusic\(\{ reason: 'performance', performanceSessionId \}\);/);
     assert.doesNotMatch(stageHelperSource, /currentPerformanceSession,[\s\S]{0,220}appleMusicPlayback: null/);
-    assert.match(queueSource, /const appleBackgroundSourceActive = \['playlist', 'station'\]\.includes\(applePlaybackType\);[\s\S]*await pauseAppleMusic\?\.\(\);/);
+    assert.match(queueSource, /const appleBackgroundSourceActive = \['playlist', 'station'\]\.includes\(applePlaybackType\);[\s\S]*await pauseAppleMusic\?\.\(\{[\s\S]*reason: 'performance',[\s\S]*performanceSessionId:/);
     assert.match(queueSource, /const preservedAppleBackgroundPlayback = \['playlist', 'station'\]\.includes\(String\(activeApplePlayback\?\.type[\s\S]*status: 'paused'/);
     assert.match(queueSource, /appleMusicPlayback: preservedAppleBackgroundPlayback/);
+    assert.match(queueSource, /performanceSessionId: room\?\.currentPerformanceSession\?\.sessionId/);
+    assert.match(queueSource, /if \(shouldClearApplePerformancePlayback\) updates\.appleMusicPlayback = null;/);
+    assert.doesNotMatch(queueSource, /const restartCurrentPlayback[\s\S]{0,900}await stopAppleMusic\?\.\(\);/);
+});
+
+test('Rewards menu exposes the existing auto-tip toggle and editable amount', () => {
+    assert.match(hostTopChromeSource, /data-feature-id="deck-auto-tip-controls"/);
+    assert.match(hostTopChromeSource, /data-feature-id="deck-auto-tip-toggle"/);
+    assert.match(hostTopChromeSource, /quickAutomationControls\?\.onToggleAutoBonus\?\.\(\)/);
+    assert.match(hostTopChromeSource, /quickAutomationControls\?\.onSetAutoBonusPoints\?\.\(amount\)/);
+    assert.match(hostAppSource, /const setAutoBonusPointsQuick = async \(value\) => \{[\s\S]*await updateRoom\(\{ autoBonusPoints: next \}\)/);
+    assert.match(hostAppSource, /autoBonusPoints,[\s\S]*onSetAutoBonusPoints: setAutoBonusPointsQuick/);
 });

@@ -645,6 +645,57 @@ async function run() {
       assert.deepEqual(snap.get("backgroundAudioPlayback"), observation);
     }],
 
+    ["host can persist an interrupted Apple Music background session", async () => {
+      const session = {
+        version: 2,
+        type: "apple_playlist",
+        provider: "apple_music",
+        id: "p.playlist123",
+        title: "Room Soundtrack",
+        sourceType: "playlist",
+        status: "paused_performance",
+        desiredState: "playing",
+        trackId: "i.track456",
+        trackTitle: "Checkpoint Song",
+        artist: "Checkpoint Artist",
+        artworkUrl: "https://cdn.example.test/artwork.jpg",
+        queueIndex: 4,
+        queueLength: 18,
+        positionSec: 73.5,
+        shuffleMode: "songs",
+        repeatMode: "all",
+        interruptionReason: "performance",
+        performanceSessionId: "perf_song_123_1714411111000",
+        sourceRevision: 1714411115000,
+        transportRole: "performance",
+        reason: "",
+        errorCode: "",
+        lastReportedAt: 1714411120000,
+      };
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        backgroundAudioPlayback: session,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, ["backgroundAudioPlayback"]);
+      const snap = await roomRef.get();
+      assert.deepEqual(snap.get("backgroundAudioPlayback"), session);
+    }],
+
+    ["invalid Apple Music background desired state is rejected", async () => {
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          backgroundAudioPlayback: {
+            type: "apple_playlist",
+            id: "p.playlist123",
+            status: "paused_performance",
+            desiredState: "restart",
+          },
+        })),
+        "invalid-argument"
+      );
+    }],
+
     ["malformed local background playback observations are rejected", async () => {
       await expectHttpsError(
         () => updateRoomAsHost.run(requestFor(HOST_UID, {

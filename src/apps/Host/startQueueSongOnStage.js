@@ -176,6 +176,7 @@ export const startQueueSongOnStage = async ({
       title: queueSong.songTitle,
       artist: queueSong.artist,
       duration: performanceDurationSec,
+      performanceSessionId,
     });
     await updateRoom({
       activeMode: 'karaoke',
@@ -204,7 +205,7 @@ export const startQueueSongOnStage = async ({
     });
   } else {
     if (pauseAppleMusic) {
-      await pauseAppleMusic();
+      await pauseAppleMusic({ reason: 'performance', performanceSessionId });
     } else {
       await stopAppleMusic?.();
     }

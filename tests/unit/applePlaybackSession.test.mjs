@@ -27,6 +27,30 @@ test('applePlaybackSession reads authoritative position and duration from MusicK
     assert.equal(snapshot.currentTimeSec, 42.5);
 });
 
+test('applePlaybackSession captures queue position and now-playing metadata', () => {
+    const instance = {
+        playbackState: 'playing',
+        currentPlaybackTime: 42,
+        nowPlayingItemIndex: 1,
+        nowPlayingItem: {
+            id: 'track-2',
+            attributes: {
+                name: 'Second Song',
+                artistName: 'Second Artist',
+                artwork: { url: 'https://example.test/{w}x{h}.jpg' },
+            },
+        },
+        queue: { items: [{ id: 'track-1' }, { id: 'track-2' }, { id: 'track-3' }] },
+    };
+    const snapshot = getApplePlaybackSnapshot(instance);
+    assert.equal(snapshot.queueIndex, 1);
+    assert.equal(snapshot.queueLength, 3);
+    assert.equal(snapshot.queueEnded, false);
+    assert.equal(snapshot.trackTitle, 'Second Song');
+    assert.equal(snapshot.artist, 'Second Artist');
+    assert.equal(snapshot.artworkUrl, 'https://example.test/160x160.jpg');
+});
+
 test('applePlaybackSession reads MusicKit v1 nested player state', () => {
     const snapshot = getApplePlaybackSnapshot({
         player: {
@@ -181,6 +205,56 @@ test('applePlaybackSession preserves playlist identity while tracking its curren
     assert.equal(patch['appleMusicPlayback.trackId'], 'apple_track_new');
     assert.equal('appleMusicPlayback.id' in patch, false);
     assert.equal(patch['appleMusicPlayback.positionSec'], 24);
+});
+
+test('applePlaybackSession does not treat an intermediate playlist item ending as queue completion', () => {
+    const patch = buildApplePlaybackSyncPatch({
+        session: null,
+        applePlayback: {
+            type: 'playlist',
+            id: 'pl.background_playlist',
+            trackId: 'track-1',
+            status: 'playing'
+        },
+        snapshot: {
+            trackId: 'track-1',
+            status: 'ended',
+            currentTimeSec: 200,
+            durationSec: 200,
+            queueIndex: 0,
+            queueLength: 3,
+            queueEnded: false,
+            rawPlaybackState: 'ended'
+        },
+        now: 210000
+    });
+
+    assert.equal(patch['appleMusicPlayback.status'], 'playing');
+    assert.equal('appleMusicPlayback.endedAt' in patch, false);
+});
+
+test('applePlaybackSession ignores an ended event inside the restart guard window', () => {
+    const patch = buildApplePlaybackSyncPatch({
+        session: {
+            sourceType: 'apple_music',
+            appleMusicId: 'performance-track',
+            playbackState: 'playing',
+            restartGuardUntilMs: 52000
+        },
+        applePlayback: { type: 'song', id: 'performance-track', status: 'playing' },
+        snapshot: {
+            trackId: 'performance-track',
+            status: 'ended',
+            currentTimeSec: 0,
+            durationSec: 180,
+            rawPlaybackState: 'ended'
+        },
+        now: 50000
+    });
+
+    assert.equal(patch['appleMusicPlayback.status'], 'playing');
+    assert.equal(patch['currentPerformanceSession.playbackState'], 'playing');
+    assert.equal('currentPerformanceSession.endedAtMs' in patch, false);
 });
 
 test('applePlaybackSession throttles repeated heartbeat-only sync writes', () => {

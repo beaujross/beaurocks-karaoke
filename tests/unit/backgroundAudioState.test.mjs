@@ -31,6 +31,16 @@ describe('backgroundAudioState', () => {
     })).toMatchObject({ key: 'blocked', actionKey: 'start_local', detail: 'Browser playback is blocked.' });
   });
 
+  test('keeps a remembered Apple playlist dormant when BeauRocks is explicitly selected', () => {
+    expect(deriveBackgroundAudioState({
+      room: {
+        backgroundAudioSource: 'beaurocks_loop',
+        appleMusicAutoPlaylistId: 'pl.remembered',
+        backgroundAudioPlayback: { type: 'local_upload', status: 'playing', id: 'u1', title: 'House Mix' },
+      },
+    })).toMatchObject({ key: 'playing', sourceType: 'local', sourceLabel: 'House Mix' });
+  });
+
   test('shows local recovery as deferred while a performance is active', () => {
     expect(deriveBackgroundAudioState({
       room: { autoBgMusic: true, backgroundAudioPlayback: { type: 'local_upload', status: 'paused', id: 'u1', title: 'House Mix' } },

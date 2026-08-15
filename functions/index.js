@@ -2981,6 +2981,10 @@ const APPLE_MUSIC_AUTO_SOURCE_TYPE_VALUES = new Set([
   "library_playlist",
   "catalog_station",
 ]);
+const BACKGROUND_AUDIO_SOURCE_VALUES = new Set([
+  "beaurocks_loop",
+  "apple_music",
+]);
 const PERFORMANCE_MODE_VALUES = new Set([
   "karaoke",
   "sing_along",
@@ -3014,6 +3018,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "appleMusicAutoPlaybackUrl",
   "appleMusicPlayback",
   "backgroundAudioPlayback",
+  "backgroundAudioSource",
   "playbackControlCommand",
   "audienceVideoMode",
   "audienceShellVariant",
@@ -3310,6 +3315,7 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "audienceBackingMode",
   "audienceVideoMode",
   "audienceShellVariant",
+  "backgroundAudioSource",
   "bgMusicUrl",
   "bingoBoardId",
   "bingoMode",
@@ -3428,8 +3434,51 @@ const HOST_APPLE_PLAYBACK_NUMBER_FIELDS = new Set([
   "lastReportedAt",
   "lastHeartbeatAt",
 ]);
-const HOST_BACKGROUND_AUDIO_PLAYBACK_STATUS_VALUES = new Set(["starting", "playing", "paused", "blocked", "error"]);
-const HOST_BACKGROUND_AUDIO_PLAYBACK_FIELDS = new Set(["type", "id", "title", "url", "status", "reason", "lastReportedAt"]);
+const HOST_BACKGROUND_AUDIO_PLAYBACK_TYPE_VALUES = new Set(["local_upload", "apple_playlist", "apple_station"]);
+const HOST_BACKGROUND_AUDIO_PLAYBACK_STATUS_VALUES = new Set([
+  "starting",
+  "playing",
+  "paused",
+  "paused_host",
+  "paused_performance",
+  "restoring",
+  "ended",
+  "blocked",
+  "error",
+]);
+const HOST_BACKGROUND_AUDIO_PLAYBACK_STRING_FIELDS = new Set([
+  "type",
+  "id",
+  "title",
+  "url",
+  "status",
+  "reason",
+  "provider",
+  "sourceType",
+  "desiredState",
+  "trackId",
+  "trackTitle",
+  "artist",
+  "artworkUrl",
+  "shuffleMode",
+  "repeatMode",
+  "interruptionReason",
+  "performanceSessionId",
+  "transportRole",
+  "errorCode",
+]);
+const HOST_BACKGROUND_AUDIO_PLAYBACK_NUMBER_FIELDS = new Set([
+  "version",
+  "queueIndex",
+  "queueLength",
+  "positionSec",
+  "sourceRevision",
+  "lastReportedAt",
+]);
+const HOST_BACKGROUND_AUDIO_PLAYBACK_FIELDS = new Set([
+  ...HOST_BACKGROUND_AUDIO_PLAYBACK_STRING_FIELDS,
+  ...HOST_BACKGROUND_AUDIO_PLAYBACK_NUMBER_FIELDS,
+]);
 const HOST_PERFORMANCE_SESSION_STRING_FIELDS = new Set(["playbackState", "completionReason"]);
 const HOST_PERFORMANCE_SESSION_NUMBER_FIELDS = new Set([
   "playerReportedDurationSec",
@@ -3631,6 +3680,12 @@ const validateHostRoomUpdateType = (key, value) => {
   if (key === "appleMusicAutoSourceType" && typeof value === "string" && value.length > 60) {
     throw new HttpsError("invalid-argument", 'Room field "appleMusicAutoSourceType" is too long.');
   }
+  if (key === "backgroundAudioSource" && value !== null && !BACKGROUND_AUDIO_SOURCE_VALUES.has(value)) {
+    throw new HttpsError(
+      "invalid-argument",
+      'Room field "backgroundAudioSource" must be beaurocks_loop or apple_music.',
+    );
+  }
   if (key === "appleMusicAutoPlaybackUrl" && typeof value === "string" && value.length > 2048) {
     throw new HttpsError("invalid-argument", 'Room field "appleMusicAutoPlaybackUrl" is too long.');
   }
@@ -3646,19 +3701,24 @@ const validateHostRoomUpdateType = (key, value) => {
     if (!fields.length || fields.some((field) => !HOST_BACKGROUND_AUDIO_PLAYBACK_FIELDS.has(field))) {
       throw new HttpsError("invalid-argument", "Room field \"backgroundAudioPlayback\" contains unsupported fields.");
     }
-    if (value.type !== "local_upload") {
-      throw new HttpsError("invalid-argument", "Room field \"backgroundAudioPlayback.type\" must be local_upload.");
+    if (!HOST_BACKGROUND_AUDIO_PLAYBACK_TYPE_VALUES.has(value.type)) {
+      throw new HttpsError("invalid-argument", "Room field \"backgroundAudioPlayback.type\" is invalid.");
     }
     if (!HOST_BACKGROUND_AUDIO_PLAYBACK_STATUS_VALUES.has(value.status)) {
       throw new HttpsError("invalid-argument", "Room field \"backgroundAudioPlayback.status\" is invalid.");
     }
-    ["id", "title", "url", "reason"].forEach((field) => {
+    HOST_BACKGROUND_AUDIO_PLAYBACK_STRING_FIELDS.forEach((field) => {
       if (value[field] !== undefined && typeof value[field] !== "string") {
         throw new HttpsError("invalid-argument", `Room field "backgroundAudioPlayback.${field}" must be a string.`);
       }
     });
-    if (value.lastReportedAt !== undefined && !isFiniteNumber(value.lastReportedAt)) {
-      throw new HttpsError("invalid-argument", "Room field \"backgroundAudioPlayback.lastReportedAt\" must be a finite number.");
+    HOST_BACKGROUND_AUDIO_PLAYBACK_NUMBER_FIELDS.forEach((field) => {
+      if (value[field] !== undefined && !isFiniteNumber(value[field])) {
+        throw new HttpsError("invalid-argument", `Room field "backgroundAudioPlayback.${field}" must be a finite number.`);
+      }
+    });
+    if (value.desiredState !== undefined && !["playing", "paused"].includes(value.desiredState)) {
+      throw new HttpsError("invalid-argument", "Room field \"backgroundAudioPlayback.desiredState\" is invalid.");
     }
   }
 
@@ -30892,10 +30952,11 @@ exports.createAppleMusicToken = onCall(
     const keyId = normalizeAppleMusicSecret(APPLE_MUSIC_KEY_ID.value());
     const rawKey = normalizeAppleMusicSecret(APPLE_MUSIC_PRIVATE_KEY.value(), { preserveNewlines: true });
     const privateKey = rawKey.includes("BEGIN") ? rawKey : rawKey.replace(/\\n/g, "\n");
+    const requestOrigin = resolveOrigin(request.rawRequest, request.data?.origin);
     const now = Math.floor(Date.now() / 1000);
     const exp = now + 60 * 60 * 12;
     const token = jwt.sign(
-      { iss: teamId, iat: now, exp },
+      { iss: teamId, iat: now, exp, origin: [requestOrigin] },
       privateKey,
       { algorithm: "ES256", header: { alg: "ES256", kid: keyId } }
     );

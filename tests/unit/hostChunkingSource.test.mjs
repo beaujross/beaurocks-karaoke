@@ -7,8 +7,8 @@ const hostQueueTabSource = readFileSync('src/apps/Host/components/HostQueueTab.j
 
 test('host app lazy-loads heavy host surfaces behind React.lazy boundaries', () => {
   assert.match(hostAppSource, /const lazyHostSurface = \(loader,[\s\S]*=> React\.lazy/);
-  for (const component of ['HostQueueTab', 'HostRoomLaunchPad', 'RunOfShowDirectorPanel', 'EventCreditsConfigPanel', 'ChatSettingsPanel', 'HostQaDebugPanel', 'HostChatPanel', 'SelfServeModeLauncher']) assert.match(hostAppSource, new RegExp(`const ${component} = lazyHostSurface\\(\\(\\) => import\\('\\.\\/components\\/${component}'\\)`));
-  assert.match(hostAppSource, /const UnifiedGameLauncher = lazyHostSurface\(\(\) => import\('\.\.\/\.\.\/components\/UnifiedGameLauncher'\)/);
+  for (const component of ['HostQueueTab', 'HostRoomLaunchPad', 'HostRoomQuickStart', 'RunOfShowDirectorPanel', 'EventCreditsConfigPanel', 'ChatSettingsPanel', 'HostQaDebugPanel', 'HostChatPanel']) assert.match(hostAppSource, new RegExp(`const ${component} = lazyHostSurface\\(\\(\\) => import\\('\\.\\/components\\/${component}'\\),`));
+  assert.match(hostAppSource, /const UnifiedGameLauncher = lazyHostSurface\(\(\) => import\('\.\.\/\.\.\/components\/UnifiedGameLauncher'\),/);
   assert.match(hostAppSource, /const DeferredHostSurfaceFallback = \(\{ label = 'Loading host tools\.\.\.' \}\) => \(/);
   assert.doesNotMatch(hostAppSource, /const ModerationInboxDrawer = React\.lazy\(\(\) => import\('\.\/components\/ModerationInboxDrawer'\)\);/);
   assert.doesNotMatch(hostAppSource, /const QueueTab = \(/);
@@ -23,7 +23,7 @@ test('host app wraps deferred host surfaces in suspense fallbacks', () => {
   assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading chat settings\.\.\." \/>\}>[\s\S]*<ChatSettingsPanel/);
   assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading QA tools\.\.\." \/>\}>[\s\S]*<HostQaDebugPanel/);
   assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading host chat\.\.\." \/>\}>[\s\S]*<HostChatPanel/);
-  assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading room format tools\.\.\." \/>\}>[\s\S]*<SelfServeModeLauncher/);
+  assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading Room launch guide\.\.\." \/>\}>[\s\S]*<HostRoomQuickStart/);
   assert.match(hostAppSource, /<React\.Suspense fallback=\{<DeferredHostSurfaceFallback label="Loading game launcher\.\.\." \/>\}>[\s\S]*<UnifiedGameLauncher/);
   assert.doesNotMatch(hostAppSource, /showModerationInbox \? \(\s*<React\.Suspense fallback=\{null\}>[\s\S]*<ModerationInboxDrawer/);
   assert.match(hostQueueTabSource, /const QueueYouTubeSearchModal = React\.lazy\(\(\) => import\('\.\/QueueYouTubeSearchModal'\)\);/);
