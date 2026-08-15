@@ -29,6 +29,20 @@ const resolveAppleTrackId = (value = {}) =>
         || value?.attributes?.playParams?.musicKit_databaseID
     );
 
+const resolveAppleTrackText = (value = {}, key = '') => normalizeText(
+    value?.attributes?.[key]
+    || value?.[key]
+);
+
+const resolveAppleArtworkUrl = (value = {}) => {
+    const artwork = value?.attributes?.artwork || value?.artwork || null;
+    const template = normalizeText(artwork?.url);
+    if (!template) return '';
+    return template
+        .replace('{w}', '160')
+        .replace('{h}', '160');
+};
+
 const normalizeApplePlaybackStatus = ({ instance = null, fallbackStatus = '' } = {}) => {
     const rawPlaybackValue = instance?.playbackState
         ?? instance?.playerState
@@ -67,6 +81,18 @@ export const getApplePlaybackSnapshot = (instance = null, {
         || player?.nowPlayingItem
         || player?.queue?.currentItem
         || null;
+    const queue = instance?.queue || player?.queue || null;
+    const queueItems = Array.isArray(queue?.items) ? queue.items : [];
+    const explicitQueueIndex = toFiniteNumber(
+        instance?.nowPlayingItemIndex,
+        toFiniteNumber(player?.nowPlayingItemIndex, toFiniteNumber(queue?.position, toFiniteNumber(queue?.currentIndex, -1)))
+    );
+    const currentTrackId = resolveAppleTrackId(nowPlayingItem) || normalizeText(fallbackTrackId);
+    const matchingQueueIndex = currentTrackId
+        ? queueItems.findIndex((item) => resolveAppleTrackId(item) === currentTrackId)
+        : -1;
+    const queueIndex = explicitQueueIndex >= 0 ? Math.round(explicitQueueIndex) : Math.max(0, matchingQueueIndex);
+    const queueLength = Math.max(0, queueItems.length);
     const durationSec = normalizeDurationSec(
         toFiniteNumber(instance?.currentPlaybackDuration, 0),
         toFiniteNumber(instance?.nowPlayingItem?.attributes?.durationInMillis, 0) / 1000,
@@ -85,9 +111,18 @@ export const getApplePlaybackSnapshot = (instance = null, {
         0
     );
     return {
-        trackId: resolveAppleTrackId(nowPlayingItem) || normalizeText(fallbackTrackId),
+        trackId: currentTrackId,
+        trackTitle: resolveAppleTrackText(nowPlayingItem, 'name') || resolveAppleTrackText(nowPlayingItem, 'title'),
+        artist: resolveAppleTrackText(nowPlayingItem, 'artistName') || resolveAppleTrackText(nowPlayingItem, 'artist'),
+        artworkUrl: resolveAppleArtworkUrl(nowPlayingItem),
         currentTimeSec: Number.isFinite(currentTimeSec) ? currentTimeSec : 0,
         durationSec,
+        queueIndex,
+        queueLength,
+        queueEnded: queueLength > 0 && queueIndex >= queueLength - 1,
+        queueIsEmpty: instance?.queueIsEmpty === true || queueLength === 0,
+        shuffleMode: normalizeText(instance?.shuffleMode ?? player?.shuffleMode),
+        repeatMode: normalizeText(instance?.repeatMode ?? player?.repeatMode),
         status: normalizeApplePlaybackStatus({ instance, fallbackStatus }),
         rawPlaybackState: normalizeKey(
             instance?.playbackState
@@ -164,8 +199,9 @@ export const buildApplePlaybackSyncPatch = ({
     const sessionTrackId = normalizeText(session?.appleMusicId);
     const playbackType = normalizeKey(applePlayback?.type);
     const playbackIsPlaylist = playbackType === 'playlist';
+    const playbackIsBackgroundQueue = playbackIsPlaylist || playbackType === 'station';
     const playbackTrackId = normalizeText(
-        playbackIsPlaylist ? applePlayback?.trackId : applePlayback?.id
+        playbackIsBackgroundQueue ? applePlayback?.trackId : applePlayback?.id
     );
     const snapshotTrackId = normalizeText(snapshot?.trackId);
     const effectiveTrackId = snapshotTrackId || sessionTrackId || playbackTrackId;
@@ -187,9 +223,10 @@ export const buildApplePlaybackSyncPatch = ({
     const forcedEnded = rawState.includes('ended') || rawState.includes('complete');
     const reachedEnd = durationSec > 0 && currentTimeSec >= Math.max(1, durationSec - APPLE_COMPLETION_GRACE_SEC);
     const patch = {};
+    const restartGuardActive = Math.max(0, toFiniteNumber(session?.restartGuardUntilMs, 0)) > nowValue;
 
     if (effectiveTrackId && effectiveTrackId !== playbackTrackId) {
-        patch[playbackIsPlaylist ? 'appleMusicPlayback.trackId' : 'appleMusicPlayback.id'] = effectiveTrackId;
+        patch[playbackIsBackgroundQueue ? 'appleMusicPlayback.trackId' : 'appleMusicPlayback.id'] = effectiveTrackId;
     }
     if (durationSec > 0) {
         patch['appleMusicPlayback.durationSec'] = durationSec;
@@ -224,6 +261,20 @@ export const buildApplePlaybackSyncPatch = ({
             patch['currentPerformanceSession.lastReportedAtMs'] = nowValue;
             patch['currentPerformanceSession.playerPositionSec'] = currentTimeSec;
         }
+        return patch;
+    }
+
+    const queueDefinitelyEnded = playbackIsPlaylist && snapshot?.queueEnded === true;
+    if ((snapshot.status === 'ended' || forcedEnded || reachedEnd) && playbackIsBackgroundQueue && !queueDefinitelyEnded) {
+        patch['appleMusicPlayback.status'] = previousStatus === 'paused' ? 'paused' : 'playing';
+        return patch;
+    }
+
+    if ((snapshot.status === 'ended' || forcedEnded || reachedEnd) && restartGuardActive && sessionOwnsPlayback) {
+        patch['appleMusicPlayback.status'] = 'playing';
+        patch['currentPerformanceSession.playbackState'] = 'playing';
+        patch['currentPerformanceSession.lastReportedAtMs'] = nowValue;
+        patch['currentPerformanceSession.playerPositionSec'] = 0;
         return patch;
     }
 

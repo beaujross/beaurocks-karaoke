@@ -141,7 +141,7 @@ test('HostRoomLaunchPad keeps AAHF in the existing-rooms workspace without a sep
   assert.match(markup, /AAHF Kick-Off/);
   assert.match(markup, /Existing Rooms/);
   assert.match(markup, /Selected room/);
-  assert.match(markup, /Room controls/);
+  assert.match(markup, /Control deck/);
   assert.match(markup, />Room Settings</);
   assert.match(markup, />Open</);
   assert.doesNotMatch(markup, /Event Focus/);

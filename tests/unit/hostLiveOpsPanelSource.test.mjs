@@ -179,7 +179,7 @@ test('host media library uses account-scoped collections with legacy room fallba
   assert.match(hostQueueTabSource, /All Account Media/);
   assert.match(hostQueueTabSource, /data-feature-id="host-media-library-tabs"/);
   assert.match(hostQueueTabSource, /data-feature-id="host-media-library-back-to-host"/);
-  assert.match(hostQueueTabSource, /data-feature-id="host-media-library-bottom-close"/);
+  assert.doesNotMatch(hostQueueTabSource, /data-feature-id="host-media-library-bottom-close"/);
   assert.match(hostQueueTabSource, /event\.key === 'Escape'[\s\S]*closeSceneLibrary\(\)/);
   assert.match(hostQueueTabSource, /pb-24 pt-4/);
   assert.match(hostQueueTabSource, /data-feature-id="host-media-library-category-workbench"/);

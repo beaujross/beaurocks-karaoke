@@ -1,16 +1,27 @@
 {
   "source": "firestore",
-  "generatedAt": "2026-08-11T02:33:55.434Z",
+  "generatedAt": "2026-08-15T14:32:54.887Z",
   "counts": {
-    "venues": 32,
-    "events": 73,
-    "sessions": 12,
-    "profiles": 1,
-    "hosts": 1,
-    "performers": 1,
-    "regions": 5,
-    "cities": 12,
-    "detailRoutes": 107
+    "totalRoutes": 135,
+    "detailRoutes": 107,
+    "byPage": {
+      "legal_data_deletion": 2,
+      "charts": 1,
+      "changelog": 1,
+      "for_hosts": 1,
+      "for_venues": 1,
+      "for_performers": 1,
+      "for_fans": 1,
+      "host_access": 1,
+      "geo_region": 5,
+      "geo_city": 12,
+      "venue": 32,
+      "event": 73,
+      "host": 1,
+      "performer": 1,
+      "legal_terms": 1,
+      "legal_privacy": 1
+    }
   },
   "geoRegionTokens": [
     "ca_los_angeles",

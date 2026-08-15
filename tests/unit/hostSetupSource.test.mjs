@@ -12,6 +12,7 @@ const topChromePath = 'src/apps/Host/components/HostTopChrome.jsx';
 const launchPadBrowserPath = 'src/apps/Host/components/HostRoomLaunchPadBrowser.jsx';
 const hostNightPresetsPath = 'src/apps/Host/hostNightPresets.js';
 const nightSetupFlowPath = 'src/apps/Host/hooks/useHostNightSetupFlow.js';
+const launchSessionPath = 'src/apps/Host/hooks/useHostLaunchSession.js';
 const hostAppPath = 'src/apps/Host/HostApp.jsx';
 const functionsPath = 'functions/index.js';
 const hostAppSource = readFileSync(hostAppPath, 'utf8');
@@ -137,36 +138,17 @@ test('mission setup presents a compact room editor while preserving automation c
   );
 });
 
-test('night setup wizard can close without forcing hosts through every step', () => {
-  assert.match(
-    hostAppSource,
-    /event\.key !== 'Escape' \|\| nightSetupApplying/,
-    'Night setup should close from Escape when the wizard is idle',
-  );
-  assert.match(
-    hostAppSource,
-    /window\.addEventListener\('keydown', handleKeyDown\)/,
-    'Night setup should register an Escape key listener while open',
-  );
-  assert.match(
-    hostAppSource,
-    /if \(event\.target !== event\.currentTarget \|\| nightSetupApplying\) return;/,
-    'Night setup should support clicking the backdrop to close',
-  );
-  assert.match(
-    hostAppSource,
-    /data-host-setup-skip-intro[\s\S]*>\s*Close\s*</,
-    'Classic night setup should expose a clear close button in the header',
-  );
-  assert.match(
-    hostAppSource,
-    /onClose=\{closeNightSetupWizard\}/,
-    'Mission setup footer should receive the shared close handler',
-  );
+test('host app no longer ships a second room setup wizard surface', () => {
+  assert.doesNotMatch(hostAppSource, /const renderNightSetupWizard/);
+  assert.doesNotMatch(hostAppSource, /<MissionSetupShell/);
+  assert.doesNotMatch(hostAppSource, /NIGHT_SETUP_STEPS/);
+  assert.doesNotMatch(hostAppSource, /openNightSetupWizard\(/);
+  assert.doesNotMatch(hostAppSource, /showNightSetupWizard && renderNightSetupWizard/);
 });
 
 test('host panel presents readiness and one launch action before deeper setup', () => {
   const topChromeSource = readFileSync(topChromePath, 'utf8');
+  const launchSessionSource = readFileSync(launchSessionPath, 'utf8');
 
   assert.doesNotMatch(
     hostAppSource,
@@ -218,16 +200,27 @@ test('host panel presents readiness and one launch action before deeper setup', 
     /<HostRoomQuickStart[\s\S]*tvReady=\{stageQuickStartTvReady\}[\s\S]*joinLinkReady=\{stageQuickStartAudienceReady\}/,
     'The in-room Quick Start should own the essential TV and audience readiness handoff',
   );
-  assert.match(
-    hostAppSource,
-    /onLaunchPackage=\{launchNightSetupPackage\}/,
-    'Room setup should reuse the existing atomic TV, setup, and join-link flow',
-  );
-  assert.match(
+  assert.doesNotMatch(
     hostAppSource,
     /openNightSetupWizard\(room\?\.hostNightPreset \|\| hostNightPreset \|\| 'casual'\)/,
-    'Night Setup entry should open the simplified setup modal instead of routing hosts into admin settings',
+    'The in-room setup shortcut should not reopen a second setup wizard',
   );
+  assert.match(
+    hostAppSource,
+    /handleStageQuickStartOpenRoomSetup[\s\S]*openAdminWorkspace\('ops\.room_setup'\)/,
+    'The in-room setup shortcut should route to the consolidated Room Setup workspace',
+  );
+  assert.doesNotMatch(
+    launchSessionSource,
+    /shouldOpenNightSetup|openNightSetupWizard\(/,
+    'Room creation should never fall through into a second setup screen',
+  );
+  assert.match(
+    launchSessionSource,
+    /return provisionRoom\(\{ \.\.\.options, openNightSetup: false \}\);/,
+    'Every creation entry point should explicitly suppress the retired post-create wizard',
+  );
+  assert.doesNotMatch(hostAppSource, /renderNightSetupWizard/);
   assert.match(
     hostAppSource,
     /openAdminWorkspace\('ops\.room_setup'\)/,
@@ -235,32 +228,12 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
 });
 
-test('room formats are optional while room creation centers on defaults', () => {
+test('room creation centers on defaults while room formats remain a separate reusable tool', () => {
   const selfServeLauncherSource = readFileSync(selfServeLauncherPath, 'utf8');
   const launchPadBrowserSource = readFileSync(launchPadBrowserPath, 'utf8');
   const hostNightPresetsSource = readFileSync(hostNightPresetsPath, 'utf8');
   const provisionFunctionsSource = readFileSync(functionsPath, 'utf8');
 
-  assert.match(
-    hostAppSource,
-    /const roomFormatLauncher = roomCode \? \(/,
-    'Night setup should build a reusable room-format launcher surface',
-  );
-  assert.match(
-    hostAppSource,
-    /<SelfServeModeLauncher[\s\S]*context="setup"/,
-    'Night setup should mount the room-format launcher in setup context',
-  );
-  assert.doesNotMatch(
-    hostAppSource,
-    /{tab === 'games' && \([\s\S]*<SelfServeModeLauncher/s,
-    'Games tab should stop rendering the room-format launcher',
-  );
-  assert.match(
-    hostAppSource,
-    /Optional room formats/,
-    'Classic night setup should tuck self-serve formats behind an optional drawer instead of a required activity step',
-  );
   assert.match(
     launchPadBrowserSource,
     /Starting point/,
@@ -558,13 +531,8 @@ test('room setup shells stay top-aligned and scrollable on short viewports', () 
   );
   assert.match(
     hostAppSource,
-    /fixed inset-0 z-\[92\] overflow-y-auto overscroll-y-contain[\s\S]*?pt-\[calc\(env\(safe-area-inset-top\)\+0\.75rem\)\]/,
-    'Classic setup modal should reserve safe-area top padding and remain scrollable.',
-  );
-  assert.match(
-    hostAppSource,
-    /mx-auto flex min-h-full w-full max-w-6xl items-start/,
-    'Classic setup modal should top-align its panel instead of centering tall content.',
+    /p-2 pt-2 sm:p-3 md:p-4 text-center/,
+    'The consolidated landing setup should keep compact responsive outer spacing.',
   );
   assert.match(
     missionSetupShellSource,
