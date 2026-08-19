@@ -24,7 +24,7 @@ export const getAudienceGameMembershipLabel = ({ activeMode = '', lightMode = ''
     const mode = text(activeMode);
     if (MODE_LABELS[mode]) return MODE_LABELS[mode];
     const light = text(lightMode);
-    if (light && light !== 'off') return light === 'guitar' ? 'Guitar Mode' : light === 'strobe' ? 'Beat Drop' : light === 'storm' ? 'Storm Mode' : 'Live Room Moment';
+    if (light && light !== 'off') return light === 'guitar' ? 'Crowd Guitar Solo' : light === 'strobe' ? 'Beat Drop' : light === 'storm' ? 'Storm Mode' : 'Live Room Moment';
     return 'Live Room Moment';
 };
 

@@ -48,7 +48,7 @@ const HostQueueHorizon = ({
     onSelectSegment,
     onOpenQueue,
     onOpenAttention,
-    onOpenAutomation,
+    onToggleAutomation,
     compact = false,
 }) => {
     const segments = Array.isArray(model?.segments) ? model.segments : [];
@@ -57,6 +57,13 @@ const HostQueueHorizon = ({
     const attentionCount = Math.max(0, Number(model?.attentionCount || 0));
     const remainingCount = Math.max(0, Number(model?.remainingCount || 0));
     const automationEnabled = model?.automation?.enabled === true;
+    const automationPaused = model?.automation?.paused === true;
+    const automationLimited = model?.automation?.limited === true;
+    const automationPending = model?.automation?.pending === true;
+    const automationState = model?.automation?.state || 'off';
+    const automationNeedsAttention = ['repair', 'blocked', 'manual', 'paused_playback'].includes(automationState);
+    const automationLabel = model?.automation?.label || 'Auto-Advance Off';
+    const automationDetail = model?.automation?.detail || 'Turn on Auto-Advance to play the full lineup in order.';
 
     return (
         <section
@@ -115,7 +122,7 @@ const HostQueueHorizon = ({
                     <button
                         type="button"
                         onClick={onOpenQueue}
-                        className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm font-black text-white transition hover:border-cyan-300/35 hover:bg-cyan-500/10"
+                        className="hidden min-h-[44px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm font-black text-white transition hover:border-cyan-300/35 hover:bg-cyan-500/10 sm:inline-flex"
                         aria-label={`Open ${remainingCount} more ${HOST_LIVE_OPS_LANGUAGE.lineupShort.toLowerCase()} item${remainingCount === 1 ? '' : 's'}`}
                     >
                         +{remainingCount}
@@ -137,21 +144,26 @@ const HostQueueHorizon = ({
 
                 <button
                     type="button"
-                    onClick={onOpenAutomation || onOpenQueue}
-                    className={`hidden min-h-[44px] shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[12px] font-black uppercase tracking-[0.1em] transition sm:inline-flex ${
-                        automationEnabled
+                    onClick={automationNeedsAttention ? onOpenQueue : (onToggleAutomation || onOpenQueue)}
+                    data-feature-id="tonights-lineup-auto-advance"
+                    disabled={automationPending}
+                    className={`inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-black uppercase tracking-[0.08em] transition disabled:cursor-wait disabled:opacity-65 sm:px-3 sm:text-[12px] sm:tracking-[0.1em] ${
+                        automationState === 'repair'
+                            ? 'border-rose-300/45 bg-rose-500/15 text-rose-100 hover:border-rose-200/70'
+                            : automationEnabled && !automationNeedsAttention
                             ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100 hover:border-emerald-200/55'
-                            : 'border-white/10 bg-white/[0.04] text-zinc-300 hover:border-cyan-300/30 hover:text-white'
+                            : automationPaused || automationLimited || automationNeedsAttention
+                                ? 'border-amber-300/35 bg-amber-500/12 text-amber-100 hover:border-amber-200/60'
+                                : 'border-white/10 bg-white/[0.04] text-zinc-300 hover:border-cyan-300/30 hover:text-white'
                     }`}
-                    aria-label={automationEnabled
-                        ? 'Song auto advance is on. Planned moments use separate Tonight\'s Flow controls.'
-                        : 'Song auto advance is off. The Host starts and advances each performance.'}
-                    title={automationEnabled
-                        ? 'Songs only: BeauRocks starts ready performances and advances after the configured delay. Planned moments use Tonight\'s Flow controls.'
-                        : 'Songs only: the Host starts and advances each performance. Planned moments use Tonight\'s Flow controls.'}
+                    aria-pressed={automationEnabled}
+                    aria-busy={automationPending}
+                    aria-label={`${automationLabel}. ${automationDetail}`}
+                    title={automationDetail}
                 >
-                    <i className={`fa-solid ${automationEnabled ? 'fa-wand-magic-sparkles' : 'fa-hand'} text-[11px]`} aria-hidden="true"></i>
-                    {model?.automation?.label || 'Songs: Manual'}
+                    <i className={`fa-solid ${automationPending ? 'fa-spinner fa-spin' : automationState === 'repair' ? 'fa-screwdriver-wrench' : automationNeedsAttention ? 'fa-triangle-exclamation' : automationEnabled ? 'fa-forward-step' : automationPaused ? 'fa-pause' : automationLimited ? 'fa-triangle-exclamation' : 'fa-play'} text-[11px]`} aria-hidden="true"></i>
+                    <span className="sm:hidden">{automationPending ? 'Saving' : automationState === 'repair' ? 'Repair' : automationState === 'running' ? 'Running' : automationState === 'armed' ? 'Armed' : automationState === 'starting' ? 'Starting' : automationState === 'ready' ? 'Ready' : automationState === 'finished' ? 'Finished' : automationPaused ? 'Paused' : automationLimited ? 'Songs only' : automationNeedsAttention ? 'Blocked' : 'Auto'}</span>
+                    <span className="hidden sm:inline">{automationPending ? 'Updating…' : automationLabel}</span>
                 </button>
             </div>
         </section>

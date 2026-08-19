@@ -3734,6 +3734,7 @@ export default function RunOfShowDirectorPanel({
     onDeleteItem,
     onMoveItem,
     onUpdateItem,
+    onGenerateTriviaForItem,
     onPromotePreparedItems,
     onSchedulePreparedItems,
     onToggleAutomationPause,
@@ -8551,8 +8552,8 @@ export default function RunOfShowDirectorPanel({
                                                 compact
                                             >
                                                 {item.type === 'trivia_break' ? (
-                                                    <div className="rounded-2xl border border-amber-300/18 bg-amber-500/8 px-3 py-3 text-sm text-amber-100/90">
-                                                        <span className="font-semibold text-white">Legacy scene type:</span> Pop Trivia now runs as a live in-song host toggle, not a planned performance or moment. Keep this only if you still need the old break behavior.
+                                                    <div className="rounded-2xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100/90" data-feature-id="trivia-moment-pop-up-distinction">
+                                                        <span className="font-semibold text-white">Trivia Moment:</span> this is a scheduled, full-screen question between performances and belongs in the reorderable lineup. <span className="font-semibold text-white">Pop-Up Trivia</span> is separate: it is generated for a specific backing track and appears while that performance is playing.
                                                     </div>
                                                 ) : null}
                                                 {item.type === 'game_break' ? (
@@ -8658,6 +8659,15 @@ export default function RunOfShowDirectorPanel({
                                                                     >
                                                                         Random
                                                                     </ControlButton>
+                                                                    {item.type === 'trivia_break' ? (
+                                                                        <ControlButton
+                                                                            disabled={typeof onGenerateTriviaForItem !== 'function'}
+                                                                            onClick={() => onGenerateTriviaForItem?.(item.id)}
+                                                                        >
+                                                                            <i className="fa-solid fa-wand-magic-sparkles mr-1.5"></i>
+                                                                            Generate From Previous Performances
+                                                                        </ControlButton>
+                                                                    ) : null}
                                                                 </div>
                                                                 {interactiveLibrarySelection ? (
                                                                     <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-300">

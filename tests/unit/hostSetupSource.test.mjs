@@ -50,7 +50,8 @@ test('mission setup keeps preset selection compact and applies full preset packa
     /h-\[116px\][\s\S]*?line-clamp-2/,
     'Every recipe choice should preserve a readable fixed height so selection does not resize the rail',
   );
-  assert.match(primaryPicksSource, /2xl:grid 2xl:grid-cols-5/);
+  assert.match(primaryPicksSource, /sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5/);
+  assert.match(primaryPicksSource, /Choose a room recipe/);
   assert.match(primaryPicksSource, /selectedRecipeAdjusted/);
   assert.match(primaryPicksSource, /Save current recipe/);
   assert.doesNotMatch(primaryPicksSource, /Event Shortcut|Pick the queue pace|Change room package/);
@@ -251,13 +252,13 @@ test('room creation centers on defaults while room formats remain a separate reu
   );
   assert.match(
     launchPadBrowserSource,
-    /LAUNCH_OPERATING_MODEL_OPTIONS[\s\S]*Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven[\s\S]*data-launch-room-control/,
+    /LAUNCH_OPERATING_MODEL_OPTIONS[\s\S]*Host-Led[\s\S]*Host Assist[\s\S]*Self-Serve[\s\S]*data-launch-room-control/,
     'Room creation should make the operating model a launch-time decision.',
   );
   assert.match(
     launchPadBrowserSource,
-    /buildLaunchOperatingModelSettings[\s\S]*oneMinuteMicEnabled[\s\S]*performanceProgressionMode: oneMinuteMicEnabled \? 'one_minute_mic' : 'full_song'/,
-    'Audience-led launch should persist the one-minute mic mode through preset config.',
+    /buildLaunchOperatingModelSettings[\s\S]*oneMinuteMicEnabled: false[\s\S]*performanceProgressionMode: 'full_song'/,
+    'Hosting Level should not silently enable the separate Mic Checkpoint performance format.',
   );
   assert.match(
     hostNightPresetsSource,
@@ -412,7 +413,7 @@ test('host Apple playback sync uses the host update path without recursive diagn
   const syncBlock = hostAppSource.slice(syncStart, syncEnd);
 
   assert.notEqual(syncStart, -1, 'Host app should keep Apple playback sync callback');
-  assert.match(syncBlock, /await updateRoom\(patch\);/, 'Apple playback sync should use the host callable update path so production rules do not reject direct room writes');
+  assert.match(syncBlock, /const syncPromise = updateRoom\(patch\);[\s\S]*await syncPromise;/, 'Apple playback sync should use and await the host callable update path so production rules do not reject direct room writes');
   assert.doesNotMatch(syncBlock, /updateDoc\(doc\(db, 'artifacts'/, 'Apple playback sync should not direct-write the room document from the browser');
   assert.doesNotMatch(syncBlock, /reportAppleMusicDiagnostic\('playback_sync'/, 'Apple playback sync failures should not recursively write diagnostics through updateRoomAsHost');
   assert.match(syncBlock, /\}, \[roomCode, updateRoom\]\);/, 'Apple playback sync should depend on the audited room update helper');
@@ -769,15 +770,15 @@ test('host top chrome exposes quick rewards in the deck dropdown style', () => {
   );
 });
 
-test('room setup exposes host-led assisted-host and crowd-driven launch decisions', () => {
-  assert.match(hostAppSource, /ROOM_CONTROL_MODEL_OPTIONS = Object\.freeze\(\[[\s\S]*Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
+test('room setup exposes the three hosting levels without conflating Mic Checkpoint', () => {
+  assert.match(hostAppSource, /ROOM_CONTROL_MODEL_OPTIONS = Object\.freeze\(\[[\s\S]*Host-Led[\s\S]*Host Assist[\s\S]*Self-Serve/);
   assert.match(hostAppSource, /data-room-setup-control-model/);
   assert.match(hostAppSource, /Decide who drives the room before launch/);
-  assert.match(hostAppSource, /Host-Led protects full songs[\s\S]*Crowd-Driven enables Mic Checkpoint and Auto-DJ/);
-  assert.match(hostAppSource, /currentRoomControlModelId = room\?\.oneMinuteMicEnabled === true[\s\S]*'crowd_driven'[\s\S]*autoDj[\s\S]*'assisted_host'[\s\S]*'host_led'/);
+  assert.match(hostAppSource, /Hosting Level controls pacing help\. Mic Checkpoint remains a separate, explicit performance format/);
+  assert.match(hostAppSource, /currentRoomControlModelId = room\?\.nightPlan\?\.hostingLevel === 'self_serve'[\s\S]*'crowd_driven'[\s\S]*'assisted_host'[\s\S]*'host_led'/);
   assert.match(hostAppSource, /onClick=\{\(\) => \{ void applyRoomControlModelQuick\(option\.id\); \}\}/);
-  assert.match(hostAppSource, /safeModel === 'crowd_driven'[\s\S]*nextAutoDj = safeModel !== 'host_led'/);
-  assert.match(hostAppSource, /Host-led full songs restored/);
+  assert.match(hostAppSource, /nextAutoDj = safeModel !== 'host_led'[\s\S]*hostingLevel: safeModel === 'crowd_driven' \? 'self_serve'/);
+  assert.match(hostAppSource, /Self-Serve hosting is on\. Mic Checkpoint remains separate/);
 });
 
 test('host monetization settings explain the capped audience storefront purchase ladder', () => {

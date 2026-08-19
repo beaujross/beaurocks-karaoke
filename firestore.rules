@@ -53,6 +53,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/artifacts/bross-app/public/data/rooms/$(roomCode);
     }
 
+    function roomUserDocPath(roomCode, uid) {
+      return /databases/$(database)/documents/artifacts/bross-app/public/data/room_users/$(roomCode + "_" + uid);
+    }
+
     function userDocPath(uid) {
       return /databases/$(database)/documents/users/$(uid);
     }
@@ -85,6 +89,15 @@ service cloud.firestore {
               && request.auth.uid in get(roomDocPath(roomCode)).data.hostUids
             )
           )
+        );
+    }
+
+    function isRoomMember(roomCode) {
+      return isAuthed()
+        && roomCode is string
+        && (
+          isRoomHost(roomCode)
+          || exists(roomUserDocPath(roomCode, request.auth.uid))
         );
     }
 
@@ -355,6 +368,11 @@ service cloud.firestore {
         'questionId',
         'songId',
         'sessionId',
+        'guitarSessionId',
+        'grooveHits',
+        'grooveScore',
+        'beatIndex',
+        'soloScore',
         'action',
         'spotlightSessionId',
         'spotlightKind',
@@ -1011,6 +1029,64 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Secure Room communication. Clients may subscribe to records they are
+    // authorized to see, but all mutations go through server callables.
+    match /room_lounge_messages/{messageId} {
+      allow read: if resource.data.roomCode is string
+        && isRoomMember(resource.data.roomCode);
+      allow create, update, delete: if false;
+    }
+
+    match /room_private_messages/{messageId} {
+      allow read: if isAuthed()
+        && resource.data.roomCode is string
+        && resource.data.participantUid is string
+        && (
+          request.auth.uid == resource.data.participantUid
+          || isRoomHost(resource.data.roomCode)
+        );
+      allow create, update, delete: if false;
+    }
+
+    match /room_host_threads/{threadId} {
+      allow read: if isAuthed()
+        && resource.data.roomCode is string
+        && resource.data.participantUid is string
+        && (
+          request.auth.uid == resource.data.participantUid
+          || isRoomHost(resource.data.roomCode)
+        );
+      allow create, update, delete: if false;
+    }
+
+    match /room_operator_signals/{signalId} {
+      allow read: if isAuthed()
+        && resource.data.roomCode is string
+        && (
+          isRoomHost(resource.data.roomCode)
+          || (
+            resource.data.actorUids is list
+            && request.auth.uid in resource.data.actorUids
+          )
+        );
+      allow create, update, delete: if false;
+    }
+
+    match /room_cohost_invites/{inviteId} {
+      allow read: if isAuthed()
+        && resource.data.roomCode is string
+        && resource.data.targetUid is string
+        && (
+          request.auth.uid == resource.data.targetUid
+          || isRoomHost(resource.data.roomCode)
+        );
+      allow create, update, delete: if false;
+    }
+
+    match /room_communication_limits/{limitId} {
+      allow read, write: if false;
+    }
+
     // App data used by TV/Singer/Host
     match /artifacts/{appId}/public/data {
       allow read: if isBrossApp(appId);
@@ -1284,34 +1360,9 @@ service cloud.firestore {
       }
 
       match /chat_messages/{docId} {
-        allow create: if isBrossApp(appId)
-          && isNonAnonymousAuthed()
-          && request.resource.data.roomCode is string
-          && roomExists(request.resource.data.roomCode)
-          && request.resource.data.uid is string
-          && request.resource.data.uid == request.auth.uid
-          && request.resource.data.user is string
-          && request.resource.data.user.size() > 0
-          && request.resource.data.user.size() <= 80
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 300
-          && (
-            !request.resource.data.keys().hasAny(['channel'])
-            || (
-              request.resource.data.channel is string
-              && request.resource.data.channel in ['lounge', 'host', 'dm']
-            )
-          )
-          && (
-            !request.resource.data.keys().hasAny(['toUid'])
-            || (
-              request.resource.data.toUid is string
-              && request.resource.data.toUid.size() > 0
-              && request.resource.data.toUid.size() <= 180
-            )
-          );
-        allow update, delete: if false;
+        // Legacy public chat is read-only during the secure transport cutover.
+        // New clients use server-authorized Room communication collections.
+        allow create, update, delete: if false;
       }
 
       match /activities/{docId} {
@@ -1366,6 +1417,44 @@ service cloud.firestore {
               request.resource.data.count is number
               && request.resource.data.count >= 0
               && request.resource.data.count <= 500
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['guitarSessionId'])
+            || request.resource.data.guitarSessionId == null
+            || request.resource.data.guitarSessionId is number
+            || (
+              request.resource.data.guitarSessionId is string
+              && request.resource.data.guitarSessionId.size() <= 180
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['grooveHits'])
+            || (
+              request.resource.data.grooveHits is number
+              && request.resource.data.grooveHits >= 0
+              && request.resource.data.grooveHits <= request.resource.data.count
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['grooveScore'])
+            || (
+              request.resource.data.grooveScore is number
+              && request.resource.data.grooveScore >= 0
+              && request.resource.data.grooveScore <= 100
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['beatIndex'])
+            || request.resource.data.beatIndex == null
+            || request.resource.data.beatIndex is number
+          )
+          && (
+            !request.resource.data.keys().hasAny(['soloScore'])
+            || (
+              request.resource.data.soloScore is number
+              && request.resource.data.soloScore >= request.resource.data.count
+              && request.resource.data.soloScore <= request.resource.data.count * 3
             )
           )
           && (

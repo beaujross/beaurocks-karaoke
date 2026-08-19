@@ -499,6 +499,11 @@ const resolveHostApplication = async (payload = {}) => {
   const data = await callFunction("resolveHostApplication", payload || {});
   return data || null;
 };
+const createHostPasswordResetLink = async (payload = {}) => {
+  await requireStrictAppCheckToken("createHostPasswordResetLink");
+  const data = await callFunction("createHostPasswordResetLink", payload || {});
+  return data || {};
+};
 
 const getMyHostAccessStatus = async (payload = {}) => {
   await requireAppCheckToken("getMyHostAccessStatus");
@@ -551,6 +556,38 @@ const postHostSupportMessage = async (payload = {}) => {
 const setHostSupportThreadStatus = async (payload = {}) => {
   await requireStrictAppCheckToken("setHostSupportThreadStatus");
   return (await callFunction("setHostSupportThreadStatus", payload || {})) || null;
+};
+const sendRoomLoungeMessage = async (payload = {}) => {
+  await requireStrictAppCheckToken("sendRoomLoungeMessage");
+  return (await callFunction("sendRoomLoungeMessage", payload || {})) || null;
+};
+const sendRoomHostMessage = async (payload = {}) => {
+  await requireStrictAppCheckToken("sendRoomHostMessage");
+  return (await callFunction("sendRoomHostMessage", payload || {})) || null;
+};
+const setRoomHostThreadStatus = async (payload = {}) => {
+  await requireStrictAppCheckToken("setRoomHostThreadStatus");
+  return (await callFunction("setRoomHostThreadStatus", payload || {})) || null;
+};
+const manageRoomCoHostInvite = async (payload = {}) => {
+  await requireStrictAppCheckToken("manageRoomCoHostInvite");
+  return (await callFunction("manageRoomCoHostInvite", payload || {})) || null;
+};
+const respondToRoomCoHostInvite = async (payload = {}) => {
+  await requireStrictAppCheckToken("respondToRoomCoHostInvite");
+  return (await callFunction("respondToRoomCoHostInvite", payload || {})) || null;
+};
+const leaveRoomCoHostRole = async (payload = {}) => {
+  await requireStrictAppCheckToken("leaveRoomCoHostRole");
+  return (await callFunction("leaveRoomCoHostRole", payload || {})) || null;
+};
+const sendRoomOperatorSignal = async (payload = {}) => {
+  await requireStrictAppCheckToken("sendRoomOperatorSignal");
+  return (await callFunction("sendRoomOperatorSignal", payload || {})) || null;
+};
+const setRoomOperatorSignalStatus = async (payload = {}) => {
+  await requireStrictAppCheckToken("setRoomOperatorSignalStatus");
+  return (await callFunction("setRoomOperatorSignalStatus", payload || {})) || null;
 };
 const getMyDirectoryAccess = async (payload = {}) => {
   await requireAppCheckToken("getMyDirectoryAccess");
@@ -838,6 +875,12 @@ const finalizePromptVoteRound = async (payload = {}) => {
   return data || null;
 };
 
+const controlPromptSession = async (payload = {}) => {
+  await requireAppCheckToken("controlPromptSession");
+  const data = await callFunction("controlPromptSession", payload || {});
+  return data || null;
+};
+
 const submitBingoTileConfirmation = async (payload = {}) => {
   await requireAppCheckToken("submitBingoTileConfirmation");
   const data = await callFunction("submitBingoTileConfirmation", payload || {});
@@ -1035,7 +1078,18 @@ const reviewRunOfShowSlotSubmission = async (payload = {}) => {
 
 const executeRunOfShowAction = async (payload = {}) => {
   await requireAppCheckToken("executeRunOfShowAction");
-  const data = await callFunction("executeRunOfShowAction", payload || {});
+  const operationId = String(payload?.operationId || (
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `execute_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+  )).trim();
+  const data = await callFunction("executeRunOfShowAction", { ...(payload || {}), operationId });
+  return data || null;
+};
+
+const mutateTonightLineup = async (payload = {}) => {
+  await requireAppCheckToken("mutateTonightLineup");
+  const data = await callFunction("mutateTonightLineup", payload || {});
   return data || null;
 };
 
@@ -1362,6 +1416,7 @@ export {
   setHostApprovalStatus,
   listHostApplications,
   resolveHostApplication,
+  createHostPasswordResetLink,
   getMyHostAccessStatus,
   getHostLifecycleReportingSummary,
   listHostAnnouncements,
@@ -1374,6 +1429,14 @@ export {
   getHostSupportThread,
   postHostSupportMessage,
   setHostSupportThreadStatus,
+  sendRoomLoungeMessage,
+  sendRoomHostMessage,
+  setRoomHostThreadStatus,
+  manageRoomCoHostInvite,
+  respondToRoomCoHostInvite,
+  leaveRoomCoHostRole,
+  sendRoomOperatorSignal,
+  setRoomOperatorSignalStatus,
   getMyDirectoryAccess,
   setMyVipAccountStatus,
   claimAudienceCommunityBoost,
@@ -1429,6 +1492,7 @@ export {
   castDoodleOkeVote,
   castPromptVote,
   finalizePromptVoteRound,
+  controlPromptSession,
   submitBingoTileConfirmation,
   submitBingoMysterySpin,
   lockBingoMysteryPick,
@@ -1460,6 +1524,7 @@ export {
   submitRunOfShowSlotSong,
   reviewRunOfShowSlotSubmission,
   executeRunOfShowAction,
+  mutateTonightLineup,
   manageRunOfShowTemplate,
   resolveQueueSongLyrics,
   runDemoDirectorAction,

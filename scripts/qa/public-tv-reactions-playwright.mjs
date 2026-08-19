@@ -78,9 +78,15 @@ const getBodyText = async (page) => String(await page.locator("body").innerText(
 
 const verifyReactionScenario = async ({ page, profileLabel }) => {
   await waitFor(
-    async () => (await page.locator(".reaction-stack").count()) >= 8,
+    async () => (await page.locator(".reaction-stack").count()) >= 5,
     { label: "reaction stack" },
   );
+
+  const reactionCount = await page.locator(".reaction-stack").count();
+  const maxVisible = profileLabel === "simple" ? 5 : 7;
+  if (reactionCount > maxVisible) {
+    throw new Error(`Reaction admission exceeded ${profileLabel} cap: ${reactionCount}/${maxVisible}.`);
+  }
 
   const bodyText = await getBodyText(page);
   if (!bodyText.includes("🌸")) {
@@ -88,34 +94,31 @@ const verifyReactionScenario = async ({ page, profileLabel }) => {
   }
 
   const classNames = await page.locator(".reaction-stack").evaluateAll((nodes) => nodes.map((node) => node.className));
-  for (const expectedClass of REACTION_VARIANTS) {
-    if (!classNames.some((name) => String(name || "").includes(expectedClass))) {
-      throw new Error(`Missing reaction motion class ${expectedClass}.`);
-    }
+  const visibleMotionVariantCount = REACTION_VARIANTS.filter((expectedClass) => (
+    classNames.some((name) => String(name || "").includes(expectedClass))
+  )).length;
+  if (visibleMotionVariantCount < 5) {
+    throw new Error(`Expected at least five unique admitted reaction entrances, found ${visibleMotionVariantCount}.`);
   }
 
-  if (profileLabel === "simple") {
+  const density = await page.locator("[data-tv-reaction-density]").getAttribute("data-tv-reaction-density");
+  if (density !== "compact") {
+    throw new Error(`Expected stress fixture to use compact density, got ${density || "none"}.`);
+  }
+
+  if (profileLabel === "simple" || density === "compact") {
     await waitFor(
-      async () => (await page.locator(".reaction-nameplate").count()) >= 8,
-      { label: "simple reaction nameplates" },
+      async () => (await page.locator(".reaction-nameplate").count()) >= 5,
+      { label: "compact reaction nameplates" },
     );
     const simpleText = await getBodyText(page);
     if (!simpleText.includes("Avery")) {
       throw new Error("Expected simple TV profile to keep sender attribution visible.");
     }
     if ((await page.locator(".reaction-type-chip").count()) !== 0) {
-      throw new Error("Simple TV profile should not render the heavier reaction type chips.");
+      throw new Error("Compact TV reaction density should not render heavier reaction type chips.");
     }
     return;
-  }
-
-  await waitFor(
-    async () => (await page.locator(".reaction-type-chip").count()) >= 8,
-    { label: "standard reaction type chips" },
-  );
-  const normalizedBodyText = bodyText.toLowerCase();
-  if (!normalizedBodyText.includes("bloom") || !normalizedBodyText.includes("royal")) {
-    throw new Error("Expected standard TV profile to show themed reaction labels.");
   }
 };
 

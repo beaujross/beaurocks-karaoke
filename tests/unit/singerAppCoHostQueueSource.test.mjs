@@ -30,7 +30,7 @@ test('SingerApp keeps co-host queue assist inside the audience request flow', ()
   );
   assert.match(
     source,
-    /Fewer buttons on purpose\. Use one broad note and the host can handle the exact adjustment\./,
-    'SingerApp should explain the tightened co-host signal module copy',
+    /Private operational notes are timestamped and tied to the live performance when one is up\./,
+    'SingerApp should explain the private co-host signal workflow',
   );
 });

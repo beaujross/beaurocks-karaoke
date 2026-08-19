@@ -62,6 +62,17 @@ async function resetState() {
       salt: "server-only-salt",
       hash: "server-only-hash",
     });
+    await db.doc(`room_prompt_sessions_private/${ROOM_CODE}`).set({
+      roomCode: ROOM_CODE,
+      kind: "trivia",
+      prompts: [{
+        id: "private-question",
+        q: "Server-only question",
+        options: ["A", "B"],
+        answer: "B",
+        correct: 1,
+      }],
+    });
     await db.doc("night_series/night_rules_test").set({
       seriesId: "night_rules_test",
       roomCode: ROOM_CODE,
@@ -665,6 +676,19 @@ async function run() {
       }));
     }],
 
+    ["firestore: prompt-session answer keys are server-only", async () => {
+      const hostDb = nonAnonymousContext(HOST_UID).firestore();
+      const guestDb = nonAnonymousContext(GUEST_UID).firestore();
+      const publicDb = testEnv.unauthenticatedContext().firestore();
+      const privateRef = `room_prompt_sessions_private/${ROOM_CODE}`;
+      await assertFails(hostDb.doc(privateRef).get());
+      await assertFails(guestDb.doc(privateRef).get());
+      await assertFails(publicDb.doc(privateRef).get());
+      await assertFails(hostDb.doc(privateRef).update({
+        prompts: [{ id: "forged", answer: "A", correct: 0 }],
+      }));
+    }],
+
     ["firestore: recurrence definitions and cancellation history are callable-only", async () => {
       const db = nonAnonymousContext(HOST_UID).firestore();
       await assertFails(db.doc("night_series/night_rules_test").get());
@@ -972,9 +996,9 @@ async function run() {
       );
     }],
 
-    ["firestore: non-anonymous account can create chat message", async () => {
+    ["firestore: clients cannot write legacy public chat", async () => {
       const db = nonAnonymousContext(GUEST_UID).firestore();
-      await assertSucceeds(
+      await assertFails(
         db.doc(`${ROOT}/chat_messages/chat_1`).set({
           roomCode: ROOM_CODE,
           uid: GUEST_UID,
@@ -983,6 +1007,88 @@ async function run() {
           channel: "lounge",
         })
       );
+    }],
+
+    ["firestore: Room members can read lounge messages but outsiders cannot", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({ roomCode: ROOM_CODE, uid: GUEST_UID, name: "Guest" });
+        await db.doc("room_lounge_messages/lounge_1").set({ roomCode: ROOM_CODE, uid: GUEST_UID, text: "Hello" });
+      });
+      await assertSucceeds(nonAnonymousContext(GUEST_UID).firestore().doc("room_lounge_messages/lounge_1").get());
+      await assertSucceeds(nonAnonymousContext(HOST_UID).firestore().doc("room_lounge_messages/lounge_1").get());
+      await assertFails(nonAnonymousContext(OTHER_UID).firestore().doc("room_lounge_messages/lounge_1").get());
+      await assertFails(testEnv.unauthenticatedContext().firestore().doc("room_lounge_messages/lounge_1").get());
+      await assertFails(nonAnonymousContext(GUEST_UID).firestore().doc("room_lounge_messages/lounge_2").set({
+        roomCode: ROOM_CODE,
+        uid: GUEST_UID,
+        text: "Bypass server",
+      }));
+    }],
+
+    ["firestore: private Host messages stay between participant and Host", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("room_private_messages/dm_1").set({
+          roomCode: ROOM_CODE,
+          participantUid: GUEST_UID,
+          uid: GUEST_UID,
+          text: "Private help",
+        });
+      });
+      await assertSucceeds(nonAnonymousContext(GUEST_UID).firestore().doc("room_private_messages/dm_1").get());
+      await assertSucceeds(nonAnonymousContext(HOST_UID).firestore().doc("room_private_messages/dm_1").get());
+      await assertFails(nonAnonymousContext(OTHER_UID).firestore().doc("room_private_messages/dm_1").get());
+      await assertFails(testEnv.unauthenticatedContext().firestore().doc("room_private_messages/dm_1").get());
+      await assertFails(nonAnonymousContext(GUEST_UID).firestore().doc("room_private_messages/dm_2").set({
+        roomCode: ROOM_CODE,
+        participantUid: GUEST_UID,
+        text: "Bypass server",
+      }));
+    }],
+
+    ["firestore: Tell Host signals are private and client writes are blocked", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("room_operator_signals/signal_1").set({
+          roomCode: ROOM_CODE,
+          actorUid: GUEST_UID,
+          actorUids: [GUEST_UID],
+          type: "guest_help",
+          status: "delivered",
+        });
+      });
+      await assertSucceeds(nonAnonymousContext(GUEST_UID).firestore().doc("room_operator_signals/signal_1").get());
+      await assertSucceeds(nonAnonymousContext(HOST_UID).firestore().doc("room_operator_signals/signal_1").get());
+      await assertFails(nonAnonymousContext(OTHER_UID).firestore().doc("room_operator_signals/signal_1").get());
+      await assertFails(nonAnonymousContext(GUEST_UID).firestore().doc("room_operator_signals/signal_2").set({
+        roomCode: ROOM_CODE,
+        actorUid: GUEST_UID,
+        actorUids: [GUEST_UID],
+        type: "guest_help",
+      }));
+    }],
+
+    ["firestore: co-host invitations are visible only to target and Host", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc("room_cohost_invites/invite_1").set({
+          roomCode: ROOM_CODE,
+          targetUid: GUEST_UID,
+          status: "invited",
+        });
+      });
+      await assertSucceeds(nonAnonymousContext(GUEST_UID).firestore().doc("room_cohost_invites/invite_1").get());
+      await assertSucceeds(nonAnonymousContext(HOST_UID).firestore().doc("room_cohost_invites/invite_1").get());
+      await assertFails(nonAnonymousContext(OTHER_UID).firestore().doc("room_cohost_invites/invite_1").get());
+      await assertFails(nonAnonymousContext(GUEST_UID).firestore().doc("room_cohost_invites/invite_1").update({ status: "active" }));
+    }],
+
+    ["firestore: TV chat projection is public but client writes are blocked", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().doc(`${ROOT}/tv_chat_messages/tv_1`).set({ roomCode: ROOM_CODE, text: "TV safe" });
+      });
+      await assertSucceeds(testEnv.unauthenticatedContext().firestore().doc(`${ROOT}/tv_chat_messages/tv_1`).get());
+      await assertFails(nonAnonymousContext(GUEST_UID).firestore().doc(`${ROOT}/tv_chat_messages/tv_2`).set({ roomCode: ROOM_CODE, text: "Forged" }));
     }],
 
     ["firestore: user cannot create room_user doc with phone field", async () => {

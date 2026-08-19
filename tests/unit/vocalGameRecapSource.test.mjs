@@ -32,6 +32,6 @@ test('Public TV and Host expose vocal game recap surfaces', () => {
   assert.match(hostSource, /data-host-vocal-game-recap/);
   assert.match(hostSource, /Clear Recap/);
   assert.match(hostSource, /activeMode === 'karaoke' && activeGameRecap/);
-  assert.match(hostSource, /\|\| room\?\.gameData\?\.recap\) &&/);
+  assert.match(hostSource, /\|\| room\?\.gameData\?\.recap\)\) &&/);
   assert.match(hostSource, /room\?\.gameData\?\.recap \? 'RECAP' : ''/);
 });

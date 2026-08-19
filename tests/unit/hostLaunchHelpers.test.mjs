@@ -89,6 +89,7 @@ test("hostLaunchHelpers normalizes event credits and claim codes", () => {
       skipLineBonusPoints: "600",
       websiteCheckInPoints: "150",
       socialPromoPoints: "250",
+      reactionSlot5PurchasesEnabled: true,
       coHostCreditPolicy: "unlimited",
       reactionTapCooldownMs: "1600.4",
       claimCodes: {
@@ -106,6 +107,7 @@ test("hostLaunchHelpers normalizes event credits and claim codes", () => {
   assert.equal(payload.vipBonusPoints, 400);
   assert.equal(payload.coHostCreditPolicy, CO_HOST_CREDIT_POLICIES.unlimited);
   assert.equal(payload.reactionTapCooldownMs, 1600);
+  assert.equal(payload.reactionSlot5PurchasesEnabled, true);
   assert.equal(payload.claimCodes.vip, "VIP2026");
   assert.equal(payload.claimCodes.skipLine, "SKIP-2026");
   assert.equal(payload.claimCodes.websiteCheckIn, "CHECKIN");
@@ -117,6 +119,14 @@ test("hostLaunchHelpers keeps co-host credit defaults in drafts", () => {
 
   assert.equal(draft.coHostCreditPolicy, CO_HOST_CREDIT_POLICIES.standard);
   assert.equal(draft.reactionTapCooldownMs, DEFAULT_REACTION_TAP_COOLDOWN_MS);
+  assert.equal(draft.reactionSlot5PurchasesEnabled, false);
+});
+
+test("hostLaunchHelpers disables fifth reaction-slot purchases when event credits are off", () => {
+  assert.equal(buildProvisionEventCreditsPayload({
+    enabled: false,
+    reactionSlot5PurchasesEnabled: true,
+  }).reactionSlot5PurchasesEnabled, false);
 });
 
 test("hostLaunchHelpers persists Host BeauBucks intent without submitting the admin permission", () => {

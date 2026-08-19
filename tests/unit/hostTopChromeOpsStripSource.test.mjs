@@ -140,10 +140,10 @@ test('top-level host navigation dismisses transient menus before changing worksp
 });
 
 test('host flow dropdown exposes room control model choices above detailed pacing controls', () => {
-  assert.match(source, /ROOM_CONTROL_MODEL_OPTIONS = Object\.freeze\(\[[\s\S]*Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
+  assert.match(source, /ROOM_CONTROL_MODEL_OPTIONS = Object\.freeze\(\[[\s\S]*Host-Led[\s\S]*Host Assist[\s\S]*Self-Serve/);
   assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*data-host-room-control-model/);
   assert.doesNotMatch(source, /data-feature-id="deck-queue-menu-toggle"[\s\S]*data-host-room-control-model/);
-  assert.match(source, /Room control model[\s\S]*host-driven, host-assisted, or crowd-driven/);
+  assert.match(source, /Hosting Level[\s\S]*Mic Checkpoint stays a separate performance control/);
   assert.match(source, /Tonight's effective controls/);
   assert.match(source, /Start the next singer automatically/);
   assert.match(source, /Start backing media automatically/);
@@ -155,10 +155,11 @@ test('host flow dropdown exposes room control model choices above detailed pacin
   assert.match(hostAppSource, /onSetAutoPartyOrderPreset: setAutoPartyOrderPresetQuick/);
   assert.match(source, /Let the crowd extend or rotate singers/);
   assert.match(source, /Direct changes here override any preset or starting point/);
-  assert.match(source, /activeRoomControlModel = quickRoomControls\?\.oneMinuteMicEnabled[\s\S]*'crowd_driven'[\s\S]*quickAutomationControls\?\.autoDj[\s\S]*'assisted_host'[\s\S]*'host_led'/);
+  assert.match(source, /activeRoomControlModel = room\?\.nightPlan\?\.hostingLevel === 'self_serve'[\s\S]*'crowd_driven'[\s\S]*room\?\.nightPlan\?\.hostingLevel === 'assisted'[\s\S]*'assisted_host'[\s\S]*'host_led'/);
   assert.match(source, /quickRoomControls\.onApplyRoomControlModel\?\.\(option\.id\)/);
   assert.match(hostAppSource, /const applyRoomControlModelQuick = async \(modelId = 'host_led'\) => \{/);
-  assert.match(hostAppSource, /autoDj: nextAutoDj[\s\S]*oneMinuteMicEnabled: nextOneMinuteMic[\s\S]*performanceProgressionMode: nextOneMinuteMic \? 'one_minute_mic' : 'full_song'/);
-  assert.match(hostAppSource, /!nextOneMinuteMic && \['continue_or_rotate', 'skip_performance'\]\.includes\(activeAudienceDecisionType\)[\s\S]*roomPatch\.audienceDecision = null/);
+  assert.match(hostAppSource, /autoDj: nextAutoDj[\s\S]*nightPlan:[\s\S]*hostingLevel: safeModel === 'crowd_driven' \? 'self_serve'/);
+  assert.doesNotMatch(hostAppSource, /const nextOneMinuteMic = safeModel === 'crowd_driven'/);
+  assert.match(hostAppSource, /safeModel === 'host_led' && \['continue_or_rotate', 'skip_performance'\]\.includes\(activeAudienceDecisionType\)[\s\S]*roomPatch\.audienceDecision = null/);
   assert.match(hostAppSource, /onApplyRoomControlModel: applyRoomControlModelQuick/);
 });

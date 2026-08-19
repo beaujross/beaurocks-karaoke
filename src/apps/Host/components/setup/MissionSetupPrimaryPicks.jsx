@@ -46,6 +46,11 @@ const MissionSetupPrimaryPicks = ({
         spotlightMode: selectedSpotlightMode,
         performanceMode: selectedPerformanceMode,
     };
+    const selectedRecipe = recipes.find((recipe) => (
+        selectedRecipeId
+            ? selectedRecipeId === recipe.id
+            : isRoomSetupRecipeSelected(recipe, selection)
+    )) || recipes[0];
 
     return (
         <section
@@ -69,7 +74,31 @@ const MissionSetupPrimaryPicks = ({
                 ) : null}
             </div>
 
-            <div className={`mt-2 flex max-w-full snap-x snap-mandatory gap-2 overflow-x-auto pb-1.5 pr-2 [scrollbar-color:rgba(34,211,238,0.35)_transparent] ${wideGrid ? '2xl:grid 2xl:grid-cols-5 2xl:overflow-visible 2xl:pr-0' : ''}`}>
+            {wideGrid ? (
+                <label className="mt-3 block sm:hidden">
+                    <span className="sr-only">Choose a room recipe</span>
+                    <span className="flex min-h-[72px] items-center gap-3 rounded-xl bg-gradient-to-r from-cyan-500/12 to-fuchsia-500/10 p-3 ring-1 ring-cyan-200/22">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cyan-300 text-slate-950">
+                            <i className={`fa-solid ${selectedRecipe?.icon || 'fa-wand-magic-sparkles'}`} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                            <select
+                                value={selectedRecipe?.id || ''}
+                                onChange={(event) => {
+                                    const recipe = recipes.find((item) => item.id === event.target.value);
+                                    if (recipe) onApplyRecipe(recipe);
+                                }}
+                                className="min-h-[44px] w-full rounded-lg border border-cyan-200/20 bg-slate-950 px-3 py-2 text-sm font-black text-white outline-none focus:border-cyan-300/55"
+                            >
+                                {recipes.map((recipe) => <option key={recipe.id} value={recipe.id}>{recipe.label}</option>)}
+                            </select>
+                            <span className="mt-1 block text-xs leading-4 text-cyan-50/64">{selectedRecipe?.description}</span>
+                        </span>
+                    </span>
+                </label>
+            ) : null}
+
+            <div className={`mt-2 max-w-full gap-2 ${wideGrid ? 'hidden sm:grid sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5' : 'flex snap-x snap-mandatory overflow-x-auto pb-1.5 pr-2 [scrollbar-color:rgba(34,211,238,0.35)_transparent]'}`}>
                 {recipes.map((recipe) => {
                     const selected = selectedRecipeId
                         ? selectedRecipeId === recipe.id
@@ -83,7 +112,7 @@ const MissionSetupPrimaryPicks = ({
                             data-room-recipe-card={recipe.id}
                             aria-pressed={selected}
                             onClick={() => onApplyRecipe(recipe)}
-                            className={`relative h-[116px] w-[min(82vw,250px)] shrink-0 snap-start overflow-hidden rounded-xl border p-3 text-left transition-all md:w-[230px] ${wideGrid ? '2xl:w-auto' : ''} ${selected
+                            className={`relative h-[116px] overflow-hidden rounded-xl border p-3 text-left transition-all ${wideGrid ? 'w-full' : 'w-[min(82vw,250px)] shrink-0 snap-start md:w-[230px]'} ${selected
                                 ? 'border-cyan-300/60 bg-cyan-500/14 shadow-[0_0_0_1px_rgba(34,211,238,0.22),0_16px_34px_rgba(0,0,0,0.22)]'
                                 : 'border-white/15 bg-slate-800/55 hover:border-pink-300/36 hover:bg-slate-700/60'}`}
                         >

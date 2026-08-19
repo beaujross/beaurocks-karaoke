@@ -280,7 +280,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
 
         if (isPlayer) {
             return (
-                <div data-prompt-vote-player-view="trivia" className="h-full min-h-0 overflow-y-auto flex flex-col justify-start sm:justify-center p-4 sm:p-6 bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
+                <div data-prompt-vote-player-view="trivia" className="h-full min-h-0 overflow-y-auto flex flex-col justify-start p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+5.75rem)] sm:p-6 sm:pt-[calc(env(safe-area-inset-top)+6rem)] md:justify-center bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
                     <div className="text-xl font-bold mb-6 text-[#00C4D9] uppercase tracking-widest">Trivia Challenge</div>
                     {!isReveal && timerSecRemaining !== null && (
                         <div className="mb-4 inline-flex self-center items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
@@ -460,7 +460,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         const wyrPrompt = String(gameState?.question || '').trim();
         if (isPlayer) {
             return (
-                <div data-prompt-vote-player-view="wyr" className="h-full min-h-0 overflow-y-auto flex flex-col justify-start sm:justify-center p-4 sm:p-6 bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
+                <div data-prompt-vote-player-view="wyr" className="h-full min-h-0 overflow-y-auto flex flex-col justify-start p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+5.75rem)] sm:p-6 sm:pt-[calc(env(safe-area-inset-top)+6rem)] md:justify-center bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
                     <div className="text-2xl font-black mb-6 text-[#EC4899] uppercase tracking-[0.2em]">WOULD YOU RATHER...</div>
                     {!isReveal && timerSecRemaining !== null && (
                         <div className="mb-4 inline-flex self-center items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
@@ -504,22 +504,22 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                             )}
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-3 sm:gap-4 min-h-0 justify-center">
+                        <div className="mx-auto grid w-full max-w-4xl grid-cols-1 items-stretch gap-3 sm:gap-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:gap-5">
                             <button
                                 data-wyr-choice="A"
                                 onClick={() => castVote('A')}
                                 disabled={isSubmittingVote}
-                                className={`flex-1 bg-gradient-to-br from-[#EC4899] to-[#c0267c] border-4 border-white/20 rounded-3xl text-[clamp(1.35rem,7vw,2rem)] font-black shadow-[0_14px_38px_rgba(236,72,153,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[clamp(112px,24vh,150px)] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+                                className={`bg-gradient-to-br from-[#EC4899] to-[#c0267c] border-4 border-white/20 rounded-3xl text-[clamp(1.35rem,7vw,2rem)] font-black shadow-[0_14px_38px_rgba(236,72,153,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[clamp(112px,24vh,150px)] md:min-h-[260px] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
                             >
                                 <span className="text-xs uppercase tracking-[0.3em] mb-2 text-pink-100/90">Choice A</span>
                                 {gameState.optionA}
                             </button>
-                            <div className="text-xl font-black opacity-70 py-1 tracking-[0.2em]">OR</div>
+                            <div className="self-center text-xl font-black opacity-70 py-1 tracking-[0.2em]">OR</div>
                             <button
                                 data-wyr-choice="B"
                                 onClick={() => castVote('B')}
                                 disabled={isSubmittingVote}
-                                className={`flex-1 bg-gradient-to-br from-[#00C4D9] to-[#0f8ea7] border-4 border-white/20 rounded-3xl text-[clamp(1.35rem,7vw,2rem)] font-black shadow-[0_14px_38px_rgba(0,196,217,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[clamp(112px,24vh,150px)] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+                                className={`bg-gradient-to-br from-[#00C4D9] to-[#0f8ea7] border-4 border-white/20 rounded-3xl text-[clamp(1.35rem,7vw,2rem)] font-black shadow-[0_14px_38px_rgba(0,196,217,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[clamp(112px,24vh,150px)] md:min-h-[260px] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
                             >
                                 <span className="text-xs uppercase tracking-[0.3em] mb-2 text-cyan-100/90">Choice B</span>
                                 {gameState.optionB}

@@ -3,12 +3,15 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import {
+  getTvReactionEntranceKey,
   getTvReactionEmojiClass,
   getTvReactionLabel,
   getTvReactionLaneLeft,
   getTvReactionMotionSpec,
   getTvReactionThemeKey,
+  selectTvReactionPresentation,
 } from '../../src/apps/TV/publicTvReactionConfig.js';
+import { REACTION_CATALOG } from '../../src/lib/reactionCatalog.js';
 
 test('Public TV reaction config preserves blossom presentation on the legacy money key', () => {
   assert.equal(getTvReactionLabel('money'), 'Bloom');
@@ -31,9 +34,21 @@ test('Public TV reaction config keeps unique motion identities for the major rea
   assert.equal(getTvReactionMotionSpec({ type: 'fire', id: 'a', index: 0 }).variant, 'ember');
   assert.equal(getTvReactionMotionSpec({ type: 'heart', id: 'a', index: 0 }).variant, 'heart');
   assert.equal(getTvReactionMotionSpec({ type: 'clap', id: 'a', index: 0 }).variant, 'applause');
-  assert.equal(getTvReactionMotionSpec({ type: 'tomato', id: 'a', index: 0 }).variant, 'blossom');
-  assert.equal(getTvReactionMotionSpec({ type: 'dragon', id: 'a', index: 0 }).variant, 'ember');
-  assert.equal(getTvReactionMotionSpec({ type: 'ufo', id: 'a', index: 0 }).variant, 'launch');
+  assert.equal(getTvReactionMotionSpec({ type: 'tomato', id: 'a', index: 0 }).variant, 'tomato-splat');
+  assert.equal(getTvReactionMotionSpec({ type: 'dragon', id: 'a', index: 0 }).variant, 'dragon-breath');
+  assert.equal(getTvReactionMotionSpec({ type: 'ufo', id: 'a', index: 0 }).variant, 'ufo-beam');
+});
+
+test('every voting reaction has a unique entrance identity', () => {
+  const entranceKeys = REACTION_CATALOG.map((reaction) => getTvReactionEntranceKey(reaction.id));
+  assert.equal(entranceKeys.every(Boolean), true);
+  assert.equal(new Set(entranceKeys).size, REACTION_CATALOG.length);
+  REACTION_CATALOG.forEach((reaction) => {
+    assert.equal(
+      getTvReactionMotionSpec({ type: reaction.id, id: 'catalog-check', index: 0 }).variant,
+      getTvReactionEntranceKey(reaction.id),
+    );
+  });
 });
 
 test('Public TV reaction config exposes differentiated themed path tuning', () => {
@@ -70,4 +85,25 @@ test('Public TV reaction config keeps deterministic lane placement and safe fall
     getTvReactionMotionSpec({ type: 'unknown_custom', id: 'fallback', index: 0 }).variant,
     /^(drift-left|drift-right|hover|bounce)$/,
   );
+});
+
+test('Public TV reaction presentation caps density and coalesces repeated taps without changing source events', () => {
+  const source = Array.from({ length: 12 }, (_, index) => ({
+    id: `reaction-${index}`,
+    uid: index < 5 ? 'repeat-user' : `user-${index}`,
+    userName: index < 5 ? 'Repeat User' : `User ${index}`,
+    type: index < 5 ? 'heart' : (index % 2 ? 'fire' : 'clap'),
+    createdAtMs: 10_000 - (index * 200),
+    burstCount: 1,
+  }));
+  const presented = selectTvReactionPresentation(source, {
+    maxVisible: 6,
+    maxPerParticipant: 1,
+    coalesceWindowMs: 1800,
+  });
+
+  assert.equal(presented.length, 6);
+  assert.equal(presented.filter((reaction) => reaction.presentationParticipantKey === 'repeat-user').length, 1);
+  assert.equal(presented.find((reaction) => reaction.uid === 'repeat-user')?.burstCount, 5);
+  assert.equal(source[0].burstCount, 1, 'presentation coalescing must not mutate scored reaction events');
 });

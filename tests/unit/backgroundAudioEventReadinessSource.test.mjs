@@ -38,7 +38,7 @@ describe('background audio event-readiness QA contract', () => {
   });
 
   it('keeps the full-screen media library above Host chrome interactions', () => {
-    expect(hostSource).toMatch(/modalOverlayActive=\{sceneLibraryModalOpen\}/);
+    expect(hostSource).toMatch(/modalOverlayActive=\{sceneLibraryModalOpen \|\| hostFeedbackOpen\}/);
     expect(hostChromeSource).toMatch(/modalOverlayActive \? 'pointer-events-none invisible'/);
   });
 });

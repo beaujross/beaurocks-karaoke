@@ -9,12 +9,20 @@ import {
   isCoHostSignalActivity,
 } from '../../src/lib/coHostSignals.js';
 
-test('co-host signal definitions stay intentionally small and stable', () => {
-  assert.equal(COHOST_SIGNAL_OPTIONS.length, 3);
+test('co-host signal definitions stay bounded and cover the helper workflow', () => {
+  assert.equal(COHOST_SIGNAL_OPTIONS.length, 7);
   assert.ok(COHOST_SIGNAL_WINDOW_MS > COHOST_SIGNAL_COOLDOWN_MS);
   assert.deepEqual(
     COHOST_SIGNAL_OPTIONS.map((entry) => entry.id),
-    ['track_issue', 'vocal_issue', 'mix_issue'],
+    [
+      'wrong_backing',
+      'track_issue',
+      'vocal_issue',
+      'mix_issue',
+      'guest_help',
+      'next_not_ready',
+      'pacing',
+    ],
   );
 });
 

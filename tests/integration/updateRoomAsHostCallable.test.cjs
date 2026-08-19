@@ -88,6 +88,31 @@ async function run() {
       assert.equal((await roomRef.get()).get("autoDj"), true);
     }],
 
+    ["closing a Room expires helper access and unresolved Tell Host notes", async () => {
+      await roomRef.set({
+        coHostRoleSchemaVersion: 2,
+        coHostUids: [GUEST_UID],
+        runOfShowRoles: { coHosts: [GUEST_UID] },
+      }, { merge: true });
+      await db.doc(`room_cohost_invites/${ROOM_CODE}_${GUEST_UID}`).set({
+        roomCode: ROOM_CODE,
+        targetUid: GUEST_UID,
+        status: "active",
+      });
+      await db.doc("room_operator_signals/close_signal").set({
+        roomCode: ROOM_CODE,
+        actorUids: [GUEST_UID],
+        status: "seen",
+      });
+
+      await updateRoomAsHost.run(requestFor(HOST_UID, { closedAt: Date.now() }));
+      const roomSnap = await roomRef.get();
+      assert.deepEqual(roomSnap.get("coHostUids"), []);
+      assert.deepEqual(roomSnap.get("runOfShowRoles.coHosts"), []);
+      assert.equal((await db.doc(`room_cohost_invites/${ROOM_CODE}_${GUEST_UID}`).get()).get("status"), "expired");
+      assert.equal((await db.doc("room_operator_signals/close_signal").get()).get("status"), "expired");
+    }],
+
     ["host can update live stage camera presentation", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         liveStageCameraMode: "corner",
@@ -263,6 +288,7 @@ async function run() {
         eventCredits: {
           enabled: true,
           beauBucksEnabledTonight: true,
+          reactionSlot5PurchasesEnabled: true,
           eventId: "aahf_kickoff",
           eventLabel: "AAHF Karaoke Kick-Off",
           generalAdmissionPoints: 200,
@@ -363,6 +389,7 @@ async function run() {
       assert.equal(snap.get("lobbyOrbSkinUrl"), "https://example.com/orb.png");
       assert.equal(snap.get("eventCredits.enabled"), true);
       assert.equal(snap.get("eventCredits.beauBucksEnabledTonight"), true);
+      assert.equal(snap.get("eventCredits.reactionSlot5PurchasesEnabled"), true);
       assert.equal(snap.get("eventCredits.beauBucksAuthorityEnabled"), true);
       assert.equal(snap.get("eventCredits.generalAdmissionPoints"), 200);
       assert.equal(snap.get("eventCredits.audienceAccessMode"), "email_or_donation");
@@ -707,8 +734,16 @@ async function run() {
 
     ["host can sync Apple Music playback dotted fields", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        "appleMusicPlayback.type": "playlist",
+        "appleMusicPlayback.trackId": "apple_track_42",
+        "appleMusicPlayback.trackTitle": "Test Track",
+        "appleMusicPlayback.trackArtist": "Test Artist",
+        "appleMusicPlayback.artworkUrl": "https://example.com/artwork.jpg",
         "appleMusicPlayback.status": "playing",
         "appleMusicPlayback.positionSec": 42.5,
+        "appleMusicPlayback.queueIndex": 2,
+        "appleMusicPlayback.queueLength": 12,
+        "appleMusicPlayback.restoredAt": 1714411114000,
         "appleMusicPlayback.lastReportedAt": 1714411115000,
         "appleMusicPlayback.lastHeartbeatAt": 1714411115000,
         "appleMusicPlayback.durationSec": 210,
@@ -722,8 +757,16 @@ async function run() {
       assert.deepEqual(
         new Set(result.updatedKeys),
         new Set([
+          "appleMusicPlayback.type",
+          "appleMusicPlayback.trackId",
+          "appleMusicPlayback.trackTitle",
+          "appleMusicPlayback.trackArtist",
+          "appleMusicPlayback.artworkUrl",
           "appleMusicPlayback.status",
           "appleMusicPlayback.positionSec",
+          "appleMusicPlayback.queueIndex",
+          "appleMusicPlayback.queueLength",
+          "appleMusicPlayback.restoredAt",
           "appleMusicPlayback.lastReportedAt",
           "appleMusicPlayback.lastHeartbeatAt",
           "appleMusicPlayback.durationSec",
@@ -735,8 +778,16 @@ async function run() {
       );
 
       const snap = await roomRef.get();
+      assert.equal(snap.get("appleMusicPlayback.type"), "playlist");
+      assert.equal(snap.get("appleMusicPlayback.trackId"), "apple_track_42");
+      assert.equal(snap.get("appleMusicPlayback.trackTitle"), "Test Track");
+      assert.equal(snap.get("appleMusicPlayback.trackArtist"), "Test Artist");
+      assert.equal(snap.get("appleMusicPlayback.artworkUrl"), "https://example.com/artwork.jpg");
       assert.equal(snap.get("appleMusicPlayback.status"), "playing");
       assert.equal(snap.get("appleMusicPlayback.positionSec"), 42.5);
+      assert.equal(snap.get("appleMusicPlayback.queueIndex"), 2);
+      assert.equal(snap.get("appleMusicPlayback.queueLength"), 12);
+      assert.equal(snap.get("appleMusicPlayback.restoredAt"), 1714411114000);
       assert.equal(snap.get("currentPerformanceSession.playbackState"), "playing");
       assert.equal(snap.get("currentPerformanceSession.playerPositionSec"), 42.5);
     }],

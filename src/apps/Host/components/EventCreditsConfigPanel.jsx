@@ -192,6 +192,34 @@ const EventCreditsConfigPanel = ({
                     ))}
                 </div>
 
+                <div className="mt-4 rounded-2xl border border-violet-300/24 bg-[linear-gradient(135deg,rgba(124,58,237,0.16),rgba(8,15,30,0.9))] p-4" data-feature-id="host-reaction-slot-5-control">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="max-w-2xl">
+                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-violet-200/75">Audience voting reactions</div>
+                            <div className="mt-1 text-base font-black text-white">Let guests unlock a fifth voting emoji</div>
+                            <div className="mt-1 text-sm leading-6 text-zinc-300">
+                                Guests spend 250 Room Points for slot 5. The slot lasts only in this room; their account-owned reactions and premium slot 6 travel with them.
+                            </div>
+                        </div>
+                        <label className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-violet-300/30 bg-violet-500/12 px-3 py-2 text-sm font-black text-violet-50">
+                            <input
+                                type="checkbox"
+                                checked={eventCreditsConfig?.enabled === true && eventCreditsConfig?.reactionSlot5PurchasesEnabled === true}
+                                onChange={(e) => updateConfig({
+                                    enabled: e.target.checked ? true : eventCreditsConfig?.enabled === true,
+                                    reactionSlot5PurchasesEnabled: e.target.checked,
+                                })}
+                            />
+                            {eventCreditsConfig?.enabled === true && eventCreditsConfig?.reactionSlot5PurchasesEnabled === true ? 'Purchases on' : 'Purchases off'}
+                        </label>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2"><div className="text-[9px] uppercase tracking-[0.16em] text-zinc-500">Cost</div><div className="mt-1 text-sm font-black text-cyan-100">250 Room Points</div></div>
+                        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2"><div className="text-[9px] uppercase tracking-[0.16em] text-zinc-500">Ownership</div><div className="mt-1 text-sm font-black text-white">This room only</div></div>
+                        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2"><div className="text-[9px] uppercase tracking-[0.16em] text-zinc-500">Guest result</div><div className="mt-1 text-sm font-black text-violet-100">1 swappable reaction</div></div>
+                    </div>
+                </div>
+
                 <div className={`mt-4 grid gap-3 ${compact ? 'lg:grid-cols-1' : 'lg:grid-cols-3'}`} data-room-economy-guest-loop="true">
                     {economySummary.cards.map((card) => (
                         <div key={card.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">

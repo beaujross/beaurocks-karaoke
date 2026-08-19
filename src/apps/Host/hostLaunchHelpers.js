@@ -51,6 +51,7 @@ export const DEFAULT_QUICK_LAUNCH_DISCOVERY = Object.freeze({
 export const DEFAULT_EVENT_CREDITS_CONFIG = Object.freeze({
     enabled: false,
     beauBucksEnabledTonight: false,
+    reactionSlot5PurchasesEnabled: false,
     presetId: 'custom_event_credits',
     eventId: '',
     eventLabel: '',
@@ -397,6 +398,7 @@ export const buildProvisionEventCreditsPayload = (draft = {}) => {
     return {
         enabled,
         beauBucksEnabledTonight: enabled && nextDraft.beauBucksEnabledTonight === true,
+        reactionSlot5PurchasesEnabled: enabled && nextDraft.reactionSlot5PurchasesEnabled === true,
         presetId: sanitizeEventCode(nextDraft.presetId || 'custom_event_credits') || 'custom_event_credits',
         eventId,
         eventLabel,

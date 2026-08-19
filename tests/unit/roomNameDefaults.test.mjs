@@ -3,12 +3,12 @@ import { test } from 'vitest';
 
 import { buildDefaultHostRoomName } from '../../src/apps/Host/roomNameDefaults.js';
 
-test('default Room names include the host and a precise readable timestamp', () => {
+test('default Room names include the host and a concise readable timestamp', () => {
   const timestamp = new Date(2026, 7, 1, 19, 5, 6, 123);
 
   assert.equal(
     buildDefaultHostRoomName('  Beau  ', timestamp),
-    'Beau · Aug 1, 2026, 7:05:06.123 PM',
+    'Beau · Aug 1, 2026, 7:05 PM',
   );
 });
 
@@ -17,6 +17,6 @@ test('default Room names remain usable before a host name is available', () => {
 
   assert.equal(
     buildDefaultHostRoomName('', timestamp),
-    'Host · Aug 1, 2026, 7:05:06.007 AM',
+    'Host · Aug 1, 2026, 7:05 AM',
   );
 });

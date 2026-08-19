@@ -58,9 +58,15 @@ const main = async () => {
     isMobile: true,
     hasTouch: true,
   });
+  const tabletContext = await browser.newContext({
+    viewport: { width: 1024, height: 768 },
+    deviceScaleFactor: 1,
+    isMobile: false,
+    hasTouch: true,
+  });
   const tvContext = await browser.newContext({ viewport: { width: 1600, height: 900 } });
 
-  for (const context of [hostContext, mobileContext, tvContext]) {
+  for (const context of [hostContext, mobileContext, tabletContext, tvContext]) {
     await context.addInitScript((firebaseConfig, fixedNowMs) => {
       if (!window.__firebase_config) window.__firebase_config = firebaseConfig;
       const originalDateNow = Date.now.bind(Date);
@@ -129,7 +135,34 @@ const main = async () => {
         await page.getByText("Trivia Challenge").first().waitFor({ state: "visible", timeout: timeoutMs });
         await page.locator('[data-qa-choice="0"]').first().waitFor({ state: "visible", timeout: timeoutMs });
         await page.getByText("Which anthem gets the room singing first?").first().waitFor({ state: "visible", timeout: timeoutMs });
+        const [headerBox, titleBox] = await Promise.all([
+          page.locator('[data-feature-id="mobile-game-takeover-header"]').first().boundingBox(),
+          page.getByText("Trivia Challenge").first().boundingBox(),
+        ]);
+        if (!headerBox || !titleBox || headerBox.y + headerBox.height > titleBox.y + 1) {
+          throw new Error("Mobile takeover header overlaps the Trivia title.");
+        }
         return "audience trivia prompt rendered with answer choices";
+      } finally {
+        await page.close().catch(() => {});
+      }
+    });
+
+    await runCheck(checks, "audience_tablet_wyr_uses_the_available_width", async () => {
+      const page = await tabletContext.newPage();
+      bindPageErrors(page);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      try {
+        await gotoAudienceFixture(page, server.baseUrl, "streamlined-wyr-live", timeoutMs);
+        const choiceA = page.locator('[data-wyr-choice="A"]').first();
+        const choiceB = page.locator('[data-wyr-choice="B"]').first();
+        await choiceA.waitFor({ state: "visible", timeout: timeoutMs });
+        await choiceB.waitFor({ state: "visible", timeout: timeoutMs });
+        const [aBox, bBox] = await Promise.all([choiceA.boundingBox(), choiceB.boundingBox()]);
+        if (!aBox || !bBox || Math.abs(aBox.y - bBox.y) > 24 || aBox.x >= bBox.x) {
+          throw new Error("Tablet WYR choices should sit side by side with equal visual priority.");
+        }
+        return "tablet WYR uses a balanced two-choice layout";
       } finally {
         await page.close().catch(() => {});
       }
@@ -195,6 +228,7 @@ const main = async () => {
     await Promise.allSettled([
       hostContext.close(),
       mobileContext.close(),
+      tabletContext.close(),
       tvContext.close(),
       browser.close(),
     ]);

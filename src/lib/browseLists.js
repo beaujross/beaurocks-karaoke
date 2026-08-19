@@ -176,16 +176,30 @@ export const TOPIC_HITS = [
         ]
     },
     {
-        id: 'country_crowd',
-        title: 'Country Crowd Pleasers',
+        id: 'classic_country',
+        title: 'Classic Country Favorites',
         songs: [
-            { title: 'Friends in Low Places', artist: 'Garth Brooks' },
-            { title: 'Tennessee Whiskey', artist: 'Chris Stapleton' },
-            { title: 'Before He Cheats', artist: 'Carrie Underwood' },
-            { title: 'Wagon Wheel', artist: 'Darius Rucker' },
-            { title: 'Jolene', artist: 'Dolly Parton' },
+            { title: 'Ring of Fire', artist: 'Johnny Cash' },
             { title: 'Take Me Home Country Roads', artist: 'John Denver' },
-            { title: 'Man I Feel Like a Woman', artist: 'Shania Twain' },
+            { title: 'Jolene', artist: 'Dolly Parton' },
+            { title: 'The Gambler', artist: 'Kenny Rogers' },
+            { title: 'On the Road Again', artist: 'Willie Nelson' },
+            { title: 'Islands in the Stream', artist: 'Kenny Rogers and Dolly Parton' },
+            { title: 'Friends in Low Places', artist: 'Garth Brooks' },
+            { title: 'Man I Feel Like a Woman', artist: 'Shania Twain' }
+        ]
+    },
+    {
+        id: 'modern_country',
+        title: 'Modern Country Hits',
+        songs: [
+            { title: 'A Bar Song (Tipsy)', artist: 'Shaboozey' },
+            { title: 'I Had Some Help', artist: 'Post Malone and Morgan Wallen' },
+            { title: 'Heart Like a Truck', artist: 'Lainey Wilson' },
+            { title: 'Tennessee Whiskey', artist: 'Chris Stapleton' },
+            { title: 'Wagon Wheel', artist: 'Darius Rucker' },
+            { title: 'Before He Cheats', artist: 'Carrie Underwood' },
+            { title: 'Need You Now', artist: 'Lady A' },
             { title: 'Bless the Broken Road', artist: 'Rascal Flatts' }
         ]
     },
