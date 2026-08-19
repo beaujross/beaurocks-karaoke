@@ -464,7 +464,8 @@ test("runOfShowDirector normalizes operator roles and template metadata", () => 
     hostUids: [],
     roles,
   }), RUN_OF_SHOW_OPERATOR_ROLES.coHost);
-  assert.equal(getRunOfShowRoleCapabilities(RUN_OF_SHOW_OPERATOR_ROLES.coHost).canCurateMedia, true);
+  assert.equal(getRunOfShowRoleCapabilities(RUN_OF_SHOW_OPERATOR_ROLES.coHost).canCurateMedia, false);
+  assert.equal(getRunOfShowRoleCapabilities(RUN_OF_SHOW_OPERATOR_ROLES.coHost).canOperate, false);
   assert.equal(getRunOfShowRoleCapabilities(RUN_OF_SHOW_OPERATOR_ROLES.coHost).canPauseAutomation, false);
 });
 

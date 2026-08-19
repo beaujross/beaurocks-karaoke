@@ -96,7 +96,7 @@ const useHostSmokeTest = ({
                 return 'OK';
             }),
             runCheck('Chat messages query read', async () => {
-                await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), where('roomCode', '==', roomCode), limit(1)));
+                await getDocs(query(collection(db, 'room_lounge_messages'), where('roomCode', '==', roomCode), limit(1)));
                 return 'OK';
             }),
             runCheck('Host library read', async () => {

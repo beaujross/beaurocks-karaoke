@@ -212,13 +212,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /const keepStreamlinedStageAreaMountedForIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;/,
-    "SingerApp should keep the streamlined stage chrome mounted while the stage is empty",
-  );
-  assert.match(
-    source,
-    /const showStreamlinedIdleRequestCard = shouldShowStreamlinedIdleRequestCard\(\{/,
-    "SingerApp should derive the streamlined idle request-first state through a dedicated helper",
+    /isStreamlinedAudienceShell \? \(!!currentSinger \|\| bracketSignupActive\)/,
+    "SingerApp should remove empty streamlined stage chrome while preserving live and bracket stage content",
   );
   assert.match(
     source,
@@ -232,8 +227,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /className="relative z-10 min-h-\[112px\] border-b border-white\/10 bg-black\/35 px-4 py-3"/,
-    "SingerApp should reserve stable vertical space for the Party and Songs nav rows",
+    /const streamlinedPrimaryStageNav = showStreamlinedStageNav[\s\S]*min-h-\[58px\]/,
+    "SingerApp should keep the primary Party and Songs row compact and independent from tab-specific controls",
   );
   assert.match(
     source,
@@ -257,8 +252,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /role="tablist"\s+aria-label="Song request sections"\s+className="flex min-h-\[42px\] items-center gap-1 rounded-2xl border border-white\/10 bg-black\/20 px-1 py-1"/,
-    "SingerApp streamlined song controls should keep search and queue in one compact row",
+    /role="tablist"\s+aria-label="Song request sections"\s+className="grid min-h-\[42px\] grid-cols-2[\s\S]*sm:flex"/,
+    "SingerApp streamlined song tabs should remain readable below the full-width search field at narrow widths",
   );
   assert.match(
     source,
@@ -290,35 +285,11 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     /Host Review Pending/,
     "SingerApp should keep the request CTA language tight and only branch for true review states",
   );
-  assert.match(
-    source,
-    /Room Ready/,
-    "SingerApp streamlined idle home should read as room status instead of a duplicate request funnel",
-  );
-  assert.match(
-    source,
-    /No one is on stage yet/,
-    "SingerApp streamlined idle home should keep the copy focused on room status and pacing",
-  );
-  assert.match(
-    source,
-    /data-feature-id="singer-streamlined-idle-request-cta"/,
-    "SingerApp streamlined idle home should expose a dedicated request CTA for QA and regression coverage",
-  );
+  assert.doesNotMatch(source, /Room Ready|No one is on stage yet|singer-streamlined-idle-request-cta/);
   assert.match(
     source,
     /Add Song/,
     "SingerApp streamlined idle home should route guests into the Songs tab with the same Add Song language used elsewhere",
-  );
-  assert.match(
-    source,
-    /\) : showStreamlinedIdleReactionGuide \? \(/,
-    "SingerApp should not render the weaker Stage Open add-song card when the stronger Room Ready idle card is already on screen",
-  );
-  assert.match(
-    source,
-    /How it works/,
-    "SingerApp streamlined idle home should keep help available as a small secondary action instead of a full utility tile row",
   );
   assert.match(
     source,
@@ -327,13 +298,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /Sing, support, or just wait for the room to light up\. Songs is for joining the queue\. Party is for reacting once someone is live\./,
-    "SingerApp streamlined idle home should explain the three audience intents while still making Songs own the queue and Party own the live reaction state",
-  );
-  assert.match(
-    source,
-    /\(!isStreamlinedAudienceShell \|\| latestMyRequest \|\| activeRequestCount > 0\)/,
-    "SingerApp should hide the streamlined My Requests panel until there is request state to show",
+    /\{!isStreamlinedAudienceShell && \(\s*<div data-feature-id="singer-my-requests-panel"/,
+    "SingerApp should keep request summaries out of the streamlined Browse surface",
   );
   assert.match(
     source,
@@ -342,31 +308,20 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /item\.key === 'home' && showPerformanceVotingPromptCta[\s\S]*animate-pulse/,
-    "SingerApp should mark the Party tab with a pulsing live badge when voting is open away from home",
+    /item\.key === 'home' && showPerformanceVotingPromptCta[\s\S]*Vote/,
+    "SingerApp should mark Party as the voting destination without using a misleading animated stage action",
   );
   assert.doesNotMatch(
     source,
     /data-feature-id="singer-streamlined-performance-vote-banner"|Vote live now|Go Vote/,
     "SingerApp should not duplicate the streamlined Songs stage area with a full voting banner",
   );
-  assert.match(
-    source,
-    /NOW PERFORMING[\s\S]*Vote Now[\s\S]*setTab\('home'\)/,
-    "SingerApp should surface a compact vote tag inside the now-performing stage card",
-  );
-  assert.match(
-    source,
-    /data-feature-id="singer-idle-disabled-reaction-buttons"/,
-    "SingerApp should show idle reactions as disabled versions of the live controls",
-  );
-  assert.match(
-    source,
-    /data-feature-id=\{`idle-reaction-\$\{reaction\.key\}-button`\}/,
-    "SingerApp should keep idle reaction button affordances aligned with live reaction buttons",
-  );
-  const streamlinedStageNavRenderIndex = source.indexOf("{streamlinedStageNav}");
+  assert.match(source, /data-feature-id="audience-stage-expand"/);
+  assert.match(source, /const openAudienceVoting = \(\) => \{[\s\S]*scrollIntoView/);
+  assert.doesNotMatch(source, /audience-tight15-discovery|Latest request/);
+  const streamlinedStageNavRenderIndex = source.indexOf("{streamlinedPrimaryStageNav}");
   const omnipresentStageAreaIndex = source.indexOf("/* Omnipresent Stage Area */");
+  const streamlinedStageContextIndex = source.indexOf("{streamlinedStageContextNav}");
 
   assert.notEqual(
     streamlinedStageNavRenderIndex,
@@ -380,7 +335,11 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.ok(
     streamlinedStageNavRenderIndex < omnipresentStageAreaIndex,
-    "SingerApp should render the streamlined top nav outside the omnipresent stage gate so it stays visible when the stage is idle",
+    "SingerApp should render the primary nav above the shared stage",
+  );
+  assert.ok(
+    omnipresentStageAreaIndex < streamlinedStageContextIndex,
+    "SingerApp should render tab-specific Party or Songs controls below the shared stage so switching tabs does not move it",
   );
   assert.match(
     source,
@@ -421,8 +380,8 @@ test("SingerApp gives streamlined join and first-song flows clearer onboarding c
 
   assert.match(
     source,
-    /Pick the emoji that feels most you\./,
-    "SingerApp join should keep the hero copy concise now that the detailed Songs guidance lives in the supporting onboarding text",
+    /Pick your profile avatar\.[\s\S]*it does not change your voting-reaction buttons\./,
+    "SingerApp join should distinguish the profile avatar from performance voting reactions",
   );
   assert.doesNotMatch(
     source,
@@ -444,10 +403,10 @@ test("SingerApp gives streamlined join and first-song flows clearer onboarding c
     /Songs opens first so you can add yourself fast\./,
     "SingerApp join should reinforce the immediate post-join destination",
   );
-  assert.match(
+  assert.doesNotMatch(
     source,
     /Songs is where you add yourself\. Party is where you react once the room is rolling\./,
-    "SingerApp idle home should explain the difference between streamlined Party and Songs surfaces",
+    "SingerApp should not repeat Party and Songs onboarding in an idle-state card",
   );
   assert.match(
     source,
@@ -603,24 +562,12 @@ test("SingerApp shows pending feedback for slower audience game submissions and 
   );
 });
 
-test("SingerApp keeps streamlined empty-stage party focused on guidance instead of live spending", () => {
+test("SingerApp removes streamlined empty-stage filler without enabling live spending", () => {
   const source = readFileSync(singerAppPath, "utf8");
 
-  assert.match(
-    source,
-    /const showStreamlinedIdleReactionGuide = showStreamlinedIdleRequestCard && !performanceReactionsReady;/,
-    "SingerApp should derive a dedicated streamlined empty-stage reaction guide instead of falling through to live reaction controls",
-  );
-  assert.match(
-    source,
-    /data-feature-id="singer-streamlined-idle-reaction-guide"/,
-    "SingerApp should expose a dedicated empty-stage reaction guide card for streamlined Party",
-  );
-  assert.match(
-    source,
-    /Party reactions unlock when a singer is performing/,
-    "SingerApp should explicitly tell streamlined audiences that reaction spending waits for a live singer",
-  );
+  assert.doesNotMatch(source, /singer-streamlined-idle-reaction-guide|singer-idle-disabled-reaction-buttons/);
+  assert.match(source, /<AudienceReactionDeck[\s\S]*active=\{performanceReactionsReady\}/);
+  assert.match(source, /\) : isStreamlinedAudienceShell \? null : noSingerOnStage && !performanceReactionsReady \? \(/);
   assert.match(
     source,
     /if \(!currentSinger && !applauseModeActive && !takeoverClapVotingActive\) return toast\('Reactions wake up once someone is on stage or a scene goes live\.'\);/,
@@ -747,11 +694,7 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
     /Add another song or track the line/,
     "SingerApp should not keep the duplicate streamlined Browse add-song callout",
   );
-  assert.match(
-    source,
-    /setCatalogSearchOpen\(false\);[\s\S]*setSongsTab\('browse'\);[\s\S]*Browse More/,
-    "SingerApp should give audiences a direct way back to browse after submitting a request",
-  );
+  assert.doesNotMatch(source, /Browse More|Latest request/);
 });
 
 test("SingerApp browse overlays use the same viewport sheet isolation as other mobile sheets", () => {
@@ -1259,9 +1202,10 @@ test("SingerApp keeps secondary high-zoom action surfaces reachable", () => {
   );
   assert.match(
     source,
-    /handleExitGuitarMode[\s\S]*bottom: 'calc\(env\(safe-area-inset-bottom\) \+ 2\.5rem\)'/,
-    "Guitar Mode exit should respect the device safe area",
+    /data-feature-id="audience-guitar-crowd-solo"[\s\S]*bottom-\[max\(1\.3rem,env\(safe-area-inset-bottom\)\)\]/,
+    "Crowd Guitar Solo feedback should respect the device safe area",
   );
+  assert.doesNotMatch(source, /handleExitGuitarMode/, "Audience members should not receive a host-only Guitar Solo exit control");
   assert.match(
     source,
     /min-h-\[100dvh\][^`]*vibe-strobe[\s\S]*overflow-y-auto[\s\S]*h-44 w-44[\s\S]*sm:h-56 sm:w-56/,
@@ -1298,19 +1242,19 @@ test("SingerApp keeps secondary high-zoom action surfaces reachable", () => {
     "Photo overlay save/share actions should stay inside the safe-area viewport",
   );
 });
-test("SingerApp idle Live Reactions guide does not duplicate the wallet total", () => {
-  const source = readFileSync(singerAppPath, "utf8");
-  const cardStart = source.indexOf('data-feature-id="singer-streamlined-idle-reaction-guide"');
-  const cardEnd = source.indexOf('Reactions wake up once someone is on stage.', cardStart);
-  assert.ok(cardStart > 0, "SingerApp should render the streamlined idle Live Reactions guide");
-  assert.ok(cardEnd > cardStart, "SingerApp should include the idle Live Reactions body copy");
-  const cardSource = source.slice(cardStart, cardEnd);
 
-  assert.doesNotMatch(
-    cardSource,
-    /getEffectivePoints\(\)|>Points<|text-fuchsia-100/,
-    "Idle Live Reactions should not show a second point total that can drift from the wallet display",
-  );
+test("Crowd Guitar Solo treats rhythm as a bonus instead of rejecting audience strums", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(source, /data-feature-id="audience-guitar-crowd-solo"/);
+  assert.match(source, /soloScore: isPerfect \? 3 : \(inGroove \? 2 : 1\)/);
+  assert.match(source, /Any string works/);
+  assert.doesNotMatch(source, /pushGuitarFeedback\('Wrong String'/);
+  assert.doesNotMatch(source, /pushGuitarFeedback\('Too (?:Early|Late)'/);
+});
+test("SingerApp omits the idle Live Reactions guide", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+  assert.doesNotMatch(source, /data-feature-id="singer-streamlined-idle-reaction-guide"/);
 });
 
 test("SingerApp profile editor keeps avatar choices above effects and bottom actions reachable", () => {
@@ -1338,7 +1282,7 @@ test("SingerApp profile editor keeps avatar choices above effects and bottom act
   );
   assert.match(
     profileSource,
-    /<div className="relative z-10"><AvatarCoverflow/,
+    /<div className="relative z-10 overflow-hidden rounded-\[1\.7rem\]"><AvatarCoverflow/,
     "Avatar carousel should render above decorative profile effects",
   );
   assert.match(

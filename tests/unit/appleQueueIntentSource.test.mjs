@@ -12,7 +12,8 @@ const autoDjSource = readSource('src/apps/Host/autoDjStateMachine.js');
 const roomFlowSource = readSource('src/apps/Host/roomFlowOrchestrator.js');
 
 test('Apple autocomplete queues song intent for host review instead of immediate backing playback', () => {
-    assert.match(queueActionsSource, /const appleIntentNeedsBacking = preferAppleDefault && options\?\.queueAppleBacking !== true;/);
+    assert.match(queueActionsSource, /const originalTrackParty = deriveNightExperienceId\(room \|\| \{\}\) === NIGHT_EXPERIENCE_IDS\.originalTracks;/);
+    assert.match(queueActionsSource, /const appleIntentNeedsBacking = preferAppleDefault[\s\S]*options\?\.queueAppleBacking !== true[\s\S]*!originalTrackParty;/);
     assert.match(queueActionsSource, /resolutionStatus: RESOLUTION_STATUSES\.reviewRequired/);
     assert.match(queueActionsSource, /mediaResolutionStatus: 'pending_youtube_match'/);
     assert.match(queueActionsSource, /playbackReady: false/);

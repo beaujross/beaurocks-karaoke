@@ -247,6 +247,28 @@ const InboxItemCard = ({
                 </div>
             ) : null}
 
+            {item.type === 'cohost' ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                    {typeof item.onAcknowledge === 'function' ? (
+                        <button
+                            type="button"
+                            onClick={() => item.onAcknowledge?.()}
+                            className={`${styles?.btnStd || ''} ${styles?.btnSecondary || ''} px-3 py-1.5 text-[10px]`}
+                        >
+                            <i className="fa-solid fa-eye mr-2"></i>Got It
+                        </button>
+                    ) : null}
+                    <button
+                        type="button"
+                        onClick={() => item.onResolve?.()}
+                        disabled={typeof item.onResolve !== 'function'}
+                        className={`${styles?.btnStd || ''} ${styles?.btnHighlight || ''} px-3 py-1.5 text-[10px] ${typeof item.onResolve !== 'function' ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                        <i className="fa-solid fa-check mr-2"></i>Resolved
+                    </button>
+                </div>
+            ) : null}
+
             {item.type === 'queue_collaboration' ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                     <button
@@ -470,6 +492,8 @@ export default function HostInboxPanel({
                     : (signal.contextMeta || 'Live performance context'),
                 ageLabel: signal.latestAgeLabel || 'recently',
                 countLabel: `${signal.uniqueCount || signal.count || 1}`,
+                onAcknowledge: signal.onAcknowledge,
+                onResolve: signal.onResolve,
             }))
             : []
     ), [coHostSignals]);

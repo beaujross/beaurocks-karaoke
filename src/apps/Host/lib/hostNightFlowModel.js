@@ -139,4 +139,41 @@ export const schedulePreparedMomentsByPerformanceCadence = (
     };
 };
 
+const getMovableFlowBucket = (item = {}) => {
+    const status = String(item?.status || 'draft').trim().toLowerCase();
+    if (item?.destination === 'planner' && isActiveItem(item)) return 'planner';
+    if (item?.destination !== 'planner' && ['draft', 'ready', 'staged', 'blocked'].includes(status)) return 'live_queue';
+    if (['complete', 'skipped'].includes(status)) return 'history';
+    return '';
+};
+
+export const moveHostNightFlowItem = (director = {}, itemId = '', delta = 0) => {
+    const normalizedDirector = normalizeRunOfShowDirector(director || {});
+    const safeItemId = String(itemId || '').trim();
+    const requestedDelta = Math.trunc(Number(delta || 0));
+    const targetItem = normalizedDirector.items.find((item) => String(item?.id || '').trim() === safeItemId);
+    const bucket = getMovableFlowBucket(targetItem);
+    if (!safeItemId || !requestedDelta || !bucket) return normalizedDirector;
+
+    const bucketItems = normalizedDirector.items.filter((item) => getMovableFlowBucket(item) === bucket);
+    const currentIndex = bucketItems.findIndex((item) => item.id === safeItemId);
+    const nextIndex = Math.max(0, Math.min(bucketItems.length - 1, currentIndex + requestedDelta));
+    if (currentIndex < 0 || currentIndex === nextIndex) return normalizedDirector;
+
+    const reorderedBucket = [...bucketItems];
+    const [movedItem] = reorderedBucket.splice(currentIndex, 1);
+    reorderedBucket.splice(nextIndex, 0, movedItem);
+    let bucketCursor = 0;
+    const items = normalizedDirector.items.map((item) => (
+        getMovableFlowBucket(item) === bucket
+            ? reorderedBucket[bucketCursor++]
+            : item
+    ));
+
+    return normalizeRunOfShowDirector({
+        ...normalizedDirector,
+        items: resequenceRunOfShowItems(items),
+    });
+};
+
 export default getHostNightFlowBuckets;

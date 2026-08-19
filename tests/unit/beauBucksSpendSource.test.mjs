@@ -30,9 +30,10 @@ test('audience only uses legacy writes after explicit server fallback', () => {
 });
 
 test('join response controls the client canary while the server remains the final gate', () => {
-  assert.match(functionsSource, /spendAuthority: isBeauBucksSpendCanaryRoom\(\{ roomCode, roomData \}\) \? "server_canary" : "legacy"/);
+  assert.match(functionsSource, /spendAuthority: isRoomServerSpendEnabled\(\{ roomCode, roomData \}\) \? "server_canary" : "legacy"/);
+  assert.match(functionsSource, /eventCredits\.reactionSlot5PurchasesEnabled === true/);
   assert.match(singerSource, /const nextSpendAuthority = joinResult\?\.spendAuthority === 'server_canary'/);
   assert.match(singerSource, /pendingSpendOperationIdsRef\.current\.get\(safeRetryKey\)/);
   assert.match(singerSource, /writeAudienceSpendAuthority\(roomCode, 'legacy'\)/);
-  assert.match(callableSource, /isBeauBucksSpendCanaryRoom\(\{ roomCode, roomData: initialRoomData \}\)/);
+  assert.match(callableSource, /isRoomServerSpendEnabled\(\{ roomCode, roomData: initialRoomData \}\)/);
 });

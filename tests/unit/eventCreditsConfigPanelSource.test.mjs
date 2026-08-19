@@ -39,3 +39,12 @@ test('authorized rooms explain platform-managed BeauBucks availability without a
   assert.doesNotMatch(source, />Authority</);
   assert.doesNotMatch(source, />Canary</);
 });
+
+test('Host can explicitly enable room-scoped fifth voting-reaction-slot purchases', () => {
+  assert.match(source, /data-feature-id="host-reaction-slot-5-control"/);
+  assert.match(source, /Let guests unlock a fifth voting emoji/);
+  assert.match(source, /reactionSlot5PurchasesEnabled/);
+  assert.match(source, /250 Room Points/);
+  assert.match(source, /This room only/);
+  assert.match(source, /1 swappable reaction/);
+});

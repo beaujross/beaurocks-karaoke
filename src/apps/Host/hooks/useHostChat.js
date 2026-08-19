@@ -6,12 +6,10 @@ import {
     query,
     where,
     orderBy,
-    addDoc,
-    serverTimestamp,
-    limit
+    limit,
+    sendRoomLoungeMessage,
+    sendRoomHostMessage,
 } from '../../../lib/firebase';
-import { APP_ID } from '../../../lib/assets';
-import { EMOJI } from '../../../lib/emoji';
 import { watchQuerySnapshot } from '../../../lib/firestoreWatch';
 
 const getTimestampMs = (message) => (
@@ -33,7 +31,7 @@ const getNewestTimestamp = (messages = [], matcher) => messages.reduce((latest, 
 const getNewestRoomTs = (messages = []) => getNewestTimestamp(messages, isLoungeChatMessage);
 const getNewestDmTs = (messages = []) => getNewestTimestamp(messages, isDirectChatMessage);
 const getDmTargetUidFromMessage = (message = {}) => (
-    String(message?.uid || message?.fromUid || message?.userId || message?.toUid || '').trim()
+    String(message?.isHost ? message?.toUid : (message?.participantUid || message?.uid || message?.fromUid || message?.userId || message?.toUid || '')).trim()
 );
 const getNewestDmTargetUid = (messages = []) => {
     let newestMessage = null;
@@ -49,7 +47,7 @@ const getNewestDmTargetUid = (messages = []) => {
     return newestMessage ? getDmTargetUidFromMessage(newestMessage) : '';
 };
 
-const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
+const useHostChat = ({ roomCode, room, settingsTab, toast }) => {
     const [chatEnabled, setChatEnabled] = useState(true);
     const [chatShowOnTv, setChatShowOnTv] = useState(false);
     const [chatTvMode, setChatTvMode] = useState('auto');
@@ -66,6 +64,8 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
 
     const chatLastSeenRef = useRef(0);
     const dmLastSeenRef = useRef(0);
+    const loungeMessagesRef = useRef([]);
+    const privateMessagesRef = useRef([]);
 
     const handleChatViewMode = useCallback((nextMode) => {
         setChatViewMode(nextMode);
@@ -106,16 +106,21 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
 
     useEffect(() => {
         if (!roomCode) return;
-        const q = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'),
+        const loungeQuery = query(
+            collection(db, 'room_lounge_messages'),
             where('roomCode', '==', roomCode),
             orderBy('timestamp', 'desc'),
             limit(40)
         );
-        const unsub = watchQuerySnapshot(
-            q,
-            (snap) => {
-                const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
+        const dmQuery = query(
+            collection(db, 'room_private_messages'),
+            where('roomCode', '==', roomCode),
+            orderBy('timestamp', 'desc'),
+            limit(80)
+        );
+        const applyMessages = () => {
+                const next = [...loungeMessagesRef.current, ...privateMessagesRef.current]
+                    .sort((left, right) => getTimestampMs(left) - getTimestampMs(right));
                 setChatMessages(next);
                 const newestTargetUid = getNewestDmTargetUid(next);
                 if (newestTargetUid) {
@@ -137,17 +142,43 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
                 } else if (dmTs && dmTs > dmLastSeenRef.current && settingsTab !== 'chat') {
                     setDmUnread(true);
                 }
+        };
+        const unsubLounge = watchQuerySnapshot(
+            loungeQuery,
+            (snap) => {
+                loungeMessagesRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
+                applyMessages();
             },
             {
-                label: `hostChat:${roomCode}`,
+                label: `hostLounge:${roomCode}`,
                 onFallback: () => {
-                    setChatMessages([]);
+                    loungeMessagesRef.current = [];
+                    applyMessages();
+                }
+            }
+        );
+        const unsubDm = watchQuerySnapshot(
+            dmQuery,
+            (snap) => {
+                privateMessagesRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
+                applyMessages();
+            },
+            {
+                label: `hostDm:${roomCode}`,
+                onFallback: () => {
+                    privateMessagesRef.current = [];
+                    applyMessages();
                     setChatUnread(false);
                     setDmUnread(false);
                 }
             }
         );
-        return () => unsub();
+        return () => {
+            loungeMessagesRef.current = [];
+            privateMessagesRef.current = [];
+            unsubLounge();
+            unsubDm();
+        };
     }, [roomCode, settingsTab, chatViewMode]);
 
     const sendHostChatMessage = useCallback(async (text) => {
@@ -159,14 +190,9 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
             return;
         }
         try {
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), {
+            await sendRoomLoungeMessage({
                 roomCode,
                 text: message,
-                user: hostName || 'Host',
-                avatar: EMOJI.mic,
-                uid: senderUid,
-                isHost: true,
-                timestamp: serverTimestamp()
             });
             if (!text || message === chatDraft.trim()) {
                 setChatDraft('');
@@ -175,7 +201,7 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
             console.error(e);
             toast('Chat send failed');
         }
-    }, [chatDraft, roomCode, hostName, toast]);
+    }, [chatDraft, roomCode, toast]);
 
     const sendHostChat = useCallback(async () => sendHostChatMessage(), [sendHostChatMessage]);
 
@@ -188,22 +214,16 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
             return;
         }
         try {
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), {
+            await sendRoomHostMessage({
                 roomCode,
                 text: message,
-                user: hostName || 'Host',
-                avatar: EMOJI.mic,
-                uid: senderUid,
-                isHost: true,
-                toUid: targetUid,
-                channel: 'dm',
-                timestamp: serverTimestamp()
+                participantUid: targetUid,
             });
         } catch (e) {
             console.error(e);
             toast('DM send failed');
         }
-    }, [roomCode, hostName, toast]);
+    }, [roomCode, toast]);
 
     return {
         chatEnabled,

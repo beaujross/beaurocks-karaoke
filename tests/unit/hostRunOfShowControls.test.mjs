@@ -198,13 +198,14 @@ test("HostApp keeps the queue runtime mounted when the host leaves the queue vie
   );
 });
 
-test("Audience tab can promote and remove co-hosts directly from lobby selection", () => {
+test("Audience tab manages co-hosts through explicit invitations", () => {
   const hostSource = readFileSync(hostAppPath, "utf8");
 
-  assert.match(hostSource, /const selectedLobbyUserIsCoHost = !!\(selectedLobbyUserUid && \(runOfShowRoles\?\.coHosts \|\| \[\]\)\.includes\(selectedLobbyUserUid\)\);/);
+  assert.match(hostSource, /const selectedLobbyUserIsCoHost = !!\(selectedLobbyUserUid && \(room\?\.coHostUids \|\| \[\]\)\.includes\(selectedLobbyUserUid\)\);/);
   assert.match(hostSource, /const toggleLobbyUserCoHost = useCallback\(async \(roomUser = \{\}\) => \{/);
-  assert.match(hostSource, /await updateRunOfShowRolesState\(\{ coHosts: nextCoHosts \}\);/);
-  assert.match(hostSource, /promoted to co-host/);
+  assert.match(hostSource, /await manageRoomCoHostInvite\(/);
+  assert.match(hostSource, /action: active \? 'revoke' : 'invite'/);
+  assert.match(hostSource, /invited to help co-host tonight/);
   assert.match(hostSource, /removed from co-hosts/);
   assert.match(hostSource, /Make Co-Host/);
   assert.match(hostSource, /Remove Co-Host/);
@@ -444,7 +445,7 @@ test("Run-of-show prep sections can collapse after opening", () => {
 test("Run-of-show automation respects room auto mode and pauses for missing singers", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
-  assert.match(source, /const runOfShowAutomationEnabled = isRunOfShowRoom && \(runOfShowPolicy\?\.defaultAutomationMode \|\| 'auto'\) !== 'manual';/);
+  assert.match(source, /const runOfShowAutomationEnabled = isRunOfShowRoom\s+&& \(runOfShowPolicy\?\.defaultAutomationMode \|\| 'auto'\) !== 'manual'\s+&& String\(runOfShowDirector\?\.automationIntent \|\| 'auto'\)\.trim\(\)\.toLowerCase\(\) !== 'manual';/);
   assert.match(source, /const maybePauseRunOfShowAutomationForMissingSinger = useCallback\(async \(\) => \{/);
   assert.match(source, /const maybeResumeRunOfShowAutomationAfterSingerReady = useCallback\(async \(\) => \{/);
   assert.match(source, /getRunOfShowAutomationPauseState\(\{/);

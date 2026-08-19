@@ -108,10 +108,14 @@ const run = async () => {
   const baseUrl = explicitBaseUrl || server?.baseUrl || DEFAULT_BASE_URL;
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await context.addInitScript((fallbackConfig) => {
     if (!window.__firebase_config) {
       window.__firebase_config = fallbackConfig;
     }
+  }, DEMO_FIREBASE_CONFIG);
+  await mobileContext.addInitScript((fallbackConfig) => {
+    if (!window.__firebase_config) window.__firebase_config = fallbackConfig;
   }, DEMO_FIREBASE_CONFIG);
   const page = await context.newPage();
 
@@ -258,8 +262,30 @@ const run = async () => {
       }
       return "Discover hero joinable-room CTA responded.";
     });
+
+    await runCheck(checks, "fan_mobile_primary_cta_is_in_first_fold", async () => {
+      const mobilePage = await mobileContext.newPage();
+      try {
+        await loadMarketingRoute(
+          mobilePage,
+          baseUrl,
+          { path: "/for-fans", legacyPage: "for_fans" },
+          timeoutMs,
+        );
+        const cta = mobilePage.getByRole("button", { name: /Explore Live Nights/i }).first();
+        await cta.waitFor({ state: "visible", timeout: timeoutMs });
+        const box = await cta.boundingBox();
+        if (!box || box.y + box.height > 844) {
+          throw new Error(`Fan primary CTA falls below the 390x844 first fold: ${JSON.stringify(box)}.`);
+        }
+        return `primary CTA bottom=${Math.round(box.y + box.height)}px`;
+      } finally {
+        await mobilePage.close().catch(() => {});
+      }
+    });
   } finally {
     await context.close();
+    await mobileContext.close();
     await browser.close();
     await server?.stop().catch(() => {});
   }

@@ -11,7 +11,7 @@ const automationControlsSource = readSource('src/apps/Host/components/Automation
 const hostTopChromeSource = readSource('src/apps/Host/components/HostTopChrome.jsx');
 
 test('Apple playlist background playback is routed through shared BG controls', () => {
-    assert.match(hostAppSource, /const appleMusicBackgroundSelected = useMemo\(\(\) => \{[\s\S]*isAppleBackgroundAudioSource\(backgroundAudioSource\)[\s\S]*\['playing', 'paused'\]\.includes\(status\)/);
+    assert.match(hostAppSource, /const appleMusicBackgroundSelected = useMemo\(\(\) => \{[\s\S]*isAppleBackgroundAudioSource\(backgroundAudioSource\)[\s\S]*\['playing', 'paused'\]\.includes\(playbackStatus\)/);
     assert.match(hostAppSource, /const appleMusicBackgroundPlaying = useMemo\(\(\) => \{[\s\S]*status \|\| ''\)[\s\S]*playing/);
     assert.match(hostAppSource, /const backgroundMusicActive = isAppleBackgroundAudioSource\(backgroundAudioSource\)[\s\S]*appleMusicBackgroundPlaying && appleMusicPlaying[\s\S]*: !!playingBg;/);
     assert.match(hostAppSource, /playingBg=\{backgroundMusicActive\}/);
@@ -62,11 +62,13 @@ test('Apple Music setup exposes playlist and station choices without adding sepa
     assert.match(hostAppSource, /const musicKitVolume = Number\.isFinite\(currentVolume\) && currentVolume > 1 \? Math\.round\(volume \* 100\) : volume;/);
     assert.match(hostAppSource, /const hasLoadedItem = !!\([\s\S]*instance\?\.player\?\.nowPlayingItem[\s\S]*instance\?\.player\?\.queue\?\.currentItem[\s\S]*snapshot\?\.trackId/);
     assert.match(hostAppSource, /const playAppleMusicPlaylistQueueWithFallback = async/);
-    assert.match(hostAppSource, /for \(const descriptor of attempts\) \{[\s\S]*queue = await instance\.setQueue\(descriptor\);[\s\S]*await startAppleMusicQueuePlayback\(instance, queue\);[\s\S]*waitForAppleMusicPlaybackStart\(instance, \{ contentLabel: 'playlist or station' \}\)/);
+    assert.match(hostAppSource, /await quiesceAppleMusicTransport\(instance\);[\s\S]*for \(const descriptor of attempts\) \{[\s\S]*queue = await instance\.setQueue\(descriptor\);[\s\S]*await startAppleMusicQueuePlayback\(instance, queue\);[\s\S]*waitForAppleMusicPlaybackStart\(instance, \{ contentLabel: 'playlist or station' \}\)/);
     assert.doesNotMatch(hostAppSource, /stopAppleMusicForQueueRetry/);
     assert.match(hostAppSource, /const appleMusicPlaylistStartRef = useRef\(\{ key: '', promise: null, failedAtMs: 0 \}\);/);
     assert.match(hostAppSource, /currentStart\.promise && \(currentStart\.key === startKey \|\| meta\.automatic === true\)/);
     assert.match(hostAppSource, /isAppleMusicAutomaticRetryCoolingDown\(currentStart, startKey\)/);
+    assert.match(hostAppSource, /const automaticBackgroundStartRef = useRef\(\{ key: '', promise: null, failureCount: 0, retryAtMs: 0 \}\);/);
+    assert.match(hostAppSource, /if \(attemptState\.promise\) return;[\s\S]*attemptNowMs < Number\(attemptState\.retryAtMs \|\| 0\)[\s\S]*Math\.min\(60_000, 5_000 \* \(2 \*\* \(failureCount - 1\)\)\)/);
     assert.match(hostAppSource, /setBgMusicState\(true, \{ automatic: true \}\)/);
     assert.match(hostAppSource, /setAutoBgMusic\(false\);[\s\S]*autoBgMusic: false/);
     assert.match(hostAppSource, /applyAppleMusicOutputVolume\(instance, appleMusicVolumeRef\.current\);[\s\S]*const queueResult = await playAppleMusicPlaylistQueueWithFallback\(instance, playlistId, meta\);/);
@@ -99,6 +101,7 @@ test('Apple Music setup exposes playlist and station choices without adding sepa
     assert.match(hostTopChromeSource, /Use BeauRocks Loop/);
     assert.match(hostAppSource, /VITE_MUSICKIT_WEB_VERSION \|\| 'v3'/);
     assert.match(hostAppSource, /'playbackStateDidChange', 'nowPlayingItemDidChange', 'queueItemsDidChange'/);
+    assert.match(hostAppSource, /const applePlaybackSyncPromiseRef = useRef\(null\);[\s\S]*if \(applePlaybackSyncPromiseRef\.current\) return applePlaybackSyncPromiseRef\.current;/);
     assert.match(hostAppSource, /instance\?\.player\?\.nowPlayingItem/);
     assert.match(hostAppSource, /instance\?\.player\?\.queue\?\.currentItem/);
     assert.match(hostAppSource, /const nextBackgroundSession = buildAppleBackgroundSession\([\s\S]*backgroundAudioPlayback: nextBackgroundSession/);
@@ -117,6 +120,16 @@ test('Apple Music setup exposes playlist and station choices without adding sepa
     assert.doesNotMatch(hostAppSource, /Auto-DJ playlist fallback/);
     assert.doesNotMatch(hostAppSource, /The BG button remains the single start\/stop control once a playlist is active\./);
     assert.doesNotMatch(hostAppSource, /Apple Music background[\s\S]{0,3000}Pause/);
+});
+
+test('host callable accepts every dotted Apple playback field emitted by sync and restoration', () => {
+    const functionsSource = readSource('functions/index.js');
+    for (const field of ['type', 'trackId', 'trackTitle', 'trackArtist', 'artworkUrl']) {
+        assert.match(functionsSource, new RegExp(`HOST_APPLE_PLAYBACK_STRING_FIELDS[\\s\\S]{0,500}"${field}"`));
+    }
+    for (const field of ['queueIndex', 'queueLength', 'restoredAt']) {
+        assert.match(functionsSource, new RegExp(`HOST_APPLE_PLAYBACK_NUMBER_FIELDS[\\s\\S]{0,500}"${field}"`));
+    }
 });
 
 test('background audio checks stale Apple playback only while a playlist claims to be playing', () => {

@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const admin = require("../../functions/node_modules/firebase-admin");
 const {
   castPromptVote,
+  controlPromptSession,
   finalizePromptVoteRound,
 } = require("../../functions/index.js");
 
@@ -30,6 +31,7 @@ const triviaVoteRefFor = (uid) => db.doc(`${ROOT}/prompt_votes/vote_${ROOM_CODE}
 const wyrProjectionRef = db.doc(`${ROOT}/prompt_vote_public/${ROOM_CODE}_${WYR_ID}`);
 const wyrVoteRefFor = (uid) => db.doc(`${ROOT}/prompt_votes/vote_${ROOM_CODE}_${WYR_ID}_${uid}`);
 const roomUserRefFor = (uid) => db.doc(`${ROOT}/room_users/${ROOM_CODE}_${uid}`);
+const privatePromptSessionRef = db.doc(`room_prompt_sessions_private/${ROOM_CODE}`);
 
 const requestFor = (uid, data = {}) => ({
   auth: uid ? { uid, token: data.__token || {} } : null,
@@ -68,6 +70,7 @@ async function resetState({
     deleteIfPresent(roomUserRefFor(GUEST_UID)),
     deleteIfPresent(roomUserRefFor(OTHER_UID)),
     deleteIfPresent(roomUserRefFor(THIRD_UID)),
+    deleteIfPresent(privatePromptSessionRef),
   ]);
 
   await roomRef.set({
@@ -114,6 +117,108 @@ async function runCase(name, fn) {
 
 async function run() {
   const checks = [
+    ["prompt session keeps trivia answers private until host reveal", async () => {
+      await resetState({ roomUsers: [GUEST_UID] });
+      await roomRef.update({
+        nightPlan: {
+          experienceId: "trivia",
+          hostingLevel: "guided",
+        },
+      });
+
+      const configured = await controlPromptSession.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        action: "configure",
+        kind: "trivia",
+        title: "Play-test Trivia",
+        roundSec: 15,
+        prompts: [{
+          id: TRIVIA_ID,
+          q: "Who opened the show?",
+          options: ["A", "B", "C", "D"],
+          answer: "C",
+          correct: 2,
+          points: 100,
+        }],
+      }));
+
+      assert.equal(configured.ok, true);
+      assert.equal(configured.session.status, "draft");
+      assert.equal(configured.session.prompts[0].answer, "C");
+      assert.equal(configured.session.prompts[0].correct, 2);
+
+      const [configuredRoomSnap, privateSnap] = await Promise.all([
+        roomRef.get(),
+        privatePromptSessionRef.get(),
+      ]);
+      assert.equal(privateSnap.data()?.prompts?.[0]?.answer, "C");
+      assert.equal(privateSnap.data()?.prompts?.[0]?.correct, 2);
+      assert.equal(configuredRoomSnap.data()?.promptSession?.prompts?.[0]?.answer, undefined);
+      assert.equal(configuredRoomSnap.data()?.promptSession?.prompts?.[0]?.correct, undefined);
+      assert.equal(configuredRoomSnap.get("triviaQuestion"), null);
+
+      const reloaded = await controlPromptSession.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        action: "read",
+      }));
+      assert.equal(reloaded.session.revision, configured.session.revision);
+      assert.equal(reloaded.session.prompts[0].answer, "C");
+      assert.equal(reloaded.session.prompts[0].correct, 2);
+
+      const started = await controlPromptSession.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        action: "start",
+        expectedRevision: configured.session.revision,
+      }));
+      assert.equal(started.session.status, "live");
+      const liveRoomSnap = await roomRef.get();
+      assert.equal(liveRoomSnap.get("activeMode"), "trivia_pop");
+      assert.equal(liveRoomSnap.get("triviaQuestion.answer"), null);
+      assert.equal(liveRoomSnap.get("triviaQuestion.correct"), null);
+      assert.equal(liveRoomSnap.data()?.promptSession?.prompts?.[0]?.answer, undefined);
+      assert.equal(liveRoomSnap.data()?.promptSession?.prompts?.[0]?.correct, undefined);
+
+      const revealed = await controlPromptSession.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        action: "reveal",
+        expectedRevision: started.session.revision,
+      }));
+      assert.equal(revealed.session.status, "reveal");
+      const revealedRoomSnap = await roomRef.get();
+      assert.equal(revealedRoomSnap.get("activeMode"), "trivia_reveal");
+      assert.equal(revealedRoomSnap.get("triviaQuestion.answer"), "C");
+      assert.equal(revealedRoomSnap.get("triviaQuestion.correct"), 2);
+    }],
+
+    ["prompt session rejects non-host control and stale host revisions", async () => {
+      await resetState({ roomUsers: [GUEST_UID] });
+      await expectHttpsError(
+        () => controlPromptSession.run(requestFor(GUEST_UID, {
+          roomCode: ROOM_CODE,
+          action: "read",
+        })),
+        "permission-denied"
+      );
+
+      const configured = await controlPromptSession.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        action: "configure",
+        kind: "would_you_rather",
+        prompts: [
+          { id: WYR_ID, q: "A or B?", a: "A", b: "B" },
+          { id: "wyr-2", q: "C or D?", a: "C", b: "D" },
+        ],
+      }));
+      await expectHttpsError(
+        () => controlPromptSession.run(requestFor(HOST_UID, {
+          roomCode: ROOM_CODE,
+          action: "start",
+          expectedRevision: configured.session.revision - 1,
+        })),
+        "aborted"
+      );
+    }],
+
     ["prompt vote writes one trivia vote per user and syncs projection", async () => {
       await resetState({
         activeMode: "trivia_pop",

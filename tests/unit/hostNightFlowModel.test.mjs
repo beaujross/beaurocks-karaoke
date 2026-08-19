@@ -2,6 +2,7 @@ import { test } from 'vitest';
 
 import {
   getHostNightFlowBuckets,
+  moveHostNightFlowItem,
   promotePreparedItemsToLiveQueue,
   schedulePreparedMomentsByPerformanceCadence,
 } from '../../src/apps/Host/lib/hostNightFlowModel.js';
@@ -41,6 +42,42 @@ const buildDirector = () => ({
       sequence: 4,
     },
   ],
+});
+
+test('moves visible lineup items around hidden history without losing the visible reorder', () => {
+  const director = {
+    items: [
+      { id: 'performance-1', type: 'performance', destination: 'run_of_show', status: 'ready', sequence: 1 },
+      { id: 'finished-break', type: 'game_break', destination: 'run_of_show', status: 'complete', sequence: 2 },
+      { id: 'trivia-1', type: 'trivia_break', destination: 'run_of_show', status: 'ready', sequence: 3 },
+      { id: 'saved-draft', type: 'announcement', destination: 'planner', status: 'ready', sequence: 4 },
+    ],
+  };
+
+  const result = moveHostNightFlowItem(director, 'performance-1', 1);
+
+  assert.deepEqual(
+    getHostNightFlowBuckets(result).liveQueueItems.map((item) => item.id),
+    ['trivia-1', 'performance-1'],
+  );
+  assert.equal(result.items.find((item) => item.id === 'finished-break')?.status, 'complete');
+  assert.equal(result.items.find((item) => item.id === 'saved-draft')?.destination, 'planner');
+});
+
+test('does not reorder the live item or move queued work across it', () => {
+  const director = {
+    items: [
+      { id: 'live-performance', type: 'performance', destination: 'run_of_show', status: 'live', sequence: 1 },
+      { id: 'trivia-1', type: 'trivia_break', destination: 'run_of_show', status: 'ready', sequence: 2 },
+      { id: 'performance-2', type: 'performance', destination: 'run_of_show', status: 'ready', sequence: 3 },
+    ],
+  };
+
+  const liveMove = moveHostNightFlowItem(director, 'live-performance', 1);
+  const queuedMove = moveHostNightFlowItem(director, 'trivia-1', -1);
+
+  assert.deepEqual(liveMove.items.map((item) => item.id), director.items.map((item) => item.id));
+  assert.deepEqual(queuedMove.items.map((item) => item.id), director.items.map((item) => item.id));
 });
 
 test('night flow separates prepared work from the committed live queue', () => {

@@ -185,6 +185,11 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /Earn as they play/);
   assert.match(source, /Welcome deposit/);
   assert.match(source, /Reward time in the Room/);
+  assert.match(source, /data-launch-reaction-slot-5-control="true"/);
+  assert.match(source, /Sell a fifth voting-reaction slot/);
+  assert.match(source, /250 Room Points/);
+  assert.match(source, /Voting reactions—not avatars/);
+  assert.match(source, /reactionSlot5PurchasesEnabled/);
   assert.match(source, /const timedPointsRefillEnabled = eventCreditsConfig\?\.timedLobbyEnabled === true/);
   assert.match(source, /disabled=\{!timedPointsRefillEnabled\}/);
   assert.match(source, /xl:min-h-\[240px\]/);
@@ -194,13 +199,13 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /fa-door-open/);
   assert.match(source, /fa-user-lock/);
   assert.match(source, /fa-key/);
-  assert.match(source, /Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
+  assert.match(source, /Host-Led[\s\S]*Host Assist[\s\S]*Self-Serve/);
   assert.match(source, /openNightSetup: false, launchTarget: 'stage'/);
   assert.match(source, /Create \+ Open Host Panel/);
   assert.match(source, /Setup is complete\. Room Settings remains available for future changes\./);
   assert.match(source, /Custom room code/);
   assert.match(source, /data-launch-configuration-contract="true"/);
-  assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Party Karaoke[\s\S]*Crowd Sing-Along[\s\S]*Score Challenge[\s\S]*Karaoke \+ Trivia/);
+  assert.match(source, /LAUNCH_NIGHT_TYPE_OPTIONS = Object\.freeze\(\[[\s\S]*Karaoke[\s\S]*Original Track Party[\s\S]*Trivia Night[\s\S]*Would You Rather/);
   assert.match(source, /<MissionSetupPrimaryPicks[\s\S]*recipes=\{LAUNCH_NIGHT_TYPE_RECIPE_CARDS\}/);
   assert.match(source, /selectedRecipeId=\{launchNightType\}/);
   assert.match(source, /selectedRecipeAdjusted=\{launchCustomizationCount > 0\}/);
@@ -216,7 +221,10 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /Queue rules/);
   assert.match(source, /Live switches/);
   assert.match(source, /Prioritize first-time singers/);
-  assert.match(source, /data-launch-mobile-action="true"/);
+  assert.doesNotMatch(source, /data-launch-mobile-action="true"/);
+  assert.match(source, /aria-label="Fine-tune setup sections"/);
+  assert.match(source, /Flow \+ live/);
+  assert.match(source, /Song sources/);
   assert.match(source, /creatingRoom \? 'Creating room' : roomLaunchDisabled \? 'Not ready' : 'Ready to create'/);
   assert.match(
     source,
@@ -249,7 +257,7 @@ test('quick setup compiles night outcomes and hides overlapping primitives by de
   assert.match(source, /buildHostLaunchDraftKey/);
   assert.match(
     source,
-    /persistHostLaunchDraftPart\(launchExperienceDraftKey, \{\s*joinAccessMode: launchJoinAccessMode,\s*operatingModel: launchOperatingModel,\s*nightType: launchNightType,\s*party: launchParty,\s*mediaSources: launchMediaSources,\s*settingsOverrides: launchSettingsOverrides,\s*\}\);/,
+    /persistHostLaunchDraftPart\(launchExperienceDraftKey, \{\s*joinAccessMode: launchJoinAccessMode,\s*operatingModel: launchOperatingModel,\s*nightType: launchNightType,\s*lyricsPolicy: launchLyricsPolicy,\s*party: launchParty,\s*mediaSources: launchMediaSources,\s*settingsOverrides: launchSettingsOverrides,\s*\}\);/,
     'Recovered experience drafts should store all non-secret choices from the consolidated setup screen',
   );
 });

@@ -195,18 +195,27 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
     if (!GameComponent) return null;
 
     return (
-        <div className="absolute inset-0 z-[200] bg-black">
+        <div className="absolute inset-0 z-[200] bg-black" data-feature-id="game-takeover-shell">
             {showClose && (
-                <button
-                    type="button"
-                    onClick={props.onClose}
-                    className="absolute top-6 right-6 z-[260] bg-black/70 border border-white/20 text-white px-4 py-2 rounded-full text-xs uppercase tracking-[0.35em] hover:border-cyan-300/60"
-                    aria-label="Close game"
+                <div
+                    className="pointer-events-none absolute inset-x-0 top-0 z-[260] flex min-h-[4.75rem] items-center justify-between gap-3 border-b border-white/10 bg-black/[0.72] px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] backdrop-blur-md sm:px-5"
+                    data-feature-id="mobile-game-takeover-header"
                 >
-                    {closeLabel}
-                </button>
+                    <div className="min-w-0">
+                        <div className="text-[9px] font-black uppercase tracking-[0.22em] text-zinc-400">Live room moment</div>
+                        <div className="truncate text-sm font-black text-white">{rulesConfig?.title || 'Audience game'}</div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={props.onClose}
+                        className="pointer-events-auto min-h-[44px] shrink-0 rounded-full border border-cyan-200/35 bg-cyan-300/14 px-4 text-xs font-black uppercase tracking-[0.16em] text-cyan-50 shadow-[0_0_22px_rgba(34,211,238,0.16)] active:scale-95"
+                        aria-label="Minimize game"
+                    >
+                        {closeLabel}
+                    </button>
+                </div>
             )}
-            {inputLabel && (
+            {inputLabel && !showClose && (
                 <div className={`absolute top-6 left-6 z-[250] px-4 py-2 rounded-full text-xs uppercase tracking-[0.35em] border border-white/10 bg-black/70 text-white ${view === 'tv' ? 'text-sm' : ''}`}>
                     Input: {inputLabel}
                 </div>

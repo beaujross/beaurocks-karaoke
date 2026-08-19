@@ -42,8 +42,9 @@ describe('shared Host tab language', () => {
     const topChrome = readSource('src/apps/Host/components/HostTopChrome.jsx');
     const horizon = readSource('src/apps/Host/components/HostQueueHorizon.jsx');
     const setupShell = readSource('src/apps/Host/components/setup/MissionSetupShell.jsx');
-    assert.match(horizon, /Planned moments use Tonight\\'s Flow controls/);
-    assert.match(horizon, /model\?\.automation\?\.label/);
+    expect(horizon).toContain('Turn on Auto-Advance to play the full lineup in order.');
+    expect(horizon).toContain('model?.automation?.label');
+    expect(horizon).toContain('aria-pressed={automationEnabled}');
 
     expect(host).toContain('host-app host-vivid-shell');
     expect(host).toContain('panel: "host-vivid-panel');

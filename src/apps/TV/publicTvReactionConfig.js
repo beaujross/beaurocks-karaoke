@@ -40,6 +40,62 @@ export const getTvReactionLabel = (type = '') => {
         .join(' ');
 };
 
+const getTvReactionTimestampMs = (reaction = {}) => {
+    const direct = Number(reaction.createdAtMs || 0);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    if (typeof reaction?.timestamp?.toMillis === 'function') return reaction.timestamp.toMillis();
+    if (Number.isFinite(Number(reaction?.timestamp?.seconds))) return Number(reaction.timestamp.seconds) * 1000;
+    return 0;
+};
+
+const getTvReactionParticipantKey = (reaction = {}) => String(
+    reaction.uid
+    || reaction.userId
+    || reaction.roomUserId
+    || reaction.userName
+    || reaction.user
+    || 'guest'
+).trim().toLowerCase();
+
+export const selectTvReactionPresentation = (reactions = [], {
+    maxVisible = 7,
+    maxPerParticipant = 2,
+    coalesceWindowMs = 1800,
+} = {}) => {
+    const visibleLimit = Math.max(1, Math.floor(Number(maxVisible) || 7));
+    const participantLimit = Math.max(1, Math.floor(Number(maxPerParticipant) || 2));
+    const source = (Array.isArray(reactions) ? reactions : [])
+        .filter((reaction) => reaction && !reaction.audienceDisplaySessionId)
+        .sort((a, b) => getTvReactionTimestampMs(b) - getTvReactionTimestampMs(a));
+    const coalesced = [];
+    const newestByKey = new Map();
+    source.forEach((reaction) => {
+        const participantKey = getTvReactionParticipantKey(reaction);
+        const reactionType = String(reaction.type || '').trim().toLowerCase();
+        const groupKey = `${participantKey}:${reactionType}`;
+        const newest = newestByKey.get(groupKey);
+        const timestampMs = getTvReactionTimestampMs(reaction);
+        if (newest && Math.abs(getTvReactionTimestampMs(newest) - timestampMs) <= coalesceWindowMs) {
+            newest.burstCount = Math.max(1, Number(newest.burstCount || 1)) + Math.max(1, Number(reaction.burstCount || 1));
+            return;
+        }
+        const presentationReaction = { ...reaction, presentationParticipantKey: participantKey };
+        newestByKey.set(groupKey, presentationReaction);
+        coalesced.push(presentationReaction);
+    });
+    const participantCounts = new Map();
+    const admitted = [];
+    for (const reaction of coalesced) {
+        const participantKey = reaction.presentationParticipantKey;
+        const count = participantCounts.get(participantKey) || 0;
+        if (count >= participantLimit) continue;
+        participantCounts.set(participantKey, count + 1);
+        admitted.push(reaction);
+        if (admitted.length >= visibleLimit) break;
+    }
+    return admitted.sort((a, b) => getTvReactionTimestampMs(a) - getTvReactionTimestampMs(b));
+};
+
 export const getTvReactionThemeKey = (type = '') => ({
     rocket: 'rocket',
     meteor: 'rocket',
@@ -74,6 +130,11 @@ export const getTvReactionThemeKey = (type = '') => ({
     commentator_vibe_check: 'commentator',
     commentator_wow: 'commentator'
 }[String(type || '').trim().toLowerCase()] || 'default');
+
+export const getTvReactionEntranceKey = (type = '') => {
+    const visualStyle = String(getReactionDefinition(type)?.visualStyle || '').trim().toLowerCase();
+    return visualStyle.replace(/_/g, '-');
+};
 
 export const getTvReactionEmojiClass = (type = '') => ({
     rocket: 'reaction-emoji-rocket text-[clamp(2.75rem,9vw,8rem)]',
@@ -131,6 +192,7 @@ export const getTvReactionLaneLeft = ({ id = '', type = '', index = 0, wide = fa
 export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) => {
     const key = String(type || '').trim().toLowerCase();
     const themeKey = getTvReactionThemeKey(key);
+    const entranceKey = getTvReactionEntranceKey(key);
     const motionKey = themeKey === 'blossom' ? 'money' : themeKey;
     const seed = hashTvMotionSeed(`${key}:${id}:${index}`);
     const direction = seed % 2 === 0 ? 1 : -1;
@@ -150,8 +212,9 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
         spinDeg: 8 + (seed % 20),
         exitScale: 0.92,
     };
+    const finalize = (spec) => ({ ...spec, variant: entranceKey || spec.variant });
     if (motionKey === 'clap') {
-        return {
+        return finalize({
             ...base,
             variant: 'applause',
             durationMs: 11800 + (seed % 1200),
@@ -165,10 +228,10 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             swayY: 14 + (seed % 10),
             spinDeg: 10 + (seed % 10),
             exitScale: 0.9
-        };
+        });
     }
     if (motionKey === 'heart') {
-        return {
+        return finalize({
             ...base,
             variant: 'heart',
             durationMs: 12600 + (seed % 1200),
@@ -182,10 +245,10 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             swayY: 10 + (seed % 12),
             spinDeg: 10 + (seed % 12),
             exitScale: 0.94
-        };
+        });
     }
     if (motionKey === 'drink') {
-        return {
+        return finalize({
             ...base,
             variant: 'cheers',
             durationMs: 11400 + (seed % 1200),
@@ -198,10 +261,10 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             swayY: 18 + (seed % 14),
             spinDeg: 18 + (seed % 14),
             exitScale: 0.91
-        };
+        });
     }
     if (motionKey === 'money') {
-        return {
+        return finalize({
             ...base,
             variant: 'blossom',
             durationMs: 12200 + (seed % 1000),
@@ -215,10 +278,10 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             swayY: 20 + (seed % 16),
             spinDeg: 24 + (seed % 16),
             exitScale: 0.9
-        };
+        });
     }
     if (motionKey === 'rocket') {
-        return {
+        return finalize({
             ...base,
             variant: 'launch',
             durationMs: 11600 + (seed % 1000),
@@ -232,10 +295,10 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             swayY: 24 + (seed % 16),
             spinDeg: 30 + (seed % 18),
             exitScale: 0.88
-        };
+        });
     }
     if (motionKey === 'diamond') {
-        return {
+        return finalize({
             ...base,
             variant: 'prism',
             durationMs: 13000 + (seed % 1200),
@@ -249,10 +312,10 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             swayY: 10 + (seed % 10),
             spinDeg: 40 + (seed % 26),
             exitScale: 0.95
-        };
+        });
     }
     if (motionKey === 'crown') {
-        return {
+        return finalize({
             ...base,
             variant: 'royal',
             durationMs: 12800 + (seed % 1200),
@@ -266,10 +329,10 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             swayY: 14 + (seed % 10),
             spinDeg: 8 + (seed % 8),
             exitScale: 0.95
-        };
+        });
     }
     if (motionKey === 'fire') {
-        return {
+        return finalize({
             ...base,
             variant: 'ember',
             durationMs: 11800 + (seed % 1000),
@@ -283,7 +346,7 @@ export const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) 
             swayY: 28 + (seed % 18),
             spinDeg: 16 + (seed % 18),
             exitScale: 0.88
-        };
+        });
     }
-    return { ...base, variant: pick(['drift-left', 'drift-right', 'hover', 'bounce']) };
+    return finalize({ ...base, variant: pick(['drift-left', 'drift-right', 'hover', 'bounce']) });
 };

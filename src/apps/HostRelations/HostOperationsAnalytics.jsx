@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createHostPasswordResetLink, setHostApprovalStatus } from "../../lib/firebase";
 
 const DAY_MS = 86400000;
 const METER_META = [
@@ -375,7 +376,7 @@ export const HostOverview = ({ summary, onSelectHost }) => {
           {summary?.period || "—"}
         </span>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Metric
           label="Approved Hosts"
           value={funnel.approved}
@@ -403,6 +404,13 @@ export const HostOverview = ({ summary, onSelectHost }) => {
           detail="Onboarding or activity follow-up"
           tone="amber"
           icon="fa-lightbulb"
+        />
+        <Metric
+          label="Open feedback"
+          value={summary?.support?.open}
+          detail={`${formatCount(summary?.support?.waitingOnTeam)} waiting on the team`}
+          tone="pink"
+          icon="fa-inbox"
         />
       </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.75fr)]">
@@ -462,7 +470,9 @@ export const HostOverview = ({ summary, onSelectHost }) => {
   );
 };
 
-const HostDetailDrawer = ({ host, summary, onClose }) => {
+const HostDetailDrawer = ({ host, summary, onClose, onChanged }) => {
+  const [accountBusy, setAccountBusy] = useState("");
+  const [accountNotice, setAccountNotice] = useState("");
   useEffect(() => {
     if (!host) return undefined;
     const handleKeyDown = (event) => {
@@ -472,6 +482,41 @@ const HostDetailDrawer = ({ host, summary, onClose }) => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [host, onClose]);
   if (!host) return null;
+  const createResetLink = async () => {
+    if (accountBusy) return;
+    setAccountBusy("reset");
+    setAccountNotice("");
+    try {
+      const result = await createHostPasswordResetLink({ targetUid: host.uid, targetEmail: host.email });
+      await navigator.clipboard.writeText(String(result?.resetLink || ""));
+      setAccountNotice("Secure password-reset link copied. Send it only to this Host.");
+    } catch (error) {
+      setAccountNotice(String(error?.message || "Could not create a password-reset link.").replace(/^FirebaseError:\s*/i, ""));
+    } finally {
+      setAccountBusy("");
+    }
+  };
+  const setAccountAccess = async (enabled) => {
+    if (accountBusy) return;
+    if (!enabled && !window.confirm(`Revoke complimentary testing access for ${host.name || host.email}? Their subscription is not changed.`)) return;
+    setAccountBusy("access");
+    setAccountNotice("");
+    try {
+      await setHostApprovalStatus({
+        target: host.uid || host.email,
+        targetEmail: host.email,
+        enabled,
+        source: "host_account_console",
+        notes: enabled ? "Restored from Host Account Console" : "Revoked from Host Account Console",
+      });
+      setAccountNotice(enabled ? "Complimentary testing access granted." : "Complimentary testing access revoked. Billing was not changed.");
+      await onChanged?.();
+    } catch (error) {
+      setAccountNotice(String(error?.message || "Could not update Host access.").replace(/^FirebaseError:\s*/i, ""));
+    } finally {
+      setAccountBusy("");
+    }
+  };
   const referenceMs = Number(summary?.generatedAtMs || 0);
   const health = getHostHealth(host, referenceMs);
   const usage = METER_META.map((meter) => ({
@@ -577,6 +622,25 @@ const HostDetailDrawer = ({ host, summary, onClose }) => {
                 </strong>
               </div>
             </div>
+          </Panel>
+          <Panel className="border-cyan-300/18 p-4" data-host-account-console>
+            <Eyebrow>Host Account Console</Eyebrow>
+            <h3 className="mt-1 text-lg font-black text-white">Access, sign-in, and subscription context</h3>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">Testing-access controls change the BeauRocks approval override only. A paid subscription can still grant access; subscription changes remain in Stripe so provider state stays authoritative.</p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <button type="button" disabled={!!accountBusy || !host.email} onClick={createResetLink} className="min-h-[42px] rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 text-xs font-black text-cyan-50 disabled:opacity-45">
+                <i className="fa-solid fa-key mr-2" />{accountBusy === "reset" ? "Creating link…" : "Copy reset link"}
+              </button>
+              <button type="button" disabled={!!accountBusy} onClick={() => setAccountAccess(!host.hostApprovalEnabled)} className={`min-h-[42px] rounded-xl border px-3 text-xs font-black disabled:opacity-45 ${host.hostApprovalEnabled ? "border-rose-300/25 bg-rose-500/10 text-rose-100" : "border-emerald-300/25 bg-emerald-500/10 text-emerald-100"}`}>
+                <i className={`fa-solid ${host.hostApprovalEnabled ? "fa-user-lock" : "fa-user-check"} mr-2`} />
+                {accountBusy === "access" ? "Updating…" : host.hostApprovalEnabled ? "Revoke testing access" : "Grant testing access"}
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 p-3">
+              <div><div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Provider snapshot</div><div className="mt-1 text-sm font-bold capitalize text-white">{host.planId || "free"} · {host.planStatus || "inactive"}</div></div>
+              {host.email ? <a href={`https://dashboard.stripe.com/search?query=${encodeURIComponent(host.email)}`} target="_blank" rel="noreferrer" className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-black text-zinc-200 hover:bg-white/10">Open Stripe <i className="fa-solid fa-arrow-up-right-from-square ml-1" /></a> : null}
+            </div>
+            {accountNotice ? <div className="mt-3 rounded-xl border border-amber-300/15 bg-amber-500/8 p-3 text-xs leading-5 text-amber-100" role="status">{accountNotice}</div> : null}
           </Panel>
           <Panel className="p-4">
             <Eyebrow tone="pink">
@@ -692,6 +756,7 @@ export const HostRoster = ({
   selectedHostId = "",
   onSelectHost,
   onCloseHost,
+  onChanged,
 }) => {
   const [query, setQuery] = useState("");
   const allHosts = Array.isArray(summary?.hosts) ? summary.hosts : [];
@@ -813,6 +878,7 @@ export const HostRoster = ({
         host={selectedHost}
         summary={summary}
         onClose={onCloseHost}
+        onChanged={onChanged}
       />
     </>
   );

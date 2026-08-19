@@ -24,6 +24,7 @@ import {
     normalizeLiveStageCameraCorner,
     normalizeLiveStageCameraMode,
 } from '../../../lib/liveStageCamera';
+import { deriveNightPlan, getHostingLevel, getNightExperience } from '../../../lib/nightPlan.js';
 
 import {
     buildProvisionEventCreditsPayload,
@@ -60,15 +61,15 @@ const ROOM_CONTROL_MODEL_OPTIONS = Object.freeze([
     },
     {
         id: 'assisted_host',
-        label: 'Assisted Host',
+        label: 'Host Assist',
         icon: 'fa-wand-magic-sparkles',
         summary: 'Full songs with Auto-DJ support between performances.',
     },
     {
         id: 'crowd_driven',
-        label: 'Crowd-Driven',
+        label: 'Self-Serve',
         icon: 'fa-people-group',
-        summary: 'Mic Checkpoint plus Auto-DJ for self-service parties.',
+        summary: 'Guests drive supported choices while you supervise.',
     },
 ]);
 const AUTO_PARTY_QUICK_OPTIONS = Object.freeze([
@@ -246,6 +247,7 @@ const HostTopChrome = ({
     onUndoOperatingStylePreset,
     liveCrowdModeHistoryLabel = '',
     liveOperatingStyleHistoryLabel = '',
+    onOpenFeedback,
     modalOverlayActive = false,
 }) => {
     const resolvedHostBase = hostBase || appBase;
@@ -427,6 +429,9 @@ const HostTopChrome = ({
     const minimalRuntimeChrome = experimentalRuntimeShellActive && tab === 'stage';
     const adminWorkspaceChrome = tab === 'admin';
     const denseChrome = minimalRuntimeChrome || adminWorkspaceChrome || !!tabletTouchViewport || !!mediumViewport;
+    const currentNightPlan = deriveNightPlan(room || {});
+    const currentNightExperience = getNightExperience(currentNightPlan.experienceId);
+    const currentHostingLevel = getHostingLevel(currentNightPlan.hostingLevel);
     const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
     const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[320]';
     const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
@@ -1045,12 +1050,14 @@ const HostTopChrome = ({
                 await startStormSequence?.();
             }
         } else if (effectId === 'guitar') {
-            await updateRoom({
-                lightMode: guitarActive ? 'off' : 'guitar',
-                guitarSessionId: Date.now(),
-                guitarWinner: null,
-                guitarVictory: null
-            });
+            await updateRoom(guitarActive
+                ? { lightMode: 'off' }
+                : {
+                    lightMode: 'guitar',
+                    guitarSessionId: Date.now(),
+                    guitarWinner: null,
+                    guitarVictory: null
+                });
         } else if (effectId === 'banger') {
             await updateRoom({ lightMode: bangerActive ? 'off' : 'banger' });
         } else if (effectId === 'ballad') {
@@ -1187,9 +1194,9 @@ const HostTopChrome = ({
             firstTimeBoost: quickRoomControls?.queueFirstTimeBoost,
         },
     });
-    const activeRoomControlModel = quickRoomControls?.oneMinuteMicEnabled
+    const activeRoomControlModel = room?.nightPlan?.hostingLevel === 'self_serve'
         ? 'crowd_driven'
-        : quickAutomationControls?.autoDj
+        : room?.nightPlan?.hostingLevel === 'assisted' || (!room?.nightPlan?.hostingLevel && quickAutomationControls?.autoDj)
             ? 'assisted_host'
             : 'host_led';
     const activeRoomControlModelOption = ROOM_CONTROL_MODEL_OPTIONS.find((option) => option.id === activeRoomControlModel) || ROOM_CONTROL_MODEL_OPTIONS[0];
@@ -1299,6 +1306,16 @@ const HostTopChrome = ({
                     alt="Beaurocks Karaoke"
                 />
                 <div data-host-room-code className={`${minimalRuntimeChrome ? 'text-[12px] sm:text-[13px] lg:text-[14px] px-1.5 py-0.5' : adminWorkspaceChrome ? 'text-[12px] sm:text-[13px] lg:text-[14px] px-1.5 py-0.5' : denseChrome ? 'text-[13px] sm:text-[14px] lg:text-[16px] px-2 py-0.5' : 'text-[14px] sm:text-[16px] lg:text-[18px] px-2 py-0.5'} font-mono font-bold text-[#00C4D9] bg-black/40 rounded-lg border border-[#00C4D9]/30`}>{roomCode}</div>
+                <div
+                    data-night-plan-chip="true"
+                    title={`Room Experience: ${currentNightExperience.label}. Hosting Level: ${currentHostingLevel.label}.`}
+                    className="hidden min-w-0 items-center gap-1.5 rounded-lg border border-white/10 bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-cyan-50/78 2xl:inline-flex"
+                >
+                    <i className={`fa-solid ${currentNightExperience.icon} text-cyan-200`} />
+                    <span className="max-w-[150px] truncate">{currentNightExperience.shortLabel}</span>
+                    <span className="text-white/25">·</span>
+                    <span className="max-w-[110px] truncate text-fuchsia-100/76">{currentHostingLevel.label}</span>
+                </div>
                 {typeof onOpenHostDashboard === 'function' && (
                     <button
                         onClick={() => {
@@ -1322,6 +1339,22 @@ const HostTopChrome = ({
                     <i className="fa-solid fa-sparkles"></i>
                     {!minimalRuntimeChrome && !adminWorkspaceChrome ? <span className="hidden xl:inline">Host Hub</span> : null}
                 </a>
+                {typeof onOpenFeedback === 'function' ? (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            closeAllTopMenus();
+                            onOpenFeedback();
+                        }}
+                        className={`${styles.btnStd} ${styles.btnNeutral} ${minimalRuntimeChrome || adminWorkspaceChrome ? 'px-2 text-[11px]' : 'px-2.5 text-xs'}`}
+                        title="Send private feedback without leaving the Host Panel"
+                        data-feature-id="host-feedback-button"
+                        style={{ touchAction: 'manipulation' }}
+                    >
+                        <i className="fa-solid fa-comment-dots"></i>
+                        {!minimalRuntimeChrome && !adminWorkspaceChrome ? <span className="hidden 2xl:inline">Feedback</span> : null}
+                    </button>
+                ) : null}
                 <div className="relative" ref={launchMenuRef}>
                     <button
                         onClick={() => {
@@ -2024,9 +2057,9 @@ const HostTopChrome = ({
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`} data-host-room-control-model>
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
-                                            <div className={`${quickMenuEyebrowClass} text-fuchsia-200`}>Room control model</div>
+                                            <div className={`${quickMenuEyebrowClass} text-fuchsia-200`}>Hosting Level</div>
                                             <div className={quickMenuTitleClass}>{activeRoomControlModelOption.label}</div>
-                                            <div className={quickMenuBodyClass}>Decide whether tonight is host-driven, host-assisted, or crowd-driven before tuning the detailed controls.</div>
+                                            <div className={quickMenuBodyClass}>Choose how much pacing help BeauRocks provides. Mic Checkpoint stays a separate performance control.</div>
                                         </div>
                                         <span className={`${quickMenuBadgeClass} border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100`}>
                                             Production mode
@@ -3666,7 +3699,7 @@ const HostTopChrome = ({
                                     </button>
                                     <button onClick={() => runLiveEffect('guitar')} className={`${styles.btnStd} ${guitarActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-guitar"></i>
-                                        {guitarActive ? 'Guitar ON' : 'Guitar'}
+                                        {guitarActive ? 'Solo ON' : 'Guitar Solo'}
                                     </button>
                                     <button onClick={() => runLiveEffect('banger')} className={`${styles.btnStd} ${bangerActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-fire"></i>

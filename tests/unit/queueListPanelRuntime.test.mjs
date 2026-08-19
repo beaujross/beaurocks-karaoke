@@ -118,6 +118,37 @@ test('QueueListPanel keeps the overview contextual and leaves deeper actions to 
   assert.doesNotMatch(markup, /Queue Actions/);
 });
 
+test('QueueListPanel renders a projected performance once and opens its details from that row', async () => {
+  vi.doMock('../../src/lib/firebase.js', () => ({
+    db: {},
+    doc: (...parts) => ({ parts }),
+    deleteDoc: async () => {},
+  }));
+
+  const { default: QueueListPanel } = await import('../../src/apps/Host/components/QueueListPanel.jsx');
+  const markup = renderToStaticMarkup(
+    React.createElement(QueueListPanel, buildQueueListPanelProps({
+      lineupPlanItems: [{
+        id: 'queue-song-1',
+        type: 'performance',
+        status: 'ready',
+        destination: 'queue',
+        projectionSource: 'queue_song',
+        queueSongId: 'song-1',
+        assignedPerformerName: 'Kelly',
+        songTitle: 'Since U Been Gone',
+        artistName: 'Kelly Clarkson',
+        projectedSequence: 1,
+      }],
+    })),
+  );
+
+  assert.equal((markup.match(/Since U Been Gone/g) || []).length, 1);
+  assert.equal((markup.match(/data-queue-id="song-1"/g) || []).length, 0);
+  assert.match(markup, /Performance details/);
+  assert.doesNotMatch(markup, /Performance controls/);
+});
+
 test('QueueListPanel keeps held and review-needed work in collapsed overview trays', async () => {
   vi.doMock('../../src/lib/firebase.js', () => ({
     db: {},
