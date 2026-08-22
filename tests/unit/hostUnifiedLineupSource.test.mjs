@@ -25,6 +25,11 @@ test('Tonight\'s Lineup vertical queue receives committed Show Plan performances
   assert.match(queuePanelSource, /projectedQueueSongIds/);
   assert.match(queuePanelSource, /unprojectedQueue\.map/);
   assert.match(queuePanelSource, /onOpenPerformance=\{setSelectedSongId\}/);
+  assert.match(queuePanelSource, /data-lineup-plan-item-expanded=\{expanded \? 'true' : 'false'\}/);
+  assert.match(queuePanelSource, /min-h-\[60px\]/);
+  assert.match(queuePanelSource, /expandedLineupItemId === item\.id/);
+  assert.match(queuePanelSource, /current === itemId \? '' : itemId/);
+  assert.match(queuePanelSource, /data-feature-id="lineup-item-expanded-actions"/);
   assert.doesNotMatch(queuePanelSource, /label=\{hasProjectedQueueSongs \? 'Performance controls'/);
 });
 
@@ -43,9 +48,9 @@ test('repeating crowd-moment automation is materialized into the shared lineup',
   assert.match(queueTabSource, /crowdMomentAutomation=\{room\?\.missionControl\?\.party \|\| \{\}\}/);
   assert.match(queuePanelSource, /data-feature-id="lineup-crowd-moment-automation"/);
   assert.match(queuePanelSource, /every \{crowdAutomationCadence\} performance/);
-  assert.match(queuePanelSource, /Visible occurrences are placed directly into this lineup/);
-  assert.match(queuePanelSource, /Lineup owned/);
-  assert.match(queuePanelSource, /Add editable Trivia Moment/);
+  assert.match(queuePanelSource, /Upcoming prompts appear below and can be opened to review/);
+  assert.match(queuePanelSource, />Active</);
+  assert.doesNotMatch(queuePanelSource, /Add editable Trivia Moment/);
   assert.match(hostSource, /materializedRule\.enabled && !scheduledItem/);
   assert.match(hostSource, /betweenSongGenerationInFlightRef/);
   assert.match(hostSource, /runOfShowItemId: scheduledItem\.id/);

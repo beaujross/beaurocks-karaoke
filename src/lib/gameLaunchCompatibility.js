@@ -1,5 +1,6 @@
 import { GAME_LIFECYCLE_KINDS, getGameLifecycleContract } from './gameLifecycle';
 import { resolveGameLifecycleSlots } from './gameLifecycleSlots';
+import { getPostPerformanceSurfaceLease } from './postPerformanceSurfaceLease';
 
 const MODE_ALIASES = Object.freeze({
     trivia_reveal: 'trivia_pop',
@@ -44,6 +45,23 @@ export const getGameLaunchCompatibility = ({ requestedMode = '', activeMode = ''
 
 export const getRoomGameLaunchPreflight = ({ requestedMode = '', room = {}, performanceActive } = {}) => {
     const lifecycleSlots = resolveGameLifecycleSlots(room, { performanceActive });
+    const requestedId = normalizeGameLifecycleMode(requestedMode);
+    const requestedContract = getGameLifecycleContract(requestedId);
+    const postPerformanceSurfaceLease = getPostPerformanceSurfaceLease(room);
+    if (postPerformanceSurfaceLease.active && requestedContract?.exclusiveTakeover) {
+        const seconds = Math.max(1, Math.ceil(postPerformanceSurfaceLease.remainingMs / 1000));
+        return {
+            allowed: false,
+            code: 'post_performance_surface_lease',
+            message: postPerformanceSurfaceLease.phase === 'applause'
+                ? 'Finish the applause meter before starting the next room moment.'
+                : `The performance recap is still on Public TV. The next room moment can start in about ${seconds} seconds.`,
+            requestedId,
+            activeId: lifecycleSlots.activeMode,
+            lifecycleSlots,
+            postPerformanceSurfaceLease,
+        };
+    }
     const compatibilityActiveMode = lifecycleSlots.takeoverMode
         || (lifecycleSlots.allNightCompanionModes.includes(lifecycleSlots.activeMode) ? lifecycleSlots.activeMode : '');
     const compatibility = getGameLaunchCompatibility({

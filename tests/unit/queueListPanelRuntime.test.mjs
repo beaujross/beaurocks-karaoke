@@ -118,7 +118,7 @@ test('QueueListPanel keeps the overview contextual and leaves deeper actions to 
   assert.doesNotMatch(markup, /Queue Actions/);
 });
 
-test('QueueListPanel renders a projected performance once and opens its details from that row', async () => {
+test('QueueListPanel renders a projected performance once in a collapsed, expandable lineup row', async () => {
   vi.doMock('../../src/lib/firebase.js', () => ({
     db: {},
     doc: (...parts) => ({ parts }),
@@ -145,7 +145,11 @@ test('QueueListPanel renders a projected performance once and opens its details 
 
   assert.equal((markup.match(/Since U Been Gone/g) || []).length, 1);
   assert.equal((markup.match(/data-queue-id="song-1"/g) || []).length, 0);
-  assert.match(markup, /Performance details/);
+  assert.match(markup, /data-lineup-plan-item-expanded="false"/);
+  assert.match(markup, /aria-expanded="false"/);
+  assert.match(markup, /Open Performance: Kelly/);
+  assert.doesNotMatch(markup, /Performance details/);
+  assert.doesNotMatch(markup, /lineup-item-expanded-actions/);
   assert.doesNotMatch(markup, /Performance controls/);
 });
 

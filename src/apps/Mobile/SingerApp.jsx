@@ -117,7 +117,6 @@ import {
 import GameContainer from '../../components/GameContainer';
 import GameLifecycleStatusCard from '../../components/GameLifecycleStatusCard';
 import { getGameLifecyclePresentation } from '../../lib/gameLifecyclePresentation';
-import { getAudienceGameMembershipGate } from '../../lib/audienceGameMembershipGate';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
 import { resolveLyricsPlaybackClock } from '../../lib/lyricsPlaybackClock';
 import { FameLevelProgressBar } from '../../components/FameLevelBadge';
@@ -946,9 +945,7 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
             : Math.max(0, (visibleWidth - itemWidth) / 2);
     const normalizedBrandTheme = normalizeAudienceBrandTheme(brandTheme || {});
     const [activeIndex, setActiveIndex] = useState(0);
-    const [activeJump, setActiveJump] = useState('free');
     const scrollRafRef = useRef(null);
-    const manualNavigationRef = useRef(false);
     const scrollToIndex = (idx, behavior = 'smooth') => {
         const el = listRef.current;
         if (!el || idx < 0) return;
@@ -1019,7 +1016,7 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
             listRef.current.scrollLeft = listWidth;
         }
         const raf = requestAnimationFrame(() => {
-            if (!manualNavigationRef.current) scrollToSelected();
+            scrollToSelected();
         });
         return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1029,10 +1026,10 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
         const el = listRef.current;
         if (!el) return;
         const raf = requestAnimationFrame(() => {
-            if (!manualNavigationRef.current) scrollToSelected();
+            scrollToSelected();
         });
         const timeout = setTimeout(() => {
-            if (!manualNavigationRef.current) scrollToSelected();
+            scrollToSelected();
         }, 80);
         return () => {
             cancelAnimationFrame(raf);
@@ -1095,35 +1092,8 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
         borderColor: withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, 0.32),
         boxShadow: `0 0 24px ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.14)}`,
     };
-    const avatarJumpGroups = [
-        { id: 'free', label: 'Free', icon: 'fa-face-smile', className: 'border-white/20 bg-white/[0.08] text-white', index: items.findIndex((item) => item?.unlock?.type === 'free') },
-        { id: 'points', label: 'Points', currency: 'points', className: 'border-cyan-200/45 bg-cyan-300/14 text-cyan-50', index: items.findIndex((item) => item?.unlock?.type === 'points') },
-        { id: 'beaubucks', label: 'BeauBucks', currency: 'beaubucks', className: 'border-fuchsia-200/45 bg-fuchsia-400/16 text-fuchsia-50', index: items.findIndex((item) => item?.unlock?.type === 'beaubucks') },
-    ].filter((group) => group.index >= 0);
-
     return (
         <div className="w-full relative mx-auto overflow-visible" style={{ maxWidth: '100%', width: '100%' }}>
-            <div className="flex items-center justify-center gap-1.5 px-3 pt-3" data-feature-id="avatar-storefront-jump-nav" aria-label="Avatar collection shortcuts">
-                {avatarJumpGroups.map((group) => {
-                    const activateGroup = () => {
-                        manualNavigationRef.current = true;
-                        setActiveJump(group.id);
-                        scrollToIndex(group.index, 'instant');
-                    };
-                    return <button
-                        key={group.id}
-                        type="button"
-                        onPointerDown={activateGroup}
-                        onClick={activateGroup}
-                        className={`inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-full border px-2.5 text-[9px] font-black uppercase tracking-[0.1em] transition active:scale-95 ${group.className} ${activeJump === group.id ? 'ring-2 ring-white/70 ring-offset-2 ring-offset-black/60' : ''}`}
-                        data-avatar-jump={group.id}
-                        data-active={activeJump === group.id ? 'true' : 'false'}
-                    >
-                        {group.currency ? <CurrencyIcon currency={group.currency} size="xs" /> : <i className={`fa-solid ${group.icon}`} aria-hidden="true"></i>}
-                        {group.label}
-                    </button>;
-                })}
-            </div>
             {showArrows && (
                 <>
                     <button type="button" onClick={() => scrollByDir(-1)} className="emoji-nav-btn left-2" style={navButtonStyle} aria-label="Scroll left">
@@ -1725,14 +1695,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const [demoFixture, setDemoFixture] = useState(initialAudienceDemoFixture || (isMarketingDemoEmbed ? {} : null));
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const isAudienceFixtureMode = (isMarketingDemoEmbed || isQaAudienceFixture) && !!demoFixture;
-    const audienceGameMembershipGate = useMemo(() => getAudienceGameMembershipGate({
-        hasRoomUser: !!user,
-        membershipResolved: roomUserMembershipResolved,
-        isDemoFixture: isMarketingDemoFixture,
-        takeoverKind,
-        activeMode: room?.activeMode,
-        lightMode: room?.lightMode,
-    }), [isMarketingDemoFixture, room?.activeMode, room?.lightMode, roomUserMembershipResolved, takeoverKind, user]);
     useEffect(() => {
         if (!initialAudienceDemoFixture) return;
         const fixture = initialAudienceDemoFixture;
@@ -10381,24 +10343,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         {poweredByBeauRocksLabel}
                     </div>
                 ) : null}
-                <div className="max-w-sm rounded-3xl border border-white/12 bg-black/24 px-4 py-3 text-center shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
-                    <div className="text-sm font-semibold leading-6 text-white/92">
-                        Pick your profile avatar. It identifies you in the queue, chat, votes, and leaderboards; it does not change your voting-reaction buttons.
-                    </div>
-                </div>
                 {/* FULL EMOJI GRID FOR LOGIN */}
-                <div className="relative w-full max-w-[430px] overflow-hidden rounded-[2rem] border border-white/8 bg-black/16 px-0">
+                <div className="relative w-full max-w-[430px] overflow-hidden px-0">
                     <AvatarCoverflow items={AVATAR_CATALOG} value={activeAvatarPreviewEmoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} edgePadding="center" brandTheme={audienceBrandTheme} />
                 </div>
                 <div
-                    className="w-full max-w-sm mt-1 rounded-3xl border p-2.5 text-center shadow-[0_14px_40px_rgba(0,0,0,0.4)]"
-                    style={{
-                        borderColor: `${audienceBrandTheme.secondaryColor}66`,
-                        background: `linear-gradient(135deg, ${audienceBrandTheme.accentColor}55 0%, rgba(16, 18, 26, 0.94) 48%, ${audienceBrandTheme.primaryColor}40 100%)`,
-                        boxShadow: `0 18px 42px ${audienceBrandTheme.primaryColor}24`,
-                    }}
+                    className="w-full max-w-sm mt-0.5 px-2 pb-1 text-center"
                 >
-                    <div className="mt-1 text-xl font-black drop-shadow" style={{ color: audienceBrandTheme.primaryColor }}>{selectedAvatar?.label}</div>
+                    <div className="text-xl font-black drop-shadow" style={{ color: audienceBrandTheme.primaryColor }}>{selectedAvatar?.label}</div>
                     {selectedAvatarStatus?.locked ? (
                         <div className="mt-2 flex flex-col items-center gap-2">
                             <AvatarOfferBadge item={selectedAvatar} />
@@ -10735,146 +10687,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             </div>
         ) : null
     );
-
-    const persistAudienceGameRulesAcceptance = () => {
-        setTermsAccepted(true);
-        if (typeof window === 'undefined') return;
-        const key = `beaurocks_rules_${uid || 'guest'}`;
-        try {
-            localStorage.setItem(key, 'accepted');
-        } catch {
-            // Ignore storage failures.
-        }
-    };
-
-    const startAudienceGameMembershipJoin = async () => {
-        if (isJoining || !joinReadyName) return;
-        if (roomJoinRequiresAccount && isAnon) {
-            openVipUpgrade('email');
-            return;
-        }
-        if (!termsAccepted) {
-            setPendingJoin({ type: 'join', payload: null });
-            setShowRulesModal(true);
-            return;
-        }
-        setRoomUserMembershipResolved(false);
-        const joined = await join();
-        if (!joined) setRoomUserMembershipResolved(true);
-    };
-
-    const confirmAudienceGameMembershipRules = async () => {
-        if (!termsAccepted || isJoining) return;
-        persistAudienceGameRulesAcceptance();
-        setPendingJoin(null);
-        setRoomUserMembershipResolved(false);
-        const joined = await join();
-        if (joined) {
-            setShowRulesModal(false);
-        } else {
-            setRoomUserMembershipResolved(true);
-        }
-    };
-
-    const audienceGameMembershipGateScreen = (
-        <div
-            data-singer-view="game-membership-gate"
-            data-audience-game-membership-state={audienceGameMembershipGate.state}
-            data-audience-game-membership-mode={String(room?.activeMode || room?.lightMode || '').trim().toLowerCase()}
-            className="min-h-[100dvh] w-full overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.2),transparent_42%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.2),transparent_44%),#05070d] px-4 py-[calc(env(safe-area-inset-top)+2rem)] pb-[calc(env(safe-area-inset-bottom)+2rem)] text-white font-saira"
-            style={audienceBrandPalette.rootStyle}
-        >
-            <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md items-center justify-center">
-                <div className="w-full rounded-[30px] border border-cyan-200/25 bg-zinc-950/94 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.55)]">
-                    <div className="flex items-center gap-3">
-                        <img src={audienceBrandLogoUrl} className="h-12 w-12 rounded-2xl object-contain" alt={audienceBrandTitle} />
-                        <div className="min-w-0 text-left">
-                            <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200">Live now</div>
-                            <div className="mt-1 text-2xl font-black text-white">{audienceGameMembershipGate.modeLabel}</div>
-                        </div>
-                    </div>
-
-                    {audienceGameMembershipGate.state === 'connecting' ? (
-                        <div className="mt-6 text-center" data-feature-id="audience-game-membership-connecting">
-                            <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-white/15 border-t-cyan-300"></div>
-                            <div className="mt-4 text-lg font-black text-white">{audienceGameMembershipGate.headline}</div>
-                            <div className="mt-2 text-sm leading-6 text-zinc-300">{audienceGameMembershipGate.detail}</div>
-                        </div>
-                    ) : showRulesModal ? (
-                        <div className="mt-5" data-feature-id="audience-game-membership-rules">
-                            <div className="text-xl font-black text-white">Quick room rules</div>
-                            <div className="mt-2 text-sm leading-6 text-zinc-300">Be kind, request only content you can share, and follow the Host&apos;s lead.</div>
-                            <label className="mt-4 flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-zinc-100">
-                                <input
-                                    data-singer-rules-checkbox
-                                    type="checkbox"
-                                    checked={termsAccepted}
-                                    onChange={(event) => setTermsAccepted(event.target.checked)}
-                                    className="mt-0.5 h-5 w-5 accent-pink-500"
-                                />
-                                <span>I agree to the Terms of Service and Privacy Policy.</span>
-                            </label>
-                            <div className="mt-3 flex flex-wrap gap-4 text-xs text-cyan-200">
-                                <button type="button" onClick={() => window.open(`${window.location.origin}${import.meta.env.BASE_URL || '/'}karaoke/terms`, '_blank')} className="underline underline-offset-4">Terms</button>
-                                <button type="button" onClick={() => window.open(`${window.location.origin}${import.meta.env.BASE_URL || '/'}karaoke/privacy`, '_blank')} className="underline underline-offset-4">Privacy</button>
-                            </div>
-                            <button
-                                type="button"
-                                data-singer-rules-confirm
-                                disabled={!termsAccepted || isJoining}
-                                onClick={() => { void confirmAudienceGameMembershipRules(); }}
-                                className={`mt-5 w-full rounded-2xl px-4 py-3.5 text-base font-black ${termsAccepted && !isJoining ? 'bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white' : 'cursor-not-allowed bg-zinc-700 text-zinc-300'}`}
-                            >
-                                {isJoining ? 'Joining...' : `Agree and join ${audienceGameMembershipGate.modeLabel}`}
-                            </button>
-                            <button type="button" onClick={() => setShowRulesModal(false)} className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-200">Back</button>
-                        </div>
-                    ) : (
-                        <div className="mt-5" data-feature-id="audience-game-membership-join">
-                            <div className="text-xl font-black text-white">{audienceGameMembershipGate.headline}</div>
-                            <div className="mt-2 text-sm leading-6 text-zinc-300">{audienceGameMembershipGate.detail}</div>
-                            {returningProfile ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setForm((current) => ({ ...current, name: returningProfile.name || current.name, emoji: returningProfile.emoji || current.emoji }))}
-                                    className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-pink-300/25 bg-pink-500/10 px-4 py-3 text-left"
-                                >
-                                    <span className="text-2xl">{returningProfile.emoji || DEFAULT_EMOJI}</span>
-                                    <span><span className="block text-xs uppercase tracking-[0.18em] text-pink-200">Welcome back</span><span className="block font-black text-white">Use {returningProfile.name}</span></span>
-                                </button>
-                            ) : null}
-                            <input
-                                ref={joinNameInputRef}
-                                data-singer-join-name
-                                value={form.name}
-                                maxLength={NAME_LIMIT}
-                                onChange={(event) => setForm({ ...form, name: clampName(event.target.value) })}
-                                onKeyDown={(event) => {
-                                    if (event.key !== 'Enter') return;
-                                    event.preventDefault();
-                                    void startAudienceGameMembershipJoin();
-                                }}
-                                placeholder="Your name"
-                                className="mt-4 w-full rounded-2xl border border-cyan-200/30 bg-white/95 px-4 py-3.5 text-center text-lg font-bold text-zinc-950 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-400/30"
-                            />
-                            <button
-                                type="button"
-                                data-singer-join-button
-                                disabled={!joinCanSubmit || isJoining}
-                                onClick={() => { void startAudienceGameMembershipJoin(); }}
-                                className={`mt-3 w-full rounded-2xl px-4 py-3.5 text-base font-black ${joinCanSubmit && !isJoining ? 'bg-gradient-to-r from-cyan-300 to-pink-400 text-black' : 'cursor-not-allowed bg-zinc-700 text-zinc-300'}`}
-                            >
-                                {isJoining ? 'Joining...' : !activeUid ? 'Connecting...' : `Join and play ${audienceGameMembershipGate.modeLabel}`}
-                            </button>
-                            <div className="mt-3 text-center text-xs leading-5 text-zinc-400">Your name creates room membership so votes, points, and recap credit stay attached to you.</div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-
-    if (audienceGameMembershipGate.visible) return audienceGameMembershipGateScreen;
 
     // --- VIBE SYNC OVERLAYS ---
     if (room?.lightMode === 'storm' && !(isStreamlinedAudienceShell && takeoverMinimized)) {
@@ -14130,9 +13942,17 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                       <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInsetLeft, paddingRight: mobileSideInsetRight }}>
                       {/* Left: User Emoji & Name */}
                       <div className="flex items-center justify-start min-w-0 relative z-10">
-                          <button onClick={openAudienceProfileShortcut} className={`bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-10 w-[118px] sm:w-[132px] min-w-0 ${isNativeMobileLayout ? 'mobile-native-pill' : ''}`}>
+                          <button
+                              onClick={openAudienceProfileShortcut}
+                              data-feature-id="audience-fame-entry"
+                              aria-label={`${user?.name || 'Your profile'}, Fame level ${myFame.level}. View progress and Fame levels.`}
+                              className={`bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-2xl border border-amber-200/20 flex items-center gap-2 shadow-lg h-12 w-[132px] sm:w-[148px] min-w-0 ${isNativeMobileLayout ? 'mobile-native-pill' : ''}`}
+                          >
                               <span className="text-2xl">{user?.avatar}</span>
-                              <span className="font-bold truncate text-sm text-white">{user?.name}</span>
+                              <span className="min-w-0 text-left">
+                                  <span className="block truncate text-sm font-bold leading-tight text-white">{user?.name}</span>
+                                  <span className="mt-0.5 flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.08em] text-amber-200"><i className="fa-solid fa-star" aria-hidden="true"></i> Fame Lv {myFame.level}</span>
+                              </span>
                           </button>
                       </div>
                       <div />
@@ -14718,6 +14538,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     getEmoji={getEmojiChar}
                     onReact={(reactionType, cost) => react(reactionType, takeoverClapVotingActive ? 0 : cost)}
                     onEdit={openReactionLibrary}
+                    reactionSlotCount={reactionSlotCount}
+                    fifthReactionSlotPointsCost={fifthReactionSlotPointsCost}
+                    fifthReactionSlotPurchasesEnabled={fifthReactionSlotPurchasesEnabled}
+                    onUnlockFifth={() => void unlockFifthReactionSlot()}
+                    layout={tab === 'home' ? 'grid' : 'strip'}
                 />
             ) : null}
 

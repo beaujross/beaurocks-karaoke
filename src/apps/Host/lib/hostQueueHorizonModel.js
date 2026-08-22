@@ -6,6 +6,20 @@ const normalizeText = (value = '') => String(value || '').trim();
 const isPerformance = (item = null) => item?.objectType === 'performance';
 const isFinishedFlowItem = (item = null) => ['complete', 'skipped'].includes(normalizeText(item?.status).toLowerCase());
 
+export const getHostLineupItemDurationSec = (item = {}) => {
+    const raw = item?.raw && typeof item.raw === 'object' ? item.raw : item;
+    const candidates = [
+        item?.durationSec,
+        raw?.plannedDurationSec,
+        raw?.backingPlan?.durationSec,
+        raw?.durationSec,
+        raw?.duration,
+        raw?.expectedDurationSec,
+    ];
+    const resolved = candidates.find((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+    return resolved ? Math.max(1, Math.round(Number(resolved))) : 0;
+};
+
 const getQueueSongLookupKeys = (song = {}) => [
     song?.id,
     song?.songDocId,
@@ -53,6 +67,15 @@ const buildFlowDisplayItem = (item = {}, queueLookup = new Map()) => {
         || item?.modeLaunchPlan?.prompt
         || item?.notes
     );
+    const raw = {
+        ...item,
+        ...(item?.projectionSource === 'queue_song' ? {
+            id,
+            projectionId,
+        } : {}),
+        queueSongId: normalizeText(queueSong?.id || item?.preparedQueueSongId),
+        duration: queueSong?.duration || item?.duration || null,
+    };
     return {
         id,
         objectType: performance ? 'performance' : 'moment',
@@ -75,14 +98,8 @@ const buildFlowDisplayItem = (item = {}, queueLookup = new Map()) => {
         avatarEmoji: normalizeText(queueSong?.emoji || queueSong?.avatar) || getFlowItemEmoji(item),
         sourceLabel: item?.projectionSource === 'queue_song' ? 'Queue' : 'Show',
         reason: item?.projectionSource === 'queue_song' ? 'Performance queue' : 'Tonight\'s Flow',
-        raw: {
-            ...item,
-            ...(item?.projectionSource === 'queue_song' ? {
-                id,
-                projectionId,
-            } : {}),
-            queueSongId: normalizeText(queueSong?.id || item?.preparedQueueSongId),
-        },
+        durationSec: getHostLineupItemDurationSec(raw),
+        raw,
     };
 };
 
@@ -344,6 +361,9 @@ export const buildHostQueueHorizonModel = ({
 
     return {
         segments,
+        timelineItems: committedFlow.length
+            ? committedFlow
+            : segments.map((segment) => segment.item).filter(Boolean),
         remainingCount,
         queueTotalCount: normalizeCount(queueTotalCount),
         liveQueueItemCount: totalUpcomingCount,

@@ -717,13 +717,10 @@ const useQueueSongActions = ({
             ? 'apple'
             : (r.source === 'youtube' ? 'youtube' : r.source === 'local' ? 'custom' : (isApple ? 'apple' : ''));
         const mediaUrl = preferAppleDefault ? '' : (r.source === 'youtube' || r.source === 'local' ? (r.url || '') : '');
-        const resolvedDuration = preferAppleDefault
-            ? selectedDuration
-            : await resolvePreferredDuration(
-                mediaUrl,
-                selectedDuration,
-                r.mediaType === 'audio' || isAudioUrl(r.url)
-            );
+        // Keep the host's queue action on the shortest possible path. Media duration
+        // probing can involve loading remote metadata, so use the catalogue duration
+        // immediately and enrich the queue document after it has been created.
+        const resolvedDuration = selectedDuration;
         const queueYouTubePlaybackPatch = buildQueueSongYouTubePlaybackPatch({
             mediaUrl,
             embeddable: r.embeddable,
@@ -793,6 +790,13 @@ const useQueueSongActions = ({
             toast(statusText);
 
             void (async () => {
+                const enrichedDuration = preferAppleDefault
+                    ? resolvedDuration
+                    : await resolvePreferredDuration(
+                        mediaUrl,
+                        resolvedDuration,
+                        r.mediaType === 'audio' || isAudioUrl(r.url)
+                    );
                 const canonicalMatch = await resolveCanonicalIdentitySafe({
                     songId: initialSongId,
                     title: r.trackName,
@@ -834,7 +838,7 @@ const useQueueSongActions = ({
                                 source: trackSource,
                                 mediaUrl: mediaUrl || '',
                                 appleMusicId: nextSong.appleMusicId,
-                                duration: nextSong.duration,
+                                duration: enrichedDuration,
                                 audioOnly: nextSong.audioOnly,
                                 backingOnly: false,
                                 addedBy: hostName || 'Host'
@@ -854,6 +858,7 @@ const useQueueSongActions = ({
                     await updateDoc(songDocRef, {
                         songId,
                         trackId: trackRecord?.trackId || null,
+                        duration: Math.max(1, Math.round(Number(enrichedDuration || nextSong.duration || 180))),
                         ...(canonicalMatch?.found ? {
                             songTitle: canonicalTitle,
                             artist: canonicalArtist

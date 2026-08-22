@@ -40,7 +40,7 @@ test('host top chrome keeps the vibe meter but drops the redundant ops strip', (
   assert.match(hostAppSource, /hostOpsStatus\?\.summary/);
 });
 
-test('host top chrome keeps room preset cards wrapped and the show-time chip compact', () => {
+test('host top chrome keeps room preset cards wrapped and delegates Show Time to the lineup', () => {
   assert.match(
     source,
     /min-h-\[72px\] min-w-0 items-start justify-start whitespace-normal px-3 py-2\.5 text-left normal-case tracking-\[0\.02em\]/,
@@ -51,11 +51,7 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
     /whitespace-normal break-words/,
     'HostTopChrome preset descriptions should wrap instead of bleeding outside the button bounds',
   );
-  assert.match(
-    source,
-    /min-w-\[136px\]' : 'min-w-\[152px\][\s\S]*gap-1\.5[\s\S]*px-2\.5 py-1/,
-    'HostTopChrome show-time chip should stay more compact so it matches the surrounding nav density',
-  );
+  assert.doesNotMatch(source, /Show Time/);
   assert.match(
     source,
     /denseChrome \? 'h-9 px-2\.5 text-\[12px\]' : 'h-9 px-2\.5 text-sm'[\s\S]*host-brand-tab shrink-0/,

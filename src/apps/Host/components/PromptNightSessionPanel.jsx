@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { controlPromptSession, finalizePromptVoteRound } from '../../../lib/firebase.js';
+import { generateAiContentRequest } from '../../../lib/aiGenerationClient.js';
 import { TRIVIA_BANK, WYR_BANK } from '../../../lib/gameDataConstants.js';
 import { NIGHT_EXPERIENCE_IDS, deriveNightExperienceId } from '../../../lib/nightPlan.js';
 import { useToast } from '../../../context/ToastContext';
+import { buildEmptyPromptNightDraft, normalizeAiPromptNightDrafts } from '../lib/promptNightDrafts.js';
 
 const buildStarterPrompts = (kind, count = 10) => {
     if (kind === 'would_you_rather') {
@@ -27,7 +29,7 @@ const buildStarterPrompts = (kind, count = 10) => {
     });
 };
 
-const PromptNightSessionPanel = ({ roomCode = '', room = {} }) => {
+const PromptNightSessionPanel = ({ roomCode = '', room = {}, surface = 'live' }) => {
     const toast = useToast() || console.log;
     const experienceId = deriveNightExperienceId(room);
     const kind = experienceId === NIGHT_EXPERIENCE_IDS.wouldYouRather ? 'would_you_rather' : 'trivia';
@@ -39,6 +41,12 @@ const PromptNightSessionPanel = ({ roomCode = '', room = {} }) => {
     const [busyAction, setBusyAction] = useState('');
     const [privateDraftLoading, setPrivateDraftLoading] = useState(false);
     const [privateDraftError, setPrivateDraftError] = useState('');
+    const [aiComposerOpen, setAiComposerOpen] = useState(false);
+    const [aiBrief, setAiBrief] = useState('');
+    const [aiCount, setAiCount] = useState(5);
+    const [aiGenerating, setAiGenerating] = useState(false);
+    const [aiGenerationNote, setAiGenerationNote] = useState('');
+    const promptListRef = useRef(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -80,6 +88,22 @@ const PromptNightSessionPanel = ({ roomCode = '', room = {} }) => {
     const progressLabel = configured ? `${Math.min(currentIndex + 1, session.prompts.length)} of ${session.prompts.length}` : `${draftPrompts.length} ${itemLabel}s`;
     const statusLabel = sessionStatus === 'not_configured' ? 'Needs setup' : sessionStatus.replaceAll('_', ' ');
     const canEdit = !configured || ['draft', 'complete'].includes(sessionStatus);
+    const draftSetReady = draftPrompts.length > 0 && draftPrompts.every((prompt) => {
+        if (!String(prompt?.q || '').trim()) return false;
+        if (kind === 'would_you_rather') {
+            const optionA = String(prompt?.a || '').trim();
+            const optionB = String(prompt?.b || '').trim();
+            return !!optionA && !!optionB && optionA.toLowerCase() !== optionB.toLowerCase();
+        }
+        const options = Array.isArray(prompt?.options) ? prompt.options.map((option) => String(option || '').trim()) : [];
+        const correctIndex = Number(prompt?.correct);
+        return options.length >= 2
+            && options.every(Boolean)
+            && new Set(options.map((option) => option.toLowerCase())).size === options.length
+            && Number.isInteger(correctIndex)
+            && correctIndex >= 0
+            && correctIndex < options.length;
+    });
 
     const runAction = async (action, extra = {}) => {
         if (!roomCode || busyAction) return;
@@ -150,13 +174,46 @@ const PromptNightSessionPanel = ({ roomCode = '', room = {} }) => {
             ? { ...entry, correct: optionIndex, answer: entry.options?.[optionIndex] || '' }
             : entry
     )));
-    const addDraftPrompt = () => setDraftPrompts((current) => [
-        ...current,
-        kind === 'would_you_rather'
-            ? { id: `wyr_${Date.now()}`, q: 'Would you rather?', a: '', b: '', points: 50 }
-            : { id: `trivia_${Date.now()}`, q: 'New question', options: ['Answer A', 'Answer B', 'Answer C', 'Answer D'], answer: 'Answer A', correct: 0, points: 50 },
-    ].slice(0, 100));
+    const addDraftPrompt = () => {
+        setDraftPrompts((current) => [...current, buildEmptyPromptNightDraft(kind)].slice(0, 100));
+        window.requestAnimationFrame(() => promptListRef.current?.scrollTo({ top: promptListRef.current.scrollHeight, behavior: 'smooth' }));
+    };
     const removeDraftPrompt = (index) => setDraftPrompts((current) => current.filter((_, entryIndex) => entryIndex !== index));
+    const generateAiDraftPrompts = async () => {
+        const safeBrief = String(aiBrief || '').trim();
+        if (!safeBrief || aiGenerating || draftPrompts.length >= 100) {
+            if (!safeBrief) toast(`Describe the ${kind === 'trivia' ? 'questions' : 'prompts'} you want first.`);
+            return;
+        }
+        setAiGenerating(true);
+        setAiGenerationNote('');
+        try {
+            const result = await generateAiContentRequest({
+                type: kind === 'trivia' ? 'trivia_prompt_set' : 'would_you_rather_prompt_set',
+                context: { prompt: safeBrief, count: aiCount },
+                roomCode,
+                usageSource: 'host_prompt_night_setup',
+            });
+            const generated = normalizeAiPromptNightDrafts({
+                kind,
+                rows: result,
+                idSeed: Date.now(),
+                limit: aiCount,
+            });
+            if (!generated.length) throw new Error('AI did not return a usable draft. Try a more specific brief.');
+            const availableSlots = Math.max(0, 100 - draftPrompts.length);
+            const appended = generated.slice(0, availableSlots);
+            setDraftPrompts((current) => [...current, ...appended].slice(0, 100));
+            setAiGenerationNote(`${appended.length} editable ${itemLabel}${appended.length === 1 ? '' : 's'} added to the end of the set.`);
+            window.requestAnimationFrame(() => promptListRef.current?.scrollTo({ top: promptListRef.current.scrollHeight, behavior: 'smooth' }));
+            toast(`Added ${appended.length} AI ${itemLabel}${appended.length === 1 ? '' : 's'}. Review them before saving.`);
+        } catch (error) {
+            setAiGenerationNote(error?.message || 'AI generation is unavailable right now.');
+            toast(error?.message || 'Could not generate AI drafts.');
+        } finally {
+            setAiGenerating(false);
+        }
+    };
 
     const currentPromptTitle = useMemo(() => {
         if (!currentPrompt) return `No ${itemLabel} live`;
@@ -170,21 +227,44 @@ const PromptNightSessionPanel = ({ roomCode = '', room = {} }) => {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
                 <div className="flex min-w-0 items-center gap-3">
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-amber-200/25 bg-amber-400/15 text-amber-200"><i className={`fa-solid ${kind === 'trivia' ? 'fa-lightbulb' : 'fa-code-compare'}`} /></span>
-                    <div className="min-w-0"><div className="text-xs font-black uppercase tracking-[0.14em] text-amber-100/65">Tonight's session</div><div className="truncate text-lg font-black text-white">{label}</div></div>
+                    <div className="min-w-0"><div className="text-xs font-black uppercase tracking-[0.14em] text-amber-100/65">{surface === 'setup' ? 'Room experience setup' : 'Full-night control'}</div><div className="truncate text-lg font-black text-white">{label}</div><div className="mt-0.5 text-[11px] text-zinc-300">Build, edit, and order the whole set here. Every draft stays editable until you start the session.</div></div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-xs font-black uppercase tracking-[0.08em] text-zinc-300">{progressLabel}</span><span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2.5 py-1 text-xs font-black uppercase tracking-[0.08em] text-amber-100">{statusLabel}</span></div>
             </div>
 
             {canEdit ? (
-                <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-                    <div className="max-h-[min(52vh,520px)] space-y-2 overflow-y-auto pr-1">
+                <div className="grid min-h-0 gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+                    <div className="min-w-0">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 p-2.5">
+                            <div><div className="text-xs font-black uppercase tracking-[0.12em] text-white">{draftPrompts.length} {itemLabel}{draftPrompts.length === 1 ? '' : 's'}</div><div className="mt-0.5 text-[11px] text-zinc-400">Add manually, remove any draft, or use an AI brief.</div></div>
+                            <div className="flex flex-wrap gap-2">
+                                <button type="button" onClick={addDraftPrompt} disabled={draftPrompts.length >= 100} className="min-h-[44px] rounded-xl border border-white/15 bg-white/[0.05] px-3 text-xs font-black text-white hover:border-amber-300/35 disabled:opacity-45"><i className="fa-solid fa-plus mr-2" />Add {itemLabel}</button>
+                                <button type="button" onClick={() => setAiComposerOpen((open) => !open)} aria-expanded={aiComposerOpen} className="min-h-[44px] rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-3 text-xs font-black text-fuchsia-100 hover:border-fuchsia-200/50"><i className="fa-solid fa-wand-magic-sparkles mr-2" />Create with AI</button>
+                            </div>
+                        </div>
+                        {aiComposerOpen ? (
+                            <div className="mb-2 rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/[0.07] p-3" data-feature-id="prompt-night-ai-composer">
+                                <label className="block text-xs font-black uppercase tracking-[0.12em] text-fuchsia-100">What should these {itemLabel}s be about?</label>
+                                <textarea value={aiBrief} onChange={(event) => setAiBrief(event.target.value)} maxLength={1200} rows={3} placeholder={kind === 'trivia' ? 'Example: 1990s country music, medium difficulty, playful but factual.' : 'Example: funny music choices for a mixed-age crowd; keep them easy to debate.'} className="mt-2 w-full resize-y rounded-xl border border-white/12 bg-zinc-950/80 px-3 py-2.5 text-sm leading-5 text-white outline-none placeholder:text-zinc-500 focus:border-fuchsia-300/45" />
+                                <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
+                                    <label className="text-[11px] font-black uppercase tracking-[0.1em] text-zinc-300">Draft count<select value={aiCount} onChange={(event) => setAiCount(Math.max(1, Math.min(10, Number(event.target.value || 5))))} className="ml-2 min-h-[44px] rounded-lg border border-white/12 bg-zinc-950 px-2 text-sm font-black text-white"><option value="3">3</option><option value="5">5</option><option value="10">10</option></select></label>
+                                    <button type="button" onClick={generateAiDraftPrompts} disabled={aiGenerating || !aiBrief.trim() || draftPrompts.length >= 100} className="min-h-[44px] rounded-xl bg-gradient-to-r from-fuchsia-400 to-amber-300 px-4 text-xs font-black uppercase tracking-[0.1em] text-slate-950 disabled:opacity-45">{aiGenerating ? <><i className="fa-solid fa-spinner fa-spin mr-2" />Drafting…</> : `Add AI ${itemLabel}s`}</button>
+                                </div>
+                                <div className="mt-2 text-[11px] leading-5 text-fuchsia-50/65">AI drafts append to your set and never replace existing work. Review facts, wording, choices, and the correct answer before saving.</div>
+                                {aiGenerationNote ? <div role="status" className="mt-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs text-zinc-200">{aiGenerationNote}</div> : null}
+                            </div>
+                        ) : null}
+                        <div ref={promptListRef} tabIndex="0" aria-label={`${label} ${itemLabel} editor`} data-prompt-night-editor-scroll="true" className="custom-scrollbar touch-pan-y max-h-[min(58dvh,38rem)] min-h-[220px] space-y-2 overflow-y-auto overscroll-y-contain pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/45">
+                        {!draftPrompts.length ? <div className="grid min-h-[220px] place-items-center rounded-xl border border-dashed border-white/15 bg-black/15 p-5 text-center"><div><i className="fa-solid fa-list-check text-2xl text-amber-200" /><div className="mt-2 text-sm font-black text-white">No {itemLabel}s in this set</div><div className="mt-1 text-xs text-zinc-400">Add one manually or create editable drafts with AI.</div></div></div> : null}
                         {draftPrompts.map((prompt, index) => (
                             <div key={prompt.id || index} className="rounded-xl border border-white/10 bg-black/20 p-2.5">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <span className="inline-flex min-h-[32px] items-center gap-2 rounded-lg bg-white/8 px-2.5 text-xs font-black uppercase tracking-[0.1em] text-zinc-300"><span className="text-amber-200">{index + 1}</span>{itemLabel}</span>
+                                    <button type="button" onClick={() => removeDraftPrompt(index)} aria-label={`Remove ${itemLabel} ${index + 1}`} className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-rose-300/18 bg-rose-500/8 px-3 text-xs font-black text-rose-100 hover:bg-rose-500/15"><i className="fa-solid fa-trash-can" /><span>Remove</span></button>
+                                </div>
                                 <div className="flex items-start gap-2">
-                                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/8 text-xs font-black text-zinc-300">{index + 1}</span>
                                     <label className="sr-only" htmlFor={`prompt-question-${index}`}>{itemLabel} {index + 1}</label>
                                     <input id={`prompt-question-${index}`} value={prompt.q || ''} onChange={(event) => updateDraftPrompt(index, { q: event.target.value })} className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-white/10 bg-black/25 px-3 text-sm font-semibold text-white outline-none focus:border-amber-300/45" />
-                                    {draftPrompts.length > 1 ? <button type="button" onClick={() => removeDraftPrompt(index)} aria-label={`Remove ${itemLabel} ${index + 1}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-rose-300/15 bg-rose-500/8 text-rose-100 hover:bg-rose-500/15"><i className="fa-solid fa-trash-can" /></button> : null}
                                 </div>
                                 {kind === 'would_you_rather' ? (
                                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -205,14 +285,15 @@ const PromptNightSessionPanel = ({ roomCode = '', room = {} }) => {
                                 )}
                             </div>
                         ))}
-                        <button type="button" onClick={addDraftPrompt} disabled={draftPrompts.length >= 100} className="min-h-[44px] w-full rounded-xl border border-dashed border-white/20 bg-white/[0.03] px-3 text-xs font-black uppercase tracking-[0.1em] text-zinc-200 hover:border-amber-300/35 hover:text-white disabled:opacity-45"><i className="fa-solid fa-plus mr-2" />Add {itemLabel}</button>
+                        </div>
                     </div>
                     <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                         <label className="text-xs font-black uppercase tracking-[0.12em] text-zinc-300">Answer window<input type="number" min="5" max="180" value={roundSec} onChange={(event) => setRoundSec(Math.max(5, Math.min(180, Number(event.target.value || 20))))} className="mt-1 min-h-[44px] w-full rounded-lg border border-white/10 bg-black/30 px-3 text-sm font-black text-white" /></label>
                         <div className="mt-1 text-xs text-zinc-400">Seconds before guided hosting reveals the result.</div>
                         {privateDraftLoading ? <div className="mt-3 rounded-lg border border-cyan-300/15 bg-cyan-500/8 p-2 text-xs text-cyan-100"><i className="fa-solid fa-spinner fa-spin mr-2" />Loading private answer key…</div> : null}
                         {privateDraftError ? <div role="alert" className="mt-3 rounded-lg border border-rose-300/20 bg-rose-500/10 p-2 text-xs font-semibold text-rose-100">{privateDraftError}</div> : null}
-                        <button type="button" disabled={!!busyAction || privateDraftLoading || !!privateDraftError || !draftPrompts.length} onClick={() => runAction('configure', { kind, title: label, prompts: draftPrompts })} className="mt-3 min-h-[46px] w-full rounded-xl bg-gradient-to-r from-amber-400 to-fuchsia-500 px-3 text-xs font-black uppercase tracking-[0.12em] text-slate-950 disabled:opacity-45">{busyAction === 'configure' ? 'Saving…' : `Save ${itemLabel} set`}</button>
+                        {!draftSetReady ? <div className="mt-3 text-xs leading-5 text-amber-100/70">Complete every {itemLabel} and keep its choices unique before saving.</div> : null}
+                        <button type="button" disabled={!!busyAction || privateDraftLoading || !!privateDraftError || !draftSetReady} onClick={() => runAction('configure', { kind, title: label, prompts: draftPrompts })} className="mt-3 min-h-[46px] w-full rounded-xl bg-gradient-to-r from-amber-400 to-fuchsia-500 px-3 text-xs font-black uppercase tracking-[0.12em] text-slate-950 disabled:opacity-45">{busyAction === 'configure' ? 'Saving…' : `Save ${itemLabel} set`}</button>
                         {configured && sessionStatus === 'draft' ? <button type="button" disabled={!!busyAction} onClick={() => runAction('start')} className="mt-2 min-h-[44px] w-full rounded-xl bg-emerald-400 px-3 text-xs font-black uppercase tracking-[0.12em] text-slate-950 disabled:opacity-45">Start session</button> : null}
                     </div>
                 </div>

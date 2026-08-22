@@ -60,8 +60,8 @@ const AudienceReactionSlotGrid = ({
                     className="relative min-h-[148px] overflow-hidden rounded-2xl border-2 border-zinc-500/65 bg-gradient-to-b from-zinc-500/14 via-zinc-900/70 to-black/80 p-3 text-center shadow-[0_10px_24px_rgba(0,0,0,0.42)] enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-65"
                 >
                     <span className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-zinc-500/50 bg-zinc-800/90 text-2xl text-zinc-500 grayscale"><i className="fa-solid fa-lock" aria-hidden="true"></i></span>
-                    <span className="mt-2 block text-sm font-black text-zinc-300">Reaction slot 5</span>
-                    <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">{fifthReactionSlotPurchasesEnabled ? 'This room only' : 'Host has not enabled'}</span>
+                    <span className="mt-2 block text-sm font-black text-zinc-200">Unlock 5th voting emoji</span>
+                    <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.13em] text-zinc-400">{fifthReactionSlotPurchasesEnabled ? `${fifthReactionSlotPointsCost} points · this room` : 'Ask your host to enable this'}</span>
                     {fifthReactionSlotPurchasesEnabled ? <span className="mt-2 inline-flex rounded-full border border-cyan-200/45 bg-cyan-300/18 px-3 py-1 shadow-[0_0_18px_rgba(34,211,238,0.24)]"><CurrencyAmount currency="points" amount={fifthReactionSlotPointsCost} size="sm" /></span> : null}
                 </button>
             ) : null}

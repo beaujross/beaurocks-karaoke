@@ -3,6 +3,7 @@ import { test } from 'vitest';
 import {
     buildHostQueueHorizonModel,
     deriveTonightLineupAutomationState,
+    getHostLineupItemDurationSec,
 } from '../../src/apps/Host/lib/hostQueueHorizonModel.js';
 
 const performance = (id, title) => ({
@@ -238,4 +239,22 @@ test('provides a useful empty state', () => {
     assert.equal(model.empty, true);
     assert.deepEqual(model.segments, []);
     assert.equal(model.remainingCount, 0);
+});
+
+test('carries known performance and moment durations into the lineup transport', () => {
+    const queueSongs = [{ id: 'song-one', singerName: 'Alex', songTitle: 'Song', duration: 242 }];
+    const model = buildHostQueueHorizonModel({
+        runtimeModel: { currentPerformance: null, nextPerformance: null, rotationFlow: [], roomControlsSummary: { autoDj: false } },
+        runOfShowDirector: {
+            items: [
+                { id: 'song-slot', type: 'performance', status: 'ready', preparedQueueSongId: 'song-one' },
+                { id: 'trivia-slot', type: 'trivia_break', status: 'ready', plannedDurationSec: 45 },
+            ],
+        },
+        queueSongs,
+    });
+
+    assert.equal(model.timelineItems.length, 2);
+    assert.equal(getHostLineupItemDurationSec(model.timelineItems[0]), 242);
+    assert.equal(getHostLineupItemDurationSec(model.timelineItems[1]), 45);
 });

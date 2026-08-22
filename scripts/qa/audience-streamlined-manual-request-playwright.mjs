@@ -81,6 +81,15 @@ const main = async () => {
       if ((await deck.getAttribute("data-reactions-active")) !== "true") {
         throw new Error("Performing fixture should expose an active persistent reaction deck.");
       }
+      if ((await deck.getAttribute("data-reaction-layout")) !== "grid") {
+        throw new Error("Party should use the large voting grid layout.");
+      }
+      const reactionButton = deck.locator('[data-reaction-deck-type]').first();
+      const reactionBox = await reactionButton.boundingBox();
+      if (!reactionBox || reactionBox.height < 130 || reactionBox.width < 150) {
+        throw new Error(`Party voting emojis are smaller than the intended grid target: ${JSON.stringify(reactionBox)}`);
+      }
+      await page.locator('[data-feature-id="audience-fame-entry"]:visible').first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.screenshot({ path: path.join(ARTIFACT_DIR, "active-deck-430x932.png"), fullPage: false });
       return "Points, BeauBucks, and the active voting loadout stay visible in the shared shell";
     });
@@ -216,9 +225,18 @@ const main = async () => {
       if ((await deck.getAttribute("data-reactions-active")) !== "false") {
         throw new Error("Between-song fixture should keep its voting loadout visible but inactive.");
       }
+      if ((await deck.getAttribute("data-reaction-layout")) !== "grid") {
+        throw new Error("Between-song Party should preserve the large voting grid.");
+      }
       const reactionButtons = deck.locator('[data-reaction-deck-type]');
       if ((await reactionButtons.count()) < 4) throw new Error("Expected at least four visible voting emojis between songs.");
       if (!(await reactionButtons.first().isDisabled())) throw new Error("Between-song emoji taps should remain disabled until voting is live.");
+      if ((await reactionButtons.count()) === 4) {
+        const fifthSlot = deck.locator('[data-feature-id="reaction-deck-unlock-slot-5"]:visible').first();
+        await fifthSlot.waitFor({ state: "visible", timeout: timeoutMs });
+        const fifthSlotText = String(await fifthSlot.innerText()).replace(/\s+/g, " ");
+        if (!/Unlock a 5th voting emoji/i.test(fifthSlotText)) throw new Error(`Fifth-slot CTA is unclear: ${fifthSlotText}`);
+      }
       const editButton = deck.locator('[data-feature-id="edit-voting-emojis"]').first();
       if (!(await editButton.isEnabled())) throw new Error("Voting loadout Edit should remain enabled between songs.");
       await page.screenshot({ path: path.join(ARTIFACT_DIR, "between-songs-deck-430x932.png"), fullPage: false });
@@ -236,12 +254,11 @@ const main = async () => {
       await joinView.waitFor({ state: "visible", timeout: Math.min(timeoutMs, 15000) });
       const paidOffers = joinView.locator('[data-avatar-offer-currency="points"], [data-avatar-offer-currency="beaubucks"]');
       if ((await paidOffers.count()) < 2) throw new Error("Avatar carousel should visibly merchandise both Points and BeauBucks offers.");
-      const beauBucksJump = joinView.locator('[data-avatar-jump="beaubucks"]:visible').first();
-      await beauBucksJump.click();
-      await delay(500);
-      if ((await beauBucksJump.getAttribute("data-active")) !== "true") {
-        throw new Error("BeauBucks storefront shortcut did not activate.");
+      if ((await joinView.locator('[data-feature-id="avatar-storefront-jump-nav"]').count()) !== 0) {
+        throw new Error("Avatar price-category shortcuts should be removed from the join flow.");
       }
+      await joinView.locator('[data-avatar-offer-currency="beaubucks"]').last().scrollIntoViewIfNeeded();
+      await delay(500);
       const carouselMetrics = await joinView.locator('.emoji-carousel:visible').first().evaluate((node) => ({
         scrollLeft: node.scrollLeft,
         scrollWidth: node.scrollWidth,
@@ -254,7 +271,7 @@ const main = async () => {
       const visibleBeauBucksOffer = beauBucksOfferBoxes.some((box) => box.x < 430 && box.x + box.width > 0);
       await page.screenshot({ path: path.join(ARTIFACT_DIR, "join-avatar-storefront-430x932.png"), fullPage: false });
       if (!visibleBeauBucksOffer) {
-        throw new Error(`BeauBucks shortcut did not bring a premium avatar price into view. metrics=${JSON.stringify(carouselMetrics)} offers=${JSON.stringify(beauBucksOfferBoxes.slice(0, 3))}`);
+        throw new Error(`Swiping to the end did not bring a premium avatar price into view. metrics=${JSON.stringify(carouselMetrics)} offers=${JSON.stringify(beauBucksOfferBoxes.slice(0, 3))}`);
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       if (overflow > 1) throw new Error(`Avatar join picker causes ${overflow}px of horizontal overflow.`);

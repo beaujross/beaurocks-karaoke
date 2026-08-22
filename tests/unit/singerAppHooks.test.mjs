@@ -378,11 +378,12 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
 test("SingerApp gives streamlined join and first-song flows clearer onboarding cues", () => {
   const source = readFileSync(singerAppPath, "utf8");
 
-  assert.match(
+  assert.doesNotMatch(
     source,
     /Pick your profile avatar\.[\s\S]*it does not change your voting-reaction buttons\./,
-    "SingerApp join should distinguish the profile avatar from performance voting reactions",
+    "SingerApp join should not surround the avatar picker with explanatory helper copy",
   );
+  assert.doesNotMatch(source, /data-feature-id="avatar-storefront-jump-nav"/);
   assert.doesNotMatch(
     source,
     /Pick Emoji|Add Name|Festival Join Ready/,
