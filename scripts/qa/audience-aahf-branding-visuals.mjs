@@ -26,8 +26,9 @@ const FIXTURES = Object.freeze([
     viewport: { width: 430, height: 932 },
     assertions: async (page, timeoutMs) => {
       await page.getByText("Powered by: BeauRocks Karaoke").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Pick the emoji that feels most you.").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("No BeauRocks email is required for AAHF tonight.").first().waitFor({ state: "visible", timeout: timeoutMs });
+      const removedHelper = page.getByText(/Pick your profile avatar\. It identifies/i);
+      if (await removedHelper.count()) throw new Error("Deprecated avatar helper copy is still visible.");
     },
   },
   {

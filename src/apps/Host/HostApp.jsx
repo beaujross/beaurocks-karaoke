@@ -66,12 +66,14 @@ import {
     reviewRunOfShowSlotSubmission,
     executeRunOfShowAction,
     finalizePromptVoteRound,
+    controlPromptSession,
     mutateTonightLineup,
     manageRunOfShowTemplate,
     setRoomOperatorSignalStatus,
     manageRoomCoHostInvite,
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
+import { getPerformanceRecapDurationMs, getPostPerformanceSurfaceLease } from '../../lib/postPerformanceSurfaceLease';
 import { subscribeToBoundedRoomSongs } from '../../lib/roomSongSubscriptions';
 import {
     buildRoomCostObservationCounts,
@@ -116,6 +118,12 @@ import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
 import { POINTS_PACKS } from '../../billing/catalog';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
+import {
+    NIGHT_EXPERIENCE_IDS,
+    compileNightPlanToLegacySettings,
+    deriveNightExperienceId,
+    getNightExperience,
+} from '../../lib/nightPlan.js';
 
 import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
 import { buildRoomRecapSummary, buildRoomRecapUrl } from '../../lib/roomRecap';
@@ -4369,7 +4377,7 @@ const HostGameControlPad = ({
             <div className="custom-scrollbar flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Host Controlpad</div>
+                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">{isQaMode ? (runOfShowPromptLive ? 'Lineup moment controls' : 'Pop-up moment controls') : 'Host Controlpad'}</div>
                         <div className="text-2xl font-bebas text-cyan-300 mt-1">{modeLabel} Live</div>
                         <div className="text-sm text-zinc-200 mt-1">{controlpadHint}</div>
                     </div>
@@ -5099,6 +5107,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, []);
     const [demoFixture, setDemoFixture] = useState(() => (isMarketingDemoEmbed ? {} : null));
     const [room, setRoom] = useState(null);
+    const [nightExperiencePending, setNightExperiencePending] = useState(false);
     const [songs, setSongs] = useState([]);
     const [users, setUsers] = useState([]);
     const [contacts, setContacts] = useState([]);
@@ -6074,19 +6083,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const queuedCount = useMemo(() => songs.filter(s => s.status === 'requested').length, [songs]);
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
     const autoDjEnabled = !!(room?.autoDj || autoDj);
-    const performanceRecapBreakdownMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapBreakdownMs ?? 7000) || 7000)));
-    const performanceRecapScoreStepMs = Math.max(1800, Math.min(4200, Math.round(Number(room?.performanceRecapScoreStepMs ?? 2600) || 2600)));
-    const performanceRecapLeaderboardMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapLeaderboardMs ?? 7000) || 7000)));
-    const performanceRecapNextUpMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapNextUpMs ?? 6000) || 6000)));
-    const lastPerformanceScoreCardCount = Math.max(2, Math.min(3, 2 + (Math.max(0, Number(room?.lastPerformance?.hostBonus || 0)) > 0 ? 1 : 0)));
-    const performanceRecapScoreFinalHoldMs = Math.max(5200, Math.min(9000, Math.round(performanceRecapScoreStepMs * 2.25)));
-    const effectivePerformanceRecapBreakdownMs = Math.max(
-        performanceRecapBreakdownMs,
-        540 + (lastPerformanceScoreCardCount * performanceRecapScoreStepMs) + 700 + performanceRecapScoreFinalHoldMs
-    );
-    const performanceRecapTotalMs = room?.showPerformanceRecap === false
-        ? 0
-        : effectivePerformanceRecapBreakdownMs + performanceRecapLeaderboardMs + performanceRecapNextUpMs;
+    const performanceRecapTotalMs = getPerformanceRecapDurationMs(room);
     const performanceRecapAutoDjHoldMs = performanceRecapTotalMs > 0 ? performanceRecapTotalMs + 1500 : 0;
     const {
         activeBracket,
@@ -9251,6 +9248,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast(`Add this draft to ${HOST_LIVE_OPS_LANGUAGE.lineup} before starting it.`);
             return currentDirector;
         }
+        const postPerformanceSurfaceLease = getPostPerformanceSurfaceLease(roomRef.current || room || {}, {
+            now: nowMs(),
+            recapDurationMs: performanceRecapTotalMs,
+        });
+        if (postPerformanceSurfaceLease.active) {
+            const seconds = Math.max(1, Math.ceil(postPerformanceSurfaceLease.remainingMs / 1000));
+            toast(postPerformanceSurfaceLease.phase === 'applause'
+                ? 'Finishing the applause meter before the next lineup item starts.'
+                : `Performance recap is still on Public TV. Next lineup item starts in about ${seconds} seconds.`);
+            return currentDirector;
+        }
         const requestedGameMode = getRunOfShowGameMode(requestedItem);
         if (requestedGameMode) {
             const compatibility = getRoomGameLaunchPreflight({
@@ -9376,7 +9384,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await fireRunOfShowItemCueIfNeeded(targetItem, 'start');
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, closeRunOfShowReleaseWindow, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, markScenePresetPresented, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, toast, updateRoom]);
+    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, closeRunOfShowReleaseWindow, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, markScenePresetPresented, performanceRecapTotalMs, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, room, roomCode, syncRunOfShowTakeoverSoundtrack, toast, updateRoom]);
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
@@ -12583,6 +12591,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused) return;
         if (runOfShowAutomationBusyRef.current) return;
         if (runOfShowLiveItem || !runOfShowStagedItem) return;
+        const postPerformanceSurfaceLease = getPostPerformanceSurfaceLease(roomRef.current || room || {}, {
+            now: nowMs(),
+            recapDurationMs: performanceRecapTotalMs,
+        });
+        if (postPerformanceSurfaceLease.active) {
+            const retryTimer = setTimeout(
+                () => setRunOfShowAutomationRetryTick((tick) => tick + 1),
+                Math.max(250, postPerformanceSurfaceLease.remainingMs + 75),
+            );
+            return () => clearTimeout(retryTimer);
+        }
         const startDecision = getRunOfShowProgressionDecision({
             director: runOfShowDirector,
             item: runOfShowStagedItem,
@@ -12623,6 +12642,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
     }, [
         runOfShowAutomationEnabled,
+        performanceRecapTotalMs,
+        room,
+        room?.activeMode,
+        room?.lastPerformance?.timestamp,
+        room?.recapPreview?.timestamp,
+        room?.showPerformanceRecap,
         roomCode,
         runOfShowAutomationRetryTick,
         runOfShowDirector,
@@ -22314,6 +22339,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         : room?.nightPlan?.hostingLevel === 'assisted' || (!room?.nightPlan?.hostingLevel && autoDj)
             ? 'assisted_host'
             : 'host_led';
+    const currentNightExperienceId = deriveNightExperienceId(room || {});
+    const promptNightExperienceActive = [NIGHT_EXPERIENCE_IDS.trivia, NIGHT_EXPERIENCE_IDS.wouldYouRather].includes(currentNightExperienceId);
     const applyDraftCrowdModePreset = (presetId = '') => {
         const before = getCurrentCrowdModeState();
         const patch = buildCrowdModePatch(presetId, before);
@@ -23027,6 +23054,40 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } catch (error) {
             console.error('Failed to update One-Minute Mic timing from host chrome', error);
             toast('Could not update Mic Checkpoint timing.');
+        }
+    };
+    const changeNightExperienceQuick = async (nextExperienceId = NIGHT_EXPERIENCE_IDS.karaoke) => {
+        const currentExperienceId = deriveNightExperienceId(room || {});
+        if (nightExperiencePending || nextExperienceId === currentExperienceId) return;
+        const nextExperience = getNightExperience(nextExperienceId);
+        const activeMode = String(room?.activeMode || '').trim().toLowerCase();
+        const promptModeActive = ['trivia', 'trivia_reveal', 'would_you_rather', 'would_you_rather_reveal'].includes(activeMode);
+        const roomPatch = compileNightPlanToLegacySettings({
+            ...(room?.nightPlan || {}),
+            experienceId: nextExperience.id,
+            source: 'host_lineup_control',
+            updatedAtMs: nowMs(),
+        }, room || {});
+        if (promptModeActive) {
+            roomPatch.activeMode = 'karaoke';
+            roomPatch.gameData = null;
+        }
+        setNightExperiencePending(true);
+        try {
+            await updateRoom(roomPatch);
+            if (room?.promptSession?.id && room?.promptSession?.kind !== (nextExperience.id === NIGHT_EXPERIENCE_IDS.wouldYouRather ? 'would_you_rather' : nextExperience.id)) {
+                await controlPromptSession({
+                    roomCode,
+                    action: 'end',
+                    expectedRevision: Math.max(0, Number(room?.promptSession?.revision || 0) || 0),
+                }).catch((error) => console.warn('Could not close previous prompt session while changing room experience', error));
+            }
+            toast(`${nextExperience.label} is now the room experience.`);
+        } catch (error) {
+            console.error('Failed to change room experience from Tonight\'s Lineup', error);
+            toast('Could not change the room experience.');
+        } finally {
+            setNightExperiencePending(false);
         }
     };
     const applyRoomControlModelQuick = async (modelId = 'host_led') => {
@@ -23873,6 +23934,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <HostQueueHorizon
                     model={hostQueueHorizonModel}
                     compact={mediumHostViewport || tabletTouchViewport}
+                    experienceId={currentNightExperienceId}
+                    experiencePending={nightExperiencePending}
+                    onChangeExperience={changeNightExperienceQuick}
                     onOpenQueue={openQueueWorkspaceFromAdmin}
                     onOpenAttention={() => {
                         openQueueWorkspaceFromAdmin();
@@ -23909,9 +23973,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             <div
                 data-host-main-scroll="true"
-                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : (tab === 'run_of_show' || tab === 'games' || tab === 'browse') ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
+                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : (tab === 'run_of_show' || tab === 'games' || tab === 'browse' || (tab === 'stage' && promptNightExperienceActive)) ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
-                {tab === 'stage' && ['trivia', 'would_you_rather'].includes(String(room?.nightPlan?.experienceId || '').trim().toLowerCase()) ? (
+                {tab === 'stage' && promptNightExperienceActive && !(showSettings || inAdminWorkspace) ? (
                     <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading full-night session controls..." />}>
                         <PromptNightSessionPanel roomCode={roomCode} room={room || {}} />
                     </React.Suspense>
@@ -25380,8 +25444,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             room={room || {}}
                             songs={songs}
                             appleMusicAuthorized={appleMusicAuthorized}
+                            promptCount={promptNightExperienceActive ? Math.max(0, Number(room?.promptSession?.promptCount || room?.promptSession?.prompts?.length || 0)) : null}
                             className={settingsTab === 'audience_setup' ? 'hidden' : ''}
                         />
+                        {settingsTab === 'general' && promptNightExperienceActive ? (
+                            <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading question setup..." />}>
+                                <PromptNightSessionPanel roomCode={roomCode} room={room || {}} surface="setup" />
+                            </React.Suspense>
+                        ) : null}
                         <div data-room-setup-overview="true" className={`rounded-2xl border border-cyan-300/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(9,9,11,0.72)_48%,rgba(217,70,239,0.07))] p-3.5 shadow-[0_16px_38px_rgba(0,0,0,0.18)] ${settingsTab === 'audience_setup' ? 'hidden' : ''}`}>
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">

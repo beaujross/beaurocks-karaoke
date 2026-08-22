@@ -84,9 +84,9 @@ test("audience header exposes both spendable balances", () => {
   assert.match(source, /currency="beaubucks"/);
 });
 
-test("shared avatar picker provides direct access to paid collections and visible prices", () => {
-  assert.match(source, /data-feature-id="avatar-storefront-jump-nav"/);
-  assert.match(source, /data-avatar-jump=\{group\.id\}/);
+test("shared avatar picker merchandises paid avatars without category selector clutter", () => {
+  assert.doesNotMatch(source, /data-feature-id="avatar-storefront-jump-nav"/);
+  assert.doesNotMatch(source, /data-avatar-jump=\{group\.id\}/);
   assert.match(source, /data-avatar-offer-currency="points"/);
   assert.match(source, /data-avatar-offer-currency="beaubucks"/);
   assert.match(source, /Profile Studio[\s\S]*<AvatarCoverflow/);
@@ -94,8 +94,9 @@ test("shared avatar picker provides direct access to paid collections and visibl
 
 test("fifth reaction slot clearly follows Host enablement and room-only ownership", () => {
   assert.match(source, /fifthReactionSlotPurchasesEnabled/);
-  assert.match(source, /Host has not enabled/);
-  assert.match(source, /This room only/);
+  assert.match(source, /data-feature-id="reaction-deck-unlock-slot-5"/);
+  assert.match(source, /Ask your host to enable this/);
+  assert.match(source, /points · this room/);
 });
 
 test("the noncritical reaction collection loads behind a visible lazy boundary", () => {

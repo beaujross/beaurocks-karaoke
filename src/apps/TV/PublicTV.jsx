@@ -5189,7 +5189,6 @@ const PublicTV = ({ roomCode }) => {
 
     // Auto Recap
     useEffect(() => {
-        if (room?.activeMode && room.activeMode !== 'karaoke') return;
         if (room?.activeScreen && room.activeScreen !== 'stage') return;
         if (room?.showPerformanceRecap === false) {
             if (recap && !recap.preview) setRecap(null);
@@ -5222,7 +5221,7 @@ const PublicTV = ({ roomCode }) => {
                 if(recap) setRecap(null);
             }
         }
-    }, [room?.lastPerformance, room?.activeMode, room?.activeScreen, room?.showPerformanceRecap, recap, performanceRecapTotalMs]);
+    }, [room?.lastPerformance, room?.activeScreen, room?.showPerformanceRecap, recap, performanceRecapTotalMs]);
 
     useEffect(() => {
         if (!room?.recapPreview?.timestamp) return;
@@ -7613,7 +7612,7 @@ const PublicTV = ({ roomCode }) => {
     const pickerUser = roomUsers.find(u => u.uid === room?.bingoPickerUid) || null;
 
     // 2. Game Cartridges
-    if (activeGameCartridgeMode) {
+    if (activeGameCartridgeMode && !applauseOverlayVisible && !recap) {
         // Map correct payload based on mode
         const isTrivia = room.activeMode.includes('trivia');
         const isWyr = room.activeMode.includes('wyr');

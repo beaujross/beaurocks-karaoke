@@ -890,6 +890,32 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
             },
         };
     }
+    if (safeId === 'prompt-session-wyr-draft') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        const prompts = [
+            { id: 'session-wyr-draft-1', q: 'Would you rather open with a power ballad or a crowd singalong?', a: 'Power ballad', b: 'Crowd singalong', points: 50 },
+            { id: 'session-wyr-draft-2', q: 'Would you rather duet or go solo?', a: 'Duet', b: 'Solo', points: 50 },
+        ];
+        return {
+            ...fixture,
+            tab: 'admin',
+            settingsTab: 'general',
+            activeWorkspaceView: 'ops',
+            activeWorkspaceSection: 'ops.room_setup',
+            room: {
+                ...(fixture.room || {}),
+                nightPlan: { experienceId: 'would_you_rather', hostingLevel: 'guided', lyricsPolicy: 'optional' },
+                promptSession: {
+                    id: 'qa-wyr-draft-session', kind: 'would_you_rather', title: 'Would You Rather', prompts,
+                    promptCount: prompts.length, currentIndex: 0, status: 'draft', revision: 1,
+                    roundSec: 20, hostingLevel: 'guided', roundEndsAtMs: 0, updatedAtMs: nowMs,
+                },
+                activeMode: 'karaoke',
+                triviaQuestion: null,
+                wyrData: null,
+            },
+        };
+    }
     if (safeId === 'prompt-round-trivia-live') {
         const fixture = buildBaseFixture(roomCode, nowMs);
         return {

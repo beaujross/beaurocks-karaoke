@@ -13,14 +13,16 @@ describe('Host workspace UX pass', () => {
     expect(queue).toMatch(/data-feature-id="panel-catalog"[^>]*flex h-full flex-1 min-h-0 flex-col overflow-hidden/);
   });
 
-  it('keeps Host tabs top-rounded and prevents Show Time from shifting navigation', () => {
+  it('keeps Host tabs top-rounded and moves Show Time into Tonight\'s Lineup', () => {
     const css = readSource('src/apps/Host/hostBrandTabs.css');
     const chrome = readSource('src/apps/Host/components/HostTopChrome.jsx');
+    const horizon = readSource('src/apps/Host/components/HostQueueHorizon.jsx');
 
     expect(css).toContain('border-radius: 15px 15px 0 0');
     expect(css).toContain('border-radius: 11px 11px 0 0');
     expect(css).toContain('border-radius: 12px 12px 0 0');
-    expect(chrome).toContain("showTimeClockEnabled ? '' : 'invisible pointer-events-none'");
+    expect(chrome).not.toContain('Show Time');
+    expect(horizon).toContain('data-feature-id="host-lineup-show-time"');
   });
 
   it('keeps audience preview opt-in and reachable from Quick Navigation', () => {

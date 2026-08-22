@@ -163,10 +163,53 @@ async function run() {
       assert.equal((await roomRef.get()).get("performanceMode"), "sing_along");
     }],
 
+    ["host can persist the complete room experience compatibility patch", async () => {
+      const nightPlan = {
+        version: 1,
+        experienceId: "original_tracks",
+        hostingLevel: "assisted",
+        experienceConfig: {
+          originalTracks: { lyricsPolicy: "when_available" },
+        },
+        source: "host_lineup_control",
+        updatedAtMs: Date.now(),
+      };
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        nightPlan,
+        autoDj: true,
+        performanceMode: "sing_along",
+        showLyricsTv: true,
+        autoLyricsOnQueue: true,
+        originalTrackLyricsPolicy: "when_available",
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, [
+        "nightPlan",
+        "autoDj",
+        "performanceMode",
+        "showLyricsTv",
+        "autoLyricsOnQueue",
+        "originalTrackLyricsPolicy",
+      ]);
+      const snap = await roomRef.get();
+      assert.equal(snap.get("nightPlan.experienceId"), "original_tracks");
+      assert.equal(snap.get("originalTrackLyricsPolicy"), "when_available");
+    }],
+
     ["unknown room performance formats are rejected", async () => {
       await expectHttpsError(
         () => updateRoomAsHost.run(requestFor(HOST_UID, {
           performanceMode: "anything_goes",
+        })),
+        "invalid-argument"
+      );
+    }],
+
+    ["unknown original-track lyric policies are rejected", async () => {
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          originalTrackLyricsPolicy: "sometimes",
         })),
         "invalid-argument"
       );

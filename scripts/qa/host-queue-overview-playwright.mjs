@@ -33,7 +33,31 @@ const openQueueFixture = async (page, baseUrl, timeoutMs) => {
   ).first();
   await liveQueueTab.waitFor({ state: "visible", timeout: timeoutMs });
   await liveQueueTab.click({ force: true });
-  await page.locator('[data-queue-id^="density_ready_"]').first().waitFor({
+  await page.locator('[data-lineup-plan-item-id^="queue_density_ready_"]').first().waitFor({
+    state: "visible",
+    timeout: timeoutMs,
+  });
+  await delay(300);
+};
+
+const openUnifiedLineupFixture = async (page, baseUrl, timeoutMs) => {
+  await page.goto(
+    `${baseUrl}/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=run-of-show-console&hostUiVersion=v2&view=stage&tab=stage`,
+    { waitUntil: "domcontentloaded", timeout: timeoutMs },
+  );
+  await page.waitForLoadState("networkidle", { timeout: Math.min(5000, timeoutMs) }).catch(() => {});
+  await page.locator('[data-feature-id="host-queue-horizon"]').first().waitFor({
+    state: "visible",
+    timeout: timeoutMs,
+  });
+  const queueTab = page.locator('[data-host-tab="stage"]:visible').first();
+  if (await queueTab.count()) await queueTab.click({ force: true });
+  const liveQueueTab = page.locator(
+    '[data-feature-id="queue-surface-tab-queue-desktop"]:visible, [data-feature-id="queue-surface-tab-queue"]:visible',
+  ).first();
+  await liveQueueTab.waitFor({ state: "visible", timeout: timeoutMs });
+  await liveQueueTab.click({ force: true });
+  await page.locator('[data-feature-id="unified-tonights-lineup-plan"]').first().waitFor({
     state: "visible",
     timeout: timeoutMs,
   });
@@ -64,21 +88,24 @@ const main = async () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await openQueueFixture(page, server.baseUrl, timeoutMs);
 
-    const readyRows = page.locator('[data-queue-id^="density_ready_"]');
+    const readyRows = page.locator('[data-lineup-plan-item-id^="queue_density_ready_"]');
 
     await runCheck(checks, "queue_opens_as_overview", async () => {
       const count = await readyRows.count();
-      const selectedCount = await page.locator('[data-queue-id^="density_ready_"][data-queue-selected="true"]').count();
+      const selectedCount = await page.locator('[data-lineup-plan-item-id^="queue_density_ready_"][data-lineup-plan-item-expanded="true"]').count();
       if (count !== 12) throw new Error(`Expected 12 ready singers, found ${count}.`);
       if (selectedCount !== 0) throw new Error(`Queue auto-expanded ${selectedCount} singer row(s).`);
       return `${count} ready singers, no default detail expansion`;
     });
 
     await runCheck(checks, "queue_rows_are_scan_dense", async () => {
-      const metrics = await readyRows.evaluateAll((rows) => rows.map((row) => {
+      const allLineupRows = page.locator('[data-lineup-plan-item-id]');
+      await allLineupRows.first().evaluate((row) => row.scrollIntoView({ block: "start", behavior: "instant" }));
+      await delay(100);
+      const metrics = await allLineupRows.evaluateAll((rows) => rows.map((row) => {
         const rect = row.getBoundingClientRect();
         return {
-          id: row.getAttribute("data-queue-id"),
+          id: row.getAttribute("data-lineup-plan-item-id"),
           top: Math.round(rect.top),
           bottom: Math.round(rect.bottom),
           height: Math.round(rect.height),
@@ -94,34 +121,38 @@ const main = async () => {
       return `${fullyVisible} fully visible rows; ${maxHeight}px maximum collapsed height`;
     });
 
-    await runCheck(checks, "queue_uses_contextual_actions", async () => {
-      const firstText = String(await readyRows.nth(0).innerText()).replace(/\s+/g, " ").trim();
-      const laterTexts = await readyRows.evaluateAll((rows) => rows.slice(1).map((row) => (
+    await runCheck(checks, "queue_uses_progressive_disclosure", async () => {
+      const rowTexts = await readyRows.evaluateAll((rows) => rows.map((row) => (
         String(row.innerText || "").replace(/\s+/g, " ").trim()
       )));
-      if (!/Start Next/i.test(firstText)) throw new Error(`First ready singer lacks Start Next: ${firstText}`);
-      if (laterTexts.some((text) => /Start(?:\s+Next)?/i.test(text))) {
-        throw new Error(`A later queue row exposes Start: ${JSON.stringify(laterTexts)}`);
+      if (!rowTexts.every((text) => /Ready|Protected/i.test(text))) {
+        throw new Error(`Collapsed performance rows are missing their overview state: ${JSON.stringify(rowTexts)}`);
       }
-      if (!laterTexts.every((text) => /Details/i.test(text))) {
-        throw new Error(`Later queue rows do not consistently expose Details: ${JSON.stringify(laterTexts)}`);
+      if (rowTexts.some((text) => /Earlier|Later|Performance details|Remove/i.test(text))) {
+        throw new Error(`A collapsed performance row exposes secondary actions: ${JSON.stringify(rowTexts)}`);
       }
-      return "Start Next appears once; later singers expose Details only";
+      return "collapsed rows show one state and defer secondary actions";
     });
 
     await runCheck(checks, "queue_details_open_in_inspector", async () => {
       const targetRow = readyRows.nth(2);
       const beforeHeight = Math.round((await targetRow.boundingBox())?.height || 0);
-      await targetRow.getByRole("button", { name: /Details/i }).click({ force: true });
+      await targetRow.getByRole("button", { name: /^Open Performance:/i }).click({ force: true });
+      if ((await targetRow.getAttribute("data-lineup-plan-item-expanded")) !== "true") {
+        throw new Error("Selecting a performance did not expand its secondary actions.");
+      }
+      await targetRow.getByRole("button", { name: /Performance details/i }).click({ force: true });
       const inspector = page.locator('[data-feature-id="queue-song-inspector"]').first();
       await inspector.waitFor({ state: "visible", timeout: timeoutMs });
-      const selectedRowCount = await page.locator(
-        '[data-queue-id^="density_ready_"][data-queue-selected="true"]',
-      ).count();
       const afterHeight = Math.round((await targetRow.boundingBox())?.height || 0);
-      if (selectedRowCount !== 1) throw new Error(`Expected one selected queue row, found ${selectedRowCount}.`);
-      if (afterHeight > 80 || afterHeight !== beforeHeight) {
-        throw new Error(`Opening details changed row density: ${beforeHeight}px → ${afterHeight}px.`);
+      if (afterHeight <= beforeHeight) {
+        throw new Error(`Selected row did not reveal its detail controls: ${beforeHeight}px → ${afterHeight}px.`);
+      }
+      const otherExpandedRows = await page.locator(
+        '[data-lineup-plan-item-expanded="true"]',
+      ).count();
+      if (otherExpandedRows !== 1) {
+        throw new Error(`Expected one expanded lineup row, found ${otherExpandedRows}.`);
       }
       const inspectorText = String(await inspector.innerText()).replace(/\s+/g, " ").trim();
       const normalizedInspectorText = inspectorText.toLowerCase();
@@ -132,13 +163,12 @@ const main = async () => {
       }
       await page.keyboard.press("Escape");
       await inspector.waitFor({ state: "hidden", timeout: timeoutMs });
-      return `details moved to inspector; selected row stayed ${afterHeight}px; Escape closes`;
+      return `one row expanded from ${beforeHeight}px to ${afterHeight}px; inspector opens and Escape closes`;
     });
 
     await runCheck(checks, "queue_secondary_trays_are_collapsed", async () => {
       const traySelectors = [
         '[data-feature-id="queue-section-pending-toggle"]',
-        '[data-feature-id="queue-section-assigned-toggle"]',
         '[data-feature-id="queue-section-held-toggle"]',
       ];
       for (const selector of traySelectors) {
@@ -148,35 +178,26 @@ const main = async () => {
           throw new Error(`${selector} did not start collapsed.`);
         }
       }
+      if (await page.locator('[data-feature-id="queue-section-assigned-toggle"]').count()) {
+        throw new Error("A linked performance was duplicated into the separate assigned tray.");
+      }
       await page.locator(traySelectors[0]).click({ force: true });
       await page.locator('[data-queue-id="density_pending"]').waitFor({ state: "visible", timeout: timeoutMs });
-      return "Awaiting Approval, Tied To Show, and Held start as expandable trays";
+      return "Awaiting Approval and Held stay collapsed; linked performances are not duplicated";
     });
 
-    await runCheck(checks, "queue_reorder_is_an_explicit_mode", async () => {
-      const toggle = page.locator(
-        '[data-feature-id="queue-surface-reorder-toggle-desktop"]:visible, [data-feature-id="queue-surface-reorder-toggle"]:visible',
-      ).first();
-      await toggle.waitFor({ state: "visible", timeout: timeoutMs });
-      if (await readyRows.locator('[data-queue-drag-handle="true"]').count()) {
-        throw new Error("Drag handles were visible before Reorder mode.");
+    await runCheck(checks, "unified_queue_keeps_reorder_affordances", async () => {
+      const draggableCount = await readyRows.evaluateAll((rows) => rows.filter((row) => row.parentElement?.draggable).length);
+      const dragHandleCount = await readyRows.locator('[data-lineup-drag-handle="true"]').count();
+      if (draggableCount !== 12 || dragHandleCount !== 12) {
+        throw new Error(`Expected 12 draggable performance rows and handles, found ${draggableCount}/${dragHandleCount}.`);
       }
-      await toggle.click({ force: true });
-      await page.waitForFunction(() => (
-        document.querySelectorAll('[data-queue-id^="density_ready_"] [data-queue-drag-handle="true"]').length === 12
-      ), null, { timeout: timeoutMs });
-      const draggableCount = await page.locator('[data-queue-id^="density_ready_"][draggable="true"]').count();
-      if (draggableCount > 10) throw new Error(`Protected next-up rows became draggable (${draggableCount}).`);
-      await toggle.click({ force: true });
-      await page.waitForFunction(() => (
-        document.querySelectorAll('[data-queue-id^="density_ready_"] [data-queue-drag-handle="true"]').length === 0
-      ), null, { timeout: timeoutMs });
-      return `${draggableCount} movable rows; protected next-up positions remain locked`;
+      return `${draggableCount} performance rows retain visible drag affordances`;
     });
 
     await runCheck(checks, "queue_controls_keep_accessible_targets", async () => {
       const undersized = await page.locator(
-        '[data-queue-id^="density_ready_"]:visible button:visible, [data-feature-id^="queue-section-"]:visible',
+        '[data-lineup-plan-item-id^="queue_density_ready_"]:visible button:visible, [data-feature-id^="queue-section-"]:visible',
       ).evaluateAll((controls) => controls.map((control) => {
         const rect = control.getBoundingClientRect();
         return {
@@ -187,6 +208,73 @@ const main = async () => {
       }).filter((entry) => entry.height < 44));
       if (undersized.length) throw new Error(`Undersized queue controls: ${JSON.stringify(undersized)}`);
       return "all visible queue controls are at least 44px tall";
+    });
+
+    await openUnifiedLineupFixture(page, server.baseUrl, timeoutMs);
+    const unifiedRows = page.locator('[data-lineup-plan-item-id]');
+
+    await runCheck(checks, "unified_lineup_rows_restore_scan_density", async () => {
+      const rowCount = await unifiedRows.count();
+      if (rowCount < 3) throw new Error(`Expected at least 3 mixed lineup rows, found ${rowCount}.`);
+      const metrics = await unifiedRows.evaluateAll((rows) => rows.map((row) => ({
+        id: row.getAttribute("data-lineup-plan-item-id"),
+        expanded: row.getAttribute("data-lineup-plan-item-expanded"),
+        height: Math.round(row.getBoundingClientRect().height),
+      })));
+      const maxHeight = Math.max(...metrics.map((entry) => entry.height));
+      if (metrics.some((entry) => entry.expanded !== "false")) {
+        throw new Error(`A unified lineup row opened by default: ${JSON.stringify(metrics)}`);
+      }
+      if (maxHeight > 72) {
+        throw new Error(`Collapsed unified lineup row exceeds 72px: ${JSON.stringify(metrics)}`);
+      }
+      if (await page.locator('[data-feature-id="lineup-item-expanded-actions"]:visible').count()) {
+        throw new Error("Secondary lineup actions are visible before a row is selected.");
+      }
+      return `${rowCount} mixed rows; ${maxHeight}px maximum collapsed height`;
+    });
+
+    await runCheck(checks, "unified_lineup_allows_only_one_expanded_row", async () => {
+      const firstRow = unifiedRows.nth(0);
+      const secondRow = unifiedRows.nth(1);
+      await firstRow.getByRole("button", { name: /^Open /i }).click({ force: true });
+      if (await page.locator('[data-lineup-plan-item-expanded="true"]').count() !== 1) {
+        throw new Error("Opening the first mixed lineup row did not produce exactly one expanded row.");
+      }
+      await secondRow.getByRole("button", { name: /^Open /i }).click({ force: true });
+      const expandedRows = page.locator('[data-lineup-plan-item-expanded="true"]');
+      if (await expandedRows.count() !== 1) {
+        throw new Error("Opening a second mixed lineup row left multiple rows expanded.");
+      }
+      const expandedItemId = await expandedRows.first().getAttribute("data-lineup-plan-item-id");
+      const selectedItemId = await secondRow.getAttribute("data-lineup-plan-item-id");
+      if (expandedItemId !== selectedItemId) {
+        throw new Error("The newly selected mixed lineup row did not replace the previous expansion.");
+      }
+      return "selection moves one shared detail expansion between lineup rows";
+    });
+
+    await runCheck(checks, "unified_lineup_is_responsive_without_horizontal_overflow", async () => {
+      const viewportResults = [];
+      for (const viewport of [
+        { width: 1024, height: 768 },
+        { width: 768, height: 1024 },
+        { width: 390, height: 844 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await delay(150);
+        const metrics = await page.locator('[data-feature-id="unified-tonights-lineup-plan"]').first().evaluate((element) => ({
+          viewportWidth: window.innerWidth,
+          clientWidth: Math.round(element.clientWidth),
+          scrollWidth: Math.round(element.scrollWidth),
+        }));
+        if (metrics.scrollWidth > metrics.clientWidth + 2) {
+          throw new Error(`Unified lineup overflows at ${viewport.width}px: ${JSON.stringify(metrics)}`);
+        }
+        viewportResults.push(`${viewport.width}px:${metrics.scrollWidth}/${metrics.clientWidth}`);
+      }
+      await page.setViewportSize({ width: 1366, height: 768 });
+      return viewportResults.join(", ");
     });
 
     const mobileContext = await browser.newContext({
@@ -207,11 +295,12 @@ const main = async () => {
     await openQueueFixture(mobilePage, server.baseUrl, timeoutMs);
 
     await runCheck(checks, "queue_inspector_is_mobile_safe", async () => {
-      const mobileRows = mobilePage.locator('[data-queue-id^="density_ready_"]');
+      const mobileRows = mobilePage.locator('[data-lineup-plan-item-id^="queue_density_ready_"]');
       const targetRow = mobileRows.nth(2);
-      const detailsButton = targetRow.getByRole("button", { name: /Details/i });
-      await detailsButton.scrollIntoViewIfNeeded();
-      await detailsButton.click();
+      const openButton = targetRow.getByRole("button", { name: /^Open Performance:/i });
+      await openButton.scrollIntoViewIfNeeded();
+      await openButton.click();
+      await targetRow.getByRole("button", { name: /Performance details/i }).click();
       const inspector = mobilePage.locator('[data-feature-id="queue-song-inspector"]').first();
       await inspector.waitFor({ state: "visible", timeout: timeoutMs });
       const metrics = await inspector.evaluate((element) => {

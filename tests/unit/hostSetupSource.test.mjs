@@ -697,7 +697,7 @@ test('tight 15 catalog sanitation tolerates null entries', () => {
 test('host game control pad submissions remain scrollable above the launchpad', () => {
   assert.match(
     hostAppSource,
-    /\(tab === 'run_of_show' \|\| tab === 'games' \|\| tab === 'browse'\) \? 'md:overflow-y-auto' : 'md:overflow-hidden'/,
+    /\(tab === 'run_of_show' \|\| tab === 'games' \|\| tab === 'browse' \|\| \(tab === 'stage' && promptNightExperienceActive\)\) \? 'md:overflow-y-auto' : 'md:overflow-hidden'/,
     'The Games tab main column should scroll because the live game control pad renders above the launchpad.',
   );
   assert.match(

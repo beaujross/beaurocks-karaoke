@@ -17,7 +17,19 @@ const viewports = [
   { id: 'desktop', width: 1440, height: 960 },
 ];
 const fixtures = [
-  { id: 'trivia-draft', fixture: 'prompt-session-trivia-draft', expected: ['Save question set', 'Add question'] },
+  { id: 'trivia-live-panel', fixture: 'prompt-session-trivia-draft', expected: ['Save question set', 'Add question'] },
+  {
+    id: 'trivia-night-setup',
+    fixture: 'prompt-session-trivia-draft',
+    route: 'view=ops&section=ops.room_setup&tab=admin',
+    expected: ['Room experience setup', 'Save question set', 'Add question'],
+  },
+  {
+    id: 'wyr-night-setup',
+    fixture: 'prompt-session-wyr-draft',
+    route: 'view=ops&section=ops.room_setup&tab=admin',
+    expected: ['Room experience setup', 'Save prompt set', 'Add prompt'],
+  },
   { id: 'wyr-live', fixture: 'prompt-session-wyr-live', expected: ['Reveal', 'Pause', 'End session'] },
 ];
 
@@ -67,7 +79,8 @@ try {
       await page.emulateMedia({ reducedMotion: 'reduce' });
       const pageErrors = [];
       page.on('pageerror', (error) => pageErrors.push(String(error?.message || error)));
-      await page.goto(`${server.baseUrl}/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&tab=stage&view=queue&section=queue.live_run&qaHostFixture=${fixture.fixture}`, {
+      const route = fixture.route || 'tab=stage&view=queue&section=queue.live_run';
+      await page.goto(`${server.baseUrl}/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&${route}&qaHostFixture=${fixture.fixture}`, {
         waitUntil: 'domcontentloaded',
         timeout: 120000,
       });
@@ -76,9 +89,59 @@ try {
       for (const text of fixture.expected) {
         await panel.getByText(text, { exact: true }).first().waitFor({ state: 'visible', timeout: 15000 });
       }
+      let editorScroll = null;
+      let mainScroll = null;
+      let aiComposerVisible = null;
+      if (fixture.id.endsWith('night-setup') || fixture.id === 'trivia-live-panel') {
+        const editor = panel.locator('[data-prompt-night-editor-scroll="true"]').first();
+        await editor.waitFor({ state: 'visible', timeout: 15000 });
+        editorScroll = await editor.evaluate((element) => {
+          const style = window.getComputedStyle(element);
+          const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+          element.scrollTop = maxScrollTop;
+          return {
+            clientHeight: element.clientHeight,
+            scrollHeight: element.scrollHeight,
+            maxScrollTop,
+            scrollTop: element.scrollTop,
+            canScroll: maxScrollTop > 8,
+            reachedBottom: maxScrollTop <= 8 || Math.abs(element.scrollTop - maxScrollTop) <= 2,
+            ownsVerticalScroll: style.overflowY === 'auto' || style.overflowY === 'scroll',
+          };
+        });
+        await panel.getByRole('button', { name: 'Create with AI' }).click();
+        const aiComposer = panel.locator('[data-feature-id="prompt-night-ai-composer"]').first();
+        await aiComposer.waitFor({ state: 'visible', timeout: 15000 });
+        aiComposerVisible = await aiComposer.isVisible();
+        if (fixture.id.endsWith('night-setup')) {
+          const main = page.locator('[data-host-main-scroll="true"]').first();
+          mainScroll = await main.evaluate((element) => {
+            const style = window.getComputedStyle(element);
+            const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+            element.scrollTop = maxScrollTop;
+            return {
+              clientHeight: element.clientHeight,
+              scrollHeight: element.scrollHeight,
+              maxScrollTop,
+              scrollTop: element.scrollTop,
+              reachedBottom: maxScrollTop <= 8 || Math.abs(element.scrollTop - maxScrollTop) <= 2,
+              ownsVerticalScroll: style.overflowY === 'auto' || style.overflowY === 'scroll',
+            };
+          });
+        }
+      }
       const metrics = await inspectPanel(panel);
       const genericControlPads = await page.locator('[data-host-active-game-controlpad]').count();
-      results.push({ viewport: viewport.id, state: fixture.id, genericControlPads, pageErrors, ...metrics });
+      results.push({
+        viewport: viewport.id,
+        state: fixture.id,
+        genericControlPads,
+        pageErrors,
+        editorScroll,
+        mainScroll,
+        aiComposerVisible,
+        ...metrics,
+      });
       await page.screenshot({
         path: path.join(outputDir, `${viewport.id}-${fixture.id}.png`),
         fullPage: true,
@@ -99,6 +162,9 @@ const failures = results.filter((result) => (
   || result.undersizedControls.length > 0
   || result.genericControlPads > 0
   || result.pageErrors.length > 0
+  || ((result.state.endsWith('night-setup') || result.state === 'trivia-live-panel') && (!result.editorScroll?.ownsVerticalScroll || !result.editorScroll?.reachedBottom))
+  || ((result.state.endsWith('night-setup') || result.state === 'trivia-live-panel') && !result.aiComposerVisible)
+  || (result.state.endsWith('night-setup') && (!result.mainScroll?.reachedBottom || (result.mainScroll?.maxScrollTop > 8 && !result.mainScroll?.ownsVerticalScroll)))
 ));
 if (failures.length) {
   throw new Error(`Prompt-session responsive QA found ${failures.length} failing states. See ${path.join(outputDir, 'metrics.json')}.`);

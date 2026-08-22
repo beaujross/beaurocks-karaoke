@@ -24,7 +24,6 @@ import {
     normalizeLiveStageCameraCorner,
     normalizeLiveStageCameraMode,
 } from '../../../lib/liveStageCamera';
-import { deriveNightPlan, getHostingLevel, getNightExperience } from '../../../lib/nightPlan.js';
 
 import {
     buildProvisionEventCreditsPayload,
@@ -102,16 +101,6 @@ const formatRunOfShowDuration = (value = 0) => {
     return `${secs}s`;
 };
 
-const formatRemainingShowTime = (value = 0) => {
-    const totalSec = Math.max(0, Math.ceil(Number(value || 0) || 0));
-    if (!totalSec) return '0m';
-    const hours = Math.floor(totalSec / 3600);
-    const mins = Math.floor((totalSec % 3600) / 60);
-    const secs = totalSec % 60;
-    if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-    if (mins > 0) return mins < 10 && secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-    return `${secs}s`;
-};
 
 const HostTopChrome = ({
     room,
@@ -429,9 +418,6 @@ const HostTopChrome = ({
     const minimalRuntimeChrome = experimentalRuntimeShellActive && tab === 'stage';
     const adminWorkspaceChrome = tab === 'admin';
     const denseChrome = minimalRuntimeChrome || adminWorkspaceChrome || !!tabletTouchViewport || !!mediumViewport;
-    const currentNightPlan = deriveNightPlan(room || {});
-    const currentNightExperience = getNightExperience(currentNightPlan.experienceId);
-    const currentHostingLevel = getHostingLevel(currentNightPlan.hostingLevel);
     const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
     const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[320]';
     const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
@@ -637,106 +623,6 @@ const HostTopChrome = ({
         preflightReport: safeRunOfShowPreflightReport,
         hasIssue: !!(topCriticalRunOfShowItem || topRiskyRunOfShowItem)
     });
-    const showTimeClockEnabled = runOfShowEnabled || tab === 'run_of_show' || tab === 'show';
-    const [showTimeNow, setShowTimeNow] = React.useState(() => Date.now());
-    const [showTimeDisplayMode, setShowTimeDisplayMode] = React.useState('time');
-    const showTimeLabel = React.useMemo(() => (
-        new Intl.DateTimeFormat(undefined, {
-            hour: 'numeric',
-            minute: '2-digit',
-            second: '2-digit'
-        }).format(showTimeNow)
-    ), [showTimeNow]);
-    const showTimeRemainingSec = React.useMemo(() => {
-        if (!runOfShowEnabled || !normalizedRunOfShowItems.length) return 0;
-        const activeIndex = normalizedRunOfShowItems.findIndex((item) => (
-            item?.id
-            && (
-                item.id === runOfShowLiveItem?.id
-                || item.id === runOfShowStagedItem?.id
-                || item.id === runOfShowNextItem?.id
-            )
-        ));
-        const fallbackIndex = normalizedRunOfShowItems.findIndex((item) => {
-            const status = String(item?.status || '').trim().toLowerCase();
-            return !['complete', 'skipped'].includes(status);
-        });
-        const startIndex = activeIndex >= 0 ? activeIndex : fallbackIndex;
-        if (startIndex < 0) return 0;
-        let remainingSec = 0;
-        normalizedRunOfShowItems.forEach((item, index) => {
-            const status = String(item?.status || '').trim().toLowerCase();
-            if (index < startIndex || ['complete', 'skipped'].includes(status)) return;
-            const isLive = item?.id && item.id === runOfShowLiveItem?.id;
-            const isPerformance = String(item?.type || '').trim().toLowerCase() === 'performance';
-            const performanceIntroActive = isLive
-                && isPerformance
-                && room?.announcement?.active
-                && String(room?.announcement?.runOfShowItemId || '').trim() === String(item?.id || '').trim()
-                && String(room?.announcement?.takeoverScene || room?.announcement?.type || '').trim().toLowerCase() === 'performance_intro';
-            const baseDurationSec = Math.max(0, Number(getRunOfShowDurationSec(item) || 0));
-            if (!isLive) {
-                remainingSec += baseDurationSec;
-                return;
-            }
-            const liveDurationSec = Math.max(
-                0,
-                Number(
-                    isPerformance
-                        ? (
-                            performanceIntroActive
-                                ? (room?.announcement?.durationSec || baseDurationSec)
-                                : (room?.currentPerformanceMeta?.durationSec || baseDurationSec)
-                        )
-                        : baseDurationSec
-                ) || 0
-            );
-            const liveStartedAtMs = Math.max(
-                0,
-                Number(
-                    isPerformance
-                        ? (
-                            performanceIntroActive
-                                ? (room?.announcement?.startedAtMs || item?.liveStartedAtMs || 0)
-                                : (room?.currentPerformanceMeta?.startedAtMs || item?.liveStartedAtMs || 0)
-                        )
-                        : (item?.liveStartedAtMs || 0)
-                ) || 0
-            );
-            if (liveDurationSec > 0 && liveStartedAtMs > 0) {
-                remainingSec += Math.max(0, liveDurationSec - ((showTimeNow - liveStartedAtMs) / 1000));
-            } else {
-                remainingSec += liveDurationSec;
-            }
-        });
-        return Math.max(0, Math.ceil(remainingSec));
-    }, [
-        normalizedRunOfShowItems,
-        room?.announcement?.active,
-        room?.announcement?.durationSec,
-        room?.announcement?.runOfShowItemId,
-        room?.announcement?.startedAtMs,
-        room?.announcement?.takeoverScene,
-        room?.announcement?.type,
-        room?.currentPerformanceMeta?.durationSec,
-        room?.currentPerformanceMeta?.startedAtMs,
-        runOfShowEnabled,
-        runOfShowLiveItem?.id,
-        runOfShowNextItem?.id,
-        runOfShowStagedItem?.id,
-        showTimeNow
-    ]);
-    const showTimeHasPlannedEnd = showTimeRemainingSec > 0;
-    const showTimeRemainingLabel = React.useMemo(
-        () => formatRemainingShowTime(showTimeRemainingSec),
-        [showTimeRemainingSec]
-    );
-    const showTimePrimaryLabel = showTimeDisplayMode === 'remaining' && showTimeHasPlannedEnd
-        ? showTimeRemainingLabel
-        : showTimeLabel;
-    const showTimeModeLabel = showTimeDisplayMode === 'remaining' && showTimeHasPlannedEnd
-        ? 'Show Left'
-        : 'Now';
     React.useEffect(() => {
         try {
             window.localStorage.setItem('bross_host_compact_run_of_show_collapsed', compactRunOfShowCollapsed ? '1' : '0');
@@ -749,17 +635,6 @@ const HostTopChrome = ({
             setCompactRunOfShowCollapsed(false);
         }
     }, [hasRunOfShowPlan, runOfShowEnabled, runOfShowFocusMode]);
-    React.useEffect(() => {
-        if (!showTimeClockEnabled || !showTimeHasPlannedEnd) {
-            setShowTimeDisplayMode('time');
-            return undefined;
-        }
-        setShowTimeDisplayMode('time');
-        const timer = window.setInterval(() => {
-            setShowTimeDisplayMode((prev) => (prev === 'time' ? 'remaining' : 'time'));
-        }, 5000);
-        return () => window.clearInterval(timer);
-    }, [showTimeClockEnabled, showTimeHasPlannedEnd]);
     const liveModeHostGuide = bangerActive
         ? {
             toneClass: 'border-orange-400/45 bg-orange-500/12 text-orange-100',
@@ -1009,12 +884,6 @@ const HostTopChrome = ({
         visualizerSensitivityDraft,
         visualizerSmoothingDraft,
     ]);
-
-    React.useEffect(() => {
-        if (!showTimeClockEnabled) return undefined;
-        const timer = window.setInterval(() => setShowTimeNow(Date.now()), 1000);
-        return () => window.clearInterval(timer);
-    }, [showTimeClockEnabled]);
 
     React.useEffect(() => {
         if (!anyTopMenuOpen) return undefined;
@@ -1306,16 +1175,6 @@ const HostTopChrome = ({
                     alt="Beaurocks Karaoke"
                 />
                 <div data-host-room-code className={`${minimalRuntimeChrome ? 'text-[12px] sm:text-[13px] lg:text-[14px] px-1.5 py-0.5' : adminWorkspaceChrome ? 'text-[12px] sm:text-[13px] lg:text-[14px] px-1.5 py-0.5' : denseChrome ? 'text-[13px] sm:text-[14px] lg:text-[16px] px-2 py-0.5' : 'text-[14px] sm:text-[16px] lg:text-[18px] px-2 py-0.5'} font-mono font-bold text-[#00C4D9] bg-black/40 rounded-lg border border-[#00C4D9]/30`}>{roomCode}</div>
-                <div
-                    data-night-plan-chip="true"
-                    title={`Room Experience: ${currentNightExperience.label}. Hosting Level: ${currentHostingLevel.label}.`}
-                    className="hidden min-w-0 items-center gap-1.5 rounded-lg border border-white/10 bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-cyan-50/78 2xl:inline-flex"
-                >
-                    <i className={`fa-solid ${currentNightExperience.icon} text-cyan-200`} />
-                    <span className="max-w-[150px] truncate">{currentNightExperience.shortLabel}</span>
-                    <span className="text-white/25">·</span>
-                    <span className="max-w-[110px] truncate text-fuchsia-100/76">{currentHostingLevel.label}</span>
-                </div>
                 {typeof onOpenHostDashboard === 'function' && (
                     <button
                         onClick={() => {
@@ -1434,27 +1293,6 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
-                {!minimalRuntimeChrome && (
-                    <div
-                        aria-hidden={!showTimeClockEnabled ? 'true' : undefined}
-                        className={`ml-1 flex ${denseChrome ? 'min-w-[136px]' : 'min-w-[152px]'} items-center gap-1.5 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] px-2.5 py-1 ${showTimeClockEnabled ? '' : 'invisible pointer-events-none'}`}
-                    >
-                        <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
-                            <i className="fa-solid fa-clock"></i>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 whitespace-nowrap">
-                                <div className="text-[9px] font-black uppercase tracking-[0.22em] text-cyan-200/80">Show Time</div>
-                                <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-zinc-300">
-                                    {showTimeModeLabel}
-                                </div>
-                            </div>
-                            <div className={`${runOfShowFocusMode ? 'mt-0 text-base' : 'mt-0.5 text-base'} truncate whitespace-nowrap font-black leading-none text-white tabular-nums`}>
-                                {showTimePrimaryLabel}
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
             <div className={`flex items-center ${minimalRuntimeChrome ? 'gap-1.5' : 'gap-2 lg:gap-3'} justify-between lg:justify-end`}>
                 {room?.activeMode && room.activeMode !== 'karaoke' && (

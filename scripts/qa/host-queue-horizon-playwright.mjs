@@ -93,13 +93,34 @@ const main = async () => {
 
     await runCheck(checks, "horizon_uses_runtime_contract", async () => {
       const text = String(await page.locator('[data-feature-id="host-queue-horizon"]').innerText()).replace(/\s+/g, " ").trim();
-      if (!/(On Deck|Next|Start)/i.test(text)) {
+      if (!/(Live|On Deck|Next|Start|Then)/i.test(text)) {
         throw new Error(`Horizon does not expose the immediate runtime sequence: ${text}`);
       }
-      if (!/(Manual|Auto-DJ)/i.test(text)) {
+      if (!/(Manual|Auto-DJ|Auto-Advance)/i.test(text)) {
         throw new Error(`Horizon does not expose queue pacing: ${text}`);
       }
+      if (!/(Karaoke|Original Tracks|Trivia|WYR)/i.test(text) || !/Show Time/i.test(text)) {
+        throw new Error(`Horizon is missing room experience or Show Time controls: ${text}`);
+      }
       return text.slice(0, 220);
+    });
+
+    await runCheck(checks, "horizon_breakpoints_keep_one_compact_band", async () => {
+      await page.screenshot({ path: path.join(repoRoot, "tmp", "qa-host-horizon-desktop.png"), fullPage: false });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await delay(250);
+      const metrics = await page.locator('[data-feature-id="host-queue-horizon"]').evaluate((element) => ({
+        height: Math.round(element.getBoundingClientRect().height),
+        clientWidth: Math.round(element.clientWidth),
+        scrollWidth: Math.round(element.scrollWidth),
+      }));
+      await page.screenshot({ path: path.join(repoRoot, "tmp", "qa-host-horizon-mobile.png"), fullPage: false });
+      if (metrics.height > 100 || metrics.scrollWidth > metrics.clientWidth + 2) {
+        throw new Error(`Lineup horizon does not fit 390px: ${JSON.stringify(metrics)}`);
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await gotoFixture(page, server.baseUrl, timeoutMs);
+      return JSON.stringify(metrics);
     });
 
     await runCheck(checks, "horizon_persists_across_host_workspaces", async () => {
@@ -171,13 +192,13 @@ const main = async () => {
 
     await runCheck(checks, "horizon_automation_toggle_is_direct", async () => {
       const automation = page.locator(
-        '[data-feature-id="host-queue-horizon"] button[aria-label^="Auto-DJ is"]',
+        '[data-feature-id="tonights-lineup-auto-advance"]',
       ).first();
       await automation.waitFor({ state: "visible", timeout: timeoutMs });
       const before = await automation.getAttribute("aria-label");
       await automation.click({ force: true });
       await page.waitForFunction((previousLabel) => {
-        const control = document.querySelector('[data-feature-id="host-queue-horizon"] button[aria-label^="Auto-DJ is"]');
+        const control = document.querySelector('[data-feature-id="tonights-lineup-auto-advance"]');
         return control && control.getAttribute("aria-label") !== previousLabel;
       }, before, { timeout: timeoutMs });
       const after = await automation.getAttribute("aria-label");

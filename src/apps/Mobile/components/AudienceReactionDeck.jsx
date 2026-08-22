@@ -17,12 +17,21 @@ const AudienceReactionDeck = ({
     getEmoji = () => '',
     onReact = () => {},
     onEdit = () => {},
-}) => (
-    <section
-        className="relative z-10 border-b border-white/10 bg-[linear-gradient(180deg,rgba(8,15,28,0.96),rgba(3,7,18,0.94))] px-3 py-3"
-        data-feature-id="persistent-audience-reaction-deck"
-        data-reactions-active={active ? 'true' : 'false'}
-    >
+    reactionSlotCount = 4,
+    fifthReactionSlotPointsCost = 250,
+    fifthReactionSlotPurchasesEnabled = false,
+    onUnlockFifth = () => {},
+    layout = 'strip',
+}) => {
+    const isGrid = layout === 'grid';
+
+    return (
+        <section
+            className="relative z-10 border-b border-white/10 bg-[linear-gradient(180deg,rgba(8,15,28,0.96),rgba(3,7,18,0.94))] px-3 py-3"
+            data-feature-id="persistent-audience-reaction-deck"
+            data-reactions-active={active ? 'true' : 'false'}
+            data-reaction-layout={isGrid ? 'grid' : 'strip'}
+        >
         <div className="mb-2 flex items-center justify-between gap-3">
             <div className="min-w-0">
                 <div className={`text-[9px] font-black uppercase tracking-[0.18em] ${active ? 'text-cyan-200' : 'text-zinc-500'}`}>
@@ -41,7 +50,10 @@ const AudienceReactionDeck = ({
                 <i className="fa-solid fa-sliders mr-1.5" aria-hidden="true"></i>Edit
             </button>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1" aria-label={active ? 'Voting reaction buttons' : 'Inactive voting reaction preview'}>
+        <div
+            className={isGrid ? 'grid grid-cols-2 gap-3' : 'flex gap-2.5 overflow-x-auto pb-1'}
+            aria-label={active ? 'Voting reaction buttons' : 'Inactive voting reaction preview'}
+        >
             {reactionTypes.map((reactionType, index) => {
                 const reaction = getReactionDefinition(reactionType) || {};
                 const coolingDown = isCoolingDown(reactionType);
@@ -57,13 +69,13 @@ const AudienceReactionDeck = ({
                         type="button"
                         disabled={disabled}
                         onClick={() => onReact(reactionType, reaction.pointCost)}
-                        className={`relative flex h-[68px] w-[66px] shrink-0 flex-col items-center justify-center overflow-hidden rounded-2xl border transition ${tone} ${disabled ? 'cursor-default opacity-60' : 'shadow-[0_0_20px_rgba(34,211,238,0.12)] active:scale-95'}`}
+                        className={`relative flex flex-col items-center justify-center overflow-hidden rounded-2xl border transition ${isGrid ? 'min-h-[136px] w-full px-3 py-4' : 'h-[88px] min-w-[78px] flex-1 shrink-0 px-1 sm:min-w-[84px]'} ${tone} ${disabled ? 'cursor-default opacity-60' : 'shadow-[0_0_20px_rgba(34,211,238,0.12)] active:scale-95'}`}
                         aria-label={`${reaction.label || reactionType}${active ? '' : ', available during performances'}`}
                         data-reaction-deck-type={reactionType}
                     >
                         {renderCooldownFill(reactionType, 'bg-cyan-300/18', 'border-white/15 bg-black/60 text-cyan-50')}
-                        <span className={`${getIconClass(reactionType)} text-2xl leading-none`}>{getEmoji(reactionType)}</span>
-                        <span className="mt-1 max-w-[58px] truncate text-[8px] font-black uppercase tracking-[0.08em]">{reaction.label || reactionType}</span>
+                        <span className={`${getIconClass(reactionType, isGrid ? 'text-6xl' : 'text-4xl')} leading-none`}>{getEmoji(reactionType)}</span>
+                        <span className={`${isGrid ? 'mt-3 max-w-full text-xs' : 'mt-1.5 max-w-[72px] text-[10px]'} truncate font-black uppercase tracking-[0.07em]`}>{reaction.label || reactionType}</span>
                         {active && Number(reaction.pointCost || 0) > 0 ? (
                             <CurrencyAmount currency="points" amount={reaction.pointCost} size="xs" className="absolute right-1 top-1 scale-75 origin-top-right" />
                         ) : null}
@@ -71,7 +83,24 @@ const AudienceReactionDeck = ({
                 );
             })}
         </div>
-    </section>
-);
+        {reactionSlotCount < 5 ? (
+            <button
+                type="button"
+                onClick={onUnlockFifth}
+                disabled={!fifthReactionSlotPurchasesEnabled}
+                className="mt-2 flex min-h-[44px] w-full items-center justify-between gap-3 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-3 text-left text-cyan-50 enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:border-zinc-500/35 disabled:bg-zinc-800/50 disabled:text-zinc-400"
+                data-feature-id="reaction-deck-unlock-slot-5"
+                aria-label={fifthReactionSlotPurchasesEnabled ? `Unlock fifth voting emoji slot for ${fifthReactionSlotPointsCost} points in this room` : 'Ask the host to enable fifth voting emoji slot purchases'}
+            >
+                <span className="flex min-w-0 items-center gap-2">
+                    <i className="fa-solid fa-lock shrink-0" aria-hidden="true"></i>
+                    <span><span className="block text-[11px] font-black uppercase tracking-[0.08em]">Unlock a 5th voting emoji</span><span className="block text-[9px] font-bold opacity-70">{fifthReactionSlotPurchasesEnabled ? 'Available in this room' : 'Ask your host to enable this'}</span></span>
+                </span>
+                {fifthReactionSlotPurchasesEnabled ? <CurrencyAmount currency="points" amount={fifthReactionSlotPointsCost} size="xs" className="shrink-0" /> : <span className="shrink-0 text-[9px] font-black uppercase">Host setting</span>}
+            </button>
+        ) : null}
+        </section>
+    );
+};
 
 export default AudienceReactionDeck;
