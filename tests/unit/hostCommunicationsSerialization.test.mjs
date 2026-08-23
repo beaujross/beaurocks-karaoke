@@ -8,6 +8,7 @@ const {
   serializeAnnouncement,
   serializeComment,
   serializeThread,
+  sanitizeSupportContext,
   serializeMessage,
 } = require('../../functions/hostCommunications.js');
 
@@ -87,4 +88,40 @@ test('thread serialization normalizes identity, status, category, and counts', (
   assert.equal(result.lastMessageByRole, 'team');
   assert.equal(result.messageCount, 3);
   assert.equal(result.updatedAtMs, 4321);
+});
+
+test('Host Panel support context is whitelisted, normalized, and included on threads', () => {
+  const context = sanitizeSupportContext({
+    source: 'host_panel_feedback',
+    roomCode: ' ab12 ',
+    roomName: ' Friday Night ',
+    workspaceSection: 'media.playback',
+    queueCount: 10005,
+    performanceTitle: 'Song',
+    performanceSinger: 'Audience Member',
+    pathname: '/host?token=secret',
+    secret: 'must not survive',
+    capturedAtMs: 1234.7,
+  });
+
+  assert.deepEqual(context, {
+    source: 'host_panel_feedback',
+    roomCode: 'AB12',
+    roomName: 'Friday Night',
+    workspaceSection: 'media_playback',
+    queueCount: 9999,
+    performanceTitle: 'Song',
+    pathname: '/host',
+    capturedAtMs: 1235,
+  });
+  assert.equal('secret' in context, false);
+  assert.equal('performanceSinger' in context, false);
+
+  const result = serializeThread(snap('thread-context', { context }));
+  assert.equal(result.context.roomCode, 'AB12');
+  assert.equal(result.context.source, 'host_panel_feedback');
+});
+
+test('unrecognized support context sources are discarded', () => {
+  assert.equal(sanitizeSupportContext({ source: 'audience', roomCode: 'AB12' }), null);
 });

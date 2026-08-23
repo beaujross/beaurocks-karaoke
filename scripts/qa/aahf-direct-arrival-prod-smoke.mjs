@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import QRCode from "qrcode";
+import {
+  AUDIENCE_JOIN_ACCESS_MODES,
+  normalizeAudienceJoinPolicy,
+} from "../../src/lib/audienceJoinPolicy.js";
 import {
   delay,
   ensurePlaywright,
@@ -17,6 +21,8 @@ const QR_ASSET_PATH = path.join(process.cwd(), "public", "print", "aahf-kickoff-
 const OUTPUT_DIR = path.join(process.cwd(), "tmp", "prod-aahf-direct-arrival-smoke");
 const DEFAULT_TIMEOUT_MS = 120000;
 const POST_RULES_TIMEOUT_MS = Number(process.env.AAHF_POST_RULES_TIMEOUT_MS || 30000);
+const REQUIRE_PRODUCTION_CONFIG = String(process.env.QA_REQUIRE_PRODUCTION_CONFIG || "").trim() === "1";
+const ALLOW_PRODUCTION_JOIN = String(process.env.QA_ALLOW_PRODUCTION_JOIN || "").trim() === "1";
 
 const toJsonOrText = async (response) => {
   const raw = await response.text();
@@ -55,8 +61,22 @@ const decodeFirestoreValue = (value) => {
   return undefined;
 };
 
-const getAccessToken = () =>
-  String(execSync("gcloud auth print-access-token", { encoding: "utf8" }) || "").trim();
+const getAccessToken = () => {
+  const explicitToken = String(process.env.QA_GCLOUD_ACCESS_TOKEN || "").trim();
+  if (explicitToken) return explicitToken;
+  try {
+    return String(execFileSync("gcloud", ["auth", "print-access-token"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }) || "").trim();
+  } catch (error) {
+    const environmentError = new Error(
+      "environment_missing: production config probe requires gcloud auth or QA_GCLOUD_ACCESS_TOKEN."
+    );
+    environmentError.cause = error;
+    throw environmentError;
+  }
+};
 
 const loadAahfRoomDoc = async () => {
   const accessToken = getAccessToken();
@@ -91,14 +111,6 @@ const validateQrAsset = async () => {
   };
 };
 
-const waitForBodyText = async (page, expectedText, timeoutMs = DEFAULT_TIMEOUT_MS) => {
-  const token = String(expectedText || "").trim().toLowerCase();
-  await page.waitForFunction((needle) => {
-    const text = String(document?.body?.innerText || "").toLowerCase();
-    return text.includes(needle);
-  }, token, { timeout: timeoutMs });
-};
-
 const runDirectArrivalFlow = async ({ requiresAccount = false } = {}) => {
   const { chromium } = await ensurePlaywright();
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
@@ -113,12 +125,26 @@ const runDirectArrivalFlow = async ({ requiresAccount = false } = {}) => {
 
   try {
     await page.goto(DIRECT_APP_URL, { waitUntil: "domcontentloaded", timeout: DEFAULT_TIMEOUT_MS });
-    await waitForBodyText(page, "Pick the emoji that feels most you.", DEFAULT_TIMEOUT_MS);
+    await page.locator('[data-singer-view="join"]').waitFor({ state: "visible", timeout: DEFAULT_TIMEOUT_MS });
+    await page.locator("[data-singer-join-name]").waitFor({ state: "visible", timeout: DEFAULT_TIMEOUT_MS });
+    await page.locator("[data-singer-join-button]").waitFor({ state: "visible", timeout: DEFAULT_TIMEOUT_MS });
+    const avatarCount = await page.locator("[data-emoji-id]").count();
+    if (avatarCount < 2) throw new Error(`product_failure: expected an avatar picker, found ${avatarCount} options.`);
     await page.screenshot({ path: path.join(OUTPUT_DIR, "01-direct-arrival.png"), fullPage: true });
+
+    if (!ALLOW_PRODUCTION_JOIN) {
+      return {
+        outputDir: OUTPUT_DIR,
+        directAppUrl: DIRECT_APP_URL,
+        outcome: "join_contract_ready",
+        avatarCount,
+        productionMutation: "skipped",
+      };
+    }
 
     await page.locator("[data-singer-join-name]").fill("Taylor QA");
     await page.locator("[data-singer-join-button]").click({ force: true });
-    await waitForBodyText(page, "Agree and Continue", DEFAULT_TIMEOUT_MS);
+    await page.locator("[data-singer-rules-confirm]").waitFor({ state: "visible", timeout: DEFAULT_TIMEOUT_MS });
     await page.screenshot({ path: path.join(OUTPUT_DIR, "02-rules.png"), fullPage: true });
 
     await page.locator("[data-singer-rules-checkbox]").check({ force: true });
@@ -207,11 +233,16 @@ const run = async () => {
   });
 
   await runCheck(checks, "live_room_config_is_streamlined", async () => {
+    if (!REQUIRE_PRODUCTION_CONFIG) {
+      summary.productionConfigProbe = { status: "skipped", reason: "Set QA_REQUIRE_PRODUCTION_CONFIG=1 to enable the credentialed probe." };
+      return "Optional credentialed production-config probe skipped.";
+    }
     const room = await loadAahfRoomDoc();
+    const joinPolicy = normalizeAudienceJoinPolicy(room?.audienceJoinPolicy || {});
     summary.room = {
       audienceShellVariant: room?.audienceShellVariant || "",
       audienceAccessMode: room?.eventCredits?.audienceAccessMode || "",
-      joinAccessMode: room?.audienceJoinPolicy?.accessMode || "",
+      joinAccessMode: joinPolicy.accessMode,
       timedLobbyEnabled: !!room?.eventCredits?.timedLobbyEnabled,
       timedLobbyPoints: Number(room?.eventCredits?.timedLobbyPoints || 0) || 0,
       timedLobbyIntervalMin: Number(room?.eventCredits?.timedLobbyIntervalMin || 0) || 0,
@@ -238,6 +269,7 @@ const run = async () => {
   });
 
   await runCheck(checks, "historical_aahf_takeover_copy_snapshot", async () => {
+    if (!REQUIRE_PRODUCTION_CONFIG) return "Optional historical production snapshot skipped with config probe.";
     const room = await loadAahfRoomDoc();
     const items = Array.isArray(room?.runOfShowDirector?.items) ? room.runOfShowDirector.items : [];
     const historicalHeadlines = [
@@ -262,8 +294,9 @@ const run = async () => {
   });
 
   await runCheck(checks, "direct_app_arrival_flow_smoke", async () => {
+    const normalizedJoinPolicy = normalizeAudienceJoinPolicy({ accessMode: summary.room?.joinAccessMode || "" });
     const detail = await runDirectArrivalFlow({
-      requiresAccount: summary.room?.joinAccessMode === "account_required",
+      requiresAccount: normalizedJoinPolicy.accessMode === AUDIENCE_JOIN_ACCESS_MODES.accountRequired,
     });
     summary.productionFlow = detail;
     return detail.outputDir;

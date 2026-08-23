@@ -31,6 +31,7 @@ import { PLAYBACK_CONTENT_KINDS } from '../../../lib/playbackSource';
 import { buildHostEditedReviewState } from '../../../lib/queueSongReviewState';
 import { getTrackDurationSecFromSearchResult } from '../hostPlaybackAutomation';
 import { normalizeYouTubePlaybackState } from '../../../lib/youtubePlaybackStatus';
+import { NIGHT_EXPERIENCE_IDS, deriveNightExperienceId } from '../../../lib/nightPlan.js';
 
 const YOUTUBE_PLAYLIST_QUEUE_MAX = 1000;
 let catalogPermissionSkipLogged = false;
@@ -706,20 +707,20 @@ const useQueueSongActions = ({
         const isApple = r.source === 'itunes';
         const explicitAppleId = isApple ? String(r.trackId || '') : '';
         const preferAppleDefault = isApple && !!explicitAppleId;
-        const appleIntentNeedsBacking = preferAppleDefault && options?.queueAppleBacking !== true;
+        const originalTrackParty = deriveNightExperienceId(room || {}) === NIGHT_EXPERIENCE_IDS.originalTracks;
+        const appleIntentNeedsBacking = preferAppleDefault
+            && options?.queueAppleBacking !== true
+            && !originalTrackParty;
         const itunesArt = (r.artworkUrl100 || '').replace('100x100', '600x600');
         const selectedDuration = getTrackDurationSecFromSearchResult(r, manual.duration || 180);
         const trackSource = preferAppleDefault
             ? 'apple'
             : (r.source === 'youtube' ? 'youtube' : r.source === 'local' ? 'custom' : (isApple ? 'apple' : ''));
         const mediaUrl = preferAppleDefault ? '' : (r.source === 'youtube' || r.source === 'local' ? (r.url || '') : '');
-        const resolvedDuration = preferAppleDefault
-            ? selectedDuration
-            : await resolvePreferredDuration(
-                mediaUrl,
-                selectedDuration,
-                r.mediaType === 'audio' || isAudioUrl(r.url)
-            );
+        // Keep the host's queue action on the shortest possible path. Media duration
+        // probing can involve loading remote metadata, so use the catalogue duration
+        // immediately and enrich the queue document after it has been created.
+        const resolvedDuration = selectedDuration;
         const queueYouTubePlaybackPatch = buildQueueSongYouTubePlaybackPatch({
             mediaUrl,
             embeddable: r.embeddable,
@@ -757,6 +758,9 @@ const useQueueSongActions = ({
                 lyricsTimed: null,
                 appleMusicId: nextSong.appleMusicId,
                 musicSource: nextSong.appleMusicId ? 'apple' : '',
+                playbackContentKind: nextSong.appleMusicId
+                    ? PLAYBACK_CONTENT_KINDS.originalRecording
+                    : PLAYBACK_CONTENT_KINDS.unknown,
                 ...(appleIntentNeedsBacking ? {
                     resolutionStatus: RESOLUTION_STATUSES.reviewRequired,
                     mediaResolutionStatus: 'pending_youtube_match',
@@ -779,11 +783,20 @@ const useQueueSongActions = ({
             const statusText = appleIntentNeedsBacking
                 ? 'Queued song from Apple Music. Pick a YouTube backing or approve Apple sing-along.'
                 : preferAppleDefault
-                    ? 'Queued with Apple backing (finalizing lyrics...)'
+                    ? originalTrackParty
+                        ? 'Queued original recording (checking lyrics separately...)'
+                        : 'Queued with Apple backing (finalizing lyrics...)'
                     : 'Queued (finalizing lyrics...)';
             toast(statusText);
 
             void (async () => {
+                const enrichedDuration = preferAppleDefault
+                    ? resolvedDuration
+                    : await resolvePreferredDuration(
+                        mediaUrl,
+                        resolvedDuration,
+                        r.mediaType === 'audio' || isAudioUrl(r.url)
+                    );
                 const canonicalMatch = await resolveCanonicalIdentitySafe({
                     songId: initialSongId,
                     title: r.trackName,
@@ -825,7 +838,7 @@ const useQueueSongActions = ({
                                 source: trackSource,
                                 mediaUrl: mediaUrl || '',
                                 appleMusicId: nextSong.appleMusicId,
-                                duration: nextSong.duration,
+                                duration: enrichedDuration,
                                 audioOnly: nextSong.audioOnly,
                                 backingOnly: false,
                                 addedBy: hostName || 'Host'
@@ -845,6 +858,7 @@ const useQueueSongActions = ({
                     await updateDoc(songDocRef, {
                         songId,
                         trackId: trackRecord?.trackId || null,
+                        duration: Math.max(1, Math.round(Number(enrichedDuration || nextSong.duration || 180))),
                         ...(canonicalMatch?.found ? {
                             songTitle: canonicalTitle,
                             artist: canonicalArtist
@@ -877,6 +891,9 @@ const useQueueSongActions = ({
                 lyrics: '',
                 lyricsTimed: null,
                 appleMusicId: nextSong.appleMusicId || '',
+                playbackContentKind: nextSong.appleMusicId
+                    ? PLAYBACK_CONTENT_KINDS.originalRecording
+                    : PLAYBACK_CONTENT_KINDS.unknown,
                 duration: nextSong.duration ? Math.round(nextSong.duration) : 180,
                 statusText,
                 lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',

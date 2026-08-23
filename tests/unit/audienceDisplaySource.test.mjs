@@ -40,7 +40,8 @@ test('public tv renders audience display using existing room users and reactions
   assert.match(tvSource, /data-tv-audience-lobby-wall/);
   assert.match(tvSource, /audienceDisplayReactionByUid/);
   assert.match(tvSource, /latestReaction\.labelOverride \|\| getTvReactionLabel\(latestReaction\.type\)/);
-  assert.match(tvSource, /reactions\.filter\(\(r\) => !r\.audienceDisplaySessionId\)\.map/);
+  assert.match(tvSource, /selectTvReactionPresentation\(reactions/);
+  assert.match(tvSource, /presentedReactions\.map/);
 });
 
 test('host tv dropdown exposes fast audience display shortcuts', () => {

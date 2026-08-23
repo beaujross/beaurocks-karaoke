@@ -97,3 +97,18 @@ export const createAppleMusicAutomaticRetryError = () => {
 export const isAppleMusicAutomaticRetryError = (error = null) => (
   error?.code === 'APPLE_MUSIC_PLAYLIST_RETRY_COOLDOWN'
 );
+
+export const quiesceAppleMusicTransport = async (instance = null) => {
+  if (!instance) return '';
+  for (const method of ['stop', 'pause']) {
+    if (typeof instance?.[method] !== 'function') continue;
+    try {
+      await instance[method]();
+      return method;
+    } catch (_error) {
+      // MusicKit can reject stop/pause when its public state is a beat behind.
+      // Try the alternate transport before replacing the queue.
+    }
+  }
+  return '';
+};

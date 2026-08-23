@@ -1,4 +1,20 @@
 export const BROWSE_BACKING_INDEX = Object.freeze({
+  "a bar song tipsy__shaboozey": {
+    "approved": true,
+    "playable": true,
+    "embeddable": true,
+    "verifiedAt": "2026-08-15",
+    "verificationSource": "youtube_oembed",
+    "trackSource": "youtube",
+    "mediaUrl": "https://www.youtube.com/watch?v=M-_kpGgo4D0",
+    "videoId": "M-_kpGgo4D0",
+    "label": "A Bar Song (Tipsy) karaoke",
+    "title": "Shaboozey - A Bar Song (Tipsy) (Karaoke Version)",
+    "channelTitle": "PARTY TYME KARAOKE CHANNEL",
+    "durationSec": 179,
+    "viewCount": 35907,
+    "localFallback": null
+  },
   "24k magic__bruno mars": {
     "approved": true,
     "playable": true,
@@ -914,6 +930,22 @@ export const BROWSE_BACKING_INDEX = Object.freeze({
     "qualityScore": 122.85814724816098,
     "localFallback": null
   },
+  "heart like a truck__lainey wilson": {
+    "approved": true,
+    "playable": true,
+    "embeddable": true,
+    "verifiedAt": "2026-08-15",
+    "verificationSource": "youtube_oembed",
+    "trackSource": "youtube",
+    "mediaUrl": "https://www.youtube.com/watch?v=NU2xd9O_pyY",
+    "videoId": "NU2xd9O_pyY",
+    "label": "Heart Like a Truck karaoke",
+    "title": "Lainey Wilson - Heart Like a Truck (Karaoke Version)",
+    "channelTitle": "PARTY TYME KARAOKE CHANNEL",
+    "durationSec": 206,
+    "viewCount": 8941,
+    "localFallback": null
+  },
   "hey jude__the beatles": {
     "approved": true,
     "playable": true,
@@ -1092,6 +1124,22 @@ export const BROWSE_BACKING_INDEX = Object.freeze({
     "durationSec": 205,
     "viewCount": 119874,
     "qualityScore": 113.23617499180723,
+    "localFallback": null
+  },
+  "i had some help__post malone and morgan wallen": {
+    "approved": true,
+    "playable": true,
+    "embeddable": true,
+    "verifiedAt": "2026-08-15",
+    "verificationSource": "youtube_oembed",
+    "trackSource": "youtube",
+    "mediaUrl": "https://www.youtube.com/watch?v=-itB1uWxxCg",
+    "videoId": "-itB1uWxxCg",
+    "label": "I Had Some Help karaoke",
+    "title": "Post Malone, Morgan Wallen - I Had Some Help (Karaoke Version)",
+    "channelTitle": "Sing King",
+    "durationSec": 182,
+    "viewCount": 235256,
     "localFallback": null
   },
   "i gotta feeling__black eyed peas": {
@@ -1679,6 +1727,22 @@ export const BROWSE_BACKING_INDEX = Object.freeze({
     "qualityScore": 124,
     "localFallback": null
   },
+  "on the road again__willie nelson": {
+    "approved": true,
+    "playable": true,
+    "embeddable": true,
+    "verifiedAt": "2026-08-15",
+    "verificationSource": "youtube_oembed",
+    "trackSource": "youtube",
+    "mediaUrl": "https://www.youtube.com/watch?v=3wdYWq3yDf4",
+    "videoId": "3wdYWq3yDf4",
+    "label": "On the Road Again karaoke",
+    "title": "Willie Nelson - On The Road Again (Karaoke Version)",
+    "channelTitle": "PARTY TYME KARAOKE CHANNEL",
+    "durationSec": 169,
+    "viewCount": 31948,
+    "localFallback": null
+  },
   "part of your world__the little mermaid": {
     "approved": true,
     "playable": true,
@@ -1812,6 +1876,22 @@ export const BROWSE_BACKING_INDEX = Object.freeze({
     "durationSec": 160,
     "viewCount": 134004,
     "qualityScore": 127.38135328655711,
+    "localFallback": null
+  },
+  "ring of fire__johnny cash": {
+    "approved": true,
+    "playable": true,
+    "embeddable": true,
+    "verifiedAt": "2026-08-15",
+    "verificationSource": "youtube_oembed",
+    "trackSource": "youtube",
+    "mediaUrl": "https://www.youtube.com/watch?v=tzjk5IXNwhE",
+    "videoId": "tzjk5IXNwhE",
+    "label": "Ring of Fire karaoke",
+    "title": "Johnny Cash - Ring of Fire (Karaoke Version)",
+    "channelTitle": "PARTY TYME KARAOKE CHANNEL",
+    "durationSec": 180,
+    "viewCount": 14424,
     "localFallback": null
   },
   "rolling in the deep__adele": {
@@ -2217,6 +2297,22 @@ export const BROWSE_BACKING_INDEX = Object.freeze({
     "durationSec": 297,
     "viewCount": 264608,
     "qualityScore": 122.2678089107487,
+    "localFallback": null
+  },
+  "the gambler__kenny rogers": {
+    "approved": true,
+    "playable": true,
+    "embeddable": true,
+    "verifiedAt": "2026-08-15",
+    "verificationSource": "youtube_oembed",
+    "trackSource": "youtube",
+    "mediaUrl": "https://www.youtube.com/watch?v=0uTENW2YEzE",
+    "videoId": "0uTENW2YEzE",
+    "label": "The Gambler karaoke",
+    "title": "Kenny Rogers - The Gambler (Karaoke Version)",
+    "channelTitle": "PARTY TYME KARAOKE CHANNEL",
+    "durationSec": 247,
+    "viewCount": 21497,
     "localFallback": null
   },
   "the middle__jimmy eat world": {

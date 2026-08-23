@@ -36,7 +36,12 @@ import {
     submitBingoTileConfirmation,
     submitBingoMysterySpin,
     lockBingoMysteryPick,
-    recordRoomCostObservation
+    recordRoomCostObservation,
+    sendRoomLoungeMessage,
+    sendRoomHostMessage,
+    sendRoomOperatorSignal,
+    respondToRoomCoHostInvite,
+    leaveRoomCoHostRole,
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
 import { subscribeToBoundedRoomSongs } from '../../lib/roomSongSubscriptions';
@@ -112,7 +117,6 @@ import {
 import GameContainer from '../../components/GameContainer';
 import GameLifecycleStatusCard from '../../components/GameLifecycleStatusCard';
 import { getGameLifecyclePresentation } from '../../lib/gameLifecyclePresentation';
-import { getAudienceGameMembershipGate } from '../../lib/audienceGameMembershipGate';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
 import { resolveLyricsPlaybackClock } from '../../lib/lyricsPlaybackClock';
 import { FameLevelProgressBar } from '../../components/FameLevelBadge';
@@ -120,9 +124,10 @@ import UserMetaCard from '../../components/UserMetaCard';
 import { FAME_LEVELS, getLevelFromFame, getProgressToNextLevel } from '../../lib/fameConstants';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
 import { REACTION_CATALOG, getReactionCooldownMs, getReactionDefinition, getReactionUnlockState } from '../../lib/reactionCatalog';
-import { buildReactionLoadout, equipBonusReaction, CORE_REACTION_TYPES } from '../../lib/reactionLoadout';
+import { buildReactionLoadout, equipBonusReactionAtSlot, CORE_REACTION_TYPES } from '../../lib/reactionLoadout';
 import { CurrencyAmount, CurrencyIcon } from '../../components/CurrencyToken';
 import AudienceReactionSlotGrid from './components/AudienceReactionSlotGrid';
+import AudienceReactionDeck from './components/AudienceReactionDeck';
 import {
     AUDIENCE_REACTION_UNLOCK_ACTIONS,
     resolveAudienceReactionSlotUnlock,
@@ -228,7 +233,6 @@ import {
     shouldSimplifyFestivalSupportAccess
 } from './lib/audienceAccessPresentation.js';
 import {
-    buildCoHostSignalActivityPayload,
     buildCurrentPerformanceSignalContext,
     buildPerformanceReactionMeta,
     formatElapsedClock,
@@ -239,7 +243,6 @@ import {
     applyReactionCooldown,
     getReactionCooldownRemainingMs as getReactionCooldownRemainingMsForMap
 } from './lib/reactionCooldowns.js';
-import { shouldShowStreamlinedIdleRequestCard } from './lib/singerHomeState.js';
 
 const AudienceReactionCollection = React.lazy(() => import('./components/AudienceReactionCollection'));
 
@@ -317,6 +320,42 @@ const AnimatedPoints = ({ value, onClick, className = '', rewardDelta = 0, rewar
             </div>
             {showRewardBadge ? (
                 <span className="pointer-events-none absolute -top-3 right-2 rounded-full border border-emerald-300/55 bg-emerald-400/16 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.26)] animate-bounce">
+                    +{Math.max(0, Math.round(Number(rewardDelta) || 0))}
+                </span>
+            ) : null}
+        </button>
+    );
+};
+
+const AudienceWalletButton = ({
+    points = 0,
+    pointsDisplay = null,
+    beauBucks = 0,
+    beauBucksReady = false,
+    accountConnected = false,
+    rewardDelta = 0,
+    rewardPulseKey = '',
+    onClick = () => {},
+}) => {
+    const showRewardBadge = !!rewardPulseKey && rewardDelta > 0;
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`relative z-50 flex h-[46px] w-[126px] flex-col justify-center overflow-visible rounded-2xl border bg-black/[0.78] px-2.5 py-1.5 text-left shadow-lg backdrop-blur-sm transition-transform active:scale-95 sm:w-[138px] ${showRewardBadge ? 'border-emerald-300/70 shadow-[0_0_28px_rgba(16,185,129,0.3)]' : 'border-white/[0.16]'}`}
+            data-feature-id="audience-wallet-balances"
+            aria-label="Open wallet and reaction collection"
+        >
+            <span className="flex w-full items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100/70"><CurrencyIcon currency="points" size="xs" /> PTS</span>
+                <span className="font-mono text-sm font-black tabular-nums text-cyan-200">{pointsDisplay ?? Math.max(0, Math.floor(Number(points) || 0)).toLocaleString()}</span>
+            </span>
+            <span className="mt-0.5 flex w-full items-center justify-between gap-2 border-t border-white/8 pt-0.5">
+                <span className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-fuchsia-100/70"><CurrencyIcon currency="beaubucks" size="xs" /> BB</span>
+                <span className="font-mono text-[11px] font-black tabular-nums text-fuchsia-200">{beauBucksReady ? Math.max(0, Math.floor(Number(beauBucks) || 0)).toLocaleString() : accountConnected ? '…' : <i className="fa-solid fa-lock text-[9px]" aria-label="Account required"></i>}</span>
+            </span>
+            {showRewardBadge ? (
+                <span className="pointer-events-none absolute -top-3 right-1 rounded-full border border-emerald-300/55 bg-emerald-400/18 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.26)] animate-bounce">
                     +{Math.max(0, Math.round(Number(rewardDelta) || 0))}
                 </span>
             ) : null}
@@ -455,8 +494,9 @@ const STORM_LAYER_VIBRATE = {
 };
 const GUITAR_LANE_COUNT = 5;
 const GUITAR_BEAT_MS = 620;
-const GUITAR_SYNC_WINDOW_MS = 130;
-const GUITAR_PREVIEW_BEATS = 5;
+const GUITAR_SYNC_WINDOW_MS = 210;
+const GUITAR_PERFECT_WINDOW_MS = 85;
+const GUITAR_STRUM_COOLDOWN_MS = 140;
 const GUITAR_LANE_THEME = [
     { label: 'I', accent: 'from-cyan-300 via-sky-400 to-cyan-500', border: 'border-cyan-300/60', glow: 'shadow-[0_0_20px_rgba(34,211,238,0.35)]' },
     { label: 'II', accent: 'from-fuchsia-300 via-pink-400 to-fuchsia-500', border: 'border-fuchsia-300/60', glow: 'shadow-[0_0_20px_rgba(236,72,153,0.35)]' },
@@ -851,6 +891,42 @@ const AVATAR_CATALOG = [
 const AVATAR_BY_EMOJI = new Map(AVATAR_CATALOG.map((item) => [item.emoji, item]));
 const getAvatarCatalogItemByEmoji = (value = '') => AVATAR_BY_EMOJI.get(String(value || '').trim()) || null;
 
+const AvatarOfferBadge = ({ item = null, compact = false, className = '' }) => {
+    const unlock = item?.unlock || {};
+    const type = String(unlock.type || '').trim().toLowerCase();
+    const baseClass = compact
+        ? 'min-h-[24px] px-2 py-0.5 text-[9px]'
+        : 'min-h-[32px] px-3 py-1 text-[11px]';
+    if (type === 'beaubucks') {
+        return (
+            <span className={`inline-flex items-center rounded-full border border-fuchsia-200/55 bg-fuchsia-400/22 font-black text-fuchsia-50 shadow-[0_0_20px_rgba(217,70,239,0.3)] ${baseClass} ${className}`} data-avatar-offer-currency="beaubucks">
+                <CurrencyAmount currency="beaubucks" amount={unlock.cost} size="xs" />
+            </span>
+        );
+    }
+    if (type === 'points') {
+        return (
+            <span className={`inline-flex items-center rounded-full border border-cyan-200/55 bg-cyan-300/18 font-black text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.24)] ${baseClass} ${className}`} data-avatar-offer-currency="points">
+                <CurrencyAmount currency="points" amount={unlock.cost} size="xs" />
+            </span>
+        );
+    }
+    if (type === 'fame') {
+        return (
+            <span className={`inline-flex items-center gap-1.5 rounded-full border border-amber-200/50 bg-amber-300/16 font-black text-amber-50 shadow-[0_0_18px_rgba(251,191,36,0.2)] ${baseClass} ${className}`} data-avatar-offer-currency="fame">
+                <CurrencyIcon currency="fame" size="xs" /> Level {Math.max(1, Number(unlock.level || 1))}
+            </span>
+        );
+    }
+    if (type === 'vip') {
+        return <span className={`inline-flex items-center rounded-full border border-fuchsia-200/45 bg-fuchsia-400/16 font-black uppercase tracking-[0.12em] text-fuchsia-50 ${baseClass} ${className}`}>VIP</span>;
+    }
+    if (type === 'account' || type === 'account_required') {
+        return <span className={`inline-flex items-center rounded-full border border-cyan-200/40 bg-cyan-400/12 font-black text-cyan-50 ${baseClass} ${className}`}>Account unlock</span>;
+    }
+    return null;
+};
+
 const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgePadding, brandTheme = null }) => {
     const listRef = useRef(null);
     const [itemSize, setItemSize] = useState(108);
@@ -879,9 +955,19 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
             if (targetEl) {
                 const width = el.clientWidth || visibleWidth;
                 const maxScroll = Math.max(0, el.scrollWidth - width);
-                const target = targetEl.offsetLeft + targetEl.offsetWidth / 2 - width / 2;
+                const listBox = el.getBoundingClientRect();
+                const targetBox = targetEl.getBoundingClientRect();
+                const targetPosition = targetBox.left - listBox.left + el.scrollLeft;
+                const target = targetPosition + targetBox.width / 2 - width / 2;
                 const clamped = Math.min(maxScroll, Math.max(0, target));
-                el.scrollTo({ left: clamped, behavior });
+                if (behavior === 'instant') {
+                    const previousScrollBehavior = el.style.scrollBehavior;
+                    el.style.scrollBehavior = 'auto';
+                    el.scrollLeft = clamped;
+                    el.style.scrollBehavior = previousScrollBehavior;
+                } else {
+                    el.scrollTo({ left: clamped, behavior });
+                }
             }
             return;
         }
@@ -905,7 +991,10 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
             if (targetEl) {
                 const width = el.clientWidth || visibleWidth;
                 const maxScroll = Math.max(0, el.scrollWidth - width);
-                const target = targetEl.offsetLeft + targetEl.offsetWidth / 2 - width / 2;
+                const listBox = el.getBoundingClientRect();
+                const targetBox = targetEl.getBoundingClientRect();
+                const targetPosition = targetBox.left - listBox.left + el.scrollLeft;
+                const target = targetPosition + targetBox.width / 2 - width / 2;
                 const clamped = Math.min(maxScroll, Math.max(0, target));
                 el.scrollTo({ left: clamped, behavior });
             }
@@ -926,7 +1015,9 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
         if (loop) {
             listRef.current.scrollLeft = listWidth;
         }
-        const raf = requestAnimationFrame(() => scrollToSelected());
+        const raf = requestAnimationFrame(() => {
+            scrollToSelected();
+        });
         return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [listWidth, loop]);
@@ -934,8 +1025,12 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
     useEffect(() => {
         const el = listRef.current;
         if (!el) return;
-        const raf = requestAnimationFrame(() => scrollToSelected());
-        const timeout = setTimeout(() => scrollToSelected(), 80);
+        const raf = requestAnimationFrame(() => {
+            scrollToSelected();
+        });
+        const timeout = setTimeout(() => {
+            scrollToSelected();
+        }, 80);
         return () => {
             cancelAnimationFrame(raf);
             clearTimeout(timeout);
@@ -997,7 +1092,6 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
         borderColor: withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, 0.32),
         boxShadow: `0 0 24px ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.14)}`,
     };
-
     return (
         <div className="w-full relative mx-auto overflow-visible" style={{ maxWidth: '100%', width: '100%' }}>
             {showArrows && (
@@ -1023,6 +1117,8 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
             >
                 {looped.map((item, idx) => {
                     const status = getStatus(item);
+                    const unlockType = String(item?.unlock?.type || '').trim().toLowerCase();
+                    const paidLocked = status.locked && ['points', 'beaubucks'].includes(unlockType);
                     const isSelected = value === item.emoji;
                     const isLockedSelected = isSelected && status.locked;
                     const glowStyle = item.id === 'guitar_glow'
@@ -1046,12 +1142,19 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
                                 scrollToIndex(baseIdx);
                             }}
                             data-emoji-id={item.id}
+                            data-avatar-locked={status.locked ? 'true' : 'false'}
                             className={`relative snap-center flex-shrink-0 rounded-3xl border ${
                                 isSelected
                                     ? (isLockedSelected
-                                        ? 'border-zinc-500 bg-zinc-800/70 shadow-[0_0_20px_rgba(113,113,122,0.45)] ring-4 ring-zinc-500/40'
+                                        ? (unlockType === 'beaubucks'
+                                            ? 'border-fuchsia-300/75 bg-fuchsia-950/70 shadow-[0_0_26px_rgba(217,70,239,0.38)] ring-4 ring-fuchsia-400/25'
+                                            : unlockType === 'points'
+                                                ? 'border-cyan-300/75 bg-cyan-950/70 shadow-[0_0_24px_rgba(34,211,238,0.32)] ring-4 ring-cyan-300/20'
+                                                : 'border-zinc-500 bg-zinc-800/70 shadow-[0_0_20px_rgba(113,113,122,0.45)] ring-4 ring-zinc-500/40')
                                         : 'bg-zinc-800')
-                                    : 'border-zinc-700 bg-zinc-900/60'
+                                    : paidLocked
+                                        ? (unlockType === 'beaubucks' ? 'border-fuchsia-400/40 bg-fuchsia-950/45' : 'border-cyan-300/40 bg-cyan-950/45')
+                                        : 'border-zinc-700 bg-zinc-900/60'
                             } transition-all duration-300 ease-out`}
                             style={{
                                 width: itemWidth,
@@ -1070,7 +1173,7 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
                                 ></span>
                             ) : null}
                             <div
-                                className={`font-emoji ${status.locked ? 'opacity-40' : 'opacity-100'} select-none`}
+                                    className={`font-emoji ${status.locked ? 'opacity-55 -translate-y-2' : 'opacity-100'} select-none`}
                                 style={{
                                     fontSize: Math.round(itemWidth * 0.55),
                                     transform: 'translateZ(0)',
@@ -1081,13 +1184,18 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
                                 {item.emoji}
                             </div>
                             {status.locked && (
-                                <div className="absolute inset-0 bg-black/60 rounded-3xl flex items-center justify-center text-xs text-zinc-300 font-bold">
-                                    LOCKED
+                                <div className="absolute inset-0 rounded-3xl bg-gradient-to-b from-black/10 via-black/15 to-black/85">
+                                    <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full border border-white/15 bg-black/70 text-[10px] text-white" aria-hidden="true"><i className="fa-solid fa-lock"></i></span>
+                                    <AvatarOfferBadge item={item} compact className="absolute bottom-2 left-1/2 -translate-x-1/2" />
                                 </div>
                             )}
                         </button>
                     );
                 })}
+            </div>
+            <div className="mt-1 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">
+                <i className="fa-solid fa-arrows-left-right" aria-hidden="true"></i>
+                Swipe to browse · tap to preview
             </div>
         </div>
     );
@@ -1313,8 +1421,11 @@ const SingerApp = ({ roomCode, uid }) => {
         uid: activeUid || user?.uid || '',
         hostUid: room?.hostUid || '',
         hostUids: room?.hostUids || [],
-        roles: room?.runOfShowRoles || {}
-    }), [activeUid, room?.hostUid, room?.hostUids, room?.runOfShowRoles, user?.uid]);
+        roles: {
+            ...(room?.runOfShowRoles || {}),
+            coHosts: Array.isArray(room?.coHostUids) ? room.coHostUids : (room?.runOfShowRoles?.coHosts || [])
+        }
+    }), [activeUid, room?.coHostUids, room?.hostUid, room?.hostUids, room?.runOfShowRoles, user?.uid]);
     const audienceReleaseWindow = useMemo(() => {
         const runOfShowValue = room?.runOfShowDirector?.releaseWindow;
         if (runOfShowValue && typeof runOfShowValue === 'object' && runOfShowValue.active === true) return runOfShowValue;
@@ -1461,12 +1572,14 @@ const SingerApp = ({ roomCode, uid }) => {
         [audienceReleaseChoiceTotal]
     );
     const canUseCoHostQuickSignals = useMemo(
-        () => (runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host') && !canSeeAudienceReleaseWindow,
+        () => runOfShowOperatorRole === 'co_host' && !canSeeAudienceReleaseWindow,
         [canSeeAudienceReleaseWindow, runOfShowOperatorRole]
     );
     const [coHostSignalCooldownById, setCoHostSignalCooldownById] = useState({});
     const [coHostSignalSheetOpen, setCoHostSignalSheetOpen] = useState(false);
     const [coHostSignalNowMs, setCoHostSignalNowMs] = useState(0);
+    const [coHostInvite, setCoHostInvite] = useState(null);
+    const [coHostInviteBusy, setCoHostInviteBusy] = useState(false);
     const audioCoHostSignals = useMemo(
         () => [...COHOST_SIGNAL_OPTIONS].sort((left, right) => {
             const orderDelta = Number(left?.sortOrder || 99) - Number(right?.sortOrder || 99);
@@ -1582,14 +1695,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const [demoFixture, setDemoFixture] = useState(initialAudienceDemoFixture || (isMarketingDemoEmbed ? {} : null));
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const isAudienceFixtureMode = (isMarketingDemoEmbed || isQaAudienceFixture) && !!demoFixture;
-    const audienceGameMembershipGate = useMemo(() => getAudienceGameMembershipGate({
-        hasRoomUser: !!user,
-        membershipResolved: roomUserMembershipResolved,
-        isDemoFixture: isMarketingDemoFixture,
-        takeoverKind,
-        activeMode: room?.activeMode,
-        lightMode: room?.lightMode,
-    }), [isMarketingDemoFixture, room?.activeMode, room?.lightMode, roomUserMembershipResolved, takeoverKind, user]);
     useEffect(() => {
         if (!initialAudienceDemoFixture) return;
         const fixture = initialAudienceDemoFixture;
@@ -1705,7 +1810,7 @@ const SingerApp = ({ roomCode, uid }) => {
         if (item.unlock.type === 'vip') return `${premiumAccessLabel} only - verify to unlock.`;
         if (item.unlock.type === 'fame') return `Reach Fame Level ${item.unlock.level} to unlock.`;
         if (item.unlock.type === 'first_performance') return 'Sing one song to unlock.';
-        if (item.unlock.type === 'guitar_winner') return 'Win Guitar Mode to unlock.';
+        if (item.unlock.type === 'guitar_winner') return 'Win a Crowd Guitar Solo to unlock.';
         if (item.unlock.type === 'points') return `Unlock for ${item.unlock.cost} points.`;
         if (item.unlock.type === 'beaubucks') return `Keep forever for ${item.unlock.cost} BeauBucks.`;
         return '';
@@ -2090,8 +2195,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const [stageHomePanelExpanded, setStageHomePanelExpanded] = useState(false);
     const [stagePanelCollapsedByTab, setStagePanelCollapsedByTab] = useState({
         home: false,
-        request: true,
-        social: true
+        request: false,
+        social: false
     });
     const [isFormInitialized, setIsFormInitialized] = useState(false);
     const [cooldownFlashKey, setCooldownFlashKey] = useState('');
@@ -3037,6 +3142,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const [chatUnread, setChatUnread] = useState(false);
     const chatLastSeenRef = useRef(0);
     const chatLastSentRef = useRef(0);
+    const loungeChatMessagesRef = useRef([]);
+    const privateChatMessagesRef = useRef([]);
     const videoRef = useRef(null);
     const audienceVideoRef = useRef(null);
     const audienceIframeRef = useRef(null);
@@ -3065,6 +3172,11 @@ const SingerApp = ({ roomCode, uid }) => {
     const pendingReactionCost = useRef(0);
     const strumFlushTimer = useRef(null);
     const pendingStrumHits = useRef(0);
+    const pendingStrumGrooveHits = useRef(0);
+    const pendingStrumGrooveScore = useRef(0);
+    const pendingStrumBeatIndex = useRef(null);
+    const pendingStrumSoloScore = useRef(0);
+    const guitarSessionHitsRef = useRef({ sessionId: null, hits: 0 });
     const strobeFlushTimer = useRef(null);
     const pendingStrobeTaps = useRef(0);
     const stormLayerFlushTimer = useRef(null);
@@ -3258,6 +3370,7 @@ const SingerApp = ({ roomCode, uid }) => {
             enabled: !!source.enabled,
             beauBucksAuthorityEnabled: source.beauBucksAuthorityEnabled === true,
             beauBucksEnabledTonight: source.beauBucksEnabledTonight === true,
+            reactionSlot5PurchasesEnabled: source.enabled === true && source.reactionSlot5PurchasesEnabled === true,
             presetId: String(source.presetId || '').trim(),
             eventId: String(source.eventId || '').trim(),
             eventLabel: String(source.eventLabel || '').trim(),
@@ -3399,7 +3512,7 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [authUserUid, isAnon, premiumUnlockPendingId, roomCode, toast]);
     const roomCurrencyPresentation = useMemo(() => getRoomCurrencyPresentation(activeEventCredits), [activeEventCredits]);
     const roomSpendIntentGuide = useMemo(() => getRoomSpendIntentGuide(activeEventCredits), [activeEventCredits]);
-    const isRunOfShowCoHost = runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host';
+    const isRunOfShowCoHost = runOfShowOperatorRole === 'co_host';
     const audienceQueueActorUid = useMemo(
         () => String(activeUid || user?.uid || '').trim(),
         [activeUid, user?.uid]
@@ -3849,13 +3962,19 @@ const SingerApp = ({ roomCode, uid }) => {
     const bonusReactionTypes = reactionLoadout.slice(CORE_REACTION_TYPES.length);
     const bonusReactionCapacity = Math.max(0, reactionSlotCount - CORE_REACTION_TYPES.length);
     const reactionSkinProducts = PREMIUM_COSMETIC_PRODUCTS.filter((product) => product.kind === 'reaction_skin');
-    const equipReactionType = (reactionType = '') => {
+    const equipReactionType = (reactionType = '', targetSlotIndex = 0) => {
         if (!isReactionAvailable(reactionType) || !bonusReactionCapacity) return;
-        setEquippedBonusReactionTypes((current) => equipBonusReaction({ current, reactionType, capacity: bonusReactionCapacity }));
-        toast(`${getReactionDefinition(reactionType)?.label || 'Reaction'} equipped.`);
+        setEquippedBonusReactionTypes(() => equipBonusReactionAtSlot({
+            current: bonusReactionTypes,
+            reactionType,
+            slotIndex: targetSlotIndex,
+            capacity: bonusReactionCapacity,
+        }));
+        toast(`${getReactionDefinition(reactionType)?.label || 'Reaction'} equipped in slot ${CORE_REACTION_TYPES.length + targetSlotIndex + 1}.`);
     };
     const sixthReactionSlotProduct = REACTION_SLOT_PRODUCTS.find((product) => Number(product.slotCount || 0) === 6) || null;
     const fifthReactionSlotPointsCost = 250;
+    const fifthReactionSlotPurchasesEnabled = activeEventCredits.reactionSlot5PurchasesEnabled === true;
     const activeCurrencyHubTab = ['points', 'beaubucks', 'reactions'].includes(currencyFunnelTarget) ? currencyFunnelTarget : 'points';
     const openAudienceCurrencyFunnel = (target = '') => {
         setCurrencyFunnelTarget(String(target || '').trim().toLowerCase());
@@ -3893,6 +4012,10 @@ const SingerApp = ({ roomCode, uid }) => {
         if (action === AUDIENCE_REACTION_UNLOCK_ACTIONS.purchaseBeauBucks) await purchasePremiumEntitlement(sixthReactionSlotProduct.id);
     };
     const unlockFifthReactionSlot = async () => {
+        if (!fifthReactionSlotPurchasesEnabled) {
+            toast('The Host has not enabled fifth reaction-slot purchases for this room.');
+            return;
+        }
         const action = resolveAudienceReactionSlotUnlock({
             slotNumber: 5,
             slotCount: reactionSlotCount,
@@ -3925,7 +4048,7 @@ const SingerApp = ({ roomCode, uid }) => {
                 return;
             }
             syncPoints(true);
-            toast('Reaction slot 5 unlocked for this party.');
+            toast('Reaction slot 5 unlocked for this room.');
         } catch (error) {
             console.error(error);
             toast('Could not unlock the reaction slot. Try again.');
@@ -4289,6 +4412,9 @@ const SingerApp = ({ roomCode, uid }) => {
                     sixthSlotProduct={sixthReactionSlotProduct}
                     reactionTapCooldownMs={reactionTapCooldownMs}
                     bonusReactionCapacity={bonusReactionCapacity}
+                    pointsBalance={getEffectivePoints()}
+                    beauBucksBalance={visibleBeauBucksWalletState.wallet?.balance || 0}
+                    beauBucksReady={visibleBeauBucksWalletState.status === 'ready'}
                     onEquip={equipReactionType}
                     onPurchasePremium={purchasePremiumEntitlement}
                     premiumUnlockPendingId={premiumUnlockPendingId}
@@ -4686,42 +4812,75 @@ const SingerApp = ({ roomCode, uid }) => {
     };
 
     useEffect(() => {
-        if (!roomCode || room?.chatEnabled === false) {
+        if (!roomCode) {
             setChatMessages([]);
             setChatUnread(false);
             return;
         }
         const viewingChat = tab === 'social' && ['lounge', 'host'].includes(socialTab);
-        const q = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'),
+        const participantUid = String(activeUid || uid || '').trim();
+        const loungeQuery = query(
+            collection(db, 'room_lounge_messages'),
             where('roomCode', '==', roomCode),
             orderBy('timestamp', 'desc'),
             limit(viewingChat ? 40 : 1)
         );
-        const unsub = watchQuerySnapshot(
-            q,
+        const privateQuery = participantUid ? query(
+            collection(db, 'room_private_messages'),
+            where('roomCode', '==', roomCode),
+            where('participantUid', '==', participantUid),
+            orderBy('timestamp', 'desc'),
+            limit(viewingChat ? 80 : 1)
+        ) : null;
+        const applyMessages = () => {
+            const next = [...loungeChatMessagesRef.current, ...privateChatMessagesRef.current]
+                .sort((left, right) => getChatMessageTimestampMs(left) - getChatMessageTimestampMs(right));
+            if (viewingChat) {
+                setChatMessages(next);
+            } else if (!next.length) {
+                setChatMessages([]);
+            }
+            const newest = getNewestRelevantChatTimestamp(next);
+            if (newest && newest > chatLastSeenRef.current && !viewingChat) {
+                setChatUnread(true);
+            }
+        };
+        const unsubLounge = watchQuerySnapshot(
+            loungeQuery,
             (snap) => {
-                const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
-                if (viewingChat) {
-                    setChatMessages(next);
-                } else if (!next.length) {
-                    setChatMessages([]);
-                }
-                const newest = getNewestRelevantChatTimestamp(next);
-                if (newest && newest > chatLastSeenRef.current && !viewingChat) {
-                    setChatUnread(true);
-                }
+                loungeChatMessagesRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
+                applyMessages();
             },
             {
-                label: `singer:chat_messages:${roomCode}`,
+                label: `singer:room_lounge_messages:${roomCode}`,
                 onFallback: () => {
-                    setChatMessages([]);
+                    loungeChatMessagesRef.current = [];
+                    applyMessages();
                     setChatUnread(false);
                 }
             }
         );
-        return () => unsub();
-    }, [roomCode, room?.chatEnabled, tab, socialTab, getNewestRelevantChatTimestamp]);
+        const unsubPrivate = privateQuery ? watchQuerySnapshot(
+            privateQuery,
+            (snap) => {
+                privateChatMessagesRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
+                applyMessages();
+            },
+            {
+                label: `singer:room_private_messages:${roomCode}:${participantUid}`,
+                onFallback: () => {
+                    privateChatMessagesRef.current = [];
+                    applyMessages();
+                }
+            }
+        ) : () => {};
+        return () => {
+            loungeChatMessagesRef.current = [];
+            privateChatMessagesRef.current = [];
+            unsubLounge();
+            unsubPrivate();
+        };
+    }, [activeUid, roomCode, tab, socialTab, uid, getChatMessageTimestampMs, getNewestRelevantChatTimestamp]);
 
     useEffect(() => {
         const viewingLeaderboard = tab === 'social' && socialTab === 'leaderboard';
@@ -4840,13 +4999,26 @@ const SingerApp = ({ roomCode, uid }) => {
     const flushStrumBuffer = useCallback(async () => {
         if (!roomCode || !user || !activeUid || pendingStrumHits.current <= 0) return;
         const count = pendingStrumHits.current;
+        const grooveHits = pendingStrumGrooveHits.current;
+        const averageGrooveScore = Math.round(pendingStrumGrooveScore.current / Math.max(1, count));
+        const beatIndex = pendingStrumBeatIndex.current;
+        const soloScore = pendingStrumSoloScore.current;
         pendingStrumHits.current = 0;
+        pendingStrumGrooveHits.current = 0;
+        pendingStrumGrooveScore.current = 0;
+        pendingStrumBeatIndex.current = null;
+        pendingStrumSoloScore.current = 0;
         try {
             try {
                 await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                     roomCode,
                     type: 'strum',
                     count,
+                    guitarSessionId: room?.guitarSessionId || null,
+                    grooveHits,
+                    grooveScore: averageGrooveScore,
+                    beatIndex,
+                    soloScore,
                     uid: activeUid,
                     userName: user.name,
                     avatar: user.avatar,
@@ -4858,10 +5030,14 @@ const SingerApp = ({ roomCode, uid }) => {
                 console.warn('guitar reaction write failed', reactionError);
             }
             const sessionId = room?.guitarSessionId || Date.now();
-            const isNewSession = user?.guitarSessionId !== sessionId;
-            const nextHits = isNewSession
-                ? count
-                : Math.max(0, Number(user?.guitarHits || 0)) + count;
+            const snapshotHits = user?.guitarSessionId === sessionId
+                ? Math.max(0, Number(user?.guitarHits || 0))
+                : 0;
+            if (guitarSessionHitsRef.current.sessionId !== sessionId) {
+                guitarSessionHitsRef.current = { sessionId, hits: snapshotHits };
+            }
+            const nextHits = Math.max(snapshotHits, Number(guitarSessionHitsRef.current.hits || 0)) + soloScore;
+            guitarSessionHitsRef.current = { sessionId, hits: nextHits };
             await mergeRoomUserVibeState({
                 guitarSessionId: sessionId,
                 guitarHits: nextHits,
@@ -4872,13 +5048,17 @@ const SingerApp = ({ roomCode, uid }) => {
         }
     }, [roomCode, user, room?.guitarSessionId, activeUid, buildPerformanceReactionMetaMemo, mergeRoomUserVibeState, isVipAccount]);
 
-    const queueStrumWrite = () => {
+    const queueStrumWrite = ({ inGroove = false, grooveScore = 0, beatIndex = null, soloScore = 1 } = {}) => {
         pendingStrumHits.current += 1;
+        if (inGroove) pendingStrumGrooveHits.current += 1;
+        pendingStrumGrooveScore.current += Math.max(0, Math.min(100, Number(grooveScore) || 0));
+        pendingStrumBeatIndex.current = beatIndex;
+        pendingStrumSoloScore.current += Math.max(1, Math.min(3, Number(soloScore) || 1));
         if (strumFlushTimer.current) return;
         strumFlushTimer.current = setTimeout(async () => {
             strumFlushTimer.current = null;
             await flushStrumBuffer();
-        }, 600);
+        }, 280);
     };
 
     const flushStrobeBuffer = useCallback(async () => {
@@ -6214,7 +6394,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 console.warn('Failed to unlock guitar glow emoji', e);
             });
         }
-        showToast(`You shredded the hardest! ${win.hits || 0} inputs.`, { tone: 'success' });
+        showToast(`You powered the solo! ${win.hits || 0} points.`, { tone: 'success' });
     }, [room?.guitarWinner, activeUid, profile?.unlockedEmojis, showToast]);
 
     useEffect(() => {
@@ -6397,6 +6577,29 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (canUseCoHostQuickSignals) return;
         setCoHostSignalSheetOpen(false);
     }, [canUseCoHostQuickSignals]);
+    useEffect(() => {
+        const inviteUid = String(activeUid || user?.uid || '').trim();
+        if (!roomCode || !inviteUid) {
+            setCoHostInvite(null);
+            return undefined;
+        }
+        const inviteQuery = query(
+            collection(db, 'room_cohost_invites'),
+            where('roomCode', '==', roomCode),
+            where('targetUid', '==', inviteUid),
+            limit(1)
+        );
+        return onSnapshot(inviteQuery, (snapshot) => {
+            const invite = snapshot.docs[0]
+                ? { id: snapshot.docs[0].id, ...(snapshot.docs[0].data() || {}) }
+                : null;
+            const expiresAtMs = Number(invite?.expiresAt?.toMillis?.() || invite?.expiresAtMs || 0);
+            setCoHostInvite(invite?.status === 'invited' && (!expiresAtMs || expiresAtMs > Date.now()) ? invite : null);
+        }, (error) => {
+            console.warn('Co-host invitation subscription failed', error);
+            setCoHostInvite(null);
+        });
+    }, [activeUid, roomCode, user?.uid]);
     const canAffordRoomCost = useCallback((cost = 0) => {
         const safeCost = Math.max(0, Number(cost || 0) || 0);
         if (!safeCost) return true;
@@ -7201,6 +7404,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             guitarLastHitRef.current = 0;
             guitarComboRef.current = 0;
             guitarStringCooldownRef.current = [0, 0, 0, 0, 0];
+            guitarSessionHitsRef.current = { sessionId: null, hits: 0 };
             if (guitarFeedbackTimerRef.current) {
                 clearTimeout(guitarFeedbackTimerRef.current);
                 guitarFeedbackTimerRef.current = null;
@@ -7233,7 +7437,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         guitarFeedbackTimerRef.current = setTimeout(() => {
             setGuitarHitFeedback({ label: 'Ready', tone: 'idle' });
             guitarFeedbackTimerRef.current = null;
-        }, tone === 'miss' ? 680 : 520);
+        }, 620);
     }, []);
 
     // Guitar Handling
@@ -7253,21 +7457,24 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const handleStrum = async (i) => {
         if(!user) return;
         const now = Date.now();
+        if (now - Number(lastStrum.current || 0) < GUITAR_STRUM_COOLDOWN_MS) return;
         const lastStringHitAt = Number(guitarStringCooldownRef.current?.[i] || 0);
         if (now - lastStringHitAt < 90) return;
         guitarStringCooldownRef.current[i] = now;
+        lastStrum.current = now;
 
         const sessionId = room?.guitarSessionId || 'beaurocks-guitar';
         const nearestBeatIndex = Math.round(now / GUITAR_BEAT_MS);
         const beatCenterMs = nearestBeatIndex * GUITAR_BEAT_MS;
-        const beatDeltaMs = now - beatCenterMs;
-        const beatOffsetMs = Math.abs(beatDeltaMs);
+        const beatOffsetMs = Math.abs(now - beatCenterMs);
         const targetLane = getGuitarTargetLane(sessionId, nearestBeatIndex);
-        const correctLane = i === targetLane;
-        const inSyncWindow = beatOffsetMs <= GUITAR_SYNC_WINDOW_MS;
-        const successfulHit = correctLane && inSyncWindow;
+        const inGroove = beatOffsetMs <= GUITAR_SYNC_WINDOW_MS;
+        const isPerfect = i === targetLane && beatOffsetMs <= GUITAR_PERFECT_WINDOW_MS;
+        const grooveScore = Math.round(Math.max(35, 100 - ((beatOffsetMs / (GUITAR_BEAT_MS / 2)) * 65)));
         const prevHitAt = Number(guitarLastHitRef.current || 0);
-        let nextCombo = 0;
+        const nextCombo = (prevHitAt && (now - prevHitAt) <= 1400)
+            ? Math.min(99, Number(guitarComboRef.current || 0) + 1)
+            : 1;
         setGuitarNow(now);
         setGuitarTotalHits((value) => value + 1);
 
@@ -7277,39 +7484,32 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setStrings(prev => { const next = [...prev]; next[i] = 0; return next; });
         }, 500);
 
-        if (successfulHit) {
-            nextCombo = (prevHitAt && (now - prevHitAt) <= 950)
-                ? Math.min(99, Number(guitarComboRef.current || 0) + 1)
-                : 1;
-            guitarLastHitRef.current = now;
-            guitarComboRef.current = nextCombo;
-            setGuitarLastHitAt(now);
-            setGuitarLocalCombo(nextCombo);
-            setGuitarPerfectHits((value) => value + 1);
-            pushGuitarFeedback(beatOffsetMs <= 60 ? 'Perfect' : 'On Beat', beatOffsetMs <= 60 ? 'perfect' : 'good');
-            try { if(window.navigator && window.navigator.vibrate) window.navigator.vibrate(90); } catch (_err) { /* ignore */ }
+        guitarLastHitRef.current = now;
+        guitarComboRef.current = nextCombo;
+        setGuitarLastHitAt(now);
+        setGuitarLocalCombo(nextCombo);
+        if (inGroove) setGuitarPerfectHits((value) => value + 1);
+
+        if (isPerfect) {
+            pushGuitarFeedback('SOLO HIT!', 'perfect');
+            try { if(window.navigator?.vibrate) window.navigator.vibrate([35, 18, 70]); } catch (_err) { /* ignore */ }
+        } else if (inGroove) {
+            pushGuitarFeedback('POWER STRUM', 'good');
+            try { if(window.navigator?.vibrate) window.navigator.vibrate(65); } catch (_err) { /* ignore */ }
         } else {
-            guitarComboRef.current = 0;
-            setGuitarLocalCombo(0);
-            if (!correctLane) {
-                pushGuitarFeedback('Wrong String', 'miss');
-            } else if (beatDeltaMs < 0) {
-                pushGuitarFeedback('Too Early', 'miss');
-            } else {
-                pushGuitarFeedback('Too Late', 'miss');
-            }
-            try { if(window.navigator && window.navigator.vibrate) window.navigator.vibrate([28, 18, 28]); } catch (_err) { /* ignore */ }
+            pushGuitarFeedback('KEEP IT GOING', 'good');
+            try { if(window.navigator?.vibrate) window.navigator.vibrate(32); } catch (_err) { /* ignore */ }
         }
 
-        if(successfulHit && (now - lastStrum.current > 200)) {
-            queueStrumWrite();
-            lastStrum.current = now;
-            markActive();
-
-            queuePointDelta(2);
-            queuePointDelta(1);
-            if (nextCombo >= 16 && nextCombo % 8 === 0) queuePointDelta(1);
-        }
+        queueStrumWrite({
+            inGroove,
+            grooveScore,
+            beatIndex: nearestBeatIndex,
+            soloScore: isPerfect ? 3 : (inGroove ? 2 : 1)
+        });
+        markActive();
+        if (inGroove) queuePointDelta(1);
+        if (isPerfect && nextCombo >= 8 && nextCombo % 8 === 0) queuePointDelta(1);
     };
 
     const launchAudienceJoinExperience = useCallback(() => {
@@ -7513,17 +7713,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             return;
         }
         markActive();
-        await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), {
-            roomCode,
-            text: message,
-            user: user.name,
-            avatar: user.avatar,
-            uid: senderUid,
-            isVip: isVipAccount,
-            toHost: !isLounge,
-            channel: isLounge ? 'lounge' : 'host',
-            timestamp: serverTimestamp()
-        });
+        if (isLounge) {
+            await sendRoomLoungeMessage({ roomCode, text: message });
+        } else {
+            await sendRoomHostMessage({ roomCode, text: message });
+        }
         chatLastSentRef.current = now;
         setChatMsg('');
     };
@@ -7591,19 +7785,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             window.location.href = launchUrl;
         }
     }, [roomCode, roomSupportOffer, toast]);
-    const openDirectSupportFlow = useCallback(() => {
-        if (!roomSupportOffer) {
-            setShowPoints(true);
-            return;
-        }
-        if (roomSupportHasEmbed) {
-            setSupportEmbedOpen(true);
-            setShowPoints(true);
-            return;
-        }
-        startGivebutterSupportCheckout(roomSupportOffer);
-    }, [roomSupportHasEmbed, roomSupportOffer, startGivebutterSupportCheckout]);
-
     const startPersonalPackCheckout = useCallback(async (pack) => {
         const checkoutKey = 'personal:' + String(pack?.id || pack?.label || 'pack');
         if (pointsCheckoutPendingKey) return;
@@ -8202,7 +8383,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     url: photo.url,
                     userName: user.name,
                     mode: 'guitar_victory',
-                    copy: `Shredded ${guitarVictoryInfo.hits || 0} hits`,
+                    copy: `Powered the crowd solo with ${guitarVictoryInfo.hits || 0} points`,
                     timestamp: Date.now()
                 },
                 guitarVictory: {
@@ -8404,15 +8585,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         }
     };
 
-    const handleExitGuitarMode = async () => {
-        if (!roomCode) return;
-        try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { lightMode: 'off' });
-        } catch (error) {
-            console.error(error);
-            toast('Only the host can exit this mode.');
-        }
-    };
     const sendAudienceSpotlightReaction = async (type = '') => {
         const safeType = String(type || '').trim().toLowerCase();
         if (!safeType || !roomCode || !user || !isAudienceSpotlightedGuest) return;
@@ -10171,26 +10343,19 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         {poweredByBeauRocksLabel}
                     </div>
                 ) : null}
-                <div className="max-w-sm rounded-3xl border border-white/12 bg-black/24 px-4 py-3 text-center shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
-                    <div className="text-sm font-semibold leading-6 text-white/92">
-                        Pick the emoji that feels most you.
-                    </div>
-                </div>
                 {/* FULL EMOJI GRID FOR LOGIN */}
-                <div className="w-screen -mx-6 px-0 relative">
+                <div className="relative w-full max-w-[430px] overflow-hidden px-0">
                     <AvatarCoverflow items={AVATAR_CATALOG} value={activeAvatarPreviewEmoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} edgePadding="center" brandTheme={audienceBrandTheme} />
                 </div>
                 <div
-                    className="w-full max-w-sm mt-1 rounded-3xl border p-2.5 text-center shadow-[0_14px_40px_rgba(0,0,0,0.4)]"
-                    style={{
-                        borderColor: `${audienceBrandTheme.secondaryColor}66`,
-                        background: `linear-gradient(135deg, ${audienceBrandTheme.accentColor}55 0%, rgba(16, 18, 26, 0.94) 48%, ${audienceBrandTheme.primaryColor}40 100%)`,
-                        boxShadow: `0 18px 42px ${audienceBrandTheme.primaryColor}24`,
-                    }}
+                    className="w-full max-w-sm mt-0.5 px-2 pb-1 text-center"
                 >
-                    <div className="mt-1 text-xl font-black drop-shadow" style={{ color: audienceBrandTheme.primaryColor }}>{selectedAvatar?.label}</div>
+                    <div className="text-xl font-black drop-shadow" style={{ color: audienceBrandTheme.primaryColor }}>{selectedAvatar?.label}</div>
                     {selectedAvatarStatus?.locked ? (
-                        <div className="text-base font-bold text-zinc-200 mt-1.5">Unlock: {selectedAvatarUnlock}</div>
+                        <div className="mt-2 flex flex-col items-center gap-2">
+                            <AvatarOfferBadge item={selectedAvatar} />
+                            <div className="text-sm font-bold text-zinc-300">{selectedAvatarUnlock}</div>
+                        </div>
                     ) : (
                         <div className="text-base font-bold text-zinc-200 mt-1.5">{selectedAvatar?.flavor}</div>
                     )}
@@ -10503,17 +10668,18 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     const renderStreamlinedTakeoverChrome = (label = takeoverLabel) => (
         isStreamlinedAudienceShell && !!takeoverKind ? (
-            <div className="absolute top-5 right-5 z-[260] flex items-center gap-2">
-                <div
-                    className="rounded-full border bg-black/55 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em]"
-                    style={audienceBrandPalette.secondaryPillStyle}
-                >
-                    {label}
+            <div
+                className="absolute inset-x-0 top-0 z-[260] flex min-h-[4.75rem] items-center justify-between gap-3 border-b border-white/10 bg-black/[0.72] px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] backdrop-blur-md sm:px-5"
+                data-feature-id="audience-takeover-header"
+            >
+                <div className="min-w-0">
+                    <div className="text-[9px] font-black uppercase tracking-[0.22em] text-zinc-400">Live room moment</div>
+                    <div className="truncate text-sm font-black text-white">{label}</div>
                 </div>
                 <button
                     type="button"
                     onClick={minimizeAudienceTakeover}
-                    className="rounded-full border bg-black/60 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em]"
+                    className="min-h-[44px] shrink-0 rounded-full border bg-black/60 px-4 text-xs font-black uppercase tracking-[0.16em] active:scale-95"
                     style={audienceBrandPalette.primaryPillStyle}
                 >
                     Minimize
@@ -10521,146 +10687,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             </div>
         ) : null
     );
-
-    const persistAudienceGameRulesAcceptance = () => {
-        setTermsAccepted(true);
-        if (typeof window === 'undefined') return;
-        const key = `beaurocks_rules_${uid || 'guest'}`;
-        try {
-            localStorage.setItem(key, 'accepted');
-        } catch {
-            // Ignore storage failures.
-        }
-    };
-
-    const startAudienceGameMembershipJoin = async () => {
-        if (isJoining || !joinReadyName) return;
-        if (roomJoinRequiresAccount && isAnon) {
-            openVipUpgrade('email');
-            return;
-        }
-        if (!termsAccepted) {
-            setPendingJoin({ type: 'join', payload: null });
-            setShowRulesModal(true);
-            return;
-        }
-        setRoomUserMembershipResolved(false);
-        const joined = await join();
-        if (!joined) setRoomUserMembershipResolved(true);
-    };
-
-    const confirmAudienceGameMembershipRules = async () => {
-        if (!termsAccepted || isJoining) return;
-        persistAudienceGameRulesAcceptance();
-        setPendingJoin(null);
-        setRoomUserMembershipResolved(false);
-        const joined = await join();
-        if (joined) {
-            setShowRulesModal(false);
-        } else {
-            setRoomUserMembershipResolved(true);
-        }
-    };
-
-    const audienceGameMembershipGateScreen = (
-        <div
-            data-singer-view="game-membership-gate"
-            data-audience-game-membership-state={audienceGameMembershipGate.state}
-            data-audience-game-membership-mode={String(room?.activeMode || room?.lightMode || '').trim().toLowerCase()}
-            className="min-h-[100dvh] w-full overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.2),transparent_42%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.2),transparent_44%),#05070d] px-4 py-[calc(env(safe-area-inset-top)+2rem)] pb-[calc(env(safe-area-inset-bottom)+2rem)] text-white font-saira"
-            style={audienceBrandPalette.rootStyle}
-        >
-            <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md items-center justify-center">
-                <div className="w-full rounded-[30px] border border-cyan-200/25 bg-zinc-950/94 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.55)]">
-                    <div className="flex items-center gap-3">
-                        <img src={audienceBrandLogoUrl} className="h-12 w-12 rounded-2xl object-contain" alt={audienceBrandTitle} />
-                        <div className="min-w-0 text-left">
-                            <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200">Live now</div>
-                            <div className="mt-1 text-2xl font-black text-white">{audienceGameMembershipGate.modeLabel}</div>
-                        </div>
-                    </div>
-
-                    {audienceGameMembershipGate.state === 'connecting' ? (
-                        <div className="mt-6 text-center" data-feature-id="audience-game-membership-connecting">
-                            <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-white/15 border-t-cyan-300"></div>
-                            <div className="mt-4 text-lg font-black text-white">{audienceGameMembershipGate.headline}</div>
-                            <div className="mt-2 text-sm leading-6 text-zinc-300">{audienceGameMembershipGate.detail}</div>
-                        </div>
-                    ) : showRulesModal ? (
-                        <div className="mt-5" data-feature-id="audience-game-membership-rules">
-                            <div className="text-xl font-black text-white">Quick room rules</div>
-                            <div className="mt-2 text-sm leading-6 text-zinc-300">Be kind, request only content you can share, and follow the Host&apos;s lead.</div>
-                            <label className="mt-4 flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-zinc-100">
-                                <input
-                                    data-singer-rules-checkbox
-                                    type="checkbox"
-                                    checked={termsAccepted}
-                                    onChange={(event) => setTermsAccepted(event.target.checked)}
-                                    className="mt-0.5 h-5 w-5 accent-pink-500"
-                                />
-                                <span>I agree to the Terms of Service and Privacy Policy.</span>
-                            </label>
-                            <div className="mt-3 flex flex-wrap gap-4 text-xs text-cyan-200">
-                                <button type="button" onClick={() => window.open(`${window.location.origin}${import.meta.env.BASE_URL || '/'}karaoke/terms`, '_blank')} className="underline underline-offset-4">Terms</button>
-                                <button type="button" onClick={() => window.open(`${window.location.origin}${import.meta.env.BASE_URL || '/'}karaoke/privacy`, '_blank')} className="underline underline-offset-4">Privacy</button>
-                            </div>
-                            <button
-                                type="button"
-                                data-singer-rules-confirm
-                                disabled={!termsAccepted || isJoining}
-                                onClick={() => { void confirmAudienceGameMembershipRules(); }}
-                                className={`mt-5 w-full rounded-2xl px-4 py-3.5 text-base font-black ${termsAccepted && !isJoining ? 'bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white' : 'cursor-not-allowed bg-zinc-700 text-zinc-300'}`}
-                            >
-                                {isJoining ? 'Joining...' : `Agree and join ${audienceGameMembershipGate.modeLabel}`}
-                            </button>
-                            <button type="button" onClick={() => setShowRulesModal(false)} className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-200">Back</button>
-                        </div>
-                    ) : (
-                        <div className="mt-5" data-feature-id="audience-game-membership-join">
-                            <div className="text-xl font-black text-white">{audienceGameMembershipGate.headline}</div>
-                            <div className="mt-2 text-sm leading-6 text-zinc-300">{audienceGameMembershipGate.detail}</div>
-                            {returningProfile ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setForm((current) => ({ ...current, name: returningProfile.name || current.name, emoji: returningProfile.emoji || current.emoji }))}
-                                    className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-pink-300/25 bg-pink-500/10 px-4 py-3 text-left"
-                                >
-                                    <span className="text-2xl">{returningProfile.emoji || DEFAULT_EMOJI}</span>
-                                    <span><span className="block text-xs uppercase tracking-[0.18em] text-pink-200">Welcome back</span><span className="block font-black text-white">Use {returningProfile.name}</span></span>
-                                </button>
-                            ) : null}
-                            <input
-                                ref={joinNameInputRef}
-                                data-singer-join-name
-                                value={form.name}
-                                maxLength={NAME_LIMIT}
-                                onChange={(event) => setForm({ ...form, name: clampName(event.target.value) })}
-                                onKeyDown={(event) => {
-                                    if (event.key !== 'Enter') return;
-                                    event.preventDefault();
-                                    void startAudienceGameMembershipJoin();
-                                }}
-                                placeholder="Your name"
-                                className="mt-4 w-full rounded-2xl border border-cyan-200/30 bg-white/95 px-4 py-3.5 text-center text-lg font-bold text-zinc-950 outline-none focus:border-pink-400 focus:ring-2 focus:ring-pink-400/30"
-                            />
-                            <button
-                                type="button"
-                                data-singer-join-button
-                                disabled={!joinCanSubmit || isJoining}
-                                onClick={() => { void startAudienceGameMembershipJoin(); }}
-                                className={`mt-3 w-full rounded-2xl px-4 py-3.5 text-base font-black ${joinCanSubmit && !isJoining ? 'bg-gradient-to-r from-cyan-300 to-pink-400 text-black' : 'cursor-not-allowed bg-zinc-700 text-zinc-300'}`}
-                            >
-                                {isJoining ? 'Joining...' : !activeUid ? 'Connecting...' : `Join and play ${audienceGameMembershipGate.modeLabel}`}
-                            </button>
-                            <div className="mt-3 text-center text-xs leading-5 text-zinc-400">Your name creates room membership so votes, points, and recap credit stay attached to you.</div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-
-    if (audienceGameMembershipGate.visible) return audienceGameMembershipGateScreen;
 
     // --- VIBE SYNC OVERLAYS ---
     if (room?.lightMode === 'storm' && !(isStreamlinedAudienceShell && takeoverMinimized)) {
@@ -10739,86 +10765,50 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         const sessionId = room?.guitarSessionId || 'beaurocks-guitar';
         const beatMod = ((guitarNow % beatMs) + beatMs) % beatMs;
         const beatOffsetMs = Math.min(beatMod, beatMs - beatMod);
-        const syncWindowMs = GUITAR_SYNC_WINDOW_MS;
-        const syncReady = beatOffsetMs <= syncWindowMs;
-        const syncAccuracy = guitarTotalHits > 0
+        const inGrooveWindow = beatOffsetMs <= GUITAR_SYNC_WINDOW_MS;
+        const grooveRate = guitarTotalHits > 0
             ? Math.round((guitarPerfectHits / Math.max(1, guitarTotalHits)) * 100)
             : 0;
         const comboBoost = Math.min(5, 1 + Math.floor(guitarLocalCombo / 8));
         const comboPct = Math.min(100, guitarLocalCombo * 2.2);
-        const pulseScale = 1 + Math.max(0, ((syncWindowMs - beatOffsetMs) / syncWindowMs) * 0.16);
-        const secondsSinceHit = guitarLastHitAt ? Math.floor((guitarNow - guitarLastHitAt) / 1000) : null;
+        const pulseProgress = 1 - Math.min(1, beatOffsetMs / (beatMs / 2));
+        const pulseScale = 0.88 + (pulseProgress * 0.24);
         const nearestBeatIndex = Math.round(guitarNow / beatMs);
         const currentTargetLane = getGuitarTargetLane(sessionId, nearestBeatIndex);
         const currentLaneTheme = getGuitarLaneTheme(currentTargetLane);
-        const upcomingTargets = Array.from({ length: GUITAR_PREVIEW_BEATS }, (_unused, offset) => {
-            const beatIndex = nearestBeatIndex + offset;
-            return {
-                beatIndex,
-                lane: getGuitarTargetLane(sessionId, beatIndex),
-                beatLabel: offset === 0 ? 'Now' : `+${offset}`
-            };
-        });
-        const upcomingNotes = Array.from({ length: GUITAR_PREVIEW_BEATS + 1 }, (_unused, offset) => {
-            const beatIndex = nearestBeatIndex + offset;
-            const beatsAway = beatIndex - (guitarNow / beatMs);
-            return {
-                beatIndex,
-                lane: getGuitarTargetLane(sessionId, beatIndex),
-                topPct: Math.max(14, Math.min(78, 78 - (beatsAway * 15.5)))
-            };
-        });
         const feedbackToneClasses = {
             idle: 'border-white/15 bg-black/50 text-zinc-200',
             perfect: 'border-emerald-300/55 bg-emerald-400/18 text-emerald-100 shadow-[0_0_22px_rgba(74,222,128,0.22)]',
             good: 'border-cyan-300/55 bg-cyan-400/18 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.22)]',
-            miss: 'border-rose-300/55 bg-rose-500/18 text-rose-100 shadow-[0_0_22px_rgba(244,63,94,0.22)]'
         };
         return (
-            <div className="h-[100dvh] bg-black/90 flex flex-col relative overflow-hidden text-white font-saira justify-center">
-                {renderStreamlinedTakeoverChrome('Guitar Mode')}
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.16),transparent_52%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_60%)]"></div>
-                <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[min(92vw,460px)] text-center z-30 pointer-events-none">
-                    <div className="text-[10px] uppercase tracking-[0.42em] text-zinc-300">Vibe Sync</div>
-                    <h1 className={`mt-1 text-5xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_20px_rgba(236,72,153,0.45)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR MODE</h1>
-                    <p className="text-sm text-cyan-100 uppercase tracking-[0.14em]">Hit the glowing string on beat to build team energy</p>
+            <div data-feature-id="audience-guitar-crowd-solo" className="h-[100dvh] bg-black flex flex-col relative overflow-hidden text-white font-saira">
+                {renderStreamlinedTakeoverChrome('Crowd Solo')}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_34%,rgba(34,211,238,0.18),transparent_34%),radial-gradient(circle_at_top,rgba(250,204,21,0.16),transparent_52%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.22),transparent_60%)]"></div>
+                <div className={`relative z-30 mx-auto w-[min(92vw,460px)] text-center pointer-events-none ${isStreamlinedAudienceShell ? 'pt-[max(4rem,env(safe-area-inset-top))]' : 'pt-[max(1.25rem,env(safe-area-inset-top))]'}`}>
+                    <div className="text-[11px] font-black uppercase tracking-[0.34em] text-cyan-100">Vibe Sync</div>
+                    <h1 className="mt-1 text-[clamp(2.8rem,13vw,4.5rem)] leading-none font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_20px_rgba(236,72,153,0.45)]">CROWD SOLO</h1>
+                    <p className="mt-1 text-[13px] font-bold text-white uppercase tracking-[0.1em]">Strum with the solo. Every hit powers the room.</p>
                     <div className="mt-3 grid grid-cols-3 gap-2">
-                        <div className="bg-black/60 border border-yellow-300/40 rounded-xl px-2 py-1.5">
-                            <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300">Combo</div>
-                            <div className="text-lg font-black text-yellow-200">x{comboBoost}</div>
+                        <div className="rounded-xl border border-yellow-300/35 bg-black/55 px-2 py-2">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-300">Power</div>
+                            <div className="text-xl font-black text-yellow-200">x{comboBoost}</div>
                         </div>
-                        <div className="bg-black/60 border border-cyan-300/40 rounded-xl px-2 py-1.5">
-                            <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300">Accuracy</div>
-                            <div className="text-lg font-black text-cyan-200">{syncAccuracy}%</div>
+                        <div className="rounded-xl border border-cyan-300/35 bg-black/55 px-2 py-2">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-300">Strums</div>
+                            <div className="text-xl font-black text-cyan-200">{guitarTotalHits}</div>
                         </div>
-                        <div className="bg-black/60 border border-fuchsia-300/40 rounded-xl px-2 py-1.5">
-                            <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300">Window</div>
-                            <div className={`text-lg font-black ${syncReady ? 'text-fuchsia-200' : 'text-zinc-300'}`}>{syncReady ? 'LIVE' : 'WAIT'}</div>
+                        <div className="rounded-xl border border-fuchsia-300/35 bg-black/55 px-2 py-2">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-300">Sync Bonus</div>
+                            <div className="text-xl font-black text-fuchsia-200">{guitarTotalHits ? `${grooveRate}%` : 'READY'}</div>
                         </div>
                     </div>
-                    <div className="mt-3 h-2.5 w-full bg-white/15 rounded-full overflow-hidden border border-white/20">
-                        <div className="h-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 transition-all duration-150" style={{ width: `${comboPct}%` }}></div>
-                    </div>
-                    <div className="mt-3 grid grid-cols-5 gap-1.5 pointer-events-none">
-                        {upcomingTargets.map((target) => {
-                            const laneTheme = getGuitarLaneTheme(target.lane);
-                            const isCurrent = target.beatLabel === 'Now';
-                            return (
-                                <div
-                                    key={target.beatIndex}
-                                    className={`rounded-2xl border px-1.5 py-2 bg-black/55 backdrop-blur ${laneTheme.border} ${laneTheme.glow} ${isCurrent ? 'scale-[1.04]' : 'opacity-85'}`}
-                                >
-                                    <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300">{target.beatLabel}</div>
-                                    <div className={`mt-1 rounded-full border border-white/10 bg-gradient-to-r ${laneTheme.accent} px-2 py-1 text-[10px] font-black tracking-[0.22em] text-black`}>
-                                        {laneTheme.label}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full border border-white/15 bg-white/10">
+                        <div className="h-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 transition-all duration-150" style={{ width: `${Math.max(6, comboPct)}%` }}></div>
                     </div>
                 </div>
                 <div
-                    className="absolute inset-0 flex justify-around items-center px-6 sm:px-8"
+                    className="absolute inset-x-0 top-[34%] bottom-[13%] flex justify-around items-center px-3 sm:px-6"
                     onTouchStart={(e)=>handleGuitarTouch(e)}
                     onTouchMove={(e)=>handleGuitarTouch(e)}
                     style={{ touchAction: 'none' }}
@@ -10826,52 +10816,28 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     {[0,1,2,3,4].map(i => {
                         const laneTheme = getGuitarLaneTheme(i);
                         const isTargetLane = currentTargetLane === i;
-                        const laneNotes = upcomingNotes.filter((note) => note.lane === i);
                         return (
                         <div
                             key={i}
                             onClick={() => handleStrum(i)}
-                            className={`flex-1 h-full border-r border-white/10 flex items-center justify-center relative guitar-string-zone ${strings[i] ? 'active' : ''} ${isTargetLane ? 'bg-white/[0.04]' : ''}`}
+                            className={`flex-1 h-full border-r border-white/10 flex items-center justify-center relative guitar-string-zone ${strings[i] ? 'active' : ''} ${isTargetLane ? 'bg-white/[0.055]' : ''}`}
                         >
-                            <div className="absolute inset-x-1 bottom-[20%] h-[2px] rounded-full bg-white/35 shadow-[0_0_16px_rgba(255,255,255,0.18)]"></div>
-                            {laneNotes.map((note) => (
-                                <div
-                                    key={note.beatIndex}
-                                    className="absolute left-1/2 -translate-x-1/2 transition-[top] duration-150"
-                                    style={{ top: `${note.topPct}%` }}
-                                >
-                                    <div className={`h-8 w-8 rounded-full border bg-gradient-to-br ${laneTheme.accent} ${laneTheme.border} ${laneTheme.glow} ${note.beatIndex === nearestBeatIndex ? 'scale-110' : 'scale-90 opacity-85'}`}></div>
-                                </div>
-                            ))}
+                            {isTargetLane ? <div className={`absolute top-[9%] h-10 w-10 rounded-full border bg-gradient-to-br ${laneTheme.accent} ${laneTheme.border} ${laneTheme.glow} transition-transform duration-100`} style={{ transform: `scale(${pulseScale})` }}></div> : null}
                             <div className={`guitar-string ${strings[i] ? 'vibrating' : ''}`}></div>
-                            <div className={`absolute bottom-7 left-1/2 -translate-x-1/2 rounded-full border px-2 py-1 text-[10px] font-black tracking-[0.18em] ${laneTheme.border} ${isTargetLane ? `bg-gradient-to-r ${laneTheme.accent} text-black` : 'bg-black/45 text-zinc-200'}`}>
+                            <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border px-2.5 py-1.5 text-[11px] font-black tracking-[0.18em] ${laneTheme.border} ${isTargetLane ? `bg-gradient-to-r ${laneTheme.accent} text-black ${laneTheme.glow}` : 'bg-black/55 text-zinc-200'}`}>
                                 {laneTheme.label}
                             </div>
                         </div>
                     )})}
                 </div>
-                <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-                    <div className="h-24 w-[220px] rounded-[28px] border border-white/15 bg-black/65 shadow-[0_0_28px_rgba(34,211,238,0.18)] backdrop-blur-md flex items-center justify-center gap-4 px-5">
-                        <div className="flex flex-col items-start">
-                            <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-300">Target String</div>
-                            <div className={`mt-2 rounded-full border px-3 py-1.5 text-sm font-black tracking-[0.28em] bg-gradient-to-r ${currentLaneTheme.accent} ${currentLaneTheme.border} text-black`}>
-                                {currentLaneTheme.label}
-                            </div>
-                        </div>
-                        <div className="h-16 w-16 rounded-full border-2 border-cyan-300/60 bg-black/55 shadow-[0_0_24px_rgba(34,211,238,0.4)] flex items-center justify-center transition-transform duration-120" style={{ transform: `scale(${pulseScale})` }}>
-                            <div className={`h-8 w-8 rounded-full ${syncReady ? 'bg-cyan-300/80' : 'bg-zinc-500/40'} transition-colors duration-100`}></div>
-                        </div>
-                    </div>
-                </div>
-                <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none text-center">
-                    <div className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-xs uppercase tracking-[0.3em] ${feedbackToneClasses[guitarHitFeedback.tone] || feedbackToneClasses.idle}`}>
+                <div className="absolute bottom-[max(1.3rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-30 w-[min(92vw,430px)] pointer-events-none text-center">
+                    <div className={`inline-flex min-w-[190px] items-center justify-center rounded-full border px-5 py-2.5 text-sm font-black uppercase tracking-[0.22em] ${feedbackToneClasses[guitarHitFeedback.tone] || feedbackToneClasses.idle}`}>
                         {guitarHitFeedback.label}
                     </div>
-                    <div className="text-[11px] text-zinc-300 mt-1">
-                        {secondsSinceHit === null ? 'Watch the note highway and hit the marked string on beat.' : `Last clean hit ${secondsSinceHit}s ago`}
+                    <div className="mt-1.5 text-[12px] font-semibold text-zinc-200">
+                        {guitarLastHitAt ? (inGrooveWindow ? 'Pulse is open — strum now for a sync bonus.' : 'Any string counts. Follow the guitar you hear.') : `Any string works. ${currentLaneTheme.label} is the bonus string.`}
                     </div>
                 </div>
-                <button onClick={handleExitGuitarMode} className="absolute left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#EC4899] px-4 py-2 text-xs font-bold text-black" style={{ bottom: 'calc(env(safe-area-inset-bottom) + 2.5rem)' }}>EXIT MODE</button>
             </div>
         );
     }
@@ -11894,9 +11860,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         <div>
                             <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400">Profile Studio</div>
                             <h2 className="text-3xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mt-1">
-                                CHANGE NAME / EMOJI
+                                CHANGE NAME / AVATAR
                             </h2>
-                            <div className="text-sm text-zinc-300">Neon synthwave mode for your identity.</div>
+                            <div className="text-sm text-zinc-300">Your avatar represents you. Voting reactions are managed separately in the Reaction Library.</div>
                         </div>
                         <button
                             onClick={() => setShowProfile(false)}
@@ -11927,7 +11893,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 <span key={`profile-c-${idx}`} className={`spotlight s${idx + 1}`} />
                             ))}
                         </div>
-                        <div className="relative z-10"><AvatarCoverflow items={AVATAR_CATALOG} value={activeAvatarPreviewEmoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} brandTheme={audienceBrandTheme} /></div>
+                        <div className="relative z-10 overflow-hidden rounded-[1.7rem]"><AvatarCoverflow items={AVATAR_CATALOG} value={activeAvatarPreviewEmoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} edgePadding="center" brandTheme={audienceBrandTheme} /></div>
                     </div>
                     <div
                         className="rounded-3xl p-5 text-center shadow-[0_12px_35px_rgba(0,0,0,0.45)]"
@@ -11944,7 +11910,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         </div>
                         <div className="text-3xl font-black drop-shadow" style={{ color: audienceBrandTheme.primaryColor }}>{selectedAvatar?.label}</div>
                         {selectedAvatarStatus?.locked ? (
-                            <div className="text-lg font-bold text-zinc-200 mt-2">Unlock: {selectedAvatarUnlock}</div>
+                            <div className="mt-3 flex flex-col items-center gap-2">
+                                <AvatarOfferBadge item={selectedAvatar} />
+                                <div className="text-sm font-bold text-zinc-300">{selectedAvatarUnlock}</div>
+                            </div>
                         ) : (
                             <div className="text-lg font-bold text-zinc-200 mt-2">{selectedAvatar?.flavor}</div>
                         )}
@@ -12252,24 +12221,28 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             <div className="mt-2 inline-flex rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
                                 {avatarUnlockModal.status?.note || 'Locked'}
                             </div>
+                            <div className="mt-2"><AvatarOfferBadge item={lockedAvatar} /></div>
                         </div>
                     </div>
                     <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-200">
                         {avatarUnlockModal.hint || 'This avatar unlocks through room progress, perks, or points.'}
                     </div>
                     {unlockType === 'points' ? (
-                        <div className="mt-3 rounded-2xl border border-cyan-300/18 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                            {canBuyWithPoints
-                                ? (coHostUnlimitedCredits
-                                    ? 'You have unlimited co-host credits, so this unlock can happen instantly without leaving the room.'
-                                    : `You have ${modalEffectivePoints} PTS, so this unlock can happen instantly without leaving the room.`)
-                                : `You have ${modalEffectivePoints} PTS. Earn or buy more points later if you want to unlock this one.`}
+                        <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-cyan-300/28 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                            <span><span className="block text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100/65">Your balance</span><span className="mt-1 block font-bold">{canBuyWithPoints ? 'Ready to unlock' : 'More Points needed'}</span></span>
+                            <CurrencyAmount currency="points" amount={coHostUnlimitedCredits ? pointsCost : modalEffectivePoints} size="sm" />
                         </div>
                     ) : null}
                     {unlockType === 'beaubucks' ? (
-                        <div className="mt-3 flex items-center justify-between rounded-2xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-4 py-3">
-                            <span className="text-sm font-black text-fuchsia-50">Keep forever</span>
-                            <CurrencyAmount currency="beaubucks" amount={beauBucksCost} size="sm" />
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="rounded-2xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-3 py-3">
+                                <span className="block text-[9px] font-black uppercase tracking-[0.16em] text-fuchsia-100/65">Price · keep forever</span>
+                                <CurrencyAmount currency="beaubucks" amount={beauBucksCost} size="sm" className="mt-1" />
+                            </div>
+                            <div className="rounded-2xl border border-fuchsia-300/18 bg-black/25 px-3 py-3">
+                                <span className="block text-[9px] font-black uppercase tracking-[0.16em] text-fuchsia-100/65">Your balance</span>
+                                <CurrencyAmount currency="beaubucks" amount={beauBucksBalance} size="sm" className="mt-1" />
+                            </div>
                         </div>
                     ) : null}
                     {unlockType === 'vip' ? (
@@ -12300,7 +12273,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 disabled={!beauBucksRoomCandidate || visibleBeauBucksWalletState.status !== 'ready' || premiumUnlockPendingId === lockedAvatar?.unlock?.productId}
                                 className="flex-1 rounded-xl bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 py-3 font-black text-black disabled:opacity-45"
                             >
-                                {beauBucksBalance < beauBucksCost ? 'Get BeauBucks' : premiumUnlockPendingId ? 'Unlocking...' : 'Unlock'}
+                                {beauBucksBalance < beauBucksCost ? 'Get BeauBucks' : premiumUnlockPendingId ? 'Unlocking...' : `Unlock · B$ ${beauBucksCost}`}
                             </button>
                         ) : canBuyWithPoints ? (
                             <button
@@ -12342,7 +12315,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 }}
                                 className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-black"
                             >
-                                Unlock Now
+                                Unlock · {pointsCost} PTS
                             </button>
                         ) : canNotAffordWithPoints ? (
                             <button
@@ -13361,18 +13334,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const noSingerOnStage = !currentSinger;
     const applauseModeActive = ['applause', 'applause_countdown', 'applause_result'].includes(String(room?.activeMode || '').trim().toLowerCase());
     const performanceReactionsReady = !!currentSinger || applauseModeActive || takeoverClapVotingActive;
-    const keepStreamlinedStageAreaMountedForIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;
     const showHomeIdlePartyCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && !isStreamlinedAudienceShell;
-    const showStreamlinedIdleRequestCard = shouldShowStreamlinedIdleRequestCard({
-        tab,
-        noSingerOnStage,
-        lobbyVolleySceneActive,
-        isStreamlinedAudienceShell,
-    });
-    const showStreamlinedIdleReactionGuide = showStreamlinedIdleRequestCard && !performanceReactionsReady;
-    const howToPlayFeaturedGameLabels = Array.isArray(singerHowToPlay?.featuredGames)
-        ? singerHowToPlay.featuredGames.map((game) => game.label).filter(Boolean).slice(0, 4)
-        : [];
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
     const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
     const lobbyRatePlan = getLobbyVolleyAudienceRatePlan(lobbyVolleyPreview || createLobbyVolleyState(), {
@@ -13415,7 +13377,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         { key: 'queue', label: 'Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
         { key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }
     ];
-    const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
+    const stagePanelCollapsed = !!stagePanelCollapsedByTab.home;
     const forceExpandedHomeStageCard = showAudienceVideoInline || showAudienceVideoFullscreen || inlineLyrics || viewLyrics;
     const homeStageInteractionState = showPopTriviaCard
         ? 'trivia'
@@ -13464,7 +13426,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         ? 'Volley Target'
                         : 'Launch Volley'
             )
-            : 'Vote Now';
+            : 'Voting Open';
     const compactHomeStageBadgeIcon = homeStageInteractionState === 'trivia'
         ? 'fa-brain'
         : homeStageInteractionState === 'volley'
@@ -13529,69 +13491,79 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const canCollapseStagePanel = primaryStageTabs.includes(tab) && !forceExpandedHomeStageCard;
     const showStreamlinedStageNav = isStreamlinedAudienceShell && ['home', 'request', 'social'].includes(tab);
     const showOmnipresentStageArea = (tab === 'home' || tab === 'request' || tab === 'social')
-        && (keepStreamlinedStageAreaMountedForIdle || !showHomeIdlePartyCard || bracketSignupActive);
-    const streamlinedStageNav = showStreamlinedStageNav ? (
+        && (isStreamlinedAudienceShell ? (!!currentSinger || bracketSignupActive) : (!showHomeIdlePartyCard || bracketSignupActive));
+    const streamlinedPrimaryStageNav = showStreamlinedStageNav ? (
         <div
-            className="relative z-10 min-h-[112px] border-b border-white/10 bg-black/35 px-4 py-3"
+            data-feature-id="audience-primary-stage-nav"
+            className="relative z-10 min-h-[58px] border-b border-white/10 bg-black/45 px-4 py-2.5"
             style={{
                 paddingLeft: 'max(16px, env(safe-area-inset-left))',
                 paddingRight: 'max(16px, env(safe-area-inset-right))'
             }}
         >
-            <div className="space-y-2">
-                <div
-                    role="tablist"
-                    aria-label="Primary audience sections"
-                    className="grid gap-1 rounded-full border border-white/10 bg-black/25 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                    style={{ gridTemplateColumns: `repeat(${streamlinedPrimaryNavItems.length}, minmax(0, 1fr))` }}
-                >
-                    {streamlinedPrimaryNavItems.map((item) => {
-                        const isActive = item.key === 'home'
-                            ? (tab === 'home' || tab === 'social')
-                            : activePrimaryStageTab === item.key;
-                        return (
-                            <button
-                                key={item.key}
-                                type="button"
-                                role="tab"
-                                data-feature-id={item.key === 'request' ? 'singer-nav-songs' : 'singer-nav-party'}
-                                aria-selected={isActive}
-                                onClick={() => openStreamlinedPrimaryStageTab(item.key)}
-                                className={`rounded-full px-3 py-1.5 text-center transition-all ${
-                                    isActive
-                                        ? 'text-white shadow-[0_8px_20px_rgba(0,0,0,0.18)]'
-                                        : 'text-zinc-300 hover:bg-white/[0.06] hover:text-white'
-                                }`}
-                                style={isActive ? {
-                                    ...audienceBrandPalette.primaryPillStyle,
-                                    backgroundColor: 'rgba(255,255,255,0.16)',
-                                    borderColor: 'rgba(255,255,255,0.12)',
-                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
-                                } : undefined}
-                            >
-                                <div className="flex items-center justify-center gap-1.5">
-                                    <i className={`fa-solid ${item.icon} text-[10px] ${isActive ? 'opacity-100' : 'opacity-70'}`}></i>
-                                    <div className="text-[11px] font-black uppercase tracking-[0.16em]">
-                                        {item.label}
-                                    </div>
-                                    {item.key === 'home' && showPerformanceVotingPromptCta ? (
-                                        <span className="rounded-full border border-amber-100 bg-amber-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_0_18px_rgba(251,191,36,0.72)] animate-pulse">
-                                            Live
-                                        </span>
-                                    ) : null}
+            <div
+                role="tablist"
+                aria-label="Primary audience sections"
+                className="grid gap-1 rounded-full border border-white/10 bg-black/35 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                style={{ gridTemplateColumns: `repeat(${streamlinedPrimaryNavItems.length}, minmax(0, 1fr))` }}
+            >
+                {streamlinedPrimaryNavItems.map((item) => {
+                    const isActive = item.key === 'home'
+                        ? (tab === 'home' || tab === 'social')
+                        : activePrimaryStageTab === item.key;
+                    return (
+                        <button
+                            key={item.key}
+                            type="button"
+                            role="tab"
+                            data-feature-id={item.key === 'request' ? 'singer-nav-songs' : 'singer-nav-party'}
+                            aria-selected={isActive}
+                            onClick={() => openStreamlinedPrimaryStageTab(item.key)}
+                            className={`rounded-full px-3 py-1.5 text-center transition-all ${
+                                isActive
+                                    ? 'text-white shadow-[0_8px_20px_rgba(0,0,0,0.18)]'
+                                    : 'text-zinc-300 hover:bg-white/[0.06] hover:text-white'
+                            }`}
+                            style={isActive ? {
+                                ...audienceBrandPalette.primaryPillStyle,
+                                backgroundColor: 'rgba(255,255,255,0.16)',
+                                borderColor: 'rgba(255,255,255,0.12)',
+                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+                            } : undefined}
+                        >
+                            <div className="flex items-center justify-center gap-1.5">
+                                <i className={`fa-solid ${item.icon} text-[10px] ${isActive ? 'opacity-100' : 'opacity-70'}`}></i>
+                                <div className="text-[11px] font-black uppercase tracking-[0.16em]">
+                                    {item.label}
                                 </div>
-                            </button>
-                        );
-                    })}
-                </div>
-                {activePrimaryStageTab === 'request' ? (
-                    <div className="grid gap-1.5">
-                    <div role="tablist" aria-label="Song request sections" className="flex min-h-[42px] items-center gap-1 rounded-2xl border border-white/10 bg-black/20 px-1 py-1">
+                                {item.key === 'home' && showPerformanceVotingPromptCta ? (
+                                    <span className="rounded-full border border-amber-100 bg-amber-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-black shadow-[0_0_18px_rgba(251,191,36,0.72)]">
+                                        Vote
+                                    </span>
+                                ) : null}
+                            </div>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    ) : null;
+    const streamlinedStageContextNav = showStreamlinedStageNav ? (
+        <div
+            className="relative z-10 border-b border-white/10 bg-black/45 px-4 py-2.5"
+            style={{
+                paddingLeft: 'max(16px, env(safe-area-inset-left))',
+                paddingRight: 'max(16px, env(safe-area-inset-right))'
+            }}
+        >
+            {activePrimaryStageTab === 'request' ? (
+                <div className="grid gap-2">
+                    <div className="grid grid-cols-1 gap-2 rounded-2xl border border-white/15 bg-zinc-950/95 p-2 shadow-[0_12px_30px_rgba(0,0,0,0.32)] sm:grid-cols-[minmax(0,1fr)_auto]">
                         <label
-                            className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 py-2 transition-colors ${songsTab === 'browse' || catalogSearchOpen ? 'border-cyan-300/55 bg-cyan-500/14 text-white' : 'border-transparent bg-white/[0.04] text-zinc-100'}`}
+                            className={`flex min-h-[46px] min-w-0 items-center gap-3 rounded-xl border-2 bg-black/80 px-3 py-2 transition-colors ${songsTab === 'browse' || catalogSearchOpen ? 'border-cyan-200/80 text-white shadow-[0_0_0_3px_rgba(236,72,153,0.12)] focus-within:border-pink-300 focus-within:shadow-[0_0_0_3px_rgba(244,114,182,0.22)]' : 'border-white/20 text-zinc-100 focus-within:border-cyan-200/80'}`}
                             style={(songsTab === 'browse' || catalogSearchOpen) ? streamlinedSongsTabActiveStyle : undefined}
                         >
-                            <i className="fa-solid fa-magnifying-glass text-[11px] text-cyan-100/90"></i>
+                            <i className="fa-solid fa-magnifying-glass text-sm text-cyan-100"></i>
                             <input
                                 value={searchQ}
                                 onFocus={openAudienceInlineSongSearch}
@@ -13601,41 +13573,43 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     if (event.key === 'Enter') openAudienceInlineSongSearch();
                                 }}
                                 disabled={audienceSongLimitState.hardBlocked}
-                                className="min-h-[24px] min-w-0 flex-1 bg-transparent text-sm font-black text-white outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
+                                className="min-h-[26px] min-w-0 flex-1 bg-transparent text-base font-semibold text-white outline-none placeholder:text-zinc-300 disabled:cursor-not-allowed"
                                 placeholder={audienceInlineSearchPlaceholder}
                                 aria-label="Search songs"
                             />
                         </label>
-                        {streamlinedSongsNavItems.map((item) => {
-                            const isActive = songsTab === item.key;
-                            return (
-                                <button
-                                    key={item.key}
-                                    type="button"
-                                    role="tab"
-                                    aria-selected={isActive}
-                                    data-feature-id={item.key === 'tight15' ? 'audience-tight15-nav' : undefined}
-                                    onClick={() => openStreamlinedSongsStageTab(item.key)}
-                                    className={`relative inline-flex min-h-[36px] shrink-0 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
-                                        isActive
-                                            ? 'border-cyan-300/55 bg-cyan-500/14 text-white'
-                                            : 'border-transparent bg-transparent text-zinc-400 hover:border-white/10 hover:bg-white/[0.05] hover:text-zinc-100'
-                                    }`}
-                                    style={isActive ? streamlinedSongsTabActiveStyle : undefined}
-                                >
-                                    <i className={`fa-solid ${item.icon} text-[10px]`}></i>
-                                    <span className="hidden min-[360px]:inline">{item.label}</span>
-                                    {typeof item.badge === 'number' ? (
-                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/12 text-cyan-50' : 'bg-white/8 text-zinc-300'}`}>
-                                            {item.badge}
-                                        </span>
-                                    ) : null}
-                                </button>
-                            );
-                        })}
+                        <div role="tablist" aria-label="Song request sections" className="grid min-h-[42px] grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/45 p-1 sm:flex">
+                            {streamlinedSongsNavItems.map((item) => {
+                                const isActive = songsTab === item.key;
+                                return (
+                                    <button
+                                        key={item.key}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={isActive}
+                                        data-feature-id={item.key === 'tight15' ? 'audience-tight15-nav' : undefined}
+                                        onClick={() => openStreamlinedSongsStageTab(item.key)}
+                                        className={`relative inline-flex min-h-[38px] items-center justify-center gap-1.5 rounded-lg border px-3 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                                            isActive
+                                                ? 'border-cyan-200/70 bg-cyan-500/24 text-white'
+                                                : 'border-transparent bg-white/[0.04] text-zinc-300 hover:border-white/15 hover:bg-white/[0.08] hover:text-white'
+                                        }`}
+                                        style={isActive ? streamlinedSongsTabActiveStyle : undefined}
+                                    >
+                                        <i className={`fa-solid ${item.icon} text-[10px]`}></i>
+                                        <span>{item.label}</span>
+                                        {typeof item.badge === 'number' ? (
+                                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/15 text-cyan-50' : 'bg-white/10 text-zinc-200'}`}>
+                                                {item.badge}
+                                            </span>
+                                        ) : null}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
-                    <div className="flex min-w-0 flex-wrap items-center gap-1 rounded-full border border-white/10 bg-black/20 p-1" data-feature-id="audience-request-source-switcher">
-                        <span className="px-2 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Find with</span>
+                    <div className="flex min-w-0 flex-wrap items-center gap-1 rounded-xl border border-white/15 bg-zinc-950/90 p-1.5" data-feature-id="audience-request-source-switcher">
+                        <span className="px-2 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-300">Find with</span>
                         {!audienceYouTubeOnlySearch ? (
                             <button
                                 type="button"
@@ -13659,15 +13633,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 type="button"
                                 data-feature-id="singer-manual-request-open"
                                 onClick={openAudienceManualRequestFromSearch}
-                                className="rounded-full border border-pink-300/20 bg-pink-500/8 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-pink-100"
+                                className="rounded-full border border-pink-300/35 bg-pink-500/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-pink-50"
                             >
                                 Ask host
                             </button>
                         ) : null}
                     </div>
-                    </div>
-                ) : (
-                    <div className="flex min-h-[42px] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                </div>
+            ) : (
+                <div className="flex min-h-[42px] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/35 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200">
                         <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
                             <i className="fa-solid fa-list text-[10px]"></i>
                             {queueSongsView.length}
@@ -13687,9 +13661,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             <i className="fa-solid fa-link text-[10px]"></i>
                             <span>Share</span>
                         </button>
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
         </div>
     ) : null;
 
@@ -13747,17 +13720,34 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         setTab('social');
         setSocialTab('profile');
     };
-    const setStagePanelCollapsedForTab = (collapsed, targetTab = tab) => {
-        if (!primaryStageTabs.includes(targetTab)) return;
-        setStagePanelCollapsedByTab((prev) => ({ ...prev, [targetTab]: collapsed }));
+    const setStagePanelCollapsedForTab = (collapsed) => {
+        setStagePanelCollapsedByTab({
+            home: collapsed,
+            request: collapsed,
+            social: collapsed
+        });
     };
     const expandActiveStagePanel = () => {
-        if (tab === 'home') setStageHomePanelExpanded(true);
-        setStagePanelCollapsedForTab(false, tab);
+        setStageHomePanelExpanded(true);
+        setStagePanelCollapsedForTab(false);
     };
     const collapseActiveStagePanel = () => {
-        if (tab === 'home') setStageHomePanelExpanded(false);
-        setStagePanelCollapsedForTab(true, tab);
+        setStageHomePanelExpanded(false);
+        setStagePanelCollapsedForTab(true);
+    };
+    const openAudienceVoting = () => {
+        pulseNativeUiFeedback();
+        setTab('home');
+        setStageHomePanelExpanded(false);
+        setStagePanelCollapsedForTab(true);
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                document.querySelector('[data-feature-id="scene-clap-vote-button"], [data-feature-id="reaction-fire-button"]')?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            });
+        });
     };
     const castRunOfShowReleaseVote = async (choice = 'slot_scene') => {
         const safeChoice = String(choice || '').trim().toLowerCase();
@@ -13797,32 +13787,18 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             return;
         }
         try {
-            const actorUid = String(activeUid || auth.currentUser?.uid || '').trim();
-            const performanceMeta = currentPerformanceSignalContext || {};
-            const performanceSongTitle = String(performanceMeta.songTitle || '').trim();
-            const performanceArtistName = String(performanceMeta.artistName || '').trim();
-            const performanceAlbumArtUrl = String(performanceMeta.artworkUrl || '').trim();
-            const performanceElapsedSec = Math.max(0, Number(performanceMeta.elapsedSec || 0) || 0);
-            const activityPayload = buildCoHostSignalActivityPayload({
-                meta,
+            const audioAreaBySignal = {
+                track_issue: 'track',
+                vocal_issue: 'vocal',
+                mix_issue: 'mix'
+            };
+            const audioArea = audioAreaBySignal[meta.id] || '';
+            const result = await sendRoomOperatorSignal({
                 roomCode,
-                actorUid,
-                actorName: user?.name || form.name || 'Co-Host',
-                currentSinger,
-                nowMs: now,
-                iconFallback: EMOJI.sparkle,
+                type: audioArea ? 'audio_attention' : meta.id,
+                ...(audioArea ? { audioArea } : {})
             });
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
-                ...activityPayload,
-                type: 'cohost_signal',
-                signalId: meta.id,
-                signalScope: performanceMeta.performanceId ? 'performance' : 'room',
-                performanceSongTitle: performanceSongTitle || null,
-                performanceArtistName: performanceArtistName || null,
-                performanceAlbumArtUrl: performanceAlbumArtUrl || null,
-                performanceElapsedSec: performanceElapsedSec || 0,
-                timestamp: serverTimestamp()
-            });
+            if (!result?.delivered) throw new Error('Signal delivery was not confirmed.');
             setCoHostSignalCooldownById((prev) => ({
                 ...(prev || {}),
                 [meta.id]: now + COHOST_SIGNAL_COOLDOWN_MS
@@ -13832,6 +13808,38 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         } catch (error) {
             console.warn('Co-host quick signal failed', error);
             toast('Could not send that co-host signal right now.');
+        }
+    };
+    const respondToCoHostInvitation = async (action = 'accept') => {
+        if (!roomCode || !coHostInvite || coHostInviteBusy) return;
+        setCoHostInviteBusy(true);
+        try {
+            await respondToRoomCoHostInvite({ roomCode, action });
+            setCoHostInvite(null);
+            toast(action === 'accept'
+                ? 'You are now helping the Host. Helper tools are ready.'
+                : 'Co-host invitation declined.');
+        } catch (error) {
+            console.warn('Co-host invitation response failed', error);
+            toast(String(error?.message || '').includes('named account')
+                ? 'Sign in with your account before accepting a co-host role.'
+                : 'Could not update that co-host invitation.');
+        } finally {
+            setCoHostInviteBusy(false);
+        }
+    };
+    const leaveCoHostRole = async () => {
+        if (!roomCode || coHostInviteBusy) return;
+        setCoHostInviteBusy(true);
+        try {
+            await leaveRoomCoHostRole({ roomCode });
+            setCoHostSignalSheetOpen(false);
+            toast('You left the co-host role.');
+        } catch (error) {
+            console.warn('Leave co-host role failed', error);
+            toast('Could not leave the co-host role right now.');
+        } finally {
+            setCoHostInviteBusy(false);
         }
     };
     const renderCoHostQueueAssistCard = (mode = 'full') => {
@@ -13917,17 +13925,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 <>
                     <div className="mobile-native-top-chrome absolute inset-x-0 top-0 z-[18] pointer-events-none"></div>
                     <div className="mobile-native-bottom-chrome absolute inset-x-0 bottom-0 z-[18] pointer-events-none"></div>
-                    <div
-                        className="absolute inset-x-0 z-[22] pointer-events-none flex items-center justify-between px-4"
-                        style={{
-                            top: `calc(${mobileTopInset} + 2px)`,
-                            paddingLeft: mobileSideInsetLeft,
-                            paddingRight: mobileSideInsetRight
-                        }}
-                    >
-                        <div className="text-[10px] uppercase tracking-[0.22em]" style={{ color: `${audienceBrandTheme.primaryColor}D9` }}>Native Mobile</div>
-                        <div className="text-[10px] uppercase tracking-[0.22em]" style={{ color: `${audienceBrandTheme.secondaryColor}D9` }}>{roomCode || 'ROOM'}</div>
-                    </div>
                 </>
             )}
             {/* Header: Reorganized Layout */}
@@ -13945,22 +13942,31 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                       <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInsetLeft, paddingRight: mobileSideInsetRight }}>
                       {/* Left: User Emoji & Name */}
                       <div className="flex items-center justify-start min-w-0 relative z-10">
-                          <button onClick={openAudienceProfileShortcut} className={`bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-10 w-[118px] sm:w-[132px] min-w-0 ${isNativeMobileLayout ? 'mobile-native-pill' : ''}`}>
+                          <button
+                              onClick={openAudienceProfileShortcut}
+                              data-feature-id="audience-fame-entry"
+                              aria-label={`${user?.name || 'Your profile'}, Fame level ${myFame.level}. View progress and Fame levels.`}
+                              className={`bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-2xl border border-amber-200/20 flex items-center gap-2 shadow-lg h-12 w-[132px] sm:w-[148px] min-w-0 ${isNativeMobileLayout ? 'mobile-native-pill' : ''}`}
+                          >
                               <span className="text-2xl">{user?.avatar}</span>
-                              <span className="font-bold truncate text-sm text-white">{user?.name}</span>
+                              <span className="min-w-0 text-left">
+                                  <span className="block truncate text-sm font-bold leading-tight text-white">{user?.name}</span>
+                                  <span className="mt-0.5 flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.08em] text-amber-200"><i className="fa-solid fa-star" aria-hidden="true"></i> Fame Lv {myFame.level}</span>
+                              </span>
                           </button>
                       </div>
                       <div />
-                      {/* Right: Points */}
+                      {/* Right: player wallet */}
                         <div className="flex items-center justify-end min-w-0 relative z-10">
-                          <AnimatedPoints
-                              value={effectivePoints}
+                          <AudienceWalletButton
+                              points={effectivePoints}
+                              pointsDisplay={coHostUnlimitedCredits ? '∞' : null}
+                              beauBucks={visibleBeauBucksWalletState.wallet?.balance || 0}
+                              beauBucksReady={visibleBeauBucksWalletState.status === 'ready'}
+                              accountConnected={signedInBeauRocksAccount}
                               onClick={() => openAudienceCurrencyFunnel('points')}
                               rewardDelta={pointsRewardPulse.delta}
                               rewardPulseKey={pointsRewardPulse.key}
-                              displayValue={coHostUnlimitedCredits ? 'âˆž' : null}
-                              caption={coHostUnlimitedCredits ? 'FREE' : roomCurrencyPresentation.shortLabel}
-                              className="h-10 w-[118px] sm:w-[132px]"
                           />
                       </div>
                   </div>
@@ -14213,6 +14219,46 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     </div>
                 </div>
             )}
+            {coHostInvite ? (
+                <div
+                    className="pointer-events-none fixed inset-x-3 z-[97] md:inset-x-5"
+                    style={{ bottom: mobileFloatingBottomInset }}
+                    data-feature-id="cohost-invitation"
+                >
+                    <div className="pointer-events-auto mx-auto max-w-[26rem] rounded-[1.35rem] border border-amber-300/28 bg-[linear-gradient(145deg,rgba(35,22,10,0.98),rgba(14,12,22,0.97))] p-4 shadow-[0_20px_54px_rgba(0,0,0,0.42)]">
+                        <div className="flex items-start gap-3">
+                            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-amber-300/24 bg-amber-500/12 text-amber-100">
+                                <i className="fa-solid fa-headset" />
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-[9px] font-black uppercase tracking-[0.22em] text-amber-200">Co-Host Invitation</div>
+                                <div className="mt-1 text-base font-black text-white">Help run this Room?</div>
+                                <p className="mt-1 text-xs leading-5 text-zinc-300">
+                                    {coHostInvite.invitedByName || 'The Host'} invited you to prep requests and send private operational notes. You will not receive Host account access.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                disabled={coHostInviteBusy}
+                                onClick={() => respondToCoHostInvitation('decline')}
+                                className="min-h-[42px] rounded-xl border border-white/12 bg-white/5 px-3 text-xs font-black text-zinc-200 disabled:opacity-50"
+                            >
+                                Not now
+                            </button>
+                            <button
+                                type="button"
+                                disabled={coHostInviteBusy}
+                                onClick={() => respondToCoHostInvitation('accept')}
+                                className="min-h-[42px] rounded-xl border border-amber-200/35 bg-amber-500/18 px-3 text-xs font-black text-amber-50 disabled:opacity-50"
+                            >
+                                {coHostInviteBusy ? 'Updating…' : 'Accept & help'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
             {canUseCoHostQuickSignals ? (
                 <div
                     className="pointer-events-none fixed inset-x-3 z-[96] md:inset-x-5"
@@ -14234,7 +14280,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             )}
                                         </div>
                                         <div className="min-w-0">
-                                            <div className="text-[9px] uppercase tracking-[0.22em] text-amber-200">Tell Host</div>
+                                            <div className="text-[9px] uppercase tracking-[0.22em] text-amber-200">Helper Home · Tell Host</div>
                                             <div className="mt-1 text-sm font-bold leading-tight text-white">
                                                 {currentPerformanceSignalContext.songTitle || 'Audio note'}
                                             </div>
@@ -14244,7 +14290,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     : 'No live performance. Signals still carry a timestamp.'}
                                             </div>
                                             <div className="mt-1 text-[11px] text-zinc-400">
-                                                Audio-only notes. The app timestamps them and ties them to the live performance when one is up.
+                                                Private operational notes are timestamped and tied to the live performance when one is up.
                                             </div>
                                             <div className="mt-1 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-amber-100/78">
                                                 <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-0.5">
@@ -14303,8 +14349,18 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         );
                                     })}
                                 </div>
-                                <div className="mt-2 text-[10px] text-zinc-400">
-                                    Fewer buttons on purpose. Use one broad note and the host can handle the exact adjustment.
+                                <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                                    <div className="text-[10px] leading-4 text-zinc-400">
+                                        These notes only go to the Host Inbox. Repeated notes are grouped to reduce noise.
+                                    </div>
+                                    <button
+                                        type="button"
+                                        disabled={coHostInviteBusy}
+                                        onClick={leaveCoHostRole}
+                                        className="shrink-0 rounded-full border border-white/10 bg-black/20 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-300 disabled:opacity-50"
+                                    >
+                                        Leave role
+                                    </button>
                                 </div>
                             </div>
                         ) : null}
@@ -14314,7 +14370,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             className="inline-flex min-h-[42px] items-center gap-2 rounded-full border border-amber-300/24 bg-[linear-gradient(145deg,rgba(34,22,10,0.96),rgba(18,14,22,0.92))] px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-amber-50 shadow-[0_16px_36px_rgba(0,0,0,0.3)]"
                         >
                             <i className={`fa-solid ${coHostSignalSheetOpen ? 'fa-xmark' : 'fa-sliders'}`}></i>
-                            <span>{coHostSignalSheetOpen ? 'Close Tell Host' : 'Tell Host'}</span>
+                            <span>{coHostSignalSheetOpen ? 'Close Helper Home' : 'Helper Home'}</span>
                         </button>
                     </div>
                 </div>
@@ -14470,7 +14526,25 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 </div>
             )}
 
-            {streamlinedStageNav}
+            {streamlinedPrimaryStageNav}
+
+            {showStreamlinedStageNav ? (
+                <AudienceReactionDeck
+                    active={performanceReactionsReady}
+                    reactionTypes={takeoverClapVotingActive ? ['clap'] : reactionLoadout}
+                    isCoolingDown={isReactionCoolingDown}
+                    renderCooldownFill={renderReactionCooldownFill}
+                    getIconClass={getReactionOptionIconClass}
+                    getEmoji={getEmojiChar}
+                    onReact={(reactionType, cost) => react(reactionType, takeoverClapVotingActive ? 0 : cost)}
+                    onEdit={openReactionLibrary}
+                    reactionSlotCount={reactionSlotCount}
+                    fifthReactionSlotPointsCost={fifthReactionSlotPointsCost}
+                    fifthReactionSlotPurchasesEnabled={fifthReactionSlotPurchasesEnabled}
+                    onUnlockFifth={() => void unlockFifthReactionSlot()}
+                    layout="grid"
+                />
+            ) : null}
 
             {/* Omnipresent Stage Area */}
             {showOmnipresentStageArea && (
@@ -14539,12 +14613,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     {currentSinger ? (
                         <div data-feature-id="singer-current-performance-card" className={`bg-indigo-900/80 rounded-2xl border border-indigo-500/30 shadow-lg backdrop-blur-md relative overflow-hidden ${isNativeMobileLayout ? 'mobile-native-stage-card' : ''}`}>
                             {showCompactHomeStageCard && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        pulseNativeUiFeedback();
-                                        expandActiveStagePanel();
-                                    }}
+                                <div
                                     className="w-full px-4 py-3 text-left border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70"
                                 >
                                     <div className="flex items-center gap-3">
@@ -14565,15 +14634,42 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             <div className="text-sm text-indigo-100/85 italic truncate">{currentSinger.songTitle}</div>
                                             <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-indigo-200/75 truncate">{compactStageStatusLabel}</div>
                                         </div>
-                                        <div className="shrink-0 text-right">
-                                            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">Room</div>
-                                            <div className="font-bebas text-xl tracking-[0.2em] text-cyan-200">{roomCode}</div>
-                                            <div className="mt-1 text-[11px] text-zinc-300">Tap to expand</div>
-                                        </div>
+                                        <button
+                                            type="button"
+                                            data-feature-id="audience-stage-expand"
+                                            aria-label="View expanded stage"
+                                            onClick={() => {
+                                                pulseNativeUiFeedback();
+                                                expandActiveStagePanel();
+                                            }}
+                                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-500/14 text-cyan-50 transition-colors hover:bg-cyan-500/24"
+                                        >
+                                            <i className="fa-solid fa-chevron-down text-sm"></i>
+                                        </button>
                                     </div>
-                                </button>
+                                </div>
                             )}
-                            <div className={`${showCompactHomeStageCard ? 'hidden ' : ''}px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70 ${isNativeMobileLayout ? 'mobile-native-stage-meta' : ''}`}>
+                            {isStreamlinedAudienceShell && !showCompactHomeStageCard && (
+                                <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70 px-4 py-2.5">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-indigo-200">Live stage</div>
+                                    {canCollapseStagePanel && (
+                                        <button
+                                            type="button"
+                                            data-feature-id="audience-stage-collapse"
+                                            aria-label="Collapse stage panel"
+                                            onClick={() => {
+                                                pulseNativeUiFeedback();
+                                                collapseActiveStagePanel();
+                                            }}
+                                            className="inline-flex h-9 items-center justify-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-500/15 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100"
+                                        >
+                                            <i className="fa-solid fa-chevron-up"></i>
+                                            Collapse
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                            <div className={`${showCompactHomeStageCard || isStreamlinedAudienceShell ? 'hidden ' : ''}px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70 ${isNativeMobileLayout ? 'mobile-native-stage-meta' : ''}`}>
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                                         <div className="flex items-center gap-2 bg-black/50 border border-cyan-400/40 px-3 py-1.5 rounded-full">
@@ -14656,19 +14752,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             <div className="min-w-0 flex-1 text-left">
                                 <div className="mb-1 flex flex-wrap items-center gap-2">
                                     <span className="text-[12px] text-indigo-300 uppercase tracking-widest font-bold">NOW PERFORMING</span>
-                                    {isStreamlinedAudienceShell && karaokePerformanceVotingOpen && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                pulseNativeUiFeedback();
-                                                setTab('home');
-                                            }}
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-amber-200/70 bg-amber-300/18 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-50 shadow-[0_0_22px_rgba(251,191,36,0.32)] animate-pulse"
-                                        >
-                                            <i className="fa-solid fa-check-to-slot text-[9px]"></i>
-                                            Vote Now
-                                        </button>
-                                    )}
                                 </div>
                                 <div className="font-bold text-xl leading-none truncate text-white">{currentSinger.singerName}</div>
                                 <div className="text-sm text-indigo-200 italic truncate">{currentSinger.songTitle}</div>
@@ -14998,7 +15081,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 )}
                             </div>
                         </div>
-                    ) : showHomeIdlePartyCard ? null : (
+                    ) : isStreamlinedAudienceShell || showHomeIdlePartyCard ? null : (
                         <div className="bg-zinc-800 rounded-2xl border border-dashed border-zinc-600 text-center text-zinc-400 transition-all overflow-hidden">
                             {showCompactEmptyStageCard && (
                                 <button
@@ -15136,75 +15219,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 </div>
             )}
 
+            {streamlinedStageContextNav}
+
             <div className={`min-h-[55dvh] flex-1 p-4 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar relative z-0 ${isNativeMobileLayout ? 'mobile-native-content' : ''}`}>
 
                 {tab === 'home' && (
                     <div className="space-y-5">
-                        {showStreamlinedIdleRequestCard && (
-                            <div className="rounded-[1.75rem] border border-cyan-300/24 bg-[linear-gradient(145deg,rgba(8,16,30,0.96),rgba(10,10,18,0.94))] px-4 py-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200/84">Room Ready</div>
-                                        <div className="mt-1 text-[1.25rem] font-black leading-tight text-white">
-                                            No one is on stage yet
-                                        </div>
-                                        <div className="mt-2 text-sm leading-6 text-zinc-300">
-                                            Sing, support, or just wait for the room to light up. Songs is for joining the queue. Party is for reacting once someone is live.
-                                        </div>
-                                    </div>
-                                    <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
-                                        <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Queue</div>
-                                        <div className="font-bebas text-2xl tracking-[0.18em] text-cyan-200">{queueSongsView.length || 0}</div>
-                                    </div>
-                                </div>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                                        <i className="fa-solid fa-users text-[9px]"></i>
-                                        {allUsers.length || 0} in room
-                                    </span>
-                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                                        <i className="fa-solid fa-hashtag text-[9px]"></i>
-                                        Room {roomCode || 'AAHF'}
-                                    </span>
-                                </div>
-                                <div className="mt-4 flex flex-wrap items-center gap-2">
-                                    <button
-                                        type="button"
-                                        data-feature-id="singer-streamlined-idle-request-cta"
-                                        onClick={() => openStreamlinedPrimaryStageTab('request')}
-                                        className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_16px_36px_rgba(0,0,0,0.2)]"
-                                        style={audienceBrandPalette.primaryPillStyle}
-                                    >
-                                        <i className="fa-solid fa-music"></i>
-                                        Add Song
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={openDirectSupportFlow}
-                                        className={`inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black uppercase tracking-[0.18em] ${allowsDonationAccess ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100 hover:bg-emerald-500/20' : 'border-white/12 bg-white/6 text-zinc-100 hover:bg-white/10'}`}
-                                    >
-                                        <i className="fa-solid fa-heart"></i>
-                                        {allowsDonationAccess ? 'Support the Festival' : 'View Points'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setTab('request');
-                                            setSongsTab('queue');
-                                        }}
-                                        className="inline-flex items-center justify-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-100"
-                                    >
-                                        <i className="fa-solid fa-list"></i>
-                                        Queue {queueSongsView.length || 0}
-                                    </button>
-                                </div>
-                                <div className="mt-3 text-xs leading-5 text-zinc-300">
-                                    {allowsDonationAccess
-                                        ? 'Not singing tonight? Support the fundraiser here, then stay in Party for games, reactions, and donation callouts.'
-                                        : 'Songs is where you add yourself. Party is where you react once the room is rolling.'}
-                                </div>
-                            </div>
-                        )}
                          {autoCrowdMomentActive && (
                              <div className="rounded-2xl border border-cyan-300/45 bg-gradient-to-r from-cyan-500/14 via-[#08111d] to-fuchsia-500/14 px-3 py-3 shadow-[0_0_20px_rgba(34,211,238,0.18)]">
                                  <div className="flex items-center justify-between gap-3">
@@ -15275,50 +15295,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     Add Song to Start Karaoke
                                 </button>
                              </div>
-                        ) : showStreamlinedIdleReactionGuide ? (
-                            <>
-                                <div
-                                    data-feature-id="singer-streamlined-idle-reaction-guide"
-                                    className="rounded-2xl border border-fuchsia-300/24 bg-gradient-to-br from-fuchsia-500/12 via-[#0a1020] to-cyan-500/12 p-4 shadow-[0_0_22px_rgba(217,70,239,0.14)]"
-                                >
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-200">Live Reactions</div>
-                                            <div className="mt-1 text-lg font-black text-white">Party reactions unlock when a singer is performing</div>
-                                            <div className="mt-1 text-sm text-zinc-300">
-                                                Hearts, hype, clap, and cheers spend room points only during a live song.
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="mt-4 grid grid-cols-2 gap-2" data-feature-id="singer-idle-disabled-reaction-buttons">
-                                        {[
-                                            { key: 'fire', label: 'Hype', tone: 'border-orange-400/40 bg-orange-500/12 text-orange-100' },
-                                            { key: 'heart', label: 'Love', tone: 'border-pink-400/40 bg-pink-500/12 text-pink-100' },
-                                            { key: 'clap', label: 'Clap', tone: 'border-cyan-400/40 bg-cyan-500/12 text-cyan-100' },
-                                            { key: 'drink', label: 'Cheers', tone: 'border-blue-400/40 bg-blue-500/12 text-blue-100' }
-                                        ].map((reaction) => (
-                                            <button key={reaction.key} type="button" disabled data-feature-id={`idle-reaction-${reaction.key}-button`} className={`relative overflow-hidden rounded-2xl border-2 px-3 py-3 opacity-55 ${reaction.tone} cursor-not-allowed`}>
-                                                <span className="block text-3xl leading-none grayscale">{getEmojiChar(reaction.key)}</span>
-                                                <span className="mt-2 block text-sm font-black uppercase tracking-[0.16em]">{reaction.label}</span>
-                                                <span className="mt-1 inline-flex rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/70">Standby</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-200">
-                                        Reactions wake up once someone is on stage.
-                                        {howToPlayFeaturedGameLabels.length ? ` Tonight's game deck: ${howToPlayFeaturedGameLabels.join(' â¬¢ ')}.` : ' Bonus games will explain themselves here when the host launches them.'}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowHowToPlay(true)}
-                                        className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200"
-                                    >
-                                        <i className="fa-solid fa-circle-info text-[10px]"></i>
-                                        How it works
-                                    </button>
-                                </div>
-                            </>
-                        ) : noSingerOnStage && !performanceReactionsReady ? (
+                        ) : isStreamlinedAudienceShell ? null : noSingerOnStage && !performanceReactionsReady ? (
                              <>
                                  <div className="rounded-2xl border border-cyan-300/28 bg-gradient-to-r from-cyan-500/12 via-[#0a1020] to-fuchsia-500/12 p-4 shadow-[0_0_20px_rgba(34,211,238,0.12)]">
                                      <div className="flex items-center justify-between gap-3">
@@ -15439,6 +15416,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                              bonusReactionCapacity={bonusReactionCapacity}
                                              reactionSlotCount={reactionSlotCount}
                                              fifthReactionSlotPointsCost={fifthReactionSlotPointsCost}
+                                             fifthReactionSlotPurchasesEnabled={fifthReactionSlotPurchasesEnabled}
                                              sixthReactionSlotProduct={sixthReactionSlotProduct}
                                              isReactionCoolingDown={isReactionCoolingDown}
                                              renderReactionCooldownFill={renderReactionCooldownFill}
@@ -15460,7 +15438,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             {!isStreamlinedAudienceShell && (
                                 <button onClick={() => setShowHowToPlay(true)} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">How to Play</button>
                             )}
-                            <button onClick={openEditProfile} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">Change Name/Emoji</button>
+                            <button onClick={openEditProfile} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">Change Name/Avatar</button>
                          </div>
                     </div>
                 )}
@@ -15782,7 +15760,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     </div>
                                 )}
                                 <div className="flex flex-col gap-2">
-                                    <button onClick={openEditProfile} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">Change Name/Emoji</button>
+                                    <button onClick={openEditProfile} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">Change Name/Avatar</button>
                                     <button onClick={() => openPublicProfile({ ...user, uid, isVip: isVipAccount })} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">View Public Profile</button>
                                     {isVipAccount && (
                                         <button onClick={() => setShowAccount(true)} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-2 rounded-xl text-sm font-bold">{accessBrandLabel} & History</button>
@@ -16562,7 +16540,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         </div>
                                     )}
                                 </div>
-                                {(!isStreamlinedAudienceShell || latestMyRequest || activeRequestCount > 0) && (
+                                {!isStreamlinedAudienceShell && (
                                 <div data-feature-id="singer-my-requests-panel" className="mt-6 border-t border-zinc-800 pt-4 flex-1">
                                     <div className={`rounded-2xl border border-white/10 text-left ${isStreamlinedAudienceShell ? 'bg-black/25 p-3.5' : 'bg-zinc-900/40 p-4'}`}>
                                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -16629,75 +16607,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 {isStreamlinedAudienceShell ? (
                                     <div className="space-y-3">
                                         {renderStreamlinedInlineSearchResults()}
-                                        <button
-                                            type="button"
-                                            data-feature-id="audience-tight15-discovery"
-                                            onClick={() => setSongsTab('tight15')}
-                                            className="flex w-full items-center gap-3 rounded-2xl border border-cyan-300/25 bg-gradient-to-r from-cyan-500/12 via-black/20 to-fuchsia-500/12 p-3.5 text-left shadow-[0_10px_28px_rgba(0,0,0,0.2)]"
-                                        >
-                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/35 bg-cyan-500/15 text-lg text-cyan-100">
-                                                <i className="fa-solid fa-bolt"></i>
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-200/80">Your Tight 15</div>
-                                                <div className="mt-0.5 text-sm font-bold leading-snug text-white">Your 15 go-to karaoke songs</div>
-                                                <div className="mt-0.5 text-xs leading-snug text-zinc-400">Hosts and game modes can pull from your list.</div>
-                                            </div>
-                                            <div className="shrink-0 text-right">
-                                                <div className="text-sm font-black text-white">{getTight15List().length}/{TIGHT15_MAX}</div>
-                                                <div className={`text-[9px] font-black uppercase tracking-[0.12em] ${canSaveTight15 ? 'text-cyan-200' : 'text-fuchsia-200'}`}>
-                                                    {canSaveTight15 ? 'Saved' : 'Account'}
-                                                </div>
-                                            </div>
-                                            <i className="fa-solid fa-chevron-right text-xs text-zinc-500"></i>
-                                        </button>
-                                        {latestMyRequest ? (
-                                            <div className="rounded-2xl border border-white/10 bg-black/25 p-3.5 text-left">
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="min-w-0">
-                                                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/80">Latest request</div>
-                                                        <div className="mt-1 text-lg font-black text-white">{latestMyRequest.songTitle}</div>
-                                                        <div className="text-sm text-zinc-400">{latestMyRequest.artist}</div>
-                                                    </div>
-                                                    {latestMyRequestStateMeta && (
-                                                        <div className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                                            <i className={`fa-solid ${latestMyRequestStateMeta.icon} mr-1`}></i>
-                                                            {latestMyRequestStateMeta.label}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="mt-3 flex flex-wrap gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setSongsTab('queue')}
-                                                        className="rounded-full bg-[#00C4D9] px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-black"
-                                                    >
-                                                        Open Queue
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setSearchQ('');
-                                                            setCatalogSearchOpen(false);
-                                                            setSongsTab('browse');
-                                                        }}
-                                                        className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-cyan-100"
-                                                    >
-                                                        Browse More
-                                                    </button>
-                                                    {latestMyRequest?.collabOpen && (
-                                                        <div className="rounded-full border border-pink-300/30 bg-pink-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-pink-100">
-                                                            Duet open
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                {latestMyRequestStateMeta?.detail ? (
-                                                    <div className={`mt-3 rounded-2xl border px-3 py-3 text-sm ${getAudienceRequestStateDetailClass(latestMyRequestStateMeta.tone)}`}>
-                                                        {latestMyRequestStateMeta.detail}
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        ) : null}
                                     </div>
                                 ) : (
                                     <div className="text-left">
@@ -17455,12 +17364,19 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             )}
             {floatingEngagementPrompt && (
                 <button
-                    onClick={() => { pulseNativeUiFeedback(); setTab('home'); }}
+                    onClick={() => {
+                        if (showPerformanceVotingPromptCta) {
+                            openAudienceVoting();
+                            return;
+                        }
+                        pulseNativeUiFeedback();
+                        setTab('home');
+                    }}
                     className={`fixed left-1/2 -translate-x-1/2 z-[96] rounded-full border ${showPopTriviaPromptCta ? 'border-yellow-200/80 bg-yellow-300 text-black shadow-[0_14px_34px_rgba(250,204,21,0.45)] px-5 py-3 text-xs' : 'border-cyan-300/55 bg-cyan-500/22 text-cyan-100 shadow-[0_10px_28px_rgba(34,211,238,0.35)] px-4 py-2 text-[10px]'} font-black uppercase tracking-[0.22em] ${isNativeMobileLayout ? 'mobile-native-engagement-pill' : ''}`}
                     style={{ bottom: `calc(${mobileFloatingBottomInset} + 2.75rem)` }}
                 >
                     <i className={`fa-solid ${floatingEngagementPrompt.icon} mr-2`}></i>
-                    {floatingEngagementPrompt.label}
+                    {showPerformanceVotingPromptCta && !showPopTriviaPromptCta ? 'Open Voting' : floatingEngagementPrompt.label}
                 </button>
             )}
             {requestSubmitPending && (

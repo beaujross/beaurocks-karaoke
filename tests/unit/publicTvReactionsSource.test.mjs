@@ -11,7 +11,7 @@ const hostTopChromeSource = readFileSync('src/apps/Host/components/HostTopChrome
 test('PublicTV keeps floating reaction emojis visible in simple profile while trimming the heavier labels', () => {
   assert.match(
     source,
-    /\{reactions\.filter\(\(r\) => !r\.audienceDisplaySessionId\)\.map\(r => \{/,
+    /\{presentedReactions\.map\(r => \{/,
     'Reaction rendering should not be gated behind ambient-fx mode alone.',
   );
   assert.doesNotMatch(
@@ -21,8 +21,8 @@ test('PublicTV keeps floating reaction emojis visible in simple profile while tr
   );
   assert.match(
     source,
-    /isSimpleTvProfile \? \(/,
-    'Simple TV profile should use its own lighter reaction label treatment.',
+    /isSimpleTvProfile \|\| reactionDisplayCrowded \? \(/,
+    'Simple and crowded TV profiles should use the lighter reaction label treatment.',
   );
   assert.match(
     source,
@@ -92,6 +92,17 @@ test('PublicTV reaction animations provide stronger arrival staging and a reduce
   );
 });
 
+test('PublicTV exposes collectible flourishes for selected voting reactions', () => {
+  assert.match(source, /const TvReactionFlourish/);
+  assert.match(source, /visualStyle === 'tomato_splat'/);
+  assert.match(source, /visualStyle === 'confetti'/);
+  assert.match(source, /visualStyle === 'neon_bolt'/);
+  assert.match(source, /visualStyle === 'mic_drop'/);
+  assert.match(source, /visualStyle === 'ufo_beam'/);
+  assert.match(source, /visualStyle === 'dragon_breath'/);
+  assert.match(source, /data-reaction-visual-style=/);
+});
+
 test('PublicTV keeps support celebrations full-screen even outside the ambient TV profile', () => {
   assert.match(
     source,
@@ -113,7 +124,7 @@ test('PublicTV keeps support celebrations full-screen even outside the ambient T
 test('PublicTV keeps clap reactions above the applause meter overlay', () => {
   assert.match(
     source,
-    /<div className=\{`absolute inset-0 \$\{applauseOverlayVisible \? 'z-\[285\]' : 'z-\[200\]'\} pointer-events-none overflow-hidden`\}>/,
+    /<div className=\{`absolute inset-0 \$\{applauseOverlayVisible \? 'z-\[285\]' : 'z-\[200\]'\} pointer-events-none overflow-hidden`\} data-tv-reaction-count=/,
     'The floating reaction layer should rise above the z-260 applause meter while applause mode is active.',
   );
 });

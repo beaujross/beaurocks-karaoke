@@ -53,6 +53,7 @@ import {
 import { searchAppleCatalog } from '../../../lib/appleSearchClient';
 import { SOUNDS } from '../../../lib/gameDataConstants';
 import { createLogger } from '../../../lib/logger';
+import { NIGHT_EXPERIENCE_IDS, deriveNightExperienceId } from '../../../lib/nightPlan.js';
 import { POP_TRIVIA_VOTE_TYPE } from '../../../lib/popTrivia';
 import HOST_UI_FEATURE_CHECKLIST from '../hostUiFeatureChecklist';
 import {
@@ -129,6 +130,7 @@ import {
   normalizeMediaSceneAudienceReactionMode,
 } from '../../../lib/mediaSceneConfig';
 import buildHostRuntimeShellModel from '../lib/hostRuntimeShellModel';
+import { buildUnifiedTonightLineup } from '../lib/betweenSongMomentAutomation';
 import {
   getHostRuntimeShellMode,
   isPostPerformanceBackingPromptEnabled,
@@ -758,7 +760,7 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, youtubePlaylistUrl = '', setYoutubePlaylistUrl = () => {}, youtubePlaylistLoading = false, youtubePlaylistStatus = '', onQueueYouTubePlaylist = async () => {}, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onFocusRunOfShowItem, onPreviewRunOfShowItem, onUpdateRunOfShowItem, onAddQuickRunOfShowMoment, onPromotePreparedRunOfShowItems, runOfShowDirectorPanel = null, onStartRunOfShow, onAdvanceRunOfShow, onToggleRunOfShowPause, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, backgroundAudioSource = '', switchBackgroundAudioSource = async () => ({ ok: false }), currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', catalogPanel = null, youtubePlaylistUrl = '', setYoutubePlaylistUrl = () => {}, youtubePlaylistLoading = false, youtubePlaylistStatus = '', onQueueYouTubePlaylist = async () => {}, updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, autoBgMusic = false, setAutoBgMusic = () => {}, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, appleMusicPickerModes = [], appleMusicPickerMode = 'library', setAppleMusicPickerMode = () => {}, appleMusicPickerQuery = '', setAppleMusicPickerQuery = () => {}, appleMusicPickerItems = [], appleMusicPickerLoading = false, appleMusicPickerError = '', appleMusicBgPendingId = '', loadAppleMusicPicker = async () => {}, applyAppleMusicPlaylistForBg = async () => {}, appleMusicAutoPlaylistId = '', appleMusicAutoPlaylistTitle = '', connectAppleMusic = async () => {}, disconnectAppleMusic = async () => {}, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onFocusRunOfShowItem, onPreviewRunOfShowItem, onUpdateRunOfShowItem, onDeleteRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onGenerateRunOfShowTrivia, onGenerateRunOfShowWyr, onAddQuickRunOfShowMoment, onPromotePreparedRunOfShowItems, runOfShowDirectorPanel = null, onStartRunOfShow, onAdvanceRunOfShow, onToggleRunOfShowPause, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, setBgMusicState = async () => {}, backgroundAudioSource = '', switchBackgroundAudioSource = async () => ({ ok: false }), currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -828,6 +830,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         _previewIframe,
         _setPreviewIframe
     } = useQueueTabState({ hostName, roomCode });
+    const originalTrackProviderRoomRef = useRef('');
+    useEffect(() => {
+        if (!roomCode || !appleMusicAuthorized) return;
+        if (deriveNightExperienceId(room || {}) !== NIGHT_EXPERIENCE_IDS.originalTracks) return;
+        if (originalTrackProviderRoomRef.current === roomCode) return;
+        originalTrackProviderRoomRef.current = roomCode;
+        setAutocompleteProvider('apple');
+    }, [appleMusicAuthorized, room, roomCode, setAutocompleteProvider]);
     const [scenePresetTitle, setScenePresetTitle] = useState('');
     const [scenePresetDurationSec, setScenePresetDurationSec] = useState(20);
     const [sceneLibraryOpen, setSceneLibraryOpen] = useState(false);
@@ -1938,11 +1948,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         usageSource: 'host_queue_search_apple'
                     });
                     if (cancelled) return;
+                    const originalTrackParty = deriveNightExperienceId(room || {}) === NIGHT_EXPERIENCE_IDS.originalTracks;
                     const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
                         sourceReason: 'apple_authorized',
-                        sourceDetail: 'Apple Music song match. Pick a YouTube backing or approve Apple sing-along.'
+                        sourceDetail: originalTrackParty
+                            ? 'Apple Music original recording. Lyrics readiness is checked separately.'
+                            : 'Apple Music song match. Pick a YouTube backing or approve Apple sing-along.'
                     });
-                    setQueueSearchSourceNote('Autocomplete source: Apple Music song intent + local library.');
+                    setQueueSearchSourceNote(originalTrackParty
+                        ? 'Autocomplete source: Apple Music originals + local library.'
+                        : 'Autocomplete source: Apple Music song intent + local library.');
                     setQueueSearchNoResultHint('No Apple Music song matches yet. Try song + artist.');
                     await publishCanonicalResults(mergeUniqueQueueSearchResults(localMatches, itunesMatches));
                 } catch (_error) {
@@ -2008,7 +2023,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             cancelled = true;
             clearTimeout(t);
         }; 
-    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, accountYtIndex, globalYtIndex, searchSources, setResults, appleMusicAuthorized, roomCode, youtubeSearchMode]);
+    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, accountYtIndex, globalYtIndex, searchSources, setResults, appleMusicAuthorized, room, roomCode, youtubeSearchMode]);
 
     const getResultRowKey = (r, idx = 0) => {
         return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
@@ -4365,14 +4380,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     );
     const preparedMomentCount = preparedMoments.length;
     const momentPrepTimelineItems = useMemo(
-        () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
-            .filter((item) => (
-                item?.destination !== 'planner'
-                && String(item?.status || '').trim().toLowerCase() !== 'prepared'
-                && !['complete', 'skipped'].includes(String(item?.status || '').trim().toLowerCase())
-            ))
-            .sort((a, b) => Number(a?.sequence || 0) - Number(b?.sequence || 0)),
-        [runOfShowDirector?.items]
+        () => buildUnifiedTonightLineup({
+            queueSongs: [...assigned, ...queue],
+            directorItems: (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
+                .filter((item) => (
+                    item?.destination !== 'planner'
+                    && String(item?.status || '').trim().toLowerCase() !== 'prepared'
+                    && !['complete', 'skipped'].includes(String(item?.status || '').trim().toLowerCase())
+                )),
+        }),
+        [assigned, queue, runOfShowDirector?.items]
     );
     const hasRunOfShowQueueWork = runOfShowEnabled && (reviewQueueItems.length > 0 || pending.length > 0 || queue.length > 0 || assigned.length > 0);
     const runOfShowNeedsAttentionCount = Math.max(
@@ -6163,6 +6180,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
                 onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
                 onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
+                lineupPlanItems={momentPrepTimelineItems}
+                runOfShowEnabled={runOfShowEnabled}
+                crowdMomentAutomation={room?.missionControl?.party || {}}
+                onFocusRunOfShowItem={onFocusRunOfShowItem}
+                onMoveRunOfShowItem={onMoveRunOfShowItem}
+                onSkipRunOfShowItem={onSkipRunOfShowItem}
+                onUpdateRunOfShowItem={onUpdateRunOfShowItem}
+                onDeleteRunOfShowItem={onDeleteRunOfShowItem}
+                onGenerateRunOfShowTrivia={onGenerateRunOfShowTrivia}
+                onGenerateRunOfShowWyr={onGenerateRunOfShowWyr}
                 renderSummaryBarInline={false}
                 selfServeMode={selfServeMode}
                 selfServeAuctionLeaderboard={spotlightAuctionLeaderboard}

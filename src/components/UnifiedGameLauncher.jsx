@@ -521,7 +521,10 @@ const UnifiedGameLauncher = ({
     onForfeitBracketContestant,
     onAddQuickRunOfShowMoment,
     hostVoiceMicControl = null,
-    compactLiveSwitcher = false
+    compactLiveSwitcher = false,
+    runOfShowLiveItem = null,
+    onRevealRunOfShowPrompt = null,
+    onCompleteRunOfShowPrompt = null,
 }) => {
     const toast = useToast() || console.log;
     const canUseAiGeneration = !!capabilities?.['ai.generate_content'];
@@ -755,6 +758,13 @@ const UnifiedGameLauncher = ({
         wyr: 'Would You Rather',
         wyr_reveal: 'Would You Rather'
     }[room?.activeMode] || (String(room?.lightMode || '').trim().toLowerCase() === 'volley' ? 'Volley Orb' : '');
+    const activeRunOfShowPrompt = !!runOfShowLiveItem?.id
+        && ['trivia_break', 'would_you_rather_break'].includes(String(runOfShowLiveItem?.type || '').trim().toLowerCase());
+    const activeRunOfShowPromptState = runOfShowLiveItem?.type === 'trivia_break' ? room?.triviaQuestion : room?.wyrData;
+    const activeRunOfShowPromptReveal = activeRunOfShowPrompt && (
+        ['trivia_reveal', 'wyr_reveal'].includes(String(room?.activeMode || '').trim().toLowerCase())
+        || String(activeRunOfShowPromptState?.status || '').trim().toLowerCase() === 'reveal'
+    );
 
     useEffect(() => {
         if (!roomCode) return () => {};
@@ -954,6 +964,16 @@ const UnifiedGameLauncher = ({
     };
     
     const stopGame = async () => {
+        if (activeRunOfShowPrompt) {
+            if (!activeRunOfShowPromptReveal) {
+                await onRevealRunOfShowPrompt?.(runOfShowLiveItem.id);
+                toast(runOfShowLiveItem.type === 'trivia_break' ? 'Trivia answer revealed.' : 'Would You Rather results revealed.');
+                return;
+            }
+            await onCompleteRunOfShowPrompt?.();
+            toast('Moment ended. Continuing Tonight\'s Lineup.');
+            return;
+        }
         const recap = buildVocalGameRecap(room?.activeMode, room?.gameData || {});
         const patch = { activeMode: 'karaoke', gameData: recap ? { recap } : null, gameParticipantMode: 'all', gameParticipants: [] };
         if (String(room?.lightMode || '').trim().toLowerCase() === 'volley') {
@@ -2095,12 +2115,12 @@ const UnifiedGameLauncher = ({
                             <div className="text-sm font-bold text-white">{activeGameLabel}</div>
                         </div>
                         <div className="flex flex-wrap gap-2 justify-end">
-                            {(room?.activeMode === 'trivia_pop' || room?.activeMode === 'trivia_reveal') && (
+                            {!runOfShowLiveItem?.id && (room?.activeMode === 'trivia_pop' || room?.activeMode === 'trivia_reveal') && (
                                 <button onClick={launchNextTrivia} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}>
                                     <i className="fa-solid fa-forward-step mr-1"></i> Next Question
                                 </button>
                             )}
-                            {(room?.activeMode === 'wyr' || room?.activeMode === 'wyr_reveal') && (
+                            {!runOfShowLiveItem?.id && (room?.activeMode === 'wyr' || room?.activeMode === 'wyr_reveal') && (
                                 <button onClick={launchNextWyr} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}>
                                     <i className="fa-solid fa-forward-step mr-1"></i> Next Question
                                 </button>
@@ -2109,7 +2129,7 @@ const UnifiedGameLauncher = ({
                                 <i className="fa-solid fa-circle-question mr-1"></i> Show Rules
                             </button>
                             <button onClick={stopGame} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-[10px]`}>
-                                <i className="fa-solid fa-stop mr-1"></i> Stop
+                                <i className="fa-solid fa-stop mr-1"></i> {activeRunOfShowPrompt ? (activeRunOfShowPromptReveal ? 'End + Continue' : 'Reveal Now') : 'Stop'}
                             </button>
                         </div>
                     </div>

@@ -7,7 +7,7 @@ const singerSource = readFileSync('src/apps/Mobile/SingerApp.jsx', 'utf8');
 const functionsSource = readFileSync('functions/index.js', 'utf8');
 const indexes = JSON.parse(readFileSync('firestore.indexes.json', 'utf8'));
 
-test('streamlined Songs keeps Tight 15 visible and explains what it does', () => {
+test('streamlined Songs keeps Tight 15 available once without a duplicate discovery card', () => {
   assert.match(
     singerSource,
     /const streamlinedSongsNavItems = \[[\s\S]*\{ key: 'tight15', label: 'Tight 15'[\s\S]*\];/,
@@ -16,9 +16,7 @@ test('streamlined Songs keeps Tight 15 visible and explains what it does', () =>
     singerSource,
     /songsTab !== 'tight15' \|\| bracketSignupActive[\s\S]*setSongsTab\('browse'\)/,
   );
-  assert.match(singerSource, /data-feature-id="audience-tight15-discovery"/);
-  assert.match(singerSource, /Your 15 go-to karaoke songs/);
-  assert.match(singerSource, /Hosts and game modes can pull from your list/);
+  assert.doesNotMatch(singerSource, /data-feature-id="audience-tight15-discovery"/);
   assert.match(singerSource, /data-feature-id="audience-tight15-library"/);
 });
 

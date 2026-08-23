@@ -449,7 +449,7 @@ export const getRunOfShowRoleCapabilities = (role = '') => {
         return { canOperate: true, canPauseAutomation: true, canReviewSubmissions: true, canCurateMedia: true, canEditFlow: true, canManageTemplates: true, canManageRoles: true };
     }
     if (safeRole === RUN_OF_SHOW_OPERATOR_ROLES.coHost) {
-        return { canOperate: true, canPauseAutomation: false, canReviewSubmissions: true, canCurateMedia: true, canEditFlow: true, canManageTemplates: true, canManageRoles: false };
+        return { canOperate: false, canPauseAutomation: false, canReviewSubmissions: false, canCurateMedia: false, canEditFlow: false, canManageTemplates: false, canManageRoles: false };
     }
     if (safeRole === RUN_OF_SHOW_OPERATOR_ROLES.stageManager || safeRole === RUN_OF_SHOW_OPERATOR_ROLES.mediaCurator) {
         return { canOperate: true, canPauseAutomation: false, canReviewSubmissions: true, canCurateMedia: true, canEditFlow: true, canManageTemplates: true, canManageRoles: false };
@@ -725,13 +725,38 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
             ? overrides.submissionWindow
             : {},
         queueLinkState: cleanText(overrides.queueLinkState).toLowerCase() || 'unlinked',
+        queueSongId: cleanText(overrides.queueSongId || overrides.preparedQueueSongId),
         preparedQueueSongId: cleanText(overrides.preparedQueueSongId),
+        activePerformanceSessionId: cleanText(overrides.activePerformanceSessionId),
+        executionEpoch: Math.max(0, Math.floor(Number(overrides.executionEpoch || 0) || 0)),
         onDeckAtMs: asTimestampMs(overrides.onDeckAtMs, 0),
         flightedAtMs: asTimestampMs(overrides.flightedAtMs, 0),
         stagedAtMs: asTimestampMs(overrides.stagedAtMs, 0),
         liveStartedAtMs: asTimestampMs(overrides.liveStartedAtMs, 0),
         completedAtMs: asTimestampMs(overrides.completedAtMs, 0),
         blockedReason: cleanText(overrides.blockedReason),
+        automationOccurrence: overrides.automationOccurrence && typeof overrides.automationOccurrence === 'object'
+            ? {
+                source: cleanText(overrides.automationOccurrence.source).toLowerCase(),
+                occurrenceKey: cleanText(overrides.automationOccurrence.occurrenceKey),
+                ruleId: cleanText(overrides.automationOccurrence.ruleId),
+                kind: cleanText(overrides.automationOccurrence.kind).toLowerCase(),
+                lifecycleSlot: cleanText(overrides.automationOccurrence.lifecycleSlot).toLowerCase(),
+                cycle: clampInt(overrides.automationOccurrence.cycle, 1, 9999, 1),
+                cadence: clampInt(overrides.automationOccurrence.cadence, 1, 12, 3),
+                boundaryOrdinal: clampInt(overrides.automationOccurrence.boundaryOrdinal, 1, 9999, 1),
+                anchorQueueSongId: cleanText(overrides.automationOccurrence.anchorQueueSongId),
+                anchorQueueIndex: clampInt(overrides.automationOccurrence.anchorQueueIndex, 0, 9999, 0),
+                placementMode: cleanText(overrides.automationOccurrence.placementMode).toLowerCase() === 'host_pinned' ? 'host_pinned' : 'automatic',
+                contentOwnership: cleanText(overrides.automationOccurrence.contentOwnership).toLowerCase() === 'host' ? 'host' : 'automation',
+                contentState: cleanText(overrides.automationOccurrence.contentState).toLowerCase() || 'waiting_for_context',
+                sourcePerformanceIds: Array.isArray(overrides.automationOccurrence.sourcePerformanceIds)
+                    ? overrides.automationOccurrence.sourcePerformanceIds.map(cleanText).filter(Boolean).slice(0, 12)
+                    : [],
+                sourceCutoffMs: asTimestampMs(overrides.automationOccurrence.sourceCutoffMs, 0),
+                contextHash: cleanText(overrides.automationOccurrence.contextHash),
+            }
+            : null,
         backingPlan: createDefaultBackingPlan(overrides.backingPlan || {}),
         presentationPlan: createDefaultPresentationPlan(safeType, overrides.presentationPlan || {}),
         audioPlan: createDefaultAudioPlan(safeType, overrides.audioPlan || {}),
@@ -1149,8 +1174,10 @@ export const syncRunOfShowBeltPhases = (director = {}) => {
 };
 
 export const createDefaultRunOfShowDirector = (overrides = {}) => ({
-    version: 1,
+    version: Math.max(2, Number(overrides.version || 0) || 0),
+    revision: Math.max(0, Math.floor(Number(overrides.revision || 0) || 0)),
     enabled: overrides.enabled === true,
+    automationIntent: cleanText(overrides.automationIntent) === 'manual' ? 'manual' : 'auto',
     automationPaused: overrides.automationPaused === true,
     holdCurrent: overrides.holdCurrent === true,
     holdAfterCurrent: overrides.holdAfterCurrent === true,
@@ -1159,10 +1186,29 @@ export const createDefaultRunOfShowDirector = (overrides = {}) => ({
     lastCompletedItemId: cleanText(overrides.lastCompletedItemId),
     lastPreparedItemId: cleanText(overrides.lastPreparedItemId),
     lastAutomationAtMs: asTimestampMs(overrides.lastAutomationAtMs, 0),
+    executionEpoch: Math.max(0, Math.floor(Number(overrides.executionEpoch || 0) || 0)),
+    activePerformanceSessionId: cleanText(overrides.activePerformanceSessionId),
+    recentOperations: Array.isArray(overrides.recentOperations)
+        ? overrides.recentOperations.filter((entry) => entry && typeof entry === 'object').slice(-40)
+        : [],
+    removedLineupItems: Array.isArray(overrides.removedLineupItems)
+        ? overrides.removedLineupItems.filter((entry) => entry && typeof entry === 'object').slice(-20)
+        : [],
     audioSnapshot: overrides.audioSnapshot && typeof overrides.audioSnapshot === 'object'
         ? overrides.audioSnapshot
         : null,
     releaseWindow: createDefaultRunOfShowReleaseWindow(overrides.releaseWindow || {}),
+    betweenSongAutomation: overrides.betweenSongAutomation && typeof overrides.betweenSongAutomation === 'object'
+        ? {
+            ruleId: cleanText(overrides.betweenSongAutomation.ruleId),
+            suppressedOccurrenceKeys: Array.isArray(overrides.betweenSongAutomation.suppressedOccurrenceKeys)
+                ? overrides.betweenSongAutomation.suppressedOccurrenceKeys.map(cleanText).filter(Boolean).slice(-120)
+                : [],
+            lastReconciledQueueSongIds: Array.isArray(overrides.betweenSongAutomation.lastReconciledQueueSongIds)
+                ? overrides.betweenSongAutomation.lastReconciledQueueSongIds.map(cleanText).filter(Boolean).slice(0, 250)
+                : [],
+        }
+        : { ruleId: '', suppressedOccurrenceKeys: [], lastReconciledQueueSongIds: [] },
     items: resequenceRunOfShowItems(Array.isArray(overrides.items) ? overrides.items : [])
 });
 

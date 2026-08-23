@@ -6,6 +6,7 @@ import {
     normalizeAudienceFeatureAccess,
 } from '../../lib/audienceFeatureAccess.js';
 import { normalizeAudienceJoinPolicy } from '../../lib/audienceJoinPolicy.js';
+import { normalizeNightPlan } from '../../lib/nightPlan.js';
 
 export const HOST_NIGHT_PRESET_STORAGE_KEY = 'bross_host_custom_presets_v1';
 
@@ -89,6 +90,10 @@ const normalizeRequestMode = (value = '', fallback = REQUEST_MODES.canonicalOpen
 };
 
 const normalizePresetSettings = (value = {}, fallback = {}) => ({
+    nightPlan: normalizeNightPlan(value?.nightPlan || fallback?.nightPlan || {}, {
+        ...fallback,
+        ...value,
+    }),
     autoDj: value?.autoDj !== undefined ? !!value.autoDj : !!fallback.autoDj,
     autoBgMusic: value?.autoBgMusic !== undefined ? !!value.autoBgMusic : !!fallback.autoBgMusic,
     autoPlayMedia: value?.autoPlayMedia !== undefined ? !!value.autoPlayMedia : fallback?.autoPlayMedia !== false,

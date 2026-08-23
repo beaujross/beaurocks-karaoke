@@ -159,6 +159,36 @@ test('applePlaybackSession marks the session ended when playback stops at the re
     assert.equal(patch['currentPerformanceSession.endedAtMs'], 210000);
 });
 
+test('applePlaybackSession preserves the backing-ended signal when the final snapshot also corrects track identity', () => {
+    const patch = buildApplePlaybackSyncPatch({
+        session: {
+            sourceType: 'apple_music',
+            appleMusicId: 'apple_track_final',
+            playbackState: 'playing',
+            expectedDurationSec: 180
+        },
+        applePlayback: {
+            type: 'song',
+            id: '',
+            status: 'playing',
+            durationSec: 180
+        },
+        snapshot: {
+            trackId: 'apple_track_final',
+            status: 'ended',
+            currentTimeSec: 180,
+            durationSec: 180,
+            rawPlaybackState: 'ended'
+        },
+        now: 190000
+    });
+
+    assert.equal(patch['appleMusicPlayback.id'], 'apple_track_final');
+    assert.equal(patch['appleMusicPlayback.status'], 'ended');
+    assert.equal(patch['currentPerformanceSession.playbackState'], 'ended');
+    assert.equal(patch['currentPerformanceSession.completionReason'], 'player_ended');
+});
+
 test('applePlaybackSession does not mutate a mismatched non-apple session', () => {
     const patch = buildApplePlaybackSyncPatch({
         session: {

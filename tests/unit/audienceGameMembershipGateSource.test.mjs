@@ -11,29 +11,22 @@ test('Audience resolves room-user membership before exposing active takeover con
   assert.match(source, /roomUserMembershipResolved, setRoomUserMembershipResolved/);
   assert.match(source, /setRoomUserMembershipResolved\(false\)[\s\S]+onSnapshot\(doc\(db,[\s\S]+room_users/);
   assert.match(source, /setRoomUserMembershipResolved\(true\)/);
-  assert.ok(
-    source.indexOf('if (audienceGameMembershipGate.visible) return audienceGameMembershipGateScreen;')
-      < source.indexOf('// --- VIBE SYNC OVERLAYS ---'),
-  );
-  assert.ok(
-    source.indexOf('if (audienceGameMembershipGate.visible) return audienceGameMembershipGateScreen;')
-      < source.indexOf('// --- GAME INTERCEPTION ---'),
-  );
+  assert.match(source, /if \(!user && !roomUserMembershipResolved && activeUid && !isMarketingDemoFixture\)/);
+  assert.match(source, /data-singer-view="membership-connecting"/);
 });
 
-test('game-first join gate reuses the canonical join transaction and preserves the live destination', () => {
-  assert.match(source, /data-singer-view="game-membership-gate"/);
+test('joining during a live game uses the same canonical join screen as every room state', () => {
+  assert.doesNotMatch(source, /data-singer-view="game-membership-gate"/);
+  assert.doesNotMatch(source, /audienceGameMembershipGateScreen/);
+  assert.match(source, /data-singer-view="join"/);
   assert.match(source, /data-singer-join-name/);
   assert.match(source, /data-singer-join-button/);
   assert.match(source, /data-singer-rules-checkbox/);
   assert.match(source, /data-singer-rules-confirm/);
-  assert.match(source, /const joined = await join\(\)/);
-  assert.match(source, /Join and play \$\{audienceGameMembershipGate\.modeLabel\}/);
+  assert.match(source, /if \(!user && !isMarketingDemoFixture\) return joinScreen/);
 });
 
-test('already joined guests and deterministic fixtures bypass the join-first gate contract', () => {
-  assert.match(source, /hasRoomUser: !!user/);
-  assert.match(source, /isDemoFixture: isMarketingDemoFixture/);
+test('already joined guests and deterministic fixtures bypass the canonical join screen', () => {
   assert.match(source, /if \(!user && !roomUserMembershipResolved && activeUid && !isMarketingDemoFixture\)/);
   assert.match(source, /data-singer-view="membership-connecting"/);
   assert.match(source, /if \(!user && !isMarketingDemoFixture\) return joinScreen/);

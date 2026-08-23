@@ -41,6 +41,21 @@ test('PublicTV finalizes Pop Trivia, Guitar Sync, and Strobe awards through serv
   );
 });
 
+test('Crowd Guitar Solo uses phone-authored groove timing and a performance-first TV surface', () => {
+  assert.match(publicTvSource, /data-feature-id="tv-guitar-crowd-solo"/);
+  assert.match(publicTvSource, /data-feature-id="tv-guitar-solo-reactive-visuals"/);
+  assert.match(publicTvSource, /guitarRecentBurstCount[\s\S]*guitarEnergyTier[\s\S]*face_melting/);
+  assert.match(publicTvSource, /guitar-solo-(?:aurora|lasers|shockwave|equalizer)/);
+  assert.match(publicTvSource, /motionSafeFx \? '' : 'guitar-solo-motion'/);
+  assert.match(publicTvSource, /const grooveScore = clampLobby\(Number\(d\.grooveScore \?\? 70\)/);
+  assert.doesNotMatch(
+    publicTvSource,
+    /d\.type === 'strum'[\s\S]{0,900}getBeatOffsetMs\(eventTimestamp/,
+    'Public TV must not grade a phone strum using delayed Firestore arrival time'
+  );
+  assert.match(publicTvSource, /CROWD GUITAR SOLO[\s\S]{0,500}every hit powers the stage/i);
+});
+
 test('TV mode finalizers recompute winners and apply one-time server awards', () => {
   assert.match(functionsSource, /exports\.finalizePopTriviaQuestion = onCall/);
   assert.match(functionsSource, /findPerformingPopTriviaQuestion/);

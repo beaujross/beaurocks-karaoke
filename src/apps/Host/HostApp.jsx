@@ -5,6 +5,8 @@ import { GAMES_META } from '../../lib/gameRegistry';
 import { getRoomGameLaunchPreflight, getRunOfShowGameMode } from '../../lib/gameLaunchCompatibility';
 import HostTopChrome from './components/HostTopChrome';
 import HostQueueHorizon from './components/HostQueueHorizon';
+import HostFeedbackDrawer from './components/HostFeedbackDrawer';
+import NightPlanSummaryCard from './components/NightPlanSummaryCard';
 import ComplimentaryHostSetupReady from './components/ComplimentaryHostSetupReady';
 import { getHostSetupSteps } from './hostSetupFlowModel';
 import { buildQaHostFixture } from './qaHostFixtures';
@@ -32,7 +34,6 @@ import {
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
     addDoc, deleteDoc, serverTimestamp, limit, getDocs, getDoc, setDoc, writeBatch,
-    runTransaction,
     storage, storageRef, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject,
     auth,
     initAuth,
@@ -64,9 +65,15 @@ import {
     provisionHostRoom,
     reviewRunOfShowSlotSubmission,
     executeRunOfShowAction,
-    manageRunOfShowTemplate
+    finalizePromptVoteRound,
+    controlPromptSession,
+    mutateTonightLineup,
+    manageRunOfShowTemplate,
+    setRoomOperatorSignalStatus,
+    manageRoomCoHostInvite,
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
+import { getPerformanceRecapDurationMs, getPostPerformanceSurfaceLease } from '../../lib/postPerformanceSurfaceLease';
 import { subscribeToBoundedRoomSongs } from '../../lib/roomSongSubscriptions';
 import {
     buildRoomCostObservationCounts,
@@ -111,6 +118,12 @@ import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
 import { POINTS_PACKS } from '../../billing/catalog';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
+import {
+    NIGHT_EXPERIENCE_IDS,
+    compileNightPlanToLegacySettings,
+    deriveNightExperienceId,
+    getNightExperience,
+} from '../../lib/nightPlan.js';
 
 import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
 import { buildRoomRecapSummary, buildRoomRecapUrl } from '../../lib/roomRecap';
@@ -133,11 +146,16 @@ import {
     normalizeAudienceDisplay,
 } from '../../lib/audienceDisplay';
 import { computeOpenSlotAssignments, isOpenRunOfShowPerformanceSlot } from './lib/openSlotSuggestions';
-import { prepareRunOfShowQueueAssignment } from './lib/runOfShowQueueAssignment';
 import {
+    moveHostNightFlowItem,
     promotePreparedItemsToLiveQueue,
     schedulePreparedMomentsByPerformanceCadence,
 } from './lib/hostNightFlowModel';
+import {
+    normalizeBetweenSongMomentRule,
+    reconcileBetweenSongMomentOccurrences,
+    suppressBetweenSongOccurrence,
+} from './lib/betweenSongMomentAutomation';
 import { buildCurrentRoomRunOfShowDraft } from './lib/currentRoomRunOfShowDraft';
 import buildHostRuntimeShellModel from './lib/hostRuntimeShellModel';
 import buildHostQueueHorizonModel from './lib/hostQueueHorizonModel';
@@ -160,7 +178,8 @@ import {
     UNKNOWN_BACKING_POLICIES,
     deriveAudienceBackingMode,
     deriveUnknownBackingPolicy,
-    normalizeRoomRequestMode
+    normalizeRoomRequestMode,
+    requiresBackingHostReview
 } from '../../lib/requestModes';
 import {
     AUDIENCE_BRAND_THEME_PRESETS,
@@ -232,6 +251,7 @@ import {
     isAppleMusicLibraryPlaylistId,
     isAppleMusicStationSource,
     parseAppleMusicPlaylistId,
+    quiesceAppleMusicTransport,
 } from '../../lib/appleMusicPlaylistPlayback';
 import { createLogger } from '../../lib/logger';
 import {
@@ -544,6 +564,7 @@ const HostRoomQuickStart = lazyHostSurface(() => import('./components/HostRoomQu
 const EventCreditsConfigPanel = lazyHostSurface(() => import('./components/EventCreditsConfigPanel'), 'Audience store settings updated');
 const UnifiedGameLauncher = lazyHostSurface(() => import('../../components/UnifiedGameLauncher'), 'Game launcher updated');
 const HostChatPanel = lazyHostSurface(() => import('./components/HostChatPanel'), 'Host chat updated');
+const PromptNightSessionPanel = lazyHostSurface(() => import('./components/PromptNightSessionPanel'), 'Full-night session controls updated');
 
 const DeferredHostSurfaceFallback = ({ label = 'Loading host tools...' }) => (
     <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-400">
@@ -613,13 +634,13 @@ const ROOM_CONTROL_MODEL_OPTIONS = Object.freeze([
     },
     {
         id: 'assisted_host',
-        label: 'Assisted Host',
+        label: 'Host Assist',
         summary: 'Full songs with Auto-DJ support between performances.',
     },
     {
         id: 'crowd_driven',
-        label: 'Crowd-Driven',
-        summary: 'Mic Checkpoint plus Auto-DJ for self-service party flow.',
+        label: 'Self-Serve',
+        summary: 'Guests drive supported choices while the host supervises.',
     },
 ]);
 
@@ -1434,53 +1455,6 @@ const normalizeHostWorkspaceTab = (value = '') => {
     return 'stage';
 };
 
-const buildRunOfShowQueueAssignmentPatch = (song = {}, item = {}) => {
-    const queuePlaybackReady = isQueueEntryPlayable(song);
-    const mediaUrl = String(song?.mediaUrl || '').trim();
-    const appleMusicId = String(song?.appleMusicId || '').trim();
-    const trackId = String(song?.trackId || '').trim();
-    const youtubeId = mediaUrl ? parseYouTubeVideoId(mediaUrl) : '';
-    const sourceType = appleMusicId
-        ? 'apple_music'
-        : youtubeId
-            ? 'youtube'
-            : (mediaUrl || trackId ? 'canonical_default' : String(item?.backingPlan?.sourceType || 'canonical_default').trim().toLowerCase() || 'canonical_default');
-    const label = [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' Ã‚Â· ') || 'Queued performance';
-    const durationSec = getAssociatedBackingDurationSec(song) || normalizeDurationSec(song?.duration);
-    const shouldSyncPlannedDuration = durationSec > 0 && String(item?.plannedDurationSource || '').trim().toLowerCase() !== 'manual';
-    return {
-        performerMode: 'assigned',
-        assignedPerformerUid: String(song?.singerUid || '').trim(),
-        assignedPerformerName: String(song?.singerName || '').trim() || String(item?.assignedPerformerName || '').trim(),
-        approvedSubmissionId: '',
-        songId: String(song?.songId || '').trim(),
-        songTitle: String(song?.songTitle || '').trim(),
-        artistName: String(song?.artist || '').trim(),
-        ...(shouldSyncPlannedDuration ? {
-            plannedDurationSec: durationSec,
-            plannedDurationSource: 'backing'
-        } : {}),
-        preparedQueueSongId: String(song?.id || '').trim(),
-        queueLinkState: 'linked',
-        backingPlan: {
-            ...(item?.backingPlan || {}),
-            sourceType,
-            label,
-            durationSec,
-            songId: String(song?.songId || '').trim(),
-            trackId: sourceType === 'youtube' ? '' : trackId,
-            mediaUrl,
-            youtubeId: sourceType === 'youtube' ? youtubeId : '',
-            appleMusicId: sourceType === 'apple_music' ? (appleMusicId || trackId) : '',
-            localAssetId: '',
-            submittedBackingId: '',
-            approvalStatus: 'approved',
-            playbackReady: queuePlaybackReady,
-            resolutionStatus: queuePlaybackReady ? 'ready' : 'needs_selection'
-        }
-    };
-};
-
 const SELFIE_PROMPTS = [
     'Give us your best "Blue Steel" face',
     'Recreate a famous movie scene',
@@ -2216,6 +2190,7 @@ const playAppleMusicPlaylistQueueWithFallback = async (instance = null, playlist
     if (!instance || typeof instance.setQueue !== 'function') throw new Error('Apple Music playback unavailable');
     const attempts = buildAppleMusicPlaylistQueueAttempts(playlistId, meta);
     if (!attempts.length) throw new Error('Missing Apple Music playlist id');
+    await quiesceAppleMusicTransport(instance);
     let firstQueueError = null;
     for (const descriptor of attempts) {
         let queue = null;
@@ -2573,6 +2548,18 @@ const BILLING_WARMUP_MESSAGE = 'Billing tools are warming up. You can keep hosti
 
 const sleep = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 const RUN_OF_SHOW_PERFORMANCE_INTRO_SEC = 15;
+const RUN_OF_SHOW_PROMPT_REVEAL_SEC = 8;
+const getRunOfShowPromptTiming = (item = {}) => {
+    const launchConfig = item?.modeLaunchPlan?.launchConfig || {};
+    const totalDurationSec = Math.max(8, Math.round(Number(launchConfig?.durationSec || item?.plannedDurationSec || 20) || 20));
+    const requestedRevealSec = Math.max(3, Math.round(Number(launchConfig?.revealDurationSec || RUN_OF_SHOW_PROMPT_REVEAL_SEC) || RUN_OF_SHOW_PROMPT_REVEAL_SEC));
+    const revealDurationSec = Math.min(Math.max(3, totalDurationSec - 5), requestedRevealSec);
+    return {
+        totalDurationSec,
+        revealDurationSec,
+        questionDurationSec: Math.max(5, totalDurationSec - revealDurationSec),
+    };
+};
 const isRunOfShowModeActivationError = (error) => {
     const code = String(error?.code || '').toLowerCase();
     const message = String(error?.message || '').toLowerCase();
@@ -3377,7 +3364,18 @@ const HostRoomVoiceMicCard = ({ control, compact = false }) => {
     );
 };
 
-const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaunchUrl = '', hostVoiceMicControl = null }) => {
+const HostGameControlPad = ({
+    roomCode,
+    room,
+    updateRoom,
+    setTab,
+    tvBase,
+    tvLaunchUrl = '',
+    hostVoiceMicControl = null,
+    runOfShowLiveItem = null,
+    onRevealRunOfShowPrompt = null,
+    onCompleteRunOfShowPrompt = null,
+}) => {
     const toast = useToast() || console.log;
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
     const [doodleVotes, setDoodleVotes] = useState([]);
@@ -3424,7 +3422,9 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
     const qaHasTimer = isQaMode && qaAutoReveal && qaRevealAtMs > 0;
     const qaMsRemaining = qaHasTimer ? Math.max(0, qaRevealAtMs - qaNowMs) : 0;
     const qaSecRemaining = qaHasTimer ? Math.ceil(qaMsRemaining / 1000) : null;
-    const qaIsReveal = activeMode === 'trivia_reveal' || activeMode === 'wyr_reveal' || String(qaData?.status || '').toLowerCase() === 'reveal' || (qaHasTimer && qaMsRemaining <= 0);
+    const qaIsReveal = activeMode === 'trivia_reveal' || activeMode === 'wyr_reveal' || String(qaData?.status || '').toLowerCase() === 'reveal';
+    const runOfShowPromptLive = !!runOfShowLiveItem?.id
+        && ['trivia_break', 'would_you_rather_break'].includes(String(runOfShowLiveItem?.type || '').trim().toLowerCase());
     const triviaCorrectLabel = isTriviaMode
         ? (Array.isArray(qaData?.options) ? qaData.options[Number(qaData?.correct)] : null)
         : null;
@@ -3830,8 +3830,29 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
         window.open(url, '_blank', 'noopener,noreferrer');
     };
 
+    const finalizeQaRound = async () => {
+        const questionId = String(qaData?.id || '').trim();
+        if (!roomCode || !questionId || !isQaMode) return;
+        await finalizePromptVoteRound({
+            roomCode,
+            questionId,
+            voteType: isTriviaMode ? 'vote_trivia' : 'vote_wyr',
+        }).catch((error) => hostLogger.debug('Prompt round finalization will retry from another display', error));
+    };
+
     const closeGameMode = async () => {
         try {
+            if (runOfShowPromptLive) {
+                if (!qaIsReveal) {
+                    await onRevealRunOfShowPrompt?.(runOfShowLiveItem.id);
+                    await finalizeQaRound();
+                    toast(isTriviaMode ? 'Trivia answer revealed.' : 'Would You Rather results revealed.');
+                    return;
+                }
+                await onCompleteRunOfShowPrompt?.();
+                toast('Moment ended. Continuing Tonight\'s Lineup.');
+                return;
+            }
             await updateRoom({ activeMode: 'karaoke', bonusDrop: null, selfieMoment: null, selfieMomentExpiresAt: null, selfieChallenge: null, photoOverlay: null });
             toast('Returned to karaoke mode');
         } catch (err) {
@@ -4103,6 +4124,12 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
 
             if (activeMode === 'trivia_pop' || activeMode === 'trivia_reveal') {
                 const toReveal = activeMode === 'trivia_pop';
+                if (toReveal && runOfShowPromptLive) {
+                    await onRevealRunOfShowPrompt?.(runOfShowLiveItem.id);
+                    toast('Trivia answer revealed.');
+                    await logHostInteraction('revealed the trivia answer.');
+                    return;
+                }
                 await updateRoom({
                     activeMode: toReveal ? 'trivia_reveal' : 'trivia_pop',
                     triviaQuestion: {
@@ -4111,6 +4138,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         revealedAt: toReveal ? nowMs() : null
                     }
                 });
+                if (toReveal) await finalizeQaRound();
                 toast(toReveal ? 'Trivia answer revealed.' : 'Trivia voting resumed.');
                 await logHostInteraction(toReveal ? 'revealed the trivia answer.' : 'reopened trivia voting.');
                 return;
@@ -4118,6 +4146,12 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
 
             if (activeMode === 'wyr' || activeMode === 'wyr_reveal') {
                 const toReveal = activeMode === 'wyr';
+                if (toReveal && runOfShowPromptLive) {
+                    await onRevealRunOfShowPrompt?.(runOfShowLiveItem.id);
+                    toast('WYR results revealed.');
+                    await logHostInteraction('revealed the WYR split.');
+                    return;
+                }
                 await updateRoom({
                     activeMode: toReveal ? 'wyr_reveal' : 'wyr',
                     wyrData: {
@@ -4126,6 +4160,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         revealedAt: toReveal ? nowMs() : null
                     }
                 });
+                if (toReveal) await finalizeQaRound();
                 toast(toReveal ? 'WYR results revealed.' : 'WYR voting resumed.');
                 await logHostInteraction(toReveal ? 'revealed the WYR split.' : 'reopened WYR voting.');
                 return;
@@ -4342,19 +4377,21 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             <div className="custom-scrollbar flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Host Controlpad</div>
+                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">{isQaMode ? (runOfShowPromptLive ? 'Lineup moment controls' : 'Pop-up moment controls') : 'Host Controlpad'}</div>
                         <div className="text-2xl font-bebas text-cyan-300 mt-1">{modeLabel} Live</div>
                         <div className="text-sm text-zinc-200 mt-1">{controlpadHint}</div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <button
-                            onClick={runModeInteraction}
-                            disabled={busy}
-                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            title={modeInteractionConfig.description}
-                        >
-                            <i className={`fa-solid ${modeInteractionConfig.icon} mr-1`}></i> {modeInteractionConfig.label}
-                        </button>
+                        {!(runOfShowPromptLive && qaIsReveal) ? (
+                            <button
+                                onClick={runModeInteraction}
+                                disabled={busy}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                title={modeInteractionConfig.description}
+                            >
+                                <i className={`fa-solid ${modeInteractionConfig.icon} mr-1`}></i> {modeInteractionConfig.label}
+                            </button>
+                        ) : null}
                         <button onClick={() => setTab('games')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}>
                             <i className="fa-solid fa-gamepad mr-1"></i> Games
                         </button>
@@ -4364,9 +4401,11 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         <button onClick={openTv} className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[40px] px-4 py-2 text-sm`}>
                             <i className="fa-solid fa-tv mr-1"></i> Open TV
                         </button>
-                        <button onClick={closeGameMode} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs`}>
-                            <i className="fa-solid fa-xmark mr-1"></i> End Mode
-                        </button>
+                        {(!isQaMode || qaIsReveal) ? (
+                            <button onClick={closeGameMode} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs`}>
+                                <i className="fa-solid fa-xmark mr-1"></i> {runOfShowPromptLive ? 'End + Continue' : 'End Mode'}
+                            </button>
+                        ) : null}
                     </div>
                 </div>
                 <HostRoomVoiceMicCard control={hostVoiceMicControl} compact />
@@ -5068,10 +5107,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, []);
     const [demoFixture, setDemoFixture] = useState(() => (isMarketingDemoEmbed ? {} : null));
     const [room, setRoom] = useState(null);
+    const [nightExperiencePending, setNightExperiencePending] = useState(false);
     const [songs, setSongs] = useState([]);
     const [users, setUsers] = useState([]);
     const [contacts, setContacts] = useState([]);
     const [activities, setActivities] = useState([]);
+    const [operatorSignals, setOperatorSignals] = useState([]);
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const upsertYtIndexEntriesRef = useRef(null);
     const parseYouTubeId = useCallback((url = '') => {
@@ -5167,10 +5208,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const appleMusicPlaylistStartRef = useRef({ key: '', promise: null, failedAtMs: 0 });
     const appleMusicTransportRef = useRef({ action: '', promise: null });
     const appleBackgroundTransportRef = useRef({ generation: 0, role: 'idle', performanceSessionId: '', restorePromise: null });
+    const automaticBackgroundStartRef = useRef({ key: '', promise: null, failureCount: 0, retryAtMs: 0 });
     const appleMusicDeveloperTokenRef = useRef('');
     const appleMusicVolumeRef = useRef(0.3);
     const applePlaybackSyncKeyRef = useRef('');
     const applePlaybackSyncMetaRef = useRef({ fingerprint: '', writtenAtMs: 0 });
+    const applePlaybackSyncPromiseRef = useRef(null);
     const syncApplePlaybackStateRef = useRef(async () => {});
     const accountMusicPrefsRef = useRef(DEFAULT_HOST_MUSIC_PREFS);
     const appleMusicRoomDefaultSyncRef = useRef('');
@@ -5299,10 +5342,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!writeDecision.shouldWrite) return;
         const syncKey = JSON.stringify(patch);
         if (!force && applePlaybackSyncKeyRef.current === syncKey) return;
+        if (applePlaybackSyncPromiseRef.current) return applePlaybackSyncPromiseRef.current;
         applePlaybackSyncKeyRef.current = syncKey;
 
+        const syncPromise = updateRoom(patch);
+        applePlaybackSyncPromiseRef.current = syncPromise;
         try {
-            await updateRoom(patch);
+            await syncPromise;
             applePlaybackSyncMetaRef.current = {
                 fingerprint: writeDecision.fingerprint,
                 writtenAtMs: syncNowMs
@@ -5310,6 +5356,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } catch (error) {
             applePlaybackSyncKeyRef.current = '';
             hostLogger.debug('Apple playback sync failed', error);
+        } finally {
+            if (applePlaybackSyncPromiseRef.current === syncPromise) {
+                applePlaybackSyncPromiseRef.current = null;
+            }
         }
     }, [roomCode, updateRoom]);
     syncApplePlaybackStateRef.current = syncApplePlaybackState;
@@ -5461,6 +5511,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAppleMusicAuthorized(true);
         }
         applyAppleMusicOutputVolume(instance, appleMusicVolumeRef.current);
+        await quiesceAppleMusicTransport(instance);
         try {
             await instance.setQueue({ song: String(trackId) });
         } catch (error) {
@@ -5564,6 +5615,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 appleMusicPlayback: nextPlayback,
                 ...(nextBackground ? { backgroundAudioPlayback: nextBackground } : {}),
             });
+            automaticBackgroundStartRef.current = { key: '', promise: null, failureCount: 0, retryAtMs: 0 };
             return nextPlayback;
         };
         const pausePromise = currentTransport.promise
@@ -5672,9 +5724,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [room?.currentPerformanceSession?.sessionId, room?.appleMusicPlayback?.id]);
 
     useEffect(() => {
-        const session = room?.currentPerformanceSession || null;
+        const session = roomRef.current?.currentPerformanceSession || null;
         const shouldTrackSession = String(session?.sourceType || '').trim().toLowerCase() === 'apple_music';
-        const shouldTrackPlayback = !!String(room?.appleMusicPlayback?.id || '').trim();
+        const shouldTrackPlayback = !!String(roomRef.current?.appleMusicPlayback?.id || '').trim();
         if (!roomCode || (!shouldTrackSession && !shouldTrackPlayback)) return undefined;
 
         syncApplePlaybackState({ force: true }).catch((error) => {
@@ -5690,9 +5742,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => clearInterval(timer);
     }, [
         roomCode,
-        room?.currentPerformanceSession,
+        room?.currentPerformanceSession?.sessionId,
+        room?.currentPerformanceSession?.sourceType,
+        room?.currentPerformanceSession?.appleMusicId,
         room?.appleMusicPlayback?.id,
-        room?.appleMusicPlayback?.status,
+        room?.appleMusicPlayback?.type,
         syncApplePlaybackState
     ]);
 
@@ -5785,6 +5839,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 roomRef.current = { ...(roomRef.current || {}), ...nextRoomPatch };
                 await updateRoom(nextRoomPatch);
             }
+            automaticBackgroundStartRef.current = { key: '', promise: null, failureCount: 0, retryAtMs: 0 };
             return { playlistId: String(playlistId), title: resolvedTitle || meta.title || '' };
         };
 
@@ -5835,6 +5890,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             const intendedVolume = appleMusicVolumeRef.current;
             applyAppleMusicOutputVolume(instance, 0);
+            await quiesceAppleMusicTransport(instance);
             let queue = null;
             let queueError = null;
             for (const descriptor of descriptors) {
@@ -5907,6 +5963,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             };
             roomRef.current = { ...(roomRef.current || {}), ...nextPatch };
             await updateRoom(nextPatch);
+            automaticBackgroundStartRef.current = { key: '', promise: null, failureCount: 0, retryAtMs: 0 };
             return restoredSession;
         };
 
@@ -5990,6 +6047,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [scenePresetUploading, setScenePresetUploading] = useState(false);
     const [scenePresetUploadProgress, setScenePresetUploadProgress] = useState(0);
     const [sceneLibraryModalOpen, setSceneLibraryModalOpen] = useState(false);
+    const [hostFeedbackOpen, setHostFeedbackOpen] = useState(false);
     const [sceneLibraryOpenRequest, setSceneLibraryOpenRequest] = useState(null);
     const [scenePresetsHydrated, setScenePresetsHydrated] = useState(false);
     const [scenePresetSeedPending, setScenePresetSeedPending] = useState(false);
@@ -6025,19 +6083,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const queuedCount = useMemo(() => songs.filter(s => s.status === 'requested').length, [songs]);
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
     const autoDjEnabled = !!(room?.autoDj || autoDj);
-    const performanceRecapBreakdownMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapBreakdownMs ?? 7000) || 7000)));
-    const performanceRecapScoreStepMs = Math.max(1800, Math.min(4200, Math.round(Number(room?.performanceRecapScoreStepMs ?? 2600) || 2600)));
-    const performanceRecapLeaderboardMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapLeaderboardMs ?? 7000) || 7000)));
-    const performanceRecapNextUpMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapNextUpMs ?? 6000) || 6000)));
-    const lastPerformanceScoreCardCount = Math.max(2, Math.min(3, 2 + (Math.max(0, Number(room?.lastPerformance?.hostBonus || 0)) > 0 ? 1 : 0)));
-    const performanceRecapScoreFinalHoldMs = Math.max(5200, Math.min(9000, Math.round(performanceRecapScoreStepMs * 2.25)));
-    const effectivePerformanceRecapBreakdownMs = Math.max(
-        performanceRecapBreakdownMs,
-        540 + (lastPerformanceScoreCardCount * performanceRecapScoreStepMs) + 700 + performanceRecapScoreFinalHoldMs
-    );
-    const performanceRecapTotalMs = room?.showPerformanceRecap === false
-        ? 0
-        : effectivePerformanceRecapBreakdownMs + performanceRecapLeaderboardMs + performanceRecapNextUpMs;
+    const performanceRecapTotalMs = getPerformanceRecapDurationMs(room);
     const performanceRecapAutoDjHoldMs = performanceRecapTotalMs > 0 ? performanceRecapTotalMs + 1500 : 0;
     const {
         activeBracket,
@@ -6916,6 +6962,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [runOfShowEnabled, setRunOfShowEnabled] = useState(false);
     const [runOfShowDirectorState, setRunOfShowDirectorState] = useState(() => createDefaultRunOfShowDirector());
     const runOfShowDirectorStateRef = useRef(runOfShowDirectorState);
+    const tonightLineupAutoAdvanceBusyRef = useRef(false);
+    const [tonightLineupAutoAdvancePending, setTonightLineupAutoAdvancePending] = useState(false);
     const [runOfShowFocusRequest, setRunOfShowFocusRequest] = useState(null);
     const [runOfShowSelectedItemId, setRunOfShowSelectedItemId] = useState('');
     const [runOfShowPolicy, setRunOfShowPolicy] = useState(() => normalizeRunOfShowPolicy({}));
@@ -8113,6 +8161,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const readyCheckTimerRef = useRef(null);
     const autoCrowdMomentLaunchTimerRef = useRef(null);
     const autoCrowdMomentTimerRef = useRef(null);
+    const betweenSongGenerationInFlightRef = useRef(new Set());
     const autoPartyStageHandoffTimerRef = useRef(null);
     const startNextFromQueueRef = useRef(null);
     const hostVolleyVoiceLastWriteRef = useRef(0);
@@ -8350,7 +8399,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         [runOfShowDirectorState]
     );
     const isRunOfShowRoom = runOfShowEnabled && programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow;
-    const runOfShowAutomationEnabled = isRunOfShowRoom && (runOfShowPolicy?.defaultAutomationMode || 'auto') !== 'manual';
+    const runOfShowAutomationEnabled = isRunOfShowRoom
+        && (runOfShowPolicy?.defaultAutomationMode || 'auto') !== 'manual'
+        && String(runOfShowDirector?.automationIntent || 'auto').trim().toLowerCase() !== 'manual';
     const runOfShowLiveItem = useMemo(() => getRunOfShowLiveItem(runOfShowDirector), [runOfShowDirector]);
     const runOfShowReleaseWindowPending = useMemo(() => {
         const releaseWindow = runOfShowDirector?.releaseWindow || {};
@@ -8410,7 +8461,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setRunOfShowAutomationRetryTick((tick) => tick + 1);
     }, []);
     const applyRunOfShowActionResult = useCallback((result = {}) => {
-        const nextDirector = normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorState || {});
+        const nextDirector = normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorStateRef.current || {});
         if (result?.runOfShowDirector) {
             const nextDirectorKey = JSON.stringify(nextDirector);
             runOfShowRemoteSyncRef.current.director = nextDirectorKey;
@@ -8423,7 +8474,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setRunOfShowPolicy(normalizedPolicy);
         }
         return nextDirector;
-    }, [runOfShowDirectorState]);
+    }, []);
     useEffect(() => {
         return () => {
             if (hostMomentFeedbackTimerRef.current) {
@@ -8452,19 +8503,69 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setProgramMode(normalizedMode);
         setRunOfShowEnabled(nextEnabled);
         runOfShowLocalEditAtRef.current = Date.now();
-        runOfShowDirectorStateRef.current = normalizedDirector;
-        setRunOfShowDirectorState(normalizedDirector);
-        runOfShowRemoteSyncRef.current.director = JSON.stringify(normalizedDirector);
         runOfShowRemoteSyncRef.current.programMode = normalizedMode;
         runOfShowRemoteSyncRef.current.enabled = nextEnabled;
-        await updateRoom({
-            programMode: normalizedMode,
-            runOfShowEnabled: nextEnabled,
-            runOfShowDirector: normalizedDirector,
-            ...(options.roomUpdates || {})
+        if (isMarketingDemoFixture) {
+            runOfShowDirectorStateRef.current = normalizedDirector;
+            setRunOfShowDirectorState(normalizedDirector);
+            runOfShowRemoteSyncRef.current.director = JSON.stringify(normalizedDirector);
+            await updateRoom({
+                programMode: normalizedMode,
+                runOfShowEnabled: nextEnabled,
+                runOfShowDirector: normalizedDirector,
+                ...(options.roomUpdates || {})
+            });
+            return normalizedDirector;
+        }
+        const currentDirector = getCurrentRunOfShowDirector();
+        const operationId = typeof globalThis.crypto?.randomUUID === 'function'
+            ? globalThis.crypto.randomUUID()
+            : `replace_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        const result = await mutateTonightLineup({
+            roomCode,
+            action: 'replace_director',
+            operationId,
+            expectedRevision: Math.max(0, Number(currentDirector?.revision || 0) || 0),
+            payload: {
+                director: normalizedDirector,
+                programMode: normalizedMode,
+                runOfShowEnabled: nextEnabled,
+            },
         });
-        return normalizedDirector;
-    }, [programMode, runOfShowEnabled, updateRoom]);
+        const committedDirector = applyRunOfShowActionResult(result);
+        if (options.roomUpdates && Object.keys(options.roomUpdates).length > 0) {
+            await updateRoom(options.roomUpdates);
+        }
+        return committedDirector;
+    }, [applyRunOfShowActionResult, getCurrentRunOfShowDirector, isMarketingDemoFixture, programMode, roomCode, runOfShowEnabled, updateRoom]);
+    const mutateTonightLineupState = useCallback(async (action, payload = {}, options = {}) => {
+        const director = getCurrentRunOfShowDirector();
+        if (isMarketingDemoFixture) {
+            throw new Error('Transactional lineup changes are unavailable in the demo fixture.');
+        }
+        const operationId = String(options.operationId || (
+            typeof globalThis.crypto?.randomUUID === 'function'
+                ? globalThis.crypto.randomUUID()
+                : `${action}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+        )).trim();
+        try {
+            const result = await mutateTonightLineup({
+                roomCode,
+                action,
+                operationId,
+                expectedRevision: Math.max(0, Number(director?.revision || 0) || 0),
+                payload,
+            });
+            return applyRunOfShowActionResult(result);
+        } catch (error) {
+            const conflict = String(error?.code || '').includes('aborted')
+                || error?.details?.code === 'lineup_revision_conflict';
+            if (conflict && options?.silentConflict !== true) {
+                toast(`Tonight's Lineup changed on another device. The latest order is loading; try that action again.`);
+            }
+            throw error;
+        }
+    }, [applyRunOfShowActionResult, getCurrentRunOfShowDirector, isMarketingDemoFixture, roomCode, toast]);
     const parseRunOfShowOptions = useCallback((launchConfig = {}) => {
         if (Array.isArray(launchConfig?.options)) {
             return launchConfig.options.map((entry) => String(entry || '').trim()).filter(Boolean);
@@ -8574,7 +8675,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         if (item.type === 'trivia_break') {
             const options = parseRunOfShowOptions(item.modeLaunchPlan?.launchConfig || {});
-            const durationSec = Math.max(5, Number(item.modeLaunchPlan?.launchConfig?.durationSec || item.plannedDurationSec || 20));
+            const { questionDurationSec, revealDurationSec, totalDurationSec } = getRunOfShowPromptTiming(item);
             const autoReveal = item.modeLaunchPlan?.launchConfig?.autoReveal !== false;
             roomUpdates.activeMode = 'trivia_pop';
             roomUpdates.triviaQuestion = {
@@ -8586,15 +8687,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 rewarded: false,
                 points: Math.max(0, Number(item.modeLaunchPlan?.launchConfig?.points || 100)),
                 startedAt: startedAtMs,
-                durationSec,
+                durationSec: questionDurationSec,
+                totalDurationSec,
+                revealDurationSec,
                 autoReveal,
-                revealAt: autoReveal ? startedAtMs + (durationSec * 1000) : null
+                revealAt: autoReveal ? startedAtMs + (questionDurationSec * 1000) : null,
+                completeAt: autoReveal ? startedAtMs + (totalDurationSec * 1000) : null,
             };
             roomUpdates.gameData = null;
             roomUpdates.wyrData = null;
         } else if (item.type === 'would_you_rather_break') {
             const options = parseRunOfShowOptions(item.modeLaunchPlan?.launchConfig || {});
-            const durationSec = Math.max(5, Number(item.modeLaunchPlan?.launchConfig?.durationSec || item.plannedDurationSec || 20));
+            const { questionDurationSec, revealDurationSec, totalDurationSec } = getRunOfShowPromptTiming(item);
             const autoReveal = item.modeLaunchPlan?.launchConfig?.autoReveal !== false;
             roomUpdates.activeMode = 'wyr';
             roomUpdates.wyrData = {
@@ -8606,9 +8710,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 rewarded: false,
                 points: Math.max(0, Number(item.modeLaunchPlan?.launchConfig?.points || 50)),
                 startedAt: startedAtMs,
-                durationSec,
+                durationSec: questionDurationSec,
+                totalDurationSec,
+                revealDurationSec,
                 autoReveal,
-                revealAt: autoReveal ? startedAtMs + (durationSec * 1000) : null
+                revealAt: autoReveal ? startedAtMs + (questionDurationSec * 1000) : null,
+                completeAt: autoReveal ? startedAtMs + (totalDurationSec * 1000) : null,
             };
             roomUpdates.gameData = null;
             roomUpdates.triviaQuestion = null;
@@ -8655,28 +8762,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const activateRunOfShowPerformanceItem = useCallback(async (item = {}, startedAtMs = nowMs()) => {
         if (item?.type !== 'performance' || !roomCode) return null;
         clearRunOfShowPerformanceIntroTimer();
-        const queueDocId = String(item?.preparedQueueSongId || buildRunOfShowQueueDocId(roomCode, item?.id)).trim();
+        const queueDocId = String(item?.queueSongId || item?.preparedQueueSongId || buildRunOfShowQueueDocId(roomCode, item?.id)).trim();
         if (!queueDocId) return null;
-        const backingPlan = item?.backingPlan || {};
-        const youtubeId = String(backingPlan?.youtubeId || '').trim();
-        const rawMediaUrl = String(backingPlan?.mediaUrl || '').trim();
-        const mediaUrl = rawMediaUrl || (youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : '');
-        const appleMusicId = String(backingPlan?.appleMusicId || backingPlan?.trackId || '').trim();
         const queueDocRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', queueDocId);
-        const fallbackDurationSec = Math.max(30, getResolvedRunOfShowPerformanceDurationSec(item, 180));
+        const queueSnapshot = await getDoc(queueDocRef);
+        if (!queueSnapshot.exists()) {
+            throw new Error('This performance was removed from the queue. Repair Tonight\'s Lineup before starting it.');
+        }
+        const queueSource = { id: queueSnapshot.id, ...(queueSnapshot.data() || {}) };
+        const backingPlan = item?.backingPlan || {};
+        const youtubeId = String(queueSource?.youtubeId || backingPlan?.youtubeId || '').trim();
+        const rawMediaUrl = String(queueSource?.mediaUrl || backingPlan?.mediaUrl || '').trim();
+        const mediaUrl = rawMediaUrl || (youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : '');
+        const appleMusicId = String(queueSource?.appleMusicId || backingPlan?.appleMusicId || backingPlan?.trackId || '').trim();
+        const fallbackDurationSec = Math.max(
+            30,
+            getAssociatedBackingDurationSec(queueSource) || getResolvedRunOfShowPerformanceDurationSec(item, 180)
+        );
         const queueSong = {
+            ...queueSource,
             id: queueDocId,
             roomCode,
-            songId: String(item?.songId || '').trim(),
-            trackId: String(backingPlan?.trackId || '').trim(),
-            songTitle: String(item?.songTitle || '').trim() || 'Performance Slot',
-            artist: String(item?.artistName || '').trim(),
-            singerUid: String(item?.assignedPerformerUid || '').trim(),
-            singerName: String(item?.assignedPerformerName || '').trim() || 'Performer',
+            songId: String(queueSource?.songId || item?.songId || '').trim(),
+            trackId: String(queueSource?.trackId || backingPlan?.trackId || '').trim(),
+            songTitle: String(queueSource?.songTitle || item?.songTitle || '').trim() || 'Performance Slot',
+            artist: String(queueSource?.artist || queueSource?.artistName || item?.artistName || '').trim(),
+            singerUid: String(queueSource?.singerUid || item?.assignedPerformerUid || '').trim(),
+            singerName: String(queueSource?.singerName || item?.assignedPerformerName || '').trim() || 'Performer',
             mediaUrl,
             appleMusicId,
             youtubeId: youtubeId || parseYouTubeVideoId(mediaUrl),
-            approvedSubmissionId: String(item?.approvedSubmissionId || '').trim()
+            approvedSubmissionId: String(queueSource?.approvedSubmissionId || item?.approvedSubmissionId || '').trim()
         };
         const queuePlayback = resolveQueuePlayback(queueSong, roomRef.current?.autoPlayMedia !== false);
         const nextMediaUrl = String(queuePlayback?.mediaUrl || queueSong.mediaUrl || '').trim();
@@ -8691,18 +8807,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         );
         queueSong.duration = performanceDurationSec;
         queueSong.performanceStartedDurationSec = performanceDurationSec;
-        await setDoc(queueDocRef, {
+        await updateDoc(queueDocRef, {
             roomCode,
-            songId: queueSong.songId,
-            trackId: queueSong.trackId,
-            songTitle: queueSong.songTitle,
-            artist: queueSong.artist,
-            singerUid: queueSong.singerUid,
-            singerName: queueSong.singerName,
-            mediaUrl: queueSong.mediaUrl,
-            appleMusicId: queueSong.appleMusicId,
-            youtubeId: queueSong.youtubeId,
-            approvedSubmissionId: queueSong.approvedSubmissionId,
             duration: queueSong.duration,
             performanceStartedDurationSec: queueSong.performanceStartedDurationSec,
             status: 'staged',
@@ -8710,7 +8816,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             priorityScore: startedAtMs,
             queuedFromRunOfShow: true,
             runOfShowItemId: String(item?.id || '').trim()
-        }, { merge: true });
+        });
         const roomSnapshot = roomRef.current || {};
         const stageDisplayFlags = {
             showLyricsTv: !!roomSnapshot?.showLyricsTv,
@@ -8718,6 +8824,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showLyricsSinger: !!roomSnapshot?.showLyricsSinger
         };
         const performanceSessionId = `perf_${queueDocId}_${startedAtMs}`;
+        const performanceSessionSourceType = getPerformanceSessionSourceType({
+            usesAppleBacking: useAppleBacking,
+            effectiveBacking: { isYouTube: !!queueSong.youtubeId },
+            mediaUrl: nextMediaUrl,
+        });
         await pauseAppleMusic?.({ reason: 'performance', performanceSessionId });
         const introDurationSec = Math.max(
             3,
@@ -8777,8 +8888,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 status: 'performing',
                 performingStartedAt: serverTimestamp(),
                 performanceStartedDurationSec: performanceDurationSec,
-                duration: performanceDurationSec,
-                mediaUrl: nextMediaUrl || queueSong.mediaUrl
+                duration: performanceDurationSec
             })
                 .then(async () => {
                     if (useAppleBacking && autoStartMedia && appleMusicId) {
@@ -8804,6 +8914,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 appleMusicId,
                                 runOfShowItemId: String(item?.id || '').trim()
                             },
+                            currentPerformanceSession: {
+                                sessionId: performanceSessionId,
+                                songId: queueDocId,
+                                state: 'playing',
+                                playbackState: 'playing',
+                                sourceType: 'apple_music',
+                                appleMusicId,
+                                mediaUrl: '',
+                                startedAtMs: actualStartedAtMs,
+                                playerReportedDurationSec: performanceDurationSec,
+                                expectedDurationSec: performanceDurationSec,
+                                lastHeartbeatAtMs: actualStartedAtMs,
+                                lastReportedAtMs: actualStartedAtMs,
+                                completionReason: '',
+                                watchdogDeadlineMs: actualStartedAtMs + ((performanceDurationSec + 90) * 1000),
+                                runOfShowItemId: String(item?.id || '').trim(),
+                            },
                             videoVolume: 100,
                             tvPreviewOverlay: null,
                             gameData: null,
@@ -8812,6 +8939,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             howToPlay: { active: false, id: actualStartedAtMs },
                             lightMode: 'off',
                             ...stageDisplayFlags
+                        });
+                        await mutateTonightLineupState('adopt_active_performance', { queueSongId: queueDocId }, {
+                            operationId: `adopt_${performanceSessionId}`,
                         });
                         return;
                     }
@@ -8831,6 +8961,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             mediaUrl: nextMediaUrl || '',
                             runOfShowItemId: String(item?.id || '').trim()
                         },
+                        currentPerformanceSession: {
+                            sessionId: performanceSessionId,
+                            songId: queueDocId,
+                            state: autoStartMedia && !!nextMediaUrl ? 'playing' : 'idle',
+                            playbackState: autoStartMedia && !!nextMediaUrl ? 'playing' : 'idle',
+                            sourceType: performanceSessionSourceType,
+                            appleMusicId: '',
+                            mediaUrl: nextMediaUrl || '',
+                            startedAtMs: actualStartedAtMs,
+                            playerReportedDurationSec: 0,
+                            expectedDurationSec: performanceDurationSec,
+                            lastHeartbeatAtMs: actualStartedAtMs,
+                            lastReportedAtMs: actualStartedAtMs,
+                            completionReason: '',
+                            watchdogDeadlineMs: actualStartedAtMs + ((performanceDurationSec + 90) * 1000),
+                            runOfShowItemId: String(item?.id || '').trim(),
+                        },
                         videoVolume: 100,
                         tvPreviewOverlay: null,
                         gameData: null,
@@ -8839,6 +8986,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         howToPlay: { active: false, id: actualStartedAtMs },
                         lightMode: 'off',
                         ...stageDisplayFlags
+                    });
+                    await mutateTonightLineupState('adopt_active_performance', { queueSongId: queueDocId }, {
+                        operationId: `adopt_${performanceSessionId}`,
                     });
                 })
                 .catch((error) => {
@@ -8853,7 +9003,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             durationSec: performanceDurationSec,
             introDurationSec
         };
-    }, [clearRunOfShowPerformanceIntroTimer, isAudioUrl, pauseAppleMusic, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, updateRoom]);
+    }, [clearRunOfShowPerformanceIntroTimer, isAudioUrl, mutateTonightLineupState, pauseAppleMusic, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, updateRoom]);
     const buildRunOfShowCompletionRoomUpdates = useCallback((item = {}, completedAtMs = nowMs()) => {
         if (item?.type === 'performance') return null;
         return {
@@ -9098,6 +9248,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast(`Add this draft to ${HOST_LIVE_OPS_LANGUAGE.lineup} before starting it.`);
             return currentDirector;
         }
+        const postPerformanceSurfaceLease = getPostPerformanceSurfaceLease(roomRef.current || room || {}, {
+            now: nowMs(),
+            recapDurationMs: performanceRecapTotalMs,
+        });
+        if (postPerformanceSurfaceLease.active) {
+            const seconds = Math.max(1, Math.ceil(postPerformanceSurfaceLease.remainingMs / 1000));
+            toast(postPerformanceSurfaceLease.phase === 'applause'
+                ? 'Finishing the applause meter before the next lineup item starts.'
+                : `Performance recap is still on Public TV. Next lineup item starts in about ${seconds} seconds.`);
+            return currentDirector;
+        }
         const requestedGameMode = getRunOfShowGameMode(requestedItem);
         if (requestedGameMode) {
             const compatibility = getRoomGameLaunchPreflight({
@@ -9223,7 +9384,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await fireRunOfShowItemCueIfNeeded(targetItem, 'start');
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, closeRunOfShowReleaseWindow, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, markScenePresetPresented, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, toast, updateRoom]);
+    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, closeRunOfShowReleaseWindow, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, markScenePresetPresented, performanceRecapTotalMs, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, room, roomCode, syncRunOfShowTakeoverSoundtrack, toast, updateRoom]);
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
@@ -9293,6 +9454,46 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
     }, [applyRunOfShowActionResult, buildRunOfShowCompletionRoomUpdates, closeRunOfShowReleaseWindow, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, toast, updateRoom]);
+    const revealRunOfShowPromptItem = useCallback(async (itemId) => {
+        const currentDirector = getCurrentRunOfShowDirector();
+        const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
+        if (!targetItem || !['trivia_break', 'would_you_rather_break'].includes(String(targetItem?.type || '').trim().toLowerCase())) {
+            return currentDirector;
+        }
+        if (isMarketingDemoFixture) {
+            const trivia = targetItem.type === 'trivia_break';
+            const targetField = trivia ? 'triviaQuestion' : 'wyrData';
+            const currentQuestion = roomRef.current?.[targetField] || {};
+            const revealedAtMs = nowMs();
+            const revealDurationSec = Math.max(3, Number(currentQuestion?.revealDurationSec || 8) || 8);
+            await updateRoom({
+                activeMode: trivia ? 'trivia_reveal' : 'wyr_reveal',
+                [targetField]: {
+                    ...currentQuestion,
+                    status: 'reveal',
+                    revealedAt: revealedAtMs,
+                    revealDurationSec,
+                    completeAt: revealedAtMs + (revealDurationSec * 1000),
+                },
+            });
+            return currentDirector;
+        }
+        const result = await executeRunOfShowAction({ roomCode, action: 'reveal', itemId });
+        const nextDirector = applyRunOfShowActionResult(result);
+        requestRunOfShowAutomationRecheck();
+        const question = targetItem.type === 'trivia_break'
+            ? roomRef.current?.triviaQuestion
+            : roomRef.current?.wyrData;
+        const questionId = String(question?.id || '').trim();
+        if (questionId) {
+            await finalizePromptVoteRound({
+                roomCode,
+                questionId,
+                voteType: targetItem.type === 'trivia_break' ? 'vote_trivia' : 'vote_wyr',
+            }).catch((error) => hostLogger.debug('Run-of-show prompt award finalization will retry', error));
+        }
+        return nextDirector;
+    }, [applyRunOfShowActionResult, getCurrentRunOfShowDirector, isMarketingDemoFixture, requestRunOfShowAutomationRecheck, roomCode, updateRoom]);
     const skipRunOfShowItem = useCallback(async (itemId, options = {}) => {
         if (!isMarketingDemoFixture) {
             return completeRunOfShowItem(itemId, { ...options, skip: true });
@@ -9922,23 +10123,97 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector]);
     const deleteRunOfShowItem = useCallback(async (itemId) => {
         const director = getCurrentRunOfShowDirector();
-        return persistRunOfShowDirector({
-            ...director,
-            currentItemId: director.currentItemId === itemId ? '' : director.currentItemId,
-            items: resequenceRunOfShowItems((director.items || []).filter((item) => item.id !== itemId))
-        });
-    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+        if (isMarketingDemoFixture) {
+            const targetItem = (director.items || []).find((item) => item.id === itemId) || null;
+            if (targetItem?.automationOccurrence?.source === 'between_song_rule') {
+                return persistRunOfShowDirector(suppressBetweenSongOccurrence(director, itemId));
+            }
+            return persistRunOfShowDirector({
+                ...director,
+                currentItemId: director.currentItemId === itemId ? '' : director.currentItemId,
+                items: resequenceRunOfShowItems((director.items || []).filter((item) => item.id !== itemId))
+            });
+        }
+        return mutateTonightLineupState('remove_item', { itemId });
+    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, mutateTonightLineupState, persistRunOfShowDirector]);
+    const betweenSongReconcileInFlightRef = useRef(false);
+    useEffect(() => {
+        if (!roomCode || betweenSongReconcileInFlightRef.current) return undefined;
+        const timer = setTimeout(() => {
+            if (betweenSongReconcileInFlightRef.current) return;
+            const currentSongs = Array.isArray(songsRef.current) ? songsRef.current : [];
+            const orderedQueueSongs = currentSongs
+                .filter((song) => String(song?.status || '').trim().toLowerCase() === 'requested')
+                .filter((song) => !requiresBackingHostReview(song?.resolutionStatus))
+                .sort((left, right) => Number(left?.priorityScore || 0) - Number(right?.priorityScore || 0));
+            const completedSongs = currentSongs
+                .filter((song) => ['performed', 'complete', 'completed'].includes(String(song?.status || '').trim().toLowerCase()));
+            const result = reconcileBetweenSongMomentOccurrences({
+                director: getCurrentRunOfShowDirector(),
+                roomCode,
+                party: buildMissionPartyFromRoom(roomRef.current || {}),
+                queueSongs: orderedQueueSongs,
+                completedSongs,
+            });
+            if (!result.changed) return;
+            betweenSongReconcileInFlightRef.current = true;
+            (isMarketingDemoFixture
+                ? persistRunOfShowDirector(result.director)
+                : mutateTonightLineupState('reconcile_automation_items', {
+                    automationItems: (result.director?.items || []).filter((item) => item?.automationOccurrence?.source === 'between_song_rule'),
+                    orderedItemIds: (result.director?.items || []).map((item) => item.id),
+                    betweenSongAutomation: result.director?.betweenSongAutomation || {},
+                }, { silentConflict: true }))
+                .catch((error) => hostLogger.warn('Between-song moment reconciliation failed', error))
+                .finally(() => {
+                    betweenSongReconcileInFlightRef.current = false;
+                });
+        }, 350);
+        return () => clearTimeout(timer);
+    }, [
+        getCurrentRunOfShowDirector,
+        isMarketingDemoFixture,
+        mutateTonightLineupState,
+        persistRunOfShowDirector,
+        room?.missionControl?.party,
+        roomCode,
+        runOfShowDirector?.revision,
+        songs,
+    ]);
     const moveRunOfShowItem = useCallback(async (itemId, delta = 0) => {
         const director = getCurrentRunOfShowDirector();
-        const items = [...(director.items || [])];
-        const currentIndex = items.findIndex((item) => item.id === itemId);
-        if (currentIndex < 0) return director;
-        const nextIndex = Math.max(0, Math.min(items.length - 1, currentIndex + Number(delta || 0)));
-        if (currentIndex === nextIndex) return director;
-        const [moved] = items.splice(currentIndex, 1);
-        items.splice(nextIndex, 0, moved);
-        return persistRunOfShowDirector({ ...director, items: resequenceRunOfShowItems(items) });
-    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+        if (!isMarketingDemoFixture) {
+            return mutateTonightLineupState('move_item', { itemId, delta });
+        }
+        const targetItem = (director.items || []).find((item) => item.id === itemId) || null;
+        if (targetItem?.automationOccurrence?.source === 'between_song_rule') {
+            const orderedQueueSongs = (Array.isArray(songsRef.current) ? songsRef.current : [])
+                .filter((song) => String(song?.status || '').trim().toLowerCase() === 'requested')
+                .filter((song) => !requiresBackingHostReview(song?.resolutionStatus))
+                .sort((left, right) => Number(left?.priorityScore || 0) - Number(right?.priorityScore || 0));
+            const currentAnchorIndex = orderedQueueSongs.findIndex((song) => song.id === targetItem.automationOccurrence.anchorQueueSongId);
+            if (currentAnchorIndex < 0 || !orderedQueueSongs.length) return director;
+            const nextAnchorIndex = Math.max(0, Math.min(orderedQueueSongs.length - 1, currentAnchorIndex + Math.trunc(Number(delta || 0))));
+            if (nextAnchorIndex === currentAnchorIndex) return director;
+            const nextDirector = normalizeRunOfShowDirector({
+                ...director,
+                items: director.items.map((item) => item.id === itemId
+                    ? {
+                        ...item,
+                        automationOccurrence: {
+                            ...(item.automationOccurrence || {}),
+                            anchorQueueSongId: orderedQueueSongs[nextAnchorIndex].id,
+                            anchorQueueIndex: nextAnchorIndex,
+                            placementMode: 'host_pinned',
+                        },
+                    }
+                    : item),
+            });
+            return persistRunOfShowDirector(nextDirector);
+        }
+        const nextDirector = moveHostNightFlowItem(director, itemId, delta);
+        return persistRunOfShowDirector(nextDirector);
+    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, mutateTonightLineupState, persistRunOfShowDirector]);
     const promotePreparedRunOfShowItems = useCallback(async (itemIds = []) => {
         const result = promotePreparedItemsToLiveQueue(
             getCurrentRunOfShowDirector(),
@@ -10025,6 +10300,158 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         syncRunOfShowTakeoverSoundtrack,
         updateRoom
     ]);
+    const generateRunOfShowTriviaFromPreviousPerformances = useCallback(async (itemId = '') => {
+        const previousPerformances = (Array.isArray(songs) ? songs : [])
+            .filter((song) => ['performed', 'complete', 'completed'].includes(String(song?.status || '').trim().toLowerCase()))
+            .sort((left, right) => {
+                const leftTime = Number(left?.performanceEndedAtMs || left?.completedAtMs || left?.timestamp?.toMillis?.() || left?.timestamp || 0);
+                const rightTime = Number(right?.performanceEndedAtMs || right?.completedAtMs || right?.timestamp?.toMillis?.() || right?.timestamp || 0);
+                return rightTime - leftTime;
+            })
+            .slice(0, 5)
+            .map((song) => ({
+                id: String(song?.performanceSessionId || song?.id || '').trim(),
+                songTitle: String(song?.songTitle || song?.title || '').trim(),
+                artist: String(song?.artist || song?.artistName || '').trim(),
+            }))
+            .filter((song) => song.songTitle);
+        if (!previousPerformances.length) {
+            toast('Finish at least one performance before generating a question from the show so far.');
+            return null;
+        }
+
+        const generatedRows = await generateAIContent('trivia', previousPerformances);
+        const generated = Array.isArray(generatedRows) ? generatedRows.find((entry) => entry?.q && entry?.correct) : null;
+        if (!generated) {
+            toast('No usable trivia question was generated. Try again or write one manually.');
+            return null;
+        }
+        const options = [generated.correct, generated.w1, generated.w2, generated.w3]
+            .map((entry) => String(entry || '').trim())
+            .filter(Boolean)
+            .slice(0, 4);
+        if (options.length < 4) {
+            toast('The generated question did not include four usable answers. Try again or write one manually.');
+            return null;
+        }
+        const launchConfigOverrides = {
+            question: String(generated.q || '').trim(),
+            options,
+            optionsCsv: options.join(', '),
+            correctIndex: 0,
+            points: 100,
+            autoReveal: true,
+            contentSource: 'ai_previous_performances',
+            performanceContext: previousPerformances.map((song) => `${song.songTitle}${song.artist ? ` — ${song.artist}` : ''}`),
+        };
+
+        const safeItemId = String(itemId || '').trim();
+        if (!safeItemId) {
+            const persistedDirector = await addQuickRunOfShowMoment('trivia_break', {
+                destination: 'queue',
+                itemOverrides: { title: 'Trivia from tonight so far' },
+                launchConfigOverrides,
+            });
+            return persistedDirector;
+        }
+
+        const director = getCurrentRunOfShowDirector();
+        const targetItem = (director.items || []).find((item) => item.id === safeItemId);
+        if (!targetItem || targetItem.type !== 'trivia_break') return null;
+        const persistedDirector = await patchRunOfShowItem(safeItemId, {
+            modeLaunchPlan: {
+                ...(targetItem.modeLaunchPlan || {}),
+                modeKey: 'trivia_pop',
+                launchConfig: {
+                    ...(targetItem.modeLaunchPlan?.launchConfig || {}),
+                    ...launchConfigOverrides,
+                },
+            },
+            automationOccurrence: targetItem.automationOccurrence
+                ? {
+                    ...targetItem.automationOccurrence,
+                    contentOwnership: 'automation',
+                    contentState: 'ready',
+                    sourcePerformanceIds: previousPerformances.map((song) => song.id).filter(Boolean),
+                    sourceCutoffMs: nowMs(),
+                }
+                : null,
+        });
+        toast('Trivia Moment regenerated from previous performances.');
+        return persistedDirector;
+    }, [addQuickRunOfShowMoment, getCurrentRunOfShowDirector, patchRunOfShowItem, songs, toast]);
+    const generateRunOfShowWyrFromPreviousPerformances = useCallback(async (itemId = '') => {
+        const previousPerformances = (Array.isArray(songs) ? songs : [])
+            .filter((song) => ['performed', 'complete', 'completed'].includes(String(song?.status || '').trim().toLowerCase()))
+            .sort((left, right) => {
+                const leftTime = Number(left?.performanceEndedAtMs || left?.completedAtMs || left?.timestamp?.toMillis?.() || left?.timestamp || 0);
+                const rightTime = Number(right?.performanceEndedAtMs || right?.completedAtMs || right?.timestamp?.toMillis?.() || right?.timestamp || 0);
+                return rightTime - leftTime;
+            })
+            .slice(0, 5)
+            .map((song) => ({
+                id: String(song?.performanceSessionId || song?.id || '').trim(),
+                songTitle: String(song?.songTitle || song?.title || '').trim(),
+                artist: String(song?.artist || song?.artistName || '').trim(),
+            }))
+            .filter((song) => song.songTitle);
+        if (!previousPerformances.length) {
+            toast('Finish at least one performance before generating a Would You Rather prompt from the show so far.');
+            return null;
+        }
+        const generatedRows = await generateAIContent('would_you_rather', previousPerformances);
+        const generated = Array.isArray(generatedRows) ? generatedRows.find((entry) => entry?.q && entry?.a && entry?.b) : null;
+        if (!generated) {
+            toast('No usable Would You Rather prompt was generated. Try again or write one manually.');
+            return null;
+        }
+        const options = [generated.a, generated.b].map((entry) => String(entry || '').trim()).filter(Boolean).slice(0, 2);
+        if (options.length < 2 || options[0] === options[1]) {
+            toast('The generated prompt needs two distinct choices. Try again or write one manually.');
+            return null;
+        }
+        const launchConfigOverrides = {
+            question: String(generated.q || '').trim(),
+            options,
+            optionsCsv: options.join(', '),
+            points: 50,
+            autoReveal: true,
+            contentSource: 'ai_previous_performances',
+            performanceContext: previousPerformances.map((song) => `${song.songTitle}${song.artist ? ` — ${song.artist}` : ''}`),
+        };
+        const safeItemId = String(itemId || '').trim();
+        if (!safeItemId) {
+            return addQuickRunOfShowMoment('would_you_rather', {
+                destination: 'queue',
+                itemOverrides: { title: 'Would You Rather from tonight so far' },
+                launchConfigOverrides,
+            });
+        }
+        const director = getCurrentRunOfShowDirector();
+        const targetItem = (director.items || []).find((item) => item.id === safeItemId);
+        if (!targetItem || targetItem.type !== 'would_you_rather_break') return null;
+        const persistedDirector = await patchRunOfShowItem(safeItemId, {
+            modeLaunchPlan: {
+                ...(targetItem.modeLaunchPlan || {}),
+                modeKey: 'wyr',
+                launchConfig: {
+                    ...(targetItem.modeLaunchPlan?.launchConfig || {}),
+                    ...launchConfigOverrides,
+                },
+            },
+            automationOccurrence: targetItem.automationOccurrence
+                ? {
+                    ...targetItem.automationOccurrence,
+                    contentOwnership: 'automation',
+                    contentState: 'ready',
+                    sourcePerformanceIds: previousPerformances.map((song) => song.id).filter(Boolean),
+                    sourceCutoffMs: nowMs(),
+                }
+                : null,
+        });
+        toast('Would You Rather regenerated from previous performances.');
+        return persistedDirector;
+    }, [addQuickRunOfShowMoment, getCurrentRunOfShowDirector, patchRunOfShowItem, songs, toast]);
     const addScenePresetToRunOfShow = useCallback(async (preset = {}) => {
         const director = getCurrentRunOfShowDirector();
         const items = Array.isArray(director?.items) ? director.items : [];
@@ -10135,6 +10562,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         () => (Array.isArray(songs) ? songs : []).filter((song) => String(song?.status || '').trim().toLowerCase() === 'requested'),
         [songs]
     );
+    const activeQueuePerformance = useMemo(() => {
+        const activeSongId = String(room?.currentPerformanceSession?.songId || '').trim();
+        const roomSongs = Array.isArray(songs) ? songs : [];
+        if (activeSongId) return roomSongs.find((song) => String(song?.id || '').trim() === activeSongId) || null;
+        return roomSongs.find((song) => ['staged', 'performing', 'playing', 'paused'].includes(String(song?.status || '').trim().toLowerCase())) || null;
+    }, [room?.currentPerformanceSession?.songId, songs]);
     const currentRoomDraftSummary = useMemo(() => ({
         queueCount: Array.isArray(runOfShowQueueCandidates) ? runOfShowQueueCandidates.length : 0,
         sceneCount: (Array.isArray(scenePresets) ? scenePresets : []).filter((preset) => {
@@ -10160,47 +10593,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const safeSongId = String(songId || '').trim();
         const safeItemId = String(itemId || '').trim();
         if (!safeSongId || !safeItemId || !roomCode) return;
-        const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
-        const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId);
-        const result = await runTransaction(db, async (transaction) => {
-            const [roomSnap, songSnap] = await Promise.all([
-                transaction.get(roomRef),
-                transaction.get(songRef),
-            ]);
-            if (!roomSnap.exists() || !songSnap.exists()) {
-                throw new Error('assignment_target_missing');
-            }
-            const roomData = roomSnap.data() || {};
-            const queueSong = songSnap.data() || {};
-            const { nextDirector: normalizedDirector, targetItem } = prepareRunOfShowQueueAssignment({
-                director: roomData?.runOfShowDirector || getCurrentRunOfShowDirector(),
-                queueSong: {
-                    ...queueSong,
-                    id: safeSongId,
-                },
-                itemId: safeItemId,
-                buildAssignmentPatch: buildRunOfShowQueueAssignmentPatch,
-                deriveStatus: deriveRunOfShowEditableStatus,
-            });
-            transaction.update(roomRef, {
-                runOfShowDirector: normalizedDirector,
-            });
-            transaction.update(songRef, {
-                status: 'assigned',
-                runOfShowItemId: safeItemId,
-                runOfShowAssignedAt: serverTimestamp()
-            });
-            return {
-                nextDirector: normalizedDirector,
-                queueSongTitle: String(queueSong?.songTitle || '').trim(),
-                slotSequence: Number(targetItem?.sequence || 0),
-            };
+        const queueSong = (Array.isArray(songsRef.current) ? songsRef.current : [])
+            .find((song) => String(song?.id || '').trim() === safeSongId) || null;
+        const nextDirector = await mutateTonightLineupState('assign_performance_to_slot', {
+            queueSongId: safeSongId,
+            itemId: safeItemId,
         });
-        setRunOfShowDirectorState(result.nextDirector);
-        runOfShowLocalEditAtRef.current = Date.now();
-        runOfShowRemoteSyncRef.current.director = JSON.stringify(result.nextDirector);
-        toast(`Assigned ${result.queueSongTitle || 'queue song'} to slot ${result.slotSequence || '?'}.`);
-    }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, roomCode, toast]);
+        const targetItem = (nextDirector?.items || []).find((item) => item.id === safeItemId) || null;
+        toast(`Assigned ${String(queueSong?.songTitle || targetItem?.songTitle || 'queue song').trim()} to slot ${Number(targetItem?.sequence || 0) || '?'}.`);
+    }, [mutateTonightLineupState, roomCode, toast]);
     const assignQueueSongToNextOpenRunOfShowSlot = useCallback(async (songId) => {
         const safeSongId = String(songId || '').trim();
         const nextOpenSlot = runOfShowOpenPerformanceSlots[0] || null;
@@ -10247,16 +10648,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const pauseKey = `${candidateItem.id}:${pauseState.status}:${pendingSubmissionCount}`;
         if (runOfShowAutoPauseKeyRef.current === pauseKey) return true;
         runOfShowAutoPauseKeyRef.current = pauseKey;
-        await persistRunOfShowDirector({
-            ...getCurrentRunOfShowDirector(),
-            automationPaused: true,
-            automationStatus: pauseState.status,
-            lastAutomationAtMs: nowMs()
-        });
+        if (isMarketingDemoFixture) {
+            await persistRunOfShowDirector({
+                ...getCurrentRunOfShowDirector(),
+                automationPaused: true,
+                automationStatus: pauseState.status,
+            });
+        } else {
+            await mutateTonightLineupState('set_automation_runtime_state', {
+                paused: true,
+                status: pauseState.status,
+            });
+        }
         toast(pauseState.detail || 'Automation paused while the next performance waits on a singer.');
         return true;
     }, [
         getCurrentRunOfShowDirector,
+        isMarketingDemoFixture,
+        mutateTonightLineupState,
         persistRunOfShowDirector,
         roomCode,
         runOfShowAutomationEnabled,
@@ -10285,16 +10694,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
 
         runOfShowAutoPauseKeyRef.current = '';
-        await persistRunOfShowDirector({
-            ...getCurrentRunOfShowDirector(),
-            automationPaused: false,
-            automationStatus: candidateItem?.status === 'staged' ? 'staged' : 'idle',
-            lastAutomationAtMs: nowMs()
-        });
+        if (isMarketingDemoFixture) {
+            await persistRunOfShowDirector({
+                ...getCurrentRunOfShowDirector(),
+                automationPaused: false,
+                automationStatus: candidateItem?.status === 'staged' ? 'staged' : 'idle',
+            });
+        } else {
+            await mutateTonightLineupState('set_automation_runtime_state', {
+                paused: false,
+                status: candidateItem?.status === 'staged' ? 'staged' : 'idle',
+            });
+        }
         toast('Singer ready. Automation resumed.');
         return true;
     }, [
         getCurrentRunOfShowDirector,
+        isMarketingDemoFixture,
+        mutateTonightLineupState,
         persistRunOfShowDirector,
         roomCode,
         runOfShowAutomationEnabled,
@@ -10310,14 +10727,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const toggleRunOfShowAutomationPause = useCallback(async (paused) => {
         runOfShowAutoPauseKeyRef.current = '';
         if (!isMarketingDemoFixture) {
-            const result = await executeRunOfShowAction({ roomCode, action: paused === true ? 'pause_automation' : 'resume_automation' });
-            if (result?.runOfShowDirector) {
-                setRunOfShowDirectorState(normalizeRunOfShowDirector(result.runOfShowDirector));
-            }
-            if (result?.runOfShowPolicy) {
-                setRunOfShowPolicy(normalizeRunOfShowPolicy(result.runOfShowPolicy));
-            }
-            return result?.runOfShowDirector || null;
+            return mutateTonightLineupState('set_automation_intent', { enabled: paused !== true });
         }
         const director = getCurrentRunOfShowDirector();
         return persistRunOfShowDirector({
@@ -10325,7 +10735,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             automationPaused: paused === true,
             automationStatus: paused === true ? 'paused' : 'idle'
         });
-    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode]);
+    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, mutateTonightLineupState, persistRunOfShowDirector]);
     const startRunOfShowNow = useCallback(async (options = {}) => {
         if (!roomCode) return getCurrentRunOfShowDirector();
         const allowUnsafe = options?.allowUnsafe === true;
@@ -10380,7 +10790,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
         const nextDirector = createDefaultRunOfShowDirector();
         const nextPolicy = createDefaultRunOfShowPolicy();
-        const nextRoles = createDefaultRunOfShowRoles();
+        const nextRoles = createDefaultRunOfShowRoles({ coHosts: room?.coHostUids || [] });
         const nextTemplateMeta = createDefaultRunOfShowTemplateMeta();
 
         clearRunOfShowPerformanceIntroTimer();
@@ -10393,13 +10803,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowPerformanceHandledRef.current = '';
         setProgramMode(RUN_OF_SHOW_PROGRAM_MODES.standard);
         setRunOfShowEnabled(false);
-        setRunOfShowDirectorState(nextDirector);
         setRunOfShowPolicy(nextPolicy);
         setRunOfShowRoles(nextRoles);
         setRunOfShowTemplateMeta(nextTemplateMeta);
         setRunOfShowFocusRequest(null);
         runOfShowLocalEditAtRef.current = Date.now();
-        runOfShowRemoteSyncRef.current.director = JSON.stringify(nextDirector);
         runOfShowRemoteSyncRef.current.policy = JSON.stringify(nextPolicy);
         runOfShowRemoteSyncRef.current.roles = JSON.stringify(nextRoles);
         runOfShowRemoteSyncRef.current.templateMeta = JSON.stringify(nextTemplateMeta);
@@ -10426,31 +10834,41 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await batch.commit();
         }
 
-        await updateRoom({
+        const committedDirector = await persistRunOfShowDirector(nextDirector, {
             programMode: RUN_OF_SHOW_PROGRAM_MODES.standard,
             runOfShowEnabled: false,
-            runOfShowDirector: nextDirector,
-            runOfShowPolicy: nextPolicy,
-            runOfShowRoles: nextRoles,
-            runOfShowTemplateMeta: nextTemplateMeta,
-            tvPreviewOverlay: null,
-            announcement: null,
-            appleMusicPlayback: null
+            roomUpdates: {
+                runOfShowPolicy: nextPolicy,
+                runOfShowRoles: nextRoles,
+                runOfShowTemplateMeta: nextTemplateMeta,
+                tvPreviewOverlay: null,
+                announcement: null,
+                appleMusicPlayback: null,
+            },
         });
         await stopAppleMusic?.();
         toast(`${HOST_LIVE_OPS_LANGUAGE.showPlan} cleared. ${HOST_LIVE_OPS_LANGUAGE.lineup} is back to manual control.`);
-        return nextDirector;
-    }, [clearRunOfShowPerformanceIntroTimer, songs, stopAppleMusic, toast, updateRoom]);
+        return committedDirector;
+    }, [clearRunOfShowPerformanceIntroTimer, persistRunOfShowDirector, room?.coHostUids, songs, stopAppleMusic, toast]);
     const advanceRunOfShowNext = useCallback(async () => {
         const currentDirector = getCurrentRunOfShowDirector();
         const liveItem = getRunOfShowLiveItem(currentDirector);
         const stagedItem = getRunOfShowStagedItem(currentDirector);
         if (liveItem?.id) {
             const completedDirector = await completeRunOfShowItem(liveItem.id, { manualAdvance: true });
-            if (stagedItem?.id) {
-                return startRunOfShowItem(stagedItem.id, { manualAdvance: true });
+            const nextStagedItem = getRunOfShowStagedItem(completedDirector) || stagedItem;
+            if (nextStagedItem?.id) return startRunOfShowItem(nextStagedItem.id, { manualAdvance: true });
+            const nextReadyItem = getNextRunOfShowItem(completedDirector);
+            if (!nextReadyItem?.id) return completedDirector;
+            const preparedDirector = await prepareRunOfShowItem(nextReadyItem.id, { manualAdvance: true, silent: true });
+            const preparedItem = getRunOfShowStagedItem(preparedDirector)
+                || preparedDirector.items.find((item) => item.id === nextReadyItem.id)
+                || nextReadyItem;
+            if (String(preparedItem?.status || '').trim().toLowerCase() !== 'staged') {
+                toast(`"${preparedItem?.title || getRunOfShowItemLabel(preparedItem?.type || '') || 'Next block'}" is not ready to go live yet.`);
+                return preparedDirector;
             }
-            return completedDirector;
+            return startRunOfShowItem(preparedItem.id, { manualAdvance: true });
         }
         if (stagedItem?.id) return startRunOfShowItem(stagedItem.id, { manualAdvance: true });
         const nextItem = getNextRunOfShowItem(currentDirector);
@@ -10697,17 +11115,133 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await updateRoom({ runOfShowPolicy: nextPolicy });
         return nextPolicy;
     }, [isMarketingDemoFixture, runOfShowPolicy, updateRoom]);
+    const tonightLineupQueueSyncInFlightRef = useRef(false);
+    const ensureQueuedPerformancesInTonightLineup = useCallback(async () => {
+        if (isMarketingDemoFixture) return getCurrentRunOfShowDirector();
+        if (tonightLineupQueueSyncInFlightRef.current) return getCurrentRunOfShowDirector();
+        tonightLineupQueueSyncInFlightRef.current = true;
+        try {
+            let director = getCurrentRunOfShowDirector();
+            const session = roomRef.current?.currentPerformanceSession || {};
+            const performanceMeta = roomRef.current?.currentPerformanceMeta || {};
+            const currentQueueSongId = String(
+                session?.songId
+                || performanceMeta?.songId
+                || activeQueuePerformance?.id
+                || ''
+            ).trim();
+            const sessionState = String(session?.playbackState || session?.state || '').trim().toLowerCase();
+            const hasActivePlayback = !!currentQueueSongId && (
+                ['idle', 'starting', 'playing', 'paused', 'ending'].includes(sessionState)
+                || !!activeQueuePerformance
+            );
+            const linkedQueueSongIds = () => new Set(
+                (Array.isArray(director?.items) ? director.items : [])
+                    .map((item) => String(item?.queueSongId || item?.preparedQueueSongId || '').trim())
+                    .filter(Boolean)
+            );
+            if (hasActivePlayback && !linkedQueueSongIds().has(currentQueueSongId)) {
+                director = await mutateTonightLineupState('adopt_active_performance', { queueSongId: currentQueueSongId }, { silentConflict: true });
+            }
+            const candidates = (Array.isArray(runOfShowQueueCandidates) ? runOfShowQueueCandidates : [])
+                .slice()
+                .sort((left, right) => Number(left?.priorityScore || 0) - Number(right?.priorityScore || 0));
+            for (const song of candidates) {
+                const queueSongId = String(song?.id || '').trim();
+                if (!queueSongId || linkedQueueSongIds().has(queueSongId)) continue;
+                director = await mutateTonightLineupState('insert_performance', { queueSongId }, { silentConflict: true });
+            }
+            return director;
+        } finally {
+            tonightLineupQueueSyncInFlightRef.current = false;
+        }
+    }, [activeQueuePerformance, getCurrentRunOfShowDirector, isMarketingDemoFixture, mutateTonightLineupState, runOfShowQueueCandidates]);
+    const toggleTonightLineupAutoAdvance = useCallback(async () => {
+        if (tonightLineupAutoAdvanceBusyRef.current) return;
+        tonightLineupAutoAdvanceBusyRef.current = true;
+        setTonightLineupAutoAdvancePending(true);
+        try {
+            const automationMode = String(runOfShowPolicy?.defaultAutomationMode || 'auto').trim().toLowerCase();
+            const automationIsRunning = isRunOfShowRoom
+                && automationMode !== 'manual'
+                && runOfShowDirector?.automationPaused !== true;
+
+            if (automationIsRunning) {
+                await toggleRunOfShowAutomationPause(true);
+                toast(`${HOST_LIVE_OPS_LANGUAGE.autoAdvance} paused. Tonight's lineup order is preserved.`);
+                return;
+            }
+
+            await ensureQueuedPerformancesInTonightLineup();
+            if (automationMode === 'manual') {
+                await updateRunOfShowPolicyState({ defaultAutomationMode: 'auto' });
+            }
+            if (isRunOfShowRoom) {
+                await toggleRunOfShowAutomationPause(false);
+                toast(`${HOST_LIVE_OPS_LANGUAGE.autoAdvance} resumed for scenes and performances.`);
+                return;
+            }
+            await startRunOfShowNow();
+        } catch (error) {
+            hostLogger.warn('Could not update Tonight\'s Lineup progression', error);
+            toast(`Could not update ${HOST_LIVE_OPS_LANGUAGE.autoAdvance}. Try again.`);
+        } finally {
+            tonightLineupAutoAdvanceBusyRef.current = false;
+            setTonightLineupAutoAdvancePending(false);
+        }
+    }, [
+        ensureQueuedPerformancesInTonightLineup,
+        isRunOfShowRoom,
+        runOfShowDirector?.automationPaused,
+        runOfShowPolicy?.defaultAutomationMode,
+        startRunOfShowNow,
+        toast,
+        toggleRunOfShowAutomationPause,
+        updateRunOfShowPolicyState,
+    ]);
+    useEffect(() => {
+        if (!isRunOfShowRoom) return;
+        let cancelled = false;
+        let retryTimer = null;
+        let attempt = 0;
+        const reconcile = () => {
+            attempt += 1;
+            ensureQueuedPerformancesInTonightLineup().catch((error) => {
+                hostLogger.warn('Could not reconcile queued performances into Tonight\'s Lineup', error);
+                if (!cancelled && attempt < 2) retryTimer = setTimeout(reconcile, 300);
+            });
+        };
+        reconcile();
+        return () => {
+            cancelled = true;
+            if (retryTimer) clearTimeout(retryTimer);
+        };
+    }, [ensureQueuedPerformancesInTonightLineup, isRunOfShowRoom, runOfShowDirector?.revision]);
     const updateRunOfShowRolesState = useCallback(async (patch = {}) => {
         const nextRoles = normalizeRunOfShowRoles({
             ...(roomRef.current?.runOfShowRoles || runOfShowRoles || {}),
             ...(patch || {}),
         });
-        runOfShowRemoteSyncRef.current.roles = JSON.stringify(nextRoles);
-        setRunOfShowRoles(nextRoles);
-        if (isMarketingDemoFixture) return nextRoles;
-        await updateRoom({ runOfShowRoles: nextRoles });
-        return nextRoles;
-    }, [isMarketingDemoFixture, runOfShowRoles, updateRoom]);
+        if (isMarketingDemoFixture) {
+            runOfShowRemoteSyncRef.current.roles = JSON.stringify(nextRoles);
+            setRunOfShowRoles(nextRoles);
+            return nextRoles;
+        }
+        const activeCoHosts = [...new Set((roomRef.current?.coHostUids || []).filter(Boolean))];
+        const requestedCoHosts = [...new Set((nextRoles.coHosts || []).filter(Boolean))];
+        const added = requestedCoHosts.filter((targetUid) => !activeCoHosts.includes(targetUid));
+        const removed = activeCoHosts.filter((targetUid) => !requestedCoHosts.includes(targetUid));
+        await Promise.all([
+            ...added.map((targetUid) => manageRoomCoHostInvite({ roomCode, targetUid, action: 'invite' })),
+            ...removed.map((targetUid) => manageRoomCoHostInvite({ roomCode, targetUid, action: 'revoke' })),
+        ]);
+        const activeNextRoles = normalizeRunOfShowRoles({
+            coHosts: activeCoHosts.filter((targetUid) => !removed.includes(targetUid)),
+        });
+        runOfShowRemoteSyncRef.current.roles = JSON.stringify(activeNextRoles);
+        setRunOfShowRoles(activeNextRoles);
+        return activeNextRoles;
+    }, [isMarketingDemoFixture, roomCode, runOfShowRoles]);
     const applyGeneratedRunOfShowDraft = useCallback(async ({ items = [], mode = 'replace', activateShow = false } = {}) => {
         const director = getCurrentRunOfShowDirector();
         const generatedItems = resequenceRunOfShowItems(Array.isArray(items) ? items : []).map((item) => {
@@ -10832,7 +11366,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
             return template;
         }
-        const result = await manageRunOfShowTemplate({ roomCode, action: 'apply', templateId: safeTemplateId });
+        const result = await manageRunOfShowTemplate({
+            roomCode,
+            action: 'apply',
+            templateId: safeTemplateId,
+            expectedRevision: Math.max(0, Number(getCurrentRunOfShowDirector()?.revision || 0) || 0),
+        });
+        if (result?.runOfShowDirector) applyRunOfShowActionResult(result);
         setRunOfShowTemplateMeta((prev) => {
             const nextMeta = normalizeRunOfShowTemplateMeta({
             ...(prev || {}),
@@ -10843,7 +11383,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return nextMeta;
         });
         return result;
-    }, [isMarketingDemoFixture, roomCode, runOfShowTemplates]);
+    }, [applyRunOfShowActionResult, getCurrentRunOfShowDirector, isMarketingDemoFixture, roomCode, runOfShowTemplates]);
     const archiveCurrentRunOfShow = useCallback(async (templateName = '') => {
         const safeName = String(templateName || '').trim() || 'Archived Show Plan';
         if (isMarketingDemoFixture) {
@@ -11148,6 +11688,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
         [songs]
     );
+    const lineupProjectionSongs = useMemo(
+        () => songs
+            .filter((song) => ['requested', 'assigned', 'staged', 'performing', 'playing', 'paused'].includes(String(song?.status || '').trim().toLowerCase()))
+            .sort((a, b) => Number(a?.priorityScore || 0) - Number(b?.priorityScore || 0)),
+        [songs]
+    );
     const hostMissionRecommendation = useMemo(() => getRecommendedHostAction({
         room,
         queue: missionQueueSongs,
@@ -11213,11 +11759,41 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const hostAuthSessionReady = !!(uid || auth.currentUser?.uid);
     const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > nowMs() - 5 * 60 * 1000);
     const lastActivity = activities?.[0];
+    const updateOperatorSignalStatus = useCallback(async (signalId = '', status = 'seen') => {
+        const safeSignalId = String(signalId || '').trim();
+        if (!roomCode || !safeSignalId) return;
+        try {
+            await setRoomOperatorSignalStatus({ roomCode, signalId: safeSignalId, status });
+            toast(status === 'resolved' ? 'Co-host note resolved' : 'Co-host notified: got it');
+        } catch (error) {
+            hostLogger.error('Could not update co-host signal', error);
+            toast('Could not update that co-host note');
+        }
+    }, [roomCode, toast]);
     const recentCoHostSignals = useMemo(() => {
         const cutoffMs = nowMs() - COHOST_SIGNAL_WINDOW_MS;
         const groupedSignals = new Map();
-        (Array.isArray(activities) ? activities : []).forEach((entry) => {
+        const secureSignalActivities = (Array.isArray(operatorSignals) ? operatorSignals : []).map((signal) => ({
+            ...signal,
+            sourceSignalId: signal?.signalId || signal?.id || '',
+            type: 'cohost_signal',
+            signalId: String(signal?.type || '').trim().toLowerCase() === 'audio_attention'
+                ? `${String(signal?.audioArea || 'mix').trim().toLowerCase()}_issue`
+                : String(signal?.type || '').trim().toLowerCase(),
+            user: signal?.actorName || 'Co-Host',
+            timestamp: signal?.updatedAt || signal?.createdAt,
+        }));
+        const signalSource = (isMarketingDemoFixture || qaHostFixtureId)
+            ? (Array.isArray(activities) ? activities : [])
+            : secureSignalActivities;
+        signalSource.forEach((entry) => {
             if (!isCoHostSignalActivity(entry)) return;
+            if (['resolved', 'expired'].includes(String(entry?.status || '').trim().toLowerCase())) return;
+            if (!isMarketingDemoFixture && !qaHostFixtureId && String(entry?.signalScope || '').trim().toLowerCase() === 'performance') {
+                const livePerformanceId = String(currentSong?.id || '').trim();
+                const signalPerformanceId = String(entry?.performanceId || '').trim();
+                if (!livePerformanceId || !signalPerformanceId || livePerformanceId !== signalPerformanceId) return;
+            }
             const signalTs = toMs(entry?.timestamp);
             if (signalTs < cutoffMs) return;
             const meta = getCoHostSignalMeta(entry?.signalId);
@@ -11239,16 +11815,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 latestPerformanceAlbumArtUrl: '',
                 latestPerformanceElapsedSec: 0,
                 latestSignalScope: 'room',
+                sourceSignalId: '',
+                status: 'delivered',
             };
             const userName = String(entry?.user || '').trim();
             const signalIsLatest = signalTs >= existing.latestAtMs;
-            existing.count += 1;
+            existing.count += Math.max(1, Number(entry?.count || 1) || 1);
             existing.latestAtMs = Math.max(existing.latestAtMs, signalTs);
             if (userName) {
                 existing.latestUser = signalIsLatest ? userName : (existing.latestUser || userName);
                 existing.userNames.add(userName);
             }
             if (signalIsLatest) {
+                existing.sourceSignalId = String(entry?.sourceSignalId || '').trim();
+                existing.status = String(entry?.status || 'delivered').trim().toLowerCase();
                 existing.latestPerformanceSingerName = String(entry?.performanceSingerName || '').trim();
                 existing.latestPerformanceSongTitle = String(entry?.performanceSongTitle || '').trim();
                 existing.latestPerformanceArtistName = String(entry?.performanceArtistName || '').trim();
@@ -11273,9 +11853,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         ? `${formatElapsedClock(entry.latestPerformanceElapsedSec)} in`
                         : '',
                     formatRelativeShortAge(entry.latestAtMs)
-                ].filter(Boolean).join(' Ã¢â‚¬Â¢ ');
+                ].filter(Boolean).join(' • ');
                 return {
                     id: entry.id,
+                    signalId: entry.sourceSignalId,
+                    status: entry.status || 'delivered',
                     label: entry.label,
                     hostLabel: entry.hostLabel,
                     icon: entry.icon,
@@ -11287,6 +11869,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     contextTitle,
                     contextMeta,
                     artworkUrl: entry.latestPerformanceAlbumArtUrl || '',
+                    onAcknowledge: entry.sourceSignalId && entry.status === 'delivered'
+                        ? () => updateOperatorSignalStatus(entry.sourceSignalId, 'seen')
+                        : null,
+                    onResolve: entry.sourceSignalId
+                        ? () => updateOperatorSignalStatus(entry.sourceSignalId, 'resolved')
+                        : null,
                     summary: uniqueCount > 1
                         ? `${uniqueCount} co-hosts flagged this`
                         : `${entry.latestUser || 'A co-host'} flagged this`
@@ -11294,7 +11882,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             })
             .sort((left, right) => right.latestAtMs - left.latestAtMs)
             .slice(0, 4);
-    }, [activities]);
+    }, [activities, currentSong?.id, isMarketingDemoFixture, operatorSignals, qaHostFixtureId, updateOperatorSignalStatus]);
     useEffect(() => {
         const snapshot = coHostSignalToastStateRef.current || { hydrated: false, latestById: {} };
         const nextLatestById = {};
@@ -11356,8 +11944,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         queueTotalCount: missionQueueSongs.length,
         attentionCount: queueAttentionCount,
         runOfShowDirector,
-        queueSongs: missionQueueSongs,
-    }), [hostHorizonRuntimeModel, missionQueueSongs, queueAttentionCount, runOfShowDirector]);
+        queueSongs: lineupProjectionSongs,
+        runOfShowEnabled: isRunOfShowRoom,
+        runOfShowAutomationMode: runOfShowPolicy?.defaultAutomationMode,
+        currentPerformanceSession: room?.currentPerformanceSession || null,
+        progressionPending: tonightLineupAutoAdvancePending,
+    }), [hostHorizonRuntimeModel, isRunOfShowRoom, lineupProjectionSongs, missionQueueSongs.length, queueAttentionCount, room?.currentPerformanceSession, runOfShowDirector, runOfShowPolicy?.defaultAutomationMode, tonightLineupAutoAdvancePending]);
     const {
         smokeRunning,
         smokeResults,
@@ -11999,6 +12591,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused) return;
         if (runOfShowAutomationBusyRef.current) return;
         if (runOfShowLiveItem || !runOfShowStagedItem) return;
+        const postPerformanceSurfaceLease = getPostPerformanceSurfaceLease(roomRef.current || room || {}, {
+            now: nowMs(),
+            recapDurationMs: performanceRecapTotalMs,
+        });
+        if (postPerformanceSurfaceLease.active) {
+            const retryTimer = setTimeout(
+                () => setRunOfShowAutomationRetryTick((tick) => tick + 1),
+                Math.max(250, postPerformanceSurfaceLease.remainingMs + 75),
+            );
+            return () => clearTimeout(retryTimer);
+        }
         const startDecision = getRunOfShowProgressionDecision({
             director: runOfShowDirector,
             item: runOfShowStagedItem,
@@ -12039,6 +12642,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
     }, [
         runOfShowAutomationEnabled,
+        performanceRecapTotalMs,
+        room,
+        room?.activeMode,
+        room?.lastPerformance?.timestamp,
+        room?.recapPreview?.timestamp,
+        room?.showPerformanceRecap,
         roomCode,
         runOfShowAutomationRetryTick,
         runOfShowDirector,
@@ -12057,16 +12666,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         if (!completionDecision.allowed) return;
         const startedAtMs = Number(runOfShowLiveItem.liveStartedAtMs || 0);
+        const promptItem = ['trivia_break', 'would_you_rather_break'].includes(String(runOfShowLiveItem?.type || '').trim().toLowerCase());
+        const promptData = runOfShowLiveItem.type === 'trivia_break' ? room?.triviaQuestion : room?.wyrData;
+        const promptReveal = promptItem && (
+            ['trivia_reveal', 'wyr_reveal'].includes(String(room?.activeMode || '').trim().toLowerCase())
+            || String(promptData?.status || '').trim().toLowerCase() === 'reveal'
+        );
         const durationMs = Math.max(0, Number(runOfShowLiveItem.plannedDurationSec || 0) * 1000);
-        if (!startedAtMs || !durationMs) return;
-        const completionKey = `${runOfShowLiveItem.id}:${startedAtMs}`;
-        const remainingMs = Math.max(0, (startedAtMs + durationMs) - nowMs());
+        const deadlineMs = promptItem
+            ? promptReveal
+                ? Math.max(0, Number(promptData?.completeAt || 0) || (Number(promptData?.revealedAt || 0) + (Math.max(3, Number(promptData?.revealDurationSec || RUN_OF_SHOW_PROMPT_REVEAL_SEC)) * 1000)))
+                : Math.max(0, Number(promptData?.revealAt || 0))
+            : startedAtMs + durationMs;
+        if (!startedAtMs || !deadlineMs) return;
+        const lifecyclePhase = promptItem ? (promptReveal ? 'complete' : 'reveal') : 'complete';
+        const completionKey = `${runOfShowLiveItem.id}:${startedAtMs}:${lifecyclePhase}`;
+        const remainingMs = Math.max(0, deadlineMs - nowMs());
         const finalize = () => {
             if (runOfShowAutoCompleteKeyRef.current === completionKey) return;
             runOfShowAutoCompleteKeyRef.current = completionKey;
-            completeRunOfShowItem(runOfShowLiveItem.id, { automation: true })
+            const transition = lifecyclePhase === 'reveal'
+                ? revealRunOfShowPromptItem(runOfShowLiveItem.id)
+                : completeRunOfShowItem(runOfShowLiveItem.id, { automation: true });
+            transition
                 .catch((error) => {
-                    hostLogger.warn('Run-of-show timed completion failed', error);
+                    if (runOfShowAutoCompleteKeyRef.current === completionKey) runOfShowAutoCompleteKeyRef.current = '';
+                    hostLogger.warn(`Run-of-show timed ${lifecyclePhase} failed`, error);
                 });
         };
         if (remainingMs <= 0) {
@@ -12077,6 +12702,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => clearTimeout(timer);
     }, [
         completeRunOfShowItem,
+        revealRunOfShowPromptItem,
+        room?.activeMode,
+        room?.triviaQuestion,
+        room?.wyrData,
         runOfShowAutomationEnabled,
         roomCode,
         runOfShowDirector,
@@ -12670,7 +13299,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 .sort((a, b) => toMs(b?.timestamp) - toMs(a?.timestamp));
              setActivities(items);
         });
-        return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); };
+        const unsubOperatorSignals = onSnapshot(query(
+            collection(db, 'room_operator_signals'),
+            where('roomCode', '==', roomCode),
+            limit(80)
+        ), s => {
+            const items = s.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => toMs(b?.updatedAt || b?.createdAt) - toMs(a?.updatedAt || a?.createdAt));
+            setOperatorSignals(items);
+        }, (error) => {
+            hostLogger.debug('Could not subscribe to private co-host signals', error);
+            setOperatorSignals([]);
+        });
+        return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); unsubOperatorSignals(); };
     }, [roomCode, isMarketingDemoFixture, qaHostFixtureId, uid]);
 
     // Media and scene libraries stay dormant outside the workspaces that use them.
@@ -13247,7 +13889,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         bgAudio.current.src = activeBgTrack.url;
     }, [activeBgTrack?.url, appleMusicAutoPlaylistId, room, room?.appleMusicAutoPlaylistId, room?.appleMusicPlayback]);
     const getAppleBackgroundPlaylistConfig = useCallback(() => {
-        const liveRoom = roomRef.current || room || {};
+        const liveRoom = roomRef.current || {};
         const playlistId = parseAppleMusicPlaylistId(appleMusicAutoPlaylistId || liveRoom?.appleMusicAutoPlaylistId || '');
         return {
             playlistId,
@@ -13255,25 +13897,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             sourceType: String(appleMusicAutoSourceType || liveRoom?.appleMusicAutoSourceType || '').trim(),
             playbackUrl: String(appleMusicAutoPlaybackUrl || liveRoom?.appleMusicAutoPlaybackUrl || '').trim()
         };
-    }, [appleMusicAutoPlaybackUrl, appleMusicAutoPlaylistId, appleMusicAutoPlaylistTitle, appleMusicAutoSourceType, room]);
+    }, [appleMusicAutoPlaybackUrl, appleMusicAutoPlaylistId, appleMusicAutoPlaylistTitle, appleMusicAutoSourceType]);
     const backgroundAudioSource = useMemo(() => resolveBackgroundAudioSource({
-        room,
+        source: room?.backgroundAudioSource,
+        room: {
+            appleMusicAutoPlaylistId: room?.appleMusicAutoPlaylistId,
+            appleMusicPlayback: { type: room?.appleMusicPlayback?.type },
+        },
         applePlaylistId: appleMusicAutoPlaylistId,
-    }), [appleMusicAutoPlaylistId, room]);
+    }), [appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistId, room?.appleMusicPlayback?.type, room?.backgroundAudioSource]);
     const appleMusicBackgroundSelected = useMemo(() => {
-        const playback = room?.appleMusicPlayback || {};
-        const status = String(playback?.status || '').trim().toLowerCase();
+        const playbackType = String(room?.appleMusicPlayback?.type || '').trim().toLowerCase();
+        const playbackStatus = String(room?.appleMusicPlayback?.status || '').trim().toLowerCase();
         return isAppleBackgroundAudioSource(backgroundAudioSource) && (
             !!parseAppleMusicPlaylistId(appleMusicAutoPlaylistId || room?.appleMusicAutoPlaylistId || '') ||
-            ['playlist', 'station'].includes(String(playback?.type || '').trim().toLowerCase())
-            && ['playing', 'paused'].includes(status)
+            ['playlist', 'station'].includes(playbackType)
+            && ['playing', 'paused'].includes(playbackStatus)
         );
-    }, [appleMusicAutoPlaylistId, backgroundAudioSource, room?.appleMusicAutoPlaylistId, room?.appleMusicPlayback]);
+    }, [appleMusicAutoPlaylistId, backgroundAudioSource, room?.appleMusicAutoPlaylistId, room?.appleMusicPlayback?.status, room?.appleMusicPlayback?.type]);
     const appleMusicBackgroundPlaying = useMemo(() => {
-        const playback = room?.appleMusicPlayback || {};
-        return ['playlist', 'station'].includes(String(playback?.type || '').trim().toLowerCase())
-            && String(playback?.status || '').trim().toLowerCase() === 'playing';
-    }, [room?.appleMusicPlayback]);
+        const playbackType = String(room?.appleMusicPlayback?.type || '').trim().toLowerCase();
+        const playbackStatus = String(room?.appleMusicPlayback?.status || '').trim().toLowerCase();
+        return ['playlist', 'station'].includes(playbackType)
+            && playbackStatus === 'playing';
+    }, [room?.appleMusicPlayback?.status, room?.appleMusicPlayback?.type]);
     const backgroundMusicActive = isAppleBackgroundAudioSource(backgroundAudioSource)
         ? (appleMusicBackgroundPlaying && appleMusicPlaying)
         : !!playingBg;
@@ -13349,13 +13996,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const setBgMusicState = useCallback(async (next, { automatic = false, reason = '', performanceSessionId = '' } = {}) => {
         const { playlistId, title, sourceType, playbackUrl } = getAppleBackgroundPlaylistConfig();
-        const livePlayback = roomRef.current?.appleMusicPlayback || room?.appleMusicPlayback || {};
+        const livePlayback = roomRef.current?.appleMusicPlayback || {};
         const livePlaybackStatus = String(livePlayback?.status || '').trim().toLowerCase();
         const applePlaylistIsActive = ['playlist', 'station'].includes(String(livePlayback?.type || '').trim().toLowerCase())
             && ['playing', 'paused'].includes(livePlaybackStatus);
         const configuredApplePlaylistIsActive = applePlaylistIsActive
             && (!playlistId || String(livePlayback?.id || '').trim() === playlistId);
-        const liveBackgroundSession = roomRef.current?.backgroundAudioPlayback || room?.backgroundAudioPlayback || null;
+        const liveBackgroundSession = roomRef.current?.backgroundAudioPlayback || null;
         const appleBackgroundSession = isAppleBackgroundSession(liveBackgroundSession) ? liveBackgroundSession : null;
         const activePerformanceSessionId = String(roomRef.current?.currentPerformanceSession?.sessionId || '').trim();
 
@@ -13440,7 +14087,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 ? buildLocalBackgroundPlayback({ track: activeBgTrack, status: 'paused' })
                 : null,
         });
-    }, [activeBgTrack, appleMusicPlaying, backgroundAudioSource, getAppleBackgroundPlaylistConfig, pauseAppleMusic, playAppleMusicPlaylist, restoreAppleBackgroundSession, resumeAppleMusic, room?.appleMusicPlayback, room?.backgroundAudioPlayback, startLocalBackgroundTrack, updateRoom]);
+    }, [activeBgTrack, appleMusicPlaying, backgroundAudioSource, getAppleBackgroundPlaylistConfig, pauseAppleMusic, playAppleMusicPlaylist, restoreAppleBackgroundSession, resumeAppleMusic, startLocalBackgroundTrack, updateRoom]);
 
     const selectBgTrack = useCallback(async (
         trackId = '',
@@ -14472,6 +15119,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!autoBgMusic) return;
         if (stageActivationPendingRef.current) return;
         if (!currentSong && !backgroundMusicActive) {
+            const liveBackgroundSession = roomRef.current?.backgroundAudioPlayback || null;
+            if (
+                isAppleBackgroundSession(liveBackgroundSession)
+                && liveBackgroundSession.status === BACKGROUND_AUDIO_SESSION_STATUSES.error
+            ) return;
             const preferredTrack = activeBgTrack?.autoEligible === false
                 ? (autoBgTrackOptions[0] || roomBgTrackOptions[0] || null)
                 : activeBgTrack;
@@ -14479,13 +15131,44 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 void selectBgTrack(preferredTrack.id, { shouldPlay: true, syncRoom: true });
                 return;
             }
-            void setBgMusicState(true, { automatic: true }).catch((error) => {
+            const { playlistId } = getAppleBackgroundPlaylistConfig();
+            const attemptKey = isAppleBackgroundAudioSource(backgroundAudioSource)
+                ? `apple:${playlistId}:${Number(liveBackgroundSession?.sourceRevision || 0)}`
+                : `local:${String(preferredTrack?.id || preferredTrack?.url || '')}`;
+            const attemptState = automaticBackgroundStartRef.current;
+            const attemptNowMs = nowMs();
+            if (attemptState.promise) return;
+            if (attemptState.key === attemptKey && attemptNowMs < Number(attemptState.retryAtMs || 0)) return;
+
+            const startPromise = setBgMusicState(true, { automatic: true });
+            automaticBackgroundStartRef.current = {
+                ...attemptState,
+                key: attemptKey,
+                promise: startPromise,
+            };
+            void startPromise.then(() => {
+                if (automaticBackgroundStartRef.current.promise !== startPromise) return;
+                automaticBackgroundStartRef.current = { key: attemptKey, promise: null, failureCount: 0, retryAtMs: 0 };
+            }).catch((error) => {
+                if (automaticBackgroundStartRef.current.promise !== startPromise) return;
+                const failureCount = attemptState.key === attemptKey
+                    ? Math.min(6, Number(attemptState.failureCount || 0) + 1)
+                    : 1;
+                const retryDelayMs = isAppleMusicAutomaticRetryError(error)
+                    ? 30_000
+                    : Math.min(60_000, 5_000 * (2 ** (failureCount - 1)));
+                automaticBackgroundStartRef.current = {
+                    key: attemptKey,
+                    promise: null,
+                    failureCount,
+                    retryAtMs: nowMs() + retryDelayMs,
+                };
                 if (isAppleMusicAutomaticRetryError(error)) return;
                 hostLogger.warn('Automatic background audio start failed', error);
                 setAppleMusicPlaylistStatus('The room soundtrack is selected, but playback needs attention. Reconnect Apple Music or press the BG control to retry.');
             });
         }
-    }, [activeBgTrack, autoBgMusic, autoBgTrackOptions, backgroundMusicActive, currentSong, roomBgTrackOptions, selectBgTrack, setBgMusicState]);
+    }, [activeBgTrack, autoBgMusic, autoBgTrackOptions, backgroundAudioSource, backgroundMusicActive, currentSong, getAppleBackgroundPlaylistConfig, room?.backgroundAudioPlayback?.id, room?.backgroundAudioPlayback?.sourceRevision, room?.backgroundAudioPlayback?.status, roomBgTrackOptions, selectBgTrack, setBgMusicState]);
 
     useEffect(() => {
         if (!autoBgMusic) return;
@@ -14854,6 +15537,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const momentKey = String(moment?.key || `${type || 'auto'}_${nowMs()}`).trim();
         const title = String(moment?.title || '').trim();
         const detail = String(moment?.detail || '').trim();
+        const scheduledRunOfShowItemId = String(moment?.runOfShowItemId || '').trim();
+        const scheduledLaunchConfig = isPlainObject(moment?.launchConfig) ? moment.launchConfig : {};
         const partyPatch = isPlainObject(moment?.partyPatch) ? moment.partyPatch : null;
         const missionControlBase = partyPatch
             ? mergeMissionControlParty(room?.missionControl, partyPatch)
@@ -14864,8 +15549,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 autoCrowdMomentTimerRef.current = null;
             }
             const startedAt = nowMs();
-            const stagePlaybackReleaseAtMs = startedAt + (durationSec * 1000) + AUTO_PARTY_STAGE_SETTLE_MS;
-            const questionDurationSec = Math.max(5, durationSec - 5);
+            const totalDurationSec = Math.max(8, durationSec);
+            const requestedRevealSec = Math.max(3, Number(scheduledLaunchConfig?.revealDurationSec || RUN_OF_SHOW_PROMPT_REVEAL_SEC) || RUN_OF_SHOW_PROMPT_REVEAL_SEC);
+            const revealDurationSec = Math.min(Math.max(3, totalDurationSec - 5), requestedRevealSec);
+            const questionDurationSec = Math.max(5, totalDurationSec - revealDurationSec);
+            const stagePlaybackReleaseAtMs = startedAt + (totalDurationSec * 1000) + AUTO_PARTY_STAGE_SETTLE_MS;
             const hash = Array.from(momentKey).reduce((total, char) => total + char.charCodeAt(0), 0);
             const roomPatch = {
                 missionControl: {
@@ -14878,44 +15566,70 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         title,
                         detail,
                         startedAt,
-                        durationSec,
+                        durationSec: totalDurationSec,
                         stagePlaybackReleaseAtMs
                     }
                 }
             };
+            if (scheduledRunOfShowItemId) {
+                await patchRunOfShowItem(scheduledRunOfShowItemId, {
+                    status: 'live',
+                    liveStartedAtMs: startedAt,
+                    automationOccurrence: {
+                        ...(moment?.automationOccurrence || {}),
+                        contentState: 'live',
+                    },
+                });
+            }
             if (type === 'trivia') {
                 const bank = Array.isArray(TRIVIA_BANK) ? TRIVIA_BANK : [];
                 const entry = bank.length ? bank[hash % bank.length] : null;
-                const rawOptions = entry ? [entry.correct, entry.w1, entry.w2, entry.w3].filter(Boolean) : ['Option A', 'Option B'];
-                const rotation = rawOptions.length ? hash % rawOptions.length : 0;
+                const scheduledOptions = Array.isArray(scheduledLaunchConfig.options)
+                    ? scheduledLaunchConfig.options.map((option) => String(option || '').trim()).filter(Boolean).slice(0, 4)
+                    : String(scheduledLaunchConfig.optionsCsv || '').split(',').map((option) => option.trim()).filter(Boolean).slice(0, 4);
+                const rawOptions = scheduledOptions.length === 4
+                    ? scheduledOptions
+                    : entry ? [entry.correct, entry.w1, entry.w2, entry.w3].filter(Boolean) : ['Option A', 'Option B'];
+                const rotation = scheduledOptions.length === 4 ? 0 : (rawOptions.length ? hash % rawOptions.length : 0);
                 const options = [...rawOptions.slice(rotation), ...rawOptions.slice(0, rotation)];
                 roomPatch.activeMode = 'trivia_pop';
                 roomPatch.triviaQuestion = {
                     id: momentKey,
-                    q: entry?.q || 'Which song gets the room singing fastest?',
+                    q: String(scheduledLaunchConfig.question || entry?.q || 'Which song gets the room singing fastest?').trim(),
                     options,
-                    correct: Math.max(0, options.indexOf(entry?.correct)),
+                    correct: scheduledOptions.length === 4
+                        ? Math.max(0, Math.min(3, Number(scheduledLaunchConfig.correctIndex || 0)))
+                        : Math.max(0, options.indexOf(entry?.correct)),
                     status: 'asking',
                     startedAt,
                     durationSec: questionDurationSec,
+                    totalDurationSec,
+                    revealDurationSec,
                     autoReveal: true,
-                    revealAt: startedAt + (questionDurationSec * 1000)
+                    revealAt: startedAt + (questionDurationSec * 1000),
+                    completeAt: startedAt + (totalDurationSec * 1000),
                 };
                 roomPatch.wyrData = null;
             } else {
                 const bank = Array.isArray(WYR_BANK) ? WYR_BANK : [];
                 const entry = bank.length ? bank[hash % bank.length] : null;
+                const scheduledOptions = Array.isArray(scheduledLaunchConfig.options)
+                    ? scheduledLaunchConfig.options.map((option) => String(option || '').trim()).filter(Boolean).slice(0, 2)
+                    : String(scheduledLaunchConfig.optionsCsv || '').split(',').map((option) => option.trim()).filter(Boolean).slice(0, 2);
                 roomPatch.activeMode = 'wyr';
                 roomPatch.wyrData = {
                     id: momentKey,
-                    question: entry?.q || 'Would you rather sing solo or bring a duet partner?',
-                    optionA: entry?.a || 'Solo',
-                    optionB: entry?.b || 'Duet',
+                    question: String(scheduledLaunchConfig.question || entry?.q || 'Would you rather sing solo or bring a duet partner?').trim(),
+                    optionA: scheduledOptions[0] || entry?.a || 'Solo',
+                    optionB: scheduledOptions[1] || entry?.b || 'Duet',
                     status: 'live',
                     startedAt,
                     durationSec: questionDurationSec,
+                    totalDurationSec,
+                    revealDurationSec,
                     autoReveal: true,
-                    revealAt: startedAt + (questionDurationSec * 1000)
+                    revealAt: startedAt + (questionDurationSec * 1000),
+                    completeAt: startedAt + (totalDurationSec * 1000),
                 };
                 roomPatch.triviaQuestion = null;
             }
@@ -14926,20 +15640,57 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     autoCrowdMomentTimerRef.current = null;
                     return;
                 }
+                const revealedAt = nowMs();
+                const targetField = type === 'trivia' ? 'triviaQuestion' : 'wyrData';
+                const questionData = roomRef.current?.[targetField] || {};
                 Promise.resolve(updateRoom({
-                    activeMode: 'karaoke',
-                    triviaQuestion: null,
-                    wyrData: null,
-                    missionControl: {
-                        ...(isPlainObject(roomRef.current?.missionControl) ? roomRef.current.missionControl : {}),
-                        autoMoment: { ...activeAutoMoment, status: 'completed', endedAt: nowMs() }
-                    }
-                })).then(() => startNextFromQueue({ completedAutoMomentKey: momentKey }))
-                    .catch((error) => hostLogger.debug('Failed to clear auto question moment', error))
-                    .finally(() => {
+                    activeMode: type === 'trivia' ? 'trivia_reveal' : 'wyr_reveal',
+                    [targetField]: {
+                        ...questionData,
+                        status: 'reveal',
+                        revealedAt,
+                        revealDurationSec,
+                        completeAt: revealedAt + (revealDurationSec * 1000),
+                    },
+                })).then(() => finalizePromptVoteRound({
+                    roomCode,
+                    questionId: momentKey,
+                    voteType: type === 'trivia' ? 'vote_trivia' : 'vote_wyr',
+                })).catch((error) => hostLogger.debug('Failed to finalize auto question reveal', error));
+
+                autoCrowdMomentTimerRef.current = setTimeout(() => {
+                    const latestAutoMoment = roomRef.current?.missionControl?.autoMoment;
+                    if (String(latestAutoMoment?.key || '').trim() !== momentKey) {
                         autoCrowdMomentTimerRef.current = null;
-                    });
-            }, durationSec * 1000);
+                        return;
+                    }
+                    Promise.resolve(updateRoom({
+                        activeMode: 'karaoke',
+                        triviaQuestion: null,
+                        wyrData: null,
+                        missionControl: {
+                            ...(isPlainObject(roomRef.current?.missionControl) ? roomRef.current.missionControl : {}),
+                            autoMoment: { ...latestAutoMoment, status: 'completed', endedAt: nowMs() }
+                        }
+                    })).then(async () => {
+                        if (scheduledRunOfShowItemId) {
+                            await patchRunOfShowItem(scheduledRunOfShowItemId, {
+                                status: 'complete',
+                                completedAtMs: nowMs(),
+                                automationOccurrence: {
+                                    ...(moment?.automationOccurrence || {}),
+                                    contentState: 'complete',
+                                },
+                            });
+                        }
+                        return startNextFromQueue({ completedAutoMomentKey: momentKey });
+                    })
+                        .catch((error) => hostLogger.debug('Failed to clear auto question moment', error))
+                        .finally(() => {
+                            autoCrowdMomentTimerRef.current = null;
+                        });
+                }, revealDurationSec * 1000);
+            }, questionDurationSec * 1000);
             return;
         }
         if (type === 'volley') {
@@ -15010,7 +15761,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             detail,
             partyPatch
         });
-    }, [room?.missionControl, startNextFromQueue, startReadyCheck, updateRoom]);
+    }, [patchRunOfShowItem, room?.missionControl, roomCode, startNextFromQueue, startReadyCheck, updateRoom]);
     const updateAutoPartyConfig = useCallback(async (patch = {}) => {
         const currentParty = buildMissionPartyFromRoom(room);
         const nextParty = {
@@ -15105,7 +15856,59 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             isQueueEntryPlayable
         });
         if (!flow.autoPartyIntent.shouldStart || !flow.autoPartyIntent.moment) return;
-        const recommendedMoment = flow.autoPartyIntent.moment;
+        const completedPerformanceCount = (Array.isArray(songs) ? songs : [])
+            .filter((song) => ['performed', 'complete', 'completed'].includes(String(song?.status || '').trim().toLowerCase()))
+            .length;
+        const scheduledItem = (getCurrentRunOfShowDirector().items || [])
+            .filter((item) => item?.automationOccurrence?.source === 'between_song_rule')
+            .filter((item) => Number(item?.automationOccurrence?.boundaryOrdinal || 0) <= completedPerformanceCount)
+            .filter((item) => ['draft', 'ready', 'blocked'].includes(String(item?.status || '').trim().toLowerCase()))
+            .sort((left, right) => Number(left?.automationOccurrence?.boundaryOrdinal || 0) - Number(right?.automationOccurrence?.boundaryOrdinal || 0))[0] || null;
+        const materializedRule = normalizeBetweenSongMomentRule({ roomCode, party: partyConfig });
+        if (materializedRule.enabled && !scheduledItem) return;
+        if (scheduledItem?.automationOccurrence?.contentState === 'waiting_for_context') {
+            if (!betweenSongGenerationInFlightRef.current.has(scheduledItem.id)) {
+                betweenSongGenerationInFlightRef.current.add(scheduledItem.id);
+                const generator = scheduledItem.type === 'would_you_rather_break'
+                    ? generateRunOfShowWyrFromPreviousPerformances
+                    : generateRunOfShowTriviaFromPreviousPerformances;
+                Promise.resolve(generator(scheduledItem.id))
+                    .then((result) => {
+                        if (result) return;
+                        return patchRunOfShowItem(scheduledItem.id, {
+                            automationOccurrence: {
+                                ...(scheduledItem.automationOccurrence || {}),
+                                contentState: 'generation_failed',
+                            },
+                        });
+                    })
+                    .catch((error) => hostLogger.warn('Scheduled between-song content generation failed', error))
+                    .finally(() => betweenSongGenerationInFlightRef.current.delete(scheduledItem.id));
+            }
+            return;
+        }
+        if (scheduledItem?.automationOccurrence?.contentState === 'generation_failed') return;
+        const scheduledKind = scheduledItem?.type === 'would_you_rather_break'
+            ? 'would_you_rather'
+            : scheduledItem?.type === 'trivia_break' ? 'trivia' : '';
+        const recommendedMoment = scheduledItem && scheduledKind
+            ? {
+                ...flow.autoPartyIntent.moment,
+                type: scheduledKind,
+                title: scheduledItem.title,
+                detail: scheduledKind === 'trivia'
+                    ? 'Scheduled Trivia Moment from tonight so far.'
+                    : 'Scheduled Would You Rather Moment from tonight so far.',
+                activityLog: scheduledKind === 'trivia'
+                    ? 'started the scheduled Trivia Moment'
+                    : 'started the scheduled Would You Rather Moment',
+                breakDurationSec: Math.max(8, Number(scheduledItem?.plannedDurationSec || flow.autoPartyIntent.moment.breakDurationSec || 20)),
+                durationSec: Math.max(8, Number(scheduledItem?.plannedDurationSec || flow.autoPartyIntent.moment.breakDurationSec || 20)),
+                runOfShowItemId: scheduledItem.id,
+                launchConfig: scheduledItem?.modeLaunchPlan?.launchConfig || {},
+                automationOccurrence: scheduledItem.automationOccurrence,
+            }
+            : flow.autoPartyIntent.moment;
         const recapBridgeReadyDelayMs = Math.max(0, Math.round((lastPerformanceTs + performanceRecapTotalMs) - nowMs()));
         const bridgeDelayMs = Math.max(Number(recommendedMoment.delayMs || 0) || 0, recapBridgeReadyDelayMs);
 
@@ -15185,6 +15988,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.readyCheck?.active,
         room?.runOfShowEnabled,
         runOfShowReleaseWindowPending,
+        generateRunOfShowTriviaFromPreviousPerformances,
+        generateRunOfShowWyrFromPreviousPerformances,
+        getCurrentRunOfShowDirector,
+        patchRunOfShowItem,
         queuedCount,
         performingCount,
         runOfShowLiveItem,
@@ -18555,7 +19362,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     );
     const activeAudienceSpotlightModeMeta = getAudienceSpotlightModeMeta(activeAudienceSpotlightMode);
     const selectedLobbyUserIsSpotlight = !!(selectedLobbyUserUid && room?.spotlightUser?.id === selectedLobbyUserUid);
-    const selectedLobbyUserIsCoHost = !!(selectedLobbyUserUid && (runOfShowRoles?.coHosts || []).includes(selectedLobbyUserUid));
+    const selectedLobbyUserIsCoHost = !!(selectedLobbyUserUid && (room?.coHostUids || []).includes(selectedLobbyUserUid));
     const selectedLobbyUserNeedsFirstSongAssist = String(selectedLobbyUser?.requestIntent || '').trim() === 'host_pick_tight15';
     const selectedLobbyUserQueueBusy = !!(selectedLobbyUserUid && tight15QueueBusyUid === selectedLobbyUserUid);
     const selectedLobbyUserProfileBusy = !!(selectedLobbyUserUid && tight15ProfileBusyUid === selectedLobbyUserUid);
@@ -18611,20 +19418,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const toggleLobbyUserCoHost = useCallback(async (roomUser = {}) => {
         const safeUid = resolveRoomUserUid(roomUser);
         if (!safeUid) return;
-        const currentCoHosts = Array.isArray(runOfShowRoles?.coHosts) ? runOfShowRoles.coHosts : [];
-        const nextCoHosts = currentCoHosts.includes(safeUid)
-            ? currentCoHosts.filter((entry) => entry !== safeUid)
-            : [...currentCoHosts, safeUid];
+        const currentCoHosts = Array.isArray(room?.coHostUids) ? room.coHostUids : [];
+        const active = currentCoHosts.includes(safeUid);
         try {
-            await updateRunOfShowRolesState({ coHosts: nextCoHosts });
-            toast(currentCoHosts.includes(safeUid)
+            await manageRoomCoHostInvite({
+                roomCode,
+                targetUid: safeUid,
+                action: active ? 'revoke' : 'invite'
+            });
+            toast(active
                 ? `${roomUser?.name || 'Guest'} removed from co-hosts.`
-                : `${roomUser?.name || 'Guest'} promoted to co-host.`);
+                : `${roomUser?.name || 'Guest'} invited to help co-host tonight.`);
         } catch (error) {
             hostLogger.error('Toggle co-host from lobby failed', error);
             toast('Could not update co-host access.');
         }
-    }, [hostLogger, runOfShowRoles, updateRunOfShowRolesState]);
+    }, [room?.coHostUids, roomCode, toast]);
     const setAudienceTvDisplay = useCallback(async ({
         mode,
         selectedUids,
@@ -20986,6 +21795,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         || ADMIN_WORKSPACE_VIEWS[0]
         || HOST_WORKSPACE_VIEWS[0];
     const activeSectionMeta = getSectionMeta(activeWorkspaceSection || SETTINGS_TAB_TO_SECTION[settingsTab] || '') || null;
+    const hostFeedbackContext = useMemo(() => ({
+        source: 'host_panel_feedback',
+        roomCode: String(roomCode || '').trim(),
+        roomName: String(room?.discoverTitle || room?.roomName || room?.name || '').trim(),
+        workspaceView: String(activeWorkspaceView || '').trim(),
+        workspaceSection: String(activeWorkspaceSection || activeSectionMeta?.id || '').trim(),
+        tab: String(tab || '').trim(),
+        activeMode: String(room?.activeMode || '').trim(),
+        queueCount: queuedCount,
+        performanceTitle: String(currentSong?.songTitle || currentSong?.title || '').trim(),
+        performanceArtist: String(currentSong?.artist || '').trim(),
+        pathname: typeof window !== 'undefined' ? window.location.pathname : '',
+    }), [activeSectionMeta?.id, activeWorkspaceSection, activeWorkspaceView, currentSong, queuedCount, room?.activeMode, room?.discoverTitle, room?.name, room?.roomName, roomCode, tab]);
     const recentSettingsNavItems = settingsRecentTabs
         .filter((tab) => tab !== settingsTab)
         .map((tab) => ({ key: tab, ...(HOST_SETTINGS_META[tab] || { label: tab, icon: 'fa-gear' }) }))
@@ -21512,11 +22334,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const liveOperatingStyleHistoryEntry = [...liveHostSettingsBundleHistory].reverse().find((entry) => entry?.bundleId === 'operating_style') || null;
     const currentCrowdModeSummary = getCrowdModeSummary(getCurrentCrowdModeState());
     const currentOperatingStyleSummary = getOperatingStyleSummary(getCurrentOperatingStyleState());
-    const currentRoomControlModelId = room?.oneMinuteMicEnabled === true || String(room?.performanceProgressionMode || '').trim().toLowerCase() === 'one_minute_mic'
+    const currentRoomControlModelId = room?.nightPlan?.hostingLevel === 'self_serve'
         ? 'crowd_driven'
-        : autoDj
+        : room?.nightPlan?.hostingLevel === 'assisted' || (!room?.nightPlan?.hostingLevel && autoDj)
             ? 'assisted_host'
             : 'host_led';
+    const currentNightExperienceId = deriveNightExperienceId(room || {});
+    const promptNightExperienceActive = [NIGHT_EXPERIENCE_IDS.trivia, NIGHT_EXPERIENCE_IDS.wouldYouRather].includes(currentNightExperienceId);
     const applyDraftCrowdModePreset = (presetId = '') => {
         const before = getCurrentCrowdModeState();
         const patch = buildCrowdModePatch(presetId, before);
@@ -22232,34 +23056,68 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Could not update Mic Checkpoint timing.');
         }
     };
+    const changeNightExperienceQuick = async (nextExperienceId = NIGHT_EXPERIENCE_IDS.karaoke) => {
+        const currentExperienceId = deriveNightExperienceId(room || {});
+        if (nightExperiencePending || nextExperienceId === currentExperienceId) return;
+        const nextExperience = getNightExperience(nextExperienceId);
+        const activeMode = String(room?.activeMode || '').trim().toLowerCase();
+        const promptModeActive = ['trivia', 'trivia_reveal', 'would_you_rather', 'would_you_rather_reveal'].includes(activeMode);
+        const roomPatch = compileNightPlanToLegacySettings({
+            ...(room?.nightPlan || {}),
+            experienceId: nextExperience.id,
+            source: 'host_lineup_control',
+            updatedAtMs: nowMs(),
+        }, room || {});
+        if (promptModeActive) {
+            roomPatch.activeMode = 'karaoke';
+            roomPatch.gameData = null;
+        }
+        setNightExperiencePending(true);
+        try {
+            await updateRoom(roomPatch);
+            if (room?.promptSession?.id && room?.promptSession?.kind !== (nextExperience.id === NIGHT_EXPERIENCE_IDS.wouldYouRather ? 'would_you_rather' : nextExperience.id)) {
+                await controlPromptSession({
+                    roomCode,
+                    action: 'end',
+                    expectedRevision: Math.max(0, Number(room?.promptSession?.revision || 0) || 0),
+                }).catch((error) => console.warn('Could not close previous prompt session while changing room experience', error));
+            }
+            toast(`${nextExperience.label} is now the room experience.`);
+        } catch (error) {
+            console.error('Failed to change room experience from Tonight\'s Lineup', error);
+            toast('Could not change the room experience.');
+        } finally {
+            setNightExperiencePending(false);
+        }
+    };
     const applyRoomControlModelQuick = async (modelId = 'host_led') => {
         const safeModel = ['host_led', 'assisted_host', 'crowd_driven'].includes(String(modelId || '').trim().toLowerCase())
             ? String(modelId || '').trim().toLowerCase()
             : 'host_led';
-        const nextOneMinuteMic = safeModel === 'crowd_driven';
         const nextAutoDj = safeModel !== 'host_led';
-        const openingWindowSec = Math.max(15, Math.min(180, Number(room?.oneMinuteMicOpeningWindowSec || 60) || 60));
-        const voteWindowSec = Math.max(5, Math.min(45, Number(room?.oneMinuteMicVoteWindowSec || 12) || 12));
         const previousAutoDj = !!autoDj;
         const roomPatch = {
             autoDj: nextAutoDj,
-            oneMinuteMicEnabled: nextOneMinuteMic,
-            performanceProgressionMode: nextOneMinuteMic ? 'one_minute_mic' : 'full_song',
-            oneMinuteMicOpeningWindowSec: openingWindowSec,
-            oneMinuteMicVoteWindowSec: voteWindowSec,
+            nightPlan: {
+                ...(room?.nightPlan || {}),
+                version: 1,
+                hostingLevel: safeModel === 'crowd_driven' ? 'self_serve' : safeModel === 'assisted_host' ? 'assisted' : 'host_led',
+                source: 'host_panel',
+                updatedAtMs: nowMs(),
+            },
         };
         const activeAudienceDecisionType = String(room?.audienceDecision?.type || '').trim().toLowerCase();
-        if (!nextOneMinuteMic && ['continue_or_rotate', 'skip_performance'].includes(activeAudienceDecisionType)) {
+        if (safeModel === 'host_led' && ['continue_or_rotate', 'skip_performance'].includes(activeAudienceDecisionType)) {
             roomPatch.audienceDecision = null;
         }
         setAutoDj(nextAutoDj);
         try {
             await updateRoom(roomPatch);
             toast(safeModel === 'crowd_driven'
-                ? 'Crowd-driven mode is on.'
+                ? 'Self-Serve hosting is on. Mic Checkpoint remains separate.'
                 : safeModel === 'assisted_host'
-                    ? 'Assisted host mode is on.'
-                    : 'Host-led full songs restored.');
+                    ? 'Host Assist is on.'
+                    : 'Host-Led pacing is on.');
         } catch (error) {
             console.error('Failed to update room control model from host chrome', error);
             setAutoDj(previousAutoDj);
@@ -22481,6 +23339,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 onDeleteItem={deleteRunOfShowItem}
                 onMoveItem={moveRunOfShowItem}
                 onUpdateItem={patchRunOfShowItem}
+                onGenerateTriviaForItem={generateRunOfShowTriviaFromPreviousPerformances}
                 onToggleAutomationPause={toggleRunOfShowAutomationPause}
                 onStartRunOfShow={startRunOfShowNow}
                 onStopRunOfShow={stopRunOfShowNow}
@@ -22641,6 +23500,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onClearRunOfShow: clearRunOfShowNow,
         onAddQuickRunOfShowMoment: addQuickRunOfShowMoment,
         onUpdateRunOfShowItem: patchRunOfShowItem,
+        onDeleteRunOfShowItem: deleteRunOfShowItem,
+        onGenerateRunOfShowTrivia: generateRunOfShowTriviaFromPreviousPerformances,
+        onGenerateRunOfShowWyr: generateRunOfShowWyrFromPreviousPerformances,
         onPromotePreparedRunOfShowItems: promotePreparedRunOfShowItems,
         scenePresets,
         scenePresetUploading,
@@ -22871,7 +23733,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             >
                 {/* Header */}
                 <HostTopChrome
-                    modalOverlayActive={sceneLibraryModalOpen}
+                    modalOverlayActive={sceneLibraryModalOpen || hostFeedbackOpen}
                     room={room}
                     appBase={hostBase}
                     hostBase={hostBase}
@@ -23067,16 +23929,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onUndoOperatingStylePreset={undoLiveBundle}
                     liveCrowdModeHistoryLabel={liveCrowdModeHistoryEntry?.label ? `Last live crowd mode: ${liveCrowdModeHistoryEntry.label}` : 'Live changes affect tonight only.'}
                     liveOperatingStyleHistoryLabel={liveOperatingStyleHistoryEntry?.label ? `Last live operating style: ${liveOperatingStyleHistoryEntry.label}` : 'Live changes affect tonight only.'}
+                    onOpenFeedback={() => setHostFeedbackOpen(true)}
                 />
                 <HostQueueHorizon
                     model={hostQueueHorizonModel}
                     compact={mediumHostViewport || tabletTouchViewport}
+                    experienceId={currentNightExperienceId}
+                    experiencePending={nightExperiencePending}
+                    onChangeExperience={changeNightExperienceQuick}
                     onOpenQueue={openQueueWorkspaceFromAdmin}
                     onOpenAttention={() => {
                         openQueueWorkspaceFromAdmin();
                         window.dispatchEvent(new CustomEvent('beaurocks:focus-host-inbox'));
                     }}
-                    onOpenAutomation={toggleAutoDjQuick}
+                    onToggleAutomation={toggleTonightLineupAutoAdvance}
                     onSelectSegment={(segment) => {
                         const item = segment?.item || null;
                         const isPlannerObject = item?.sourceLabel === 'Show';
@@ -23107,9 +23973,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             <div
                 data-host-main-scroll="true"
-                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : (tab === 'run_of_show' || tab === 'games' || tab === 'browse') ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
+                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : (tab === 'run_of_show' || tab === 'games' || tab === 'browse' || (tab === 'stage' && promptNightExperienceActive)) ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
-                {((room?.activeMode && room.activeMode !== 'karaoke') || room?.gameData?.recap) && (
+                {tab === 'stage' && promptNightExperienceActive && !(showSettings || inAdminWorkspace) ? (
+                    <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading full-night session controls..." />}>
+                        <PromptNightSessionPanel roomCode={roomCode} room={room || {}} />
+                    </React.Suspense>
+                ) : null}
+                {(!room?.promptSession?.id && ((room?.activeMode && room.activeMode !== 'karaoke') || room?.gameData?.recap)) && (
                     <HostGameControlPad
                         roomCode={roomCode}
                         room={room}
@@ -23117,7 +23988,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         setTab={setTab}
                         tvBase={tvBase}
                         tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
-                    hostVoiceMicControl={hostVoiceMicControl}
+                        hostVoiceMicControl={hostVoiceMicControl}
+                        runOfShowLiveItem={runOfShowLiveItem}
+                        onRevealRunOfShowPrompt={revealRunOfShowPromptItem}
+                        onCompleteRunOfShowPrompt={advanceRunOfShowNext}
                     />
                 )}
                 <div
@@ -23233,6 +24107,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onDeleteItem={deleteRunOfShowItem}
                                     onMoveItem={moveRunOfShowItem}
                                     onUpdateItem={patchRunOfShowItem}
+                                    onGenerateTriviaForItem={generateRunOfShowTriviaFromPreviousPerformances}
                                     onToggleAutomationPause={toggleRunOfShowAutomationPause}
                                     onStartRunOfShow={startRunOfShowNow}
                                     onStopRunOfShow={stopRunOfShowNow}
@@ -23342,6 +24217,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 onForfeitBracketContestant={forfeitBracketContestant}
                                 onAddQuickRunOfShowMoment={addQuickRunOfShowMoment}
                                 hostVoiceMicControl={hostVoiceMicControl}
+                                runOfShowLiveItem={runOfShowLiveItem}
+                                onRevealRunOfShowPrompt={revealRunOfShowPromptItem}
+                                onCompleteRunOfShowPrompt={advanceRunOfShowNext}
                             />
                             </React.Suspense>
                         </div>
@@ -24562,10 +25440,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {(settingsTab === 'general' || settingsTab === 'audience_setup') && (
                         <>
                         <div className="mb-5 grid grid-cols-1 gap-5">
+                        <NightPlanSummaryCard
+                            room={room || {}}
+                            songs={songs}
+                            appleMusicAuthorized={appleMusicAuthorized}
+                            promptCount={promptNightExperienceActive ? Math.max(0, Number(room?.promptSession?.promptCount || room?.promptSession?.prompts?.length || 0)) : null}
+                            className={settingsTab === 'audience_setup' ? 'hidden' : ''}
+                        />
+                        {settingsTab === 'general' && promptNightExperienceActive ? (
+                            <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading question setup..." />}>
+                                <PromptNightSessionPanel roomCode={roomCode} room={room || {}} surface="setup" />
+                            </React.Suspense>
+                        ) : null}
                         <div data-room-setup-overview="true" className={`rounded-2xl border border-cyan-300/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(9,9,11,0.72)_48%,rgba(217,70,239,0.07))] p-3.5 shadow-[0_16px_38px_rgba(0,0,0,0.18)] ${settingsTab === 'audience_setup' ? 'hidden' : ''}`}>
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
-                                    <span className="rounded-full border border-white/15 px-2.5 py-1">Mode: {room?.activeMode || 'karaoke'}</span>
+                                    <span className="rounded-full border border-white/15 px-2.5 py-1">Live moment: {room?.activeMode || 'karaoke'}</span>
                                     <span className="rounded-full border border-white/15 px-2.5 py-1">Queue: {queuedSongs.length}</span>
                                     <span className={`rounded-full border px-2.5 py-1 ${appleMusicAuthorized ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-zinc-500/30 bg-zinc-900/70 text-zinc-300'}`}>
                                         Apple {appleMusicAuthorized ? 'Connected' : 'Not Connected'}
@@ -25958,9 +26848,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-500/5 p-4" data-room-setup-control-model>
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-xs uppercase tracking-[0.22em] text-fuchsia-200">Room control model</div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-fuchsia-200">Hosting Level</div>
                                             <div className="mt-1 text-sm font-semibold text-white">Decide who drives the room before launch.</div>
-                                            <div className="mt-1 text-xs text-zinc-300">Host-Led protects full songs. Assisted Host keeps full songs with queue automation. Crowd-Driven enables Mic Checkpoint and Auto-DJ for self-service parties.</div>
+                                            <div className="mt-1 text-xs text-zinc-300">Hosting Level controls pacing help. Mic Checkpoint remains a separate, explicit performance format.</div>
                                         </div>
                                         <span className="rounded-full border border-fuchsia-300/20 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-fuchsia-100">
                                             Launch decision
@@ -29187,6 +30077,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 </div>
             )}
+            <HostFeedbackDrawer
+                open={hostFeedbackOpen}
+                onClose={() => setHostFeedbackOpen(false)}
+                context={hostFeedbackContext}
+            />
             {tight15Profile && (
                 <div className="fixed inset-0 z-[95] bg-black/80 flex items-center justify-center p-4">
                     <div className="w-full max-w-2xl rounded-3xl border border-fuchsia-300/30 bg-gradient-to-br from-[#171129]/95 via-[#111a2c]/95 to-[#0d1220]/95 p-5 shadow-[0_30px_85px_rgba(0,0,0,0.6),0_0_48px_rgba(236,72,153,0.16)]">

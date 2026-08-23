@@ -840,6 +840,82 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
             },
         };
     }
+    if (safeId === 'prompt-session-trivia-draft') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        const prompts = [
+            { id: 'session-trivia-1', q: 'Which artist is known as The Boss?', options: ['Bruce Springsteen', 'Billy Joel', 'Bob Seger', 'John Mellencamp'], answer: 'Bruce Springsteen', correct: 0, points: 50 },
+            { id: 'session-trivia-2', q: 'Which group released Dancing Queen?', options: ['ABBA', 'Blondie', 'The Go-Go\'s', 'Fleetwood Mac'], answer: 'ABBA', correct: 0, points: 50 },
+        ];
+        return {
+            ...fixture,
+            tab: 'stage',
+            activeWorkspaceView: 'queue',
+            activeWorkspaceSection: 'queue.live_run',
+            room: {
+                ...(fixture.room || {}),
+                nightPlan: { experienceId: 'trivia', hostingLevel: 'guided', lyricsPolicy: 'optional' },
+                promptSession: {
+                    id: 'qa-trivia-session', kind: 'trivia', title: 'Trivia Night', prompts,
+                    promptCount: prompts.length, currentIndex: 0, status: 'draft', revision: 3,
+                    roundSec: 20, hostingLevel: 'guided', roundEndsAtMs: 0, updatedAtMs: nowMs,
+                },
+                activeMode: 'karaoke',
+                triviaQuestion: null,
+                wyrData: null,
+            },
+        };
+    }
+    if (safeId === 'prompt-session-wyr-live') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        const prompts = [
+            { id: 'session-wyr-1', q: 'Would you rather open with a power ballad or a crowd singalong?', a: 'Power ballad', b: 'Crowd singalong', points: 50 },
+            { id: 'session-wyr-2', q: 'Would you rather duet or go solo?', a: 'Duet', b: 'Solo', points: 50 },
+        ];
+        return {
+            ...fixture,
+            tab: 'stage',
+            activeWorkspaceView: 'queue',
+            activeWorkspaceSection: 'queue.live_run',
+            room: {
+                ...(fixture.room || {}),
+                nightPlan: { experienceId: 'would_you_rather', hostingLevel: 'guided', lyricsPolicy: 'optional' },
+                promptSession: {
+                    id: 'qa-wyr-session', kind: 'would_you_rather', title: 'Would You Rather', prompts,
+                    promptCount: prompts.length, currentIndex: 0, status: 'live', revision: 4,
+                    roundSec: 20, hostingLevel: 'guided', roundEndsAtMs: nowMs + 600000, updatedAtMs: nowMs,
+                },
+                activeMode: 'wyr',
+                triviaQuestion: null,
+                wyrData: { ...prompts[0], question: prompts[0].q, optionA: prompts[0].a, optionB: prompts[0].b, status: 'live' },
+            },
+        };
+    }
+    if (safeId === 'prompt-session-wyr-draft') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        const prompts = [
+            { id: 'session-wyr-draft-1', q: 'Would you rather open with a power ballad or a crowd singalong?', a: 'Power ballad', b: 'Crowd singalong', points: 50 },
+            { id: 'session-wyr-draft-2', q: 'Would you rather duet or go solo?', a: 'Duet', b: 'Solo', points: 50 },
+        ];
+        return {
+            ...fixture,
+            tab: 'admin',
+            settingsTab: 'general',
+            activeWorkspaceView: 'ops',
+            activeWorkspaceSection: 'ops.room_setup',
+            room: {
+                ...(fixture.room || {}),
+                nightPlan: { experienceId: 'would_you_rather', hostingLevel: 'guided', lyricsPolicy: 'optional' },
+                promptSession: {
+                    id: 'qa-wyr-draft-session', kind: 'would_you_rather', title: 'Would You Rather', prompts,
+                    promptCount: prompts.length, currentIndex: 0, status: 'draft', revision: 1,
+                    roundSec: 20, hostingLevel: 'guided', roundEndsAtMs: 0, updatedAtMs: nowMs,
+                },
+                activeMode: 'karaoke',
+                triviaQuestion: null,
+                wyrData: null,
+            },
+        };
+    }
     if (safeId === 'prompt-round-trivia-live') {
         const fixture = buildBaseFixture(roomCode, nowMs);
         return {

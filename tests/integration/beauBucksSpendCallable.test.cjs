@@ -61,7 +61,7 @@ async function resetAccount({ points = 100, nameEmojiChangeCount = 1 } = {}) {
     roomRef.set({
       hostUid: 'host-uid',
       hostUids: ['host-uid'],
-      eventCredits: { enabled: true, presetId: 'beaubucks', eventId: 'canary-night' },
+      eventCredits: { enabled: true, reactionSlot5PurchasesEnabled: true, presetId: 'beaubucks', eventId: 'canary-night' },
     }),
     otherRoomRef.set({
       hostUid: 'host-uid',
@@ -110,6 +110,20 @@ async function run() {
   }));
   assert.equal(legacyResult.outcome, 'legacy_fallback');
   assert.deepEqual((await otherRoomUserRef.get()).data(), legacyBefore);
+
+  await Promise.all([
+    otherRoomRef.update({ 'eventCredits.reactionSlot5PurchasesEnabled': true }),
+    otherRoomUserRef.update({ points: 300 }),
+  ]);
+  const hostEnabledSlot = await spendAudienceRoomCredits.run(spendRequest({
+    roomCode: OTHER_ROOM_CODE,
+    kind: 'reaction_slot_unlock',
+    clientOperationId: 'reaction_slot_unlock:host-enabled-room',
+    payload: { slotCount: 5 },
+  }));
+  assert.equal(hostEnabledSlot.outcome, 'accepted');
+  assert.equal(hostEnabledSlot.chargedAmount, 250);
+  assert.equal((await otherRoomUserRef.get()).get('reactionSlot5Unlocked'), true);
 
   const reactionOperationId = 'reaction:accepted-1';
   const reactionRequest = spendRequest({
@@ -179,6 +193,16 @@ async function run() {
   await assertOperationAndLedger({ clientOperationId: avatarOperationId, type: 'avatar_unlock_spend', amount: 60 });
 
   await resetAccount({ points: 300 });
+  await roomRef.update({ 'eventCredits.reactionSlot5PurchasesEnabled': false });
+  await expectHttpsError(
+    () => spendAudienceRoomCredits.run(spendRequest({
+      kind: 'reaction_slot_unlock',
+      clientOperationId: 'reaction_slot_unlock:host-disabled',
+      payload: { slotCount: 5 },
+    })),
+    'failed-precondition'
+  );
+  await roomRef.update({ 'eventCredits.reactionSlot5PurchasesEnabled': true });
   const slotOperationId = 'reaction_slot_unlock:slot-5';
   const slotResult = await spendAudienceRoomCredits.run(spendRequest({
     kind: 'reaction_slot_unlock',

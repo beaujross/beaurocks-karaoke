@@ -7,6 +7,7 @@ const source = [
   readFileSync("src/apps/Mobile/SingerApp.jsx", "utf8"),
   readFileSync("src/apps/Mobile/components/AudienceReactionSlotGrid.jsx", "utf8"),
   readFileSync("src/apps/Mobile/components/AudienceReactionCollection.jsx", "utf8"),
+  readFileSync("src/apps/Mobile/components/AudienceReactionDeck.jsx", "utf8"),
   readFileSync("src/apps/Mobile/lib/audienceReactionUnlockFlow.js", "utf8"),
 ].join("\n");
 
@@ -56,6 +57,46 @@ test("live reactions expose an obvious path to browse and buy from the library",
     /const openReactionLibrary = \(\) => openAudienceCurrencyFunnel\('reactions'\)/,
   );
   assert.match(source, /data-feature-id="reaction-emoji-library-toggle"/);
+});
+
+test("reaction library distinguishes avatars and supports explicit slot replacement", () => {
+  assert.match(source, /Voting Reaction Library/);
+  assert.match(source, /not your profile avatar/);
+  assert.match(source, /data-feature-id="reaction-loadout-slot-picker"/);
+  assert.match(source, /Choose the voting slot to change/);
+  assert.match(source, /Replace slot \$\{targetSlotNumber\}/);
+  assert.match(source, /reaction-library-preview-/);
+  assert.match(source, /data-feature-id="reaction-library-wallet-context"/);
+  assert.match(source, /data-reaction-product-price=/);
+  assert.match(source, /Permanent cosmetic/);
+});
+
+test("streamlined audience keeps a persistent reaction loadout with an edit path", () => {
+  assert.match(source, /data-feature-id="persistent-audience-reaction-deck"/);
+  assert.match(source, /data-reactions-active=/);
+  assert.match(source, /data-feature-id="edit-voting-emojis"/);
+  assert.match(source, /Ready for the next performance/);
+});
+
+test("audience header exposes both spendable balances", () => {
+  assert.match(source, /data-feature-id="audience-wallet-balances"/);
+  assert.match(source, /currency="points"/);
+  assert.match(source, /currency="beaubucks"/);
+});
+
+test("shared avatar picker merchandises paid avatars without category selector clutter", () => {
+  assert.doesNotMatch(source, /data-feature-id="avatar-storefront-jump-nav"/);
+  assert.doesNotMatch(source, /data-avatar-jump=\{group\.id\}/);
+  assert.match(source, /data-avatar-offer-currency="points"/);
+  assert.match(source, /data-avatar-offer-currency="beaubucks"/);
+  assert.match(source, /Profile Studio[\s\S]*<AvatarCoverflow/);
+});
+
+test("fifth reaction slot clearly follows Host enablement and room-only ownership", () => {
+  assert.match(source, /fifthReactionSlotPurchasesEnabled/);
+  assert.match(source, /data-feature-id="reaction-deck-unlock-slot-5"/);
+  assert.match(source, /Ask your host to enable this/);
+  assert.match(source, /points · this room/);
 });
 
 test("the noncritical reaction collection loads behind a visible lazy boundary", () => {

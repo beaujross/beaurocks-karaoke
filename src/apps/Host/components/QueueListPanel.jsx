@@ -289,6 +289,370 @@ export const QueueSummaryBar = ({
     );
 };
 
+const getPlannedLineupTypeMeta = (item = {}) => {
+    const type = String(item?.type || '').trim().toLowerCase();
+    if (type === 'performance') return { label: 'Performance', icon: 'fa-microphone', tone: 'cyan' };
+    if (type === 'trivia_break') return { label: 'Trivia Moment', icon: 'fa-circle-question', tone: 'violet' };
+    if (type === 'would_you_rather_break') return { label: 'Would You Rather', icon: 'fa-scale-balanced', tone: 'emerald' };
+    if (type === 'game_break') return { label: 'Game Moment', icon: 'fa-gamepad', tone: 'amber' };
+    if (type === 'announcement') return { label: 'Announcement', icon: 'fa-bullhorn', tone: 'rose' };
+    return { label: 'Show Moment', icon: 'fa-clapperboard', tone: 'zinc' };
+};
+
+const plannedLineupToneClasses = {
+    cyan: {
+        accent: 'bg-cyan-300',
+        icon: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
+        detail: 'text-cyan-100/65',
+        expanded: 'border-cyan-300/14 bg-cyan-500/[0.035]',
+    },
+    violet: {
+        accent: 'bg-violet-300',
+        icon: 'border-violet-300/25 bg-violet-500/10 text-violet-100',
+        detail: 'text-violet-100/65',
+        expanded: 'border-violet-300/14 bg-violet-500/[0.035]',
+    },
+    emerald: {
+        accent: 'bg-emerald-300',
+        icon: 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100',
+        detail: 'text-emerald-100/65',
+        expanded: 'border-emerald-300/14 bg-emerald-500/[0.035]',
+    },
+    amber: {
+        accent: 'bg-amber-300',
+        icon: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
+        detail: 'text-amber-100/65',
+        expanded: 'border-amber-300/14 bg-amber-500/[0.035]',
+    },
+    rose: {
+        accent: 'bg-rose-300',
+        icon: 'border-rose-300/25 bg-rose-500/10 text-rose-100',
+        detail: 'text-rose-100/65',
+        expanded: 'border-rose-300/14 bg-rose-500/[0.035]',
+    },
+    zinc: {
+        accent: 'bg-zinc-400',
+        icon: 'border-white/12 bg-white/[0.04] text-zinc-200',
+        detail: 'text-zinc-400',
+        expanded: 'border-white/10 bg-white/[0.025]',
+    },
+};
+
+const formatLineupDuration = (seconds = 0) => {
+    const durationSec = Math.max(0, Math.round(Number(seconds || 0) || 0));
+    if (!durationSec) return '';
+    if (durationSec < 60) return `${durationSec}s`;
+    const minutes = Math.floor(durationSec / 60);
+    const remainingSeconds = durationSec % 60;
+    return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+};
+
+const readTriviaOptions = (item = {}) => {
+    const config = item?.modeLaunchPlan?.launchConfig || {};
+    const source = Array.isArray(config.options)
+        ? config.options
+        : String(config.optionsCsv || '').split(',');
+    const options = source.map((entry) => String(entry || '').trim()).slice(0, 4);
+    while (options.length < 4) options.push('');
+    return options;
+};
+
+const InlineTriviaMomentEditor = ({ item, onUpdateItem, onGenerate }) => {
+    const config = item?.modeLaunchPlan?.launchConfig || {};
+    const [draft, setDraft] = React.useState(() => ({
+        question: String(config.question || ''),
+        options: readTriviaOptions(item),
+        correctIndex: Math.max(0, Math.min(3, Number(config.correctIndex || 0))),
+    }));
+    const [generating, setGenerating] = React.useState(false);
+
+    React.useEffect(() => {
+        setDraft({
+            question: String(config.question || ''),
+            options: readTriviaOptions(item),
+            correctIndex: Math.max(0, Math.min(3, Number(config.correctIndex || 0))),
+        });
+    }, [config.correctIndex, config.options, config.optionsCsv, config.question, item]);
+
+    const save = () => onUpdateItem?.(item.id, {
+        modeLaunchPlan: {
+            ...(item.modeLaunchPlan || {}),
+            modeKey: 'trivia_pop',
+            launchConfig: {
+                ...config,
+                question: draft.question.trim(),
+                options: draft.options.map((entry) => String(entry || '').trim()),
+                optionsCsv: draft.options.map((entry) => String(entry || '').trim()).filter(Boolean).join(', '),
+                correctIndex: draft.correctIndex,
+                contentSource: 'host_custom',
+            },
+        },
+        automationOccurrence: item.automationOccurrence
+            ? { ...item.automationOccurrence, contentOwnership: 'host', contentState: 'manual_ready' }
+            : null,
+    });
+
+    const generate = async () => {
+        if (generating || typeof onGenerate !== 'function') return;
+        setGenerating(true);
+        try {
+            await onGenerate(item.id);
+        } finally {
+            setGenerating(false);
+        }
+    };
+
+    return (
+        <section className="mt-3 rounded-xl border border-violet-300/16 bg-black/25 p-3" data-feature-id="lineup-trivia-question-editor">
+            <div className="text-[10px] font-black uppercase tracking-[0.15em] text-violet-100">Question setup</div>
+            <div className="mt-2 space-y-3">
+                <div className="rounded-xl border border-cyan-300/16 bg-cyan-500/[0.06] px-3 py-2 text-xs leading-5 text-cyan-50/78">
+                    This is a full-screen Trivia Moment between performances. Pop-Up Trivia is a separate in-song companion and is not edited here.
+                </div>
+                <label className="block text-xs font-bold text-zinc-300">Question
+                    <input value={draft.question} onChange={(event) => setDraft((current) => ({ ...current, question: event.target.value }))} className="mt-1 min-h-[42px] w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-violet-300/45" />
+                </label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                    {draft.options.map((option, optionIndex) => (
+                        <label key={`${item.id}-inline-answer-${optionIndex}`} className="block text-xs font-bold text-zinc-300">Answer {optionIndex + 1}
+                            <input value={option} onChange={(event) => setDraft((current) => ({ ...current, options: current.options.map((entry, index) => index === optionIndex ? event.target.value : entry) }))} className="mt-1 min-h-[40px] w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-violet-300/45" />
+                        </label>
+                    ))}
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                    <label className="min-w-[150px] text-xs font-bold text-zinc-300">Correct answer
+                        <select value={draft.correctIndex} onChange={(event) => setDraft((current) => ({ ...current, correctIndex: Number(event.target.value || 0) }))} className="mt-1 min-h-[40px] w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white">
+                            {draft.options.map((_, optionIndex) => <option key={`${item.id}-inline-correct-${optionIndex}`} value={optionIndex}>Answer {optionIndex + 1}</option>)}
+                        </select>
+                    </label>
+                    <button type="button" onClick={save} className="min-h-[40px] rounded-xl border border-violet-300/30 bg-violet-500/14 px-3 text-xs font-black text-violet-50">Save question</button>
+                    <button type="button" disabled={generating || typeof onGenerate !== 'function'} onClick={generate} className="min-h-[40px] rounded-xl border border-cyan-300/24 bg-cyan-500/10 px-3 text-xs font-black text-cyan-50 disabled:opacity-45">
+                        <i className={`fa-solid ${generating ? 'fa-circle-notch animate-spin' : 'fa-wand-magic-sparkles'} mr-1.5`}></i>{generating ? 'Generating…' : 'Generate from previous performances'}
+                    </button>
+                </div>
+            </div>
+        </section>
+    );
+};
+
+const InlineWyrMomentEditor = ({ item, onUpdateItem, onGenerate }) => {
+    const config = item?.modeLaunchPlan?.launchConfig || {};
+    const readOptions = React.useCallback(() => {
+        const source = Array.isArray(config.options) ? config.options : String(config.optionsCsv || '').split(',');
+        const options = source.map((entry) => String(entry || '').trim()).slice(0, 2);
+        while (options.length < 2) options.push('');
+        return options;
+    }, [config.options, config.optionsCsv]);
+    const [draft, setDraft] = React.useState(() => ({ question: String(config.question || ''), options: readOptions() }));
+    const [generating, setGenerating] = React.useState(false);
+    React.useEffect(() => {
+        setDraft({ question: String(config.question || ''), options: readOptions() });
+    }, [config.question, readOptions]);
+    const save = () => onUpdateItem?.(item.id, {
+        modeLaunchPlan: {
+            ...(item.modeLaunchPlan || {}),
+            modeKey: 'wyr',
+            launchConfig: {
+                ...config,
+                question: draft.question.trim(),
+                options: draft.options.map((entry) => String(entry || '').trim()),
+                optionsCsv: draft.options.map((entry) => String(entry || '').trim()).filter(Boolean).join(', '),
+                contentSource: 'host_custom',
+            },
+        },
+        automationOccurrence: item.automationOccurrence
+            ? { ...item.automationOccurrence, contentOwnership: 'host', contentState: 'manual_ready' }
+            : null,
+    });
+    const generate = async () => {
+        if (generating || typeof onGenerate !== 'function') return;
+        setGenerating(true);
+        try {
+            await onGenerate(item.id);
+        } finally {
+            setGenerating(false);
+        }
+    };
+    return (
+        <section className="mt-3 rounded-xl border border-emerald-300/16 bg-black/25 p-3" data-feature-id="lineup-wyr-question-editor">
+            <div className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-100">Choice setup</div>
+            <div className="mt-2 space-y-3">
+                <div className="rounded-xl border border-emerald-300/16 bg-emerald-500/[0.06] px-3 py-2 text-xs leading-5 text-emerald-50/78">This is a full-screen Would You Rather moment between performances.</div>
+                <label className="block text-xs font-bold text-zinc-300">Prompt
+                    <input value={draft.question} onChange={(event) => setDraft((current) => ({ ...current, question: event.target.value }))} className="mt-1 min-h-[42px] w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-emerald-300/45" />
+                </label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                    {draft.options.map((option, optionIndex) => (
+                        <label key={`${item.id}-inline-wyr-${optionIndex}`} className="block text-xs font-bold text-zinc-300">Choice {optionIndex === 0 ? 'A' : 'B'}
+                            <input value={option} onChange={(event) => setDraft((current) => ({ ...current, options: current.options.map((entry, index) => index === optionIndex ? event.target.value : entry) }))} className="mt-1 min-h-[40px] w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-emerald-300/45" />
+                        </label>
+                    ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={save} className="min-h-[40px] rounded-xl border border-emerald-300/30 bg-emerald-500/14 px-3 text-xs font-black text-emerald-50">Save choices</button>
+                    <button type="button" disabled={generating || typeof onGenerate !== 'function'} onClick={generate} className="min-h-[40px] rounded-xl border border-cyan-300/24 bg-cyan-500/10 px-3 text-xs font-black text-cyan-50 disabled:opacity-45"><i className={`fa-solid ${generating ? 'fa-circle-notch animate-spin' : 'fa-wand-magic-sparkles'} mr-1.5`}></i>{generating ? 'Generating…' : 'Generate from previous performances'}</button>
+                </div>
+            </div>
+        </section>
+    );
+};
+
+const PlannedLineupCard = ({
+    item,
+    index,
+    total,
+    expanded = false,
+    queueIndex = -1,
+    queueTotal = 0,
+    positionLabel = '',
+    locked = false,
+    onMoveItem,
+    onMoveQueueItem,
+    onFocusItem,
+    onSkipItem,
+    onUpdateItem,
+    onDeleteItem,
+    onGenerateTrivia,
+    onGenerateWyr,
+    onOpenPerformance,
+    onToggleExpanded,
+}) => {
+    const [confirmingRemove, setConfirmingRemove] = React.useState(false);
+    const meta = getPlannedLineupTypeMeta(item);
+    const typeTone = plannedLineupToneClasses[meta.tone] || plannedLineupToneClasses.zinc;
+    const performance = String(item?.type || '').trim().toLowerCase() === 'performance';
+    const queueProjection = item?.projectionSource === 'queue_song';
+    const trivia = String(item?.type || '').trim().toLowerCase() === 'trivia_break';
+    const wyr = String(item?.type || '').trim().toLowerCase() === 'would_you_rather_break';
+    const status = String(item?.status || 'planned').trim().toLowerCase();
+    const automatedOccurrence = item?.automationOccurrence?.source === 'between_song_rule';
+    const automatedContentState = String(item?.automationOccurrence?.contentState || '').trim().toLowerCase();
+    const itemIsLive = status === 'live';
+    const durationLabel = formatLineupDuration(
+        item?.plannedDurationSec
+        || item?.durationSec
+        || item?.trackDurationSec
+        || item?.queueSong?.durationSec
+        || item?.queueSong?.duration
+    );
+    const title = performance
+        ? (item?.assignedPerformerName || 'Open performance slot')
+        : (item?.title || meta.label);
+    const detail = performance
+        ? [item?.songTitle || 'Song not assigned', item?.artistName].filter(Boolean).join(' · ')
+        : automatedContentState === 'waiting_for_context'
+            ? `${trivia ? 'Question' : 'Choices'} prepare after the preceding performance.`
+            : automatedContentState === 'generation_failed'
+                ? `${trivia ? 'Question' : 'Choices'} could not be prepared. Edit, regenerate, skip, or remove this moment.`
+        : trivia
+            ? (item?.modeLaunchPlan?.launchConfig?.question || 'Question ready for customization')
+            : wyr
+                ? (item?.modeLaunchPlan?.launchConfig?.question || 'Choice ready for customization')
+            : (item?.presentationPlan?.headline || item?.notes || `${Math.max(0, Number(item?.plannedDurationSec || 0)) || 'Open'} sec`);
+    const overviewState = automatedContentState === 'generation_failed'
+        ? { label: 'Needs review', className: 'border-rose-300/28 bg-rose-500/12 text-rose-100', icon: 'fa-triangle-exclamation' }
+        : automatedContentState === 'waiting_for_context'
+            ? { label: 'Waiting', className: 'border-amber-300/28 bg-amber-500/12 text-amber-100', icon: 'fa-clock' }
+            : itemIsLive
+                ? { label: 'Live', className: 'border-rose-300/32 bg-rose-500/16 text-rose-50', icon: 'fa-circle' }
+                : automatedOccurrence
+                    ? { label: 'Auto', className: 'border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100', icon: 'fa-wand-magic-sparkles' }
+                    : locked
+                        ? { label: 'Protected', className: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100', icon: 'fa-lock' }
+                        : queueProjection
+                            ? { label: 'Ready', className: 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100', icon: 'fa-check' }
+                            : { label: status, className: 'border-white/12 bg-black/20 text-zinc-300', icon: 'fa-circle' };
+    const focusItem = () => {
+        if (performance && item?.queueSongId && typeof onOpenPerformance === 'function') {
+            onOpenPerformance(item.queueSongId);
+            return;
+        }
+        onFocusItem?.(item.id);
+    };
+
+    return (
+        <article
+            className={`relative overflow-hidden border-b border-white/10 bg-black/10 transition last:border-b-0 ${expanded ? typeTone.expanded : 'hover:bg-white/[0.025]'}`}
+            data-lineup-plan-item-id={item.id}
+            data-lineup-plan-item-type={item.type}
+            data-lineup-plan-item-expanded={expanded ? 'true' : 'false'}
+        >
+            <span className={`absolute inset-y-0 left-0 w-1 ${typeTone.accent}`} aria-hidden="true"></span>
+            <div className="flex min-h-[60px] items-stretch pl-2 pr-1 sm:pl-3">
+                <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left sm:gap-2.5"
+                    aria-expanded={expanded}
+                    aria-controls={`lineup-item-details-${item.id}`}
+                    aria-label={`${expanded ? 'Close' : 'Open'} ${meta.label}: ${title}`}
+                    onClick={() => {
+                        if (expanded && confirmingRemove) setConfirmingRemove(false);
+                        onToggleExpanded?.(item.id);
+                    }}
+                >
+                    <span className="min-w-[34px] shrink-0 rounded-md border border-white/10 bg-black/25 px-1.5 py-1 text-center text-[9px] font-black uppercase tracking-[0.1em] text-zinc-300 sm:min-w-[40px]">
+                        {positionLabel || `#${index + 1}`}
+                    </span>
+                    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-xs ${typeTone.icon}`} title={meta.label}>
+                        <i className={`fa-solid ${meta.icon}`} aria-hidden="true"></i>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-black leading-4 text-white">{title}</span>
+                        <span className={`mt-0.5 block truncate text-[11px] leading-4 ${typeTone.detail}`}>{detail}</span>
+                    </span>
+                    {durationLabel ? (
+                        <span className="hidden shrink-0 text-[10px] font-bold tabular-nums text-zinc-400 sm:inline">{durationLabel}</span>
+                    ) : null}
+                    <span className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] ${overviewState.className}`}>
+                        <i className={`fa-solid ${overviewState.icon} mr-1 text-[7px]`} aria-hidden="true"></i>{overviewState.label}
+                    </span>
+                    <i className={`fa-solid fa-chevron-${expanded ? 'up' : 'down'} w-3 shrink-0 text-center text-[10px] text-zinc-500`} aria-hidden="true"></i>
+                </button>
+                <span className="grid min-h-[44px] w-9 shrink-0 place-items-center self-center text-zinc-500" title="Drag to reorder" data-lineup-drag-handle="true">
+                    <i className="fa-solid fa-grip-lines" aria-hidden="true"></i>
+                </span>
+            </div>
+            {expanded ? (
+                <div id={`lineup-item-details-${item.id}`} className="border-t border-white/8 px-3 pb-3 pt-2.5 sm:pl-[92px]" data-feature-id="lineup-item-expanded-actions">
+                    <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] font-black uppercase tracking-[0.13em] text-zinc-400">
+                        <span>{meta.label}</span>
+                        {automatedOccurrence ? <span className="text-fuchsia-200">Planned by automation</span> : null}
+                        {durationLabel ? <span className="sm:hidden">{durationLabel}</span> : null}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {queueProjection ? (
+                            <>
+                                <button type="button" disabled={queueIndex <= 0 || typeof onMoveQueueItem !== 'function'} onClick={() => onMoveQueueItem?.(item.queueSongId, -1)} className="min-h-[44px] flex-1 rounded-xl border border-white/12 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-200 disabled:opacity-30 sm:flex-none"><i className="fa-solid fa-arrow-up mr-1"></i>Earlier</button>
+                                <button type="button" disabled={queueIndex < 0 || queueIndex >= queueTotal - 1 || typeof onMoveQueueItem !== 'function'} onClick={() => onMoveQueueItem?.(item.queueSongId, 1)} className="min-h-[44px] flex-1 rounded-xl border border-white/12 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-200 disabled:opacity-30 sm:flex-none"><i className="fa-solid fa-arrow-down mr-1"></i>Later</button>
+                                <button type="button" onClick={focusItem} className="min-h-[44px] flex-1 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-50 sm:flex-none">Performance details</button>
+                            </>
+                        ) : (
+                            <>
+                                <button type="button" disabled={itemIsLive || index === 0 || typeof onMoveItem !== 'function'} onClick={() => onMoveItem?.(item.id, -1)} className="min-h-[44px] flex-1 rounded-xl border border-white/12 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-200 disabled:opacity-30 sm:flex-none"><i className="fa-solid fa-arrow-up mr-1"></i>Earlier</button>
+                                <button type="button" disabled={itemIsLive || index >= total - 1 || typeof onMoveItem !== 'function'} onClick={() => onMoveItem?.(item.id, 1)} className="min-h-[44px] flex-1 rounded-xl border border-white/12 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-200 disabled:opacity-30 sm:flex-none"><i className="fa-solid fa-arrow-down mr-1"></i>Later</button>
+                                <button type="button" disabled={performance ? !item?.queueSongId || typeof onOpenPerformance !== 'function' : typeof onFocusItem !== 'function'} onClick={focusItem} className="min-h-[44px] flex-1 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-50 disabled:opacity-30 sm:flex-none">{performance ? 'Performance details' : 'Open details'}</button>
+                                <button type="button" disabled={typeof onSkipItem !== 'function' || ['complete', 'skipped'].includes(status)} onClick={() => onSkipItem?.(item.id, { manualAdvance: true })} className="min-h-[44px] flex-1 rounded-xl border border-amber-300/20 bg-amber-500/10 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-amber-50 disabled:opacity-30 sm:flex-none">Skip</button>
+                                <button type="button" disabled={itemIsLive || typeof onDeleteItem !== 'function'} onClick={() => setConfirmingRemove(true)} className="min-h-[44px] flex-1 rounded-xl border border-rose-300/20 bg-rose-500/10 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-rose-50 disabled:opacity-30 sm:flex-none">Remove</button>
+                            </>
+                        )}
+                    </div>
+                    {confirmingRemove ? (
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-300/22 bg-rose-500/[0.08] px-3 py-2" role="alert">
+                            <span className="text-xs leading-5 text-rose-50/82">Remove this item from Tonight&apos;s Lineup? This cannot be undone.</span>
+                            <span className="flex gap-2">
+                                <button type="button" onClick={() => setConfirmingRemove(false)} className="min-h-[34px] rounded-lg border border-white/12 bg-black/20 px-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-100">Keep</button>
+                                <button type="button" onClick={() => onDeleteItem?.(item.id)} className="min-h-[34px] rounded-lg border border-rose-300/28 bg-rose-500/18 px-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-rose-50">Remove now</button>
+                            </span>
+                        </div>
+                    ) : null}
+                    {trivia ? <InlineTriviaMomentEditor item={item} onUpdateItem={onUpdateItem} onGenerate={onGenerateTrivia} /> : null}
+                    {wyr ? <InlineWyrMomentEditor item={item} onUpdateItem={onUpdateItem} onGenerate={onGenerateWyr} /> : null}
+                </div>
+            ) : null}
+        </article>
+    );
+};
+
 const QueueListPanel = ({
     showQueueList,
     showQueueSummaryBar = true,
@@ -342,6 +706,15 @@ const QueueListPanel = ({
     performanceMode = 'karaoke',
     appleMusicEnabled = false,
     autoDjEnabled = false,
+    lineupPlanItems = [],
+    crowdMomentAutomation = null,
+    onFocusRunOfShowItem,
+    onMoveRunOfShowItem,
+    onSkipRunOfShowItem,
+    onUpdateRunOfShowItem,
+    onDeleteRunOfShowItem,
+    onGenerateRunOfShowTrivia,
+    onGenerateRunOfShowWyr,
 }) => {
     const [selectedSongId, setSelectedSongId] = React.useState('');
     const [expandedSections, setExpandedSections] = React.useState({
@@ -349,6 +722,35 @@ const QueueListPanel = ({
         assigned: false,
         held: false,
     });
+    const [plannedDragId, setPlannedDragId] = React.useState('');
+    const [expandedLineupItemId, setExpandedLineupItemId] = React.useState('');
+    const activeLineupPlanItems = React.useMemo(
+        () => (Array.isArray(lineupPlanItems) ? lineupPlanItems : [])
+            .filter((item) => item?.destination !== 'planner' && !['complete', 'skipped'].includes(String(item?.status || '').trim().toLowerCase()))
+            .sort((left, right) => Number(left?.projectedSequence || left?.sequence || 0) - Number(right?.projectedSequence || right?.sequence || 0)),
+        [lineupPlanItems]
+    );
+    const projectedQueueSongIds = React.useMemo(
+        () => new Set(activeLineupPlanItems
+            .map((item) => String(item?.queueSongId || item?.preparedQueueSongId || '').trim())
+            .filter(Boolean)),
+        [activeLineupPlanItems]
+    );
+    const unprojectedQueue = React.useMemo(
+        () => queue.filter((song) => !projectedQueueSongIds.has(String(song?.id || '').trim())),
+        [projectedQueueSongIds, queue]
+    );
+    const unprojectedAssigned = React.useMemo(
+        () => assigned.filter((song) => !projectedQueueSongIds.has(String(song?.id || '').trim())),
+        [assigned, projectedQueueSongIds]
+    );
+    const crowdAutomationEnabled = crowdMomentAutomation?.autoCrowdMomentsEnabled === true;
+    const crowdAutomationCadence = Math.max(1, Math.min(12, Number(crowdMomentAutomation?.autoCrowdMomentEverySongs || 3) || 3));
+    const crowdAutomationTypes = Array.isArray(crowdMomentAutomation?.autoCrowdMomentPreferredTypes)
+        ? crowdMomentAutomation.autoCrowdMomentPreferredTypes.map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean)
+        : [];
+    const triviaAutomationEnabled = crowdAutomationEnabled && crowdAutomationTypes.includes('trivia');
+    const wyrAutomationEnabled = crowdAutomationEnabled && crowdAutomationTypes.includes('would_you_rather');
     const allSongs = React.useMemo(
         () => [...reviewRequired, ...pending, ...queue, ...assigned, ...held],
         [assigned, held, pending, queue, reviewRequired]
@@ -400,6 +802,11 @@ const QueueListPanel = ({
             setSelectedSongId('');
         }
     }, [selectedSong?.id, selectedSongId]);
+    React.useEffect(() => {
+        if (expandedLineupItemId && !activeLineupPlanItems.some((item) => item?.id === expandedLineupItemId)) {
+            setExpandedLineupItemId('');
+        }
+    }, [activeLineupPlanItems, expandedLineupItemId]);
     const toggleSection = React.useCallback((sectionKey) => {
         setExpandedSections((current) => ({
             ...current,
@@ -523,6 +930,20 @@ const QueueListPanel = ({
             ? 'Linked'
             : selectedStatus === 'held' ? 'Held' : 'Check';
     const selectedLockedInLineup = selectedReadyIndex >= 0 && selectedReadyIndex < safeProtectedReadyQueueCount;
+    const moveProjectedQueueSong = (songId, delta) => {
+        if (typeof reorderQueue !== 'function') return;
+        const fromIndex = queue.findIndex((song) => song.id === songId);
+        const toIndex = Math.max(0, Math.min(queue.length - 1, fromIndex + Number(delta || 0)));
+        if (fromIndex < 0 || fromIndex === toIndex || !queue[toIndex]?.id) return;
+        reorderQueue(songId, queue[toIndex].id);
+    };
+    const automationTypeLabel = crowdAutomationTypes.map((type) => (
+        type === 'trivia' ? 'Trivia Moment'
+            : type === 'would_you_rather' ? 'Would You Rather'
+                : type === 'ready_check' ? 'Ready Check'
+                    : type === 'volley' ? 'Volley Orb'
+                        : type.replaceAll('_', ' ')
+    )).join(' · ');
 
     return (
         <>
@@ -545,6 +966,82 @@ const QueueListPanel = ({
                     styles={styles}
                     compactViewport={compactViewport}
                 />
+            ) : null}
+            {(activeLineupPlanItems.length > 0 || crowdAutomationEnabled) ? (
+                <section className="mb-3 overflow-hidden rounded-xl border border-cyan-300/18 bg-[linear-gradient(145deg,rgba(8,24,34,0.72),rgba(22,12,35,0.72))]" data-feature-id="unified-tonights-lineup-plan">
+                    <div className="flex min-h-[48px] items-center justify-between gap-3 border-b border-white/10 px-3 py-2">
+                        <div className="min-w-0">
+                            <div className="truncate text-xs font-black text-white">Performances + planned moments</div>
+                            <div className="mt-0.5 truncate text-[10px] leading-4 text-zinc-400">One reorderable show order</div>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-cyan-100">{activeLineupPlanItems.length} items</span>
+                    </div>
+
+                    {crowdAutomationEnabled ? (
+                        <div className="flex min-h-[42px] items-center gap-2 border-b border-fuchsia-300/14 bg-fuchsia-500/[0.055] px-3 py-1.5" data-feature-id="lineup-crowd-moment-automation">
+                            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/10 text-[10px] text-fuchsia-100"><i className="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></span>
+                            <div className="min-w-0 flex-1">
+                                <div className="truncate text-[10px] font-black uppercase tracking-[0.1em] text-fuchsia-100">{automationTypeLabel || 'Crowd Moment'} every {crowdAutomationCadence} performance{crowdAutomationCadence === 1 ? '' : 's'}</div>
+                                {(triviaAutomationEnabled || wyrAutomationEnabled) ? <div className="truncate text-[10px] leading-4 text-fuchsia-100/60">Upcoming prompts appear below and can be opened to review.</div> : null}
+                            </div>
+                            <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-emerald-100">Active</span>
+                        </div>
+                    ) : null}
+
+                    {activeLineupPlanItems.map((item, itemIndex) => (
+                        <div
+                            key={item.id}
+                            draggable={item?.projectionSource === 'queue_song'
+                                ? typeof reorderQueue === 'function'
+                                : typeof onMoveRunOfShowItem === 'function'}
+                            onDragStart={() => setPlannedDragId(item.id)}
+                            onDragEnd={() => setPlannedDragId('')}
+                            onDragOver={(event) => {
+                                if (!plannedDragId || plannedDragId === item.id) return;
+                                event.preventDefault();
+                            }}
+                            onDrop={(event) => {
+                                event.preventDefault();
+                                const fromIndex = activeLineupPlanItems.findIndex((entry) => entry.id === plannedDragId);
+                                const draggedItem = activeLineupPlanItems[fromIndex];
+                                if (draggedItem?.projectionSource === 'queue_song' && item?.projectionSource === 'queue_song') {
+                                    reorderQueue?.(draggedItem.queueSongId, item.queueSongId);
+                                } else if (draggedItem?.projectionSource !== 'queue_song' && fromIndex >= 0 && fromIndex !== itemIndex) {
+                                    onMoveRunOfShowItem?.(plannedDragId, itemIndex - fromIndex);
+                                }
+                                setPlannedDragId('');
+                            }}
+                            className={plannedDragId === item.id ? 'opacity-45' : ''}
+                        >
+                            <PlannedLineupCard
+                                item={item}
+                                index={itemIndex}
+                                total={activeLineupPlanItems.length}
+                                expanded={expandedLineupItemId === item.id}
+                                queueIndex={item?.projectionSource === 'queue_song'
+                                    ? queue.findIndex((song) => song.id === item.queueSongId)
+                                    : -1}
+                                queueTotal={queue.length}
+                                positionLabel={item?.projectionSource === 'queue_song'
+                                    ? getReadyQueuePositionLabel(queue.findIndex((song) => song.id === item.queueSongId))
+                                    : `#${itemIndex + 1}`}
+                                locked={item?.projectionSource === 'queue_song'
+                                    && queue.findIndex((song) => song.id === item.queueSongId) >= 0
+                                    && queue.findIndex((song) => song.id === item.queueSongId) < safeProtectedReadyQueueCount}
+                                onMoveItem={onMoveRunOfShowItem}
+                                onMoveQueueItem={moveProjectedQueueSong}
+                                onFocusItem={onFocusRunOfShowItem}
+                                onSkipItem={onSkipRunOfShowItem}
+                                onUpdateItem={onUpdateRunOfShowItem}
+                                onDeleteItem={onDeleteRunOfShowItem}
+                                onGenerateTrivia={onGenerateRunOfShowTrivia}
+                                onGenerateWyr={onGenerateRunOfShowWyr}
+                                onOpenPerformance={setSelectedSongId}
+                                onToggleExpanded={(itemId) => setExpandedLineupItemId((current) => current === itemId ? '' : itemId)}
+                            />
+                        </div>
+                    ))}
+                </section>
             ) : null}
             <div className="mb-3">
                 {touchReorderMode ? (
@@ -576,15 +1073,16 @@ const QueueListPanel = ({
                         </div>
                     </div>
                 ) : null}
-                {selfServePresentation ? (
+                {(selfServePresentation || unprojectedQueue.length > 0) ? (
                     <QueueSectionHeader
-                        label={readyQueueHeaderLabel}
-                        count={queue.length}
+                        label={activeLineupPlanItems.length > 0 ? 'Unplaced performance queue' : readyQueueHeaderLabel}
+                        count={unprojectedQueue.length}
                         toneClass={spotlightAuctionLive ? 'text-amber-200' : 'text-cyan-200'}
-                        detail={readyQueueHeaderDetail}
+                        detail={activeLineupPlanItems.length > 0 ? 'These ready performances have not appeared in the shared lineup yet.' : readyQueueHeaderDetail}
                     />
                 ) : null}
-                {queue.map((s, i) => {
+                {unprojectedQueue.map((s) => {
+                    const i = queue.findIndex((song) => song.id === s.id);
                     const lockedInLiveLineup = i < safeProtectedReadyQueueCount;
                     return (
                         <QueueSongCard
@@ -682,18 +1180,20 @@ const QueueListPanel = ({
                         )) : null}
                 </div>
             ) : null}
-            {assigned.length > 0 ? (
+            {unprojectedAssigned.length > 0 ? (
                 <div className={`mt-3 border-t border-white/10 ${compactViewport ? 'pt-2' : 'pt-3'}`}>
                     <QueueSectionHeader
                         label="Tied To Show"
-                        count={assigned.length}
+                        count={unprojectedAssigned.length}
                         toneClass="text-violet-200"
                         detail={`Linked performances are controlled by Show Plan slots, not the order in ${HOST_LIVE_OPS_LANGUAGE.lineup}.`}
                         open={expandedSections.assigned}
                         onToggle={() => toggleSection('assigned')}
                         featureId="queue-section-assigned-toggle"
                     />
-                    {expandedSections.assigned ? assigned.map((s, i) => (
+                    {expandedSections.assigned ? unprojectedAssigned.map((s) => {
+                        const i = assigned.findIndex((song) => song.id === s.id);
+                        return (
                             <QueueSongCard
                                 key={s.id}
                                 song={s}
@@ -733,7 +1233,8 @@ const QueueListPanel = ({
                                 onApprovePending={onApprovePending}
                                 onDeletePending={onDeletePending}
                             />
-                        )) : null}
+                        );
+                    }) : null}
                 </div>
             ) : null}
             {held.length > 0 ? (

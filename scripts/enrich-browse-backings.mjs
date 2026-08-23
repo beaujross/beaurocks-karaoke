@@ -258,6 +258,8 @@ const chooseBestCandidate = async (song) => {
     approved: true,
     playable: true,
     embeddable: true,
+    verifiedAt: new Date().toISOString().slice(0, 10),
+    verificationSource: 'youtube_oembed',
     trackSource: 'youtube',
     mediaUrl: `https://www.youtube.com/watch?v=${best.candidate.id}`,
     videoId: best.candidate.id,

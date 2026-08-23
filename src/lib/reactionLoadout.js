@@ -26,3 +26,23 @@ export const equipBonusReaction = ({ current = [], reactionType = '', capacity =
     const without = (Array.isArray(current) ? current : []).map(token).filter((id) => id && id !== safeType);
     return [safeType, ...without].slice(0, safeCapacity);
 };
+
+export const equipBonusReactionAtSlot = ({ current = [], reactionType = '', slotIndex = 0, capacity = 0 } = {}) => {
+    const safeType = token(reactionType);
+    const safeCapacity = Math.max(0, Math.min(2, Number(capacity || 0)));
+    const targetIndex = Math.max(0, Math.min(safeCapacity - 1, Number(slotIndex || 0)));
+    if (!safeType || !safeCapacity || CORE_REACTION_TYPES.includes(safeType)) return [];
+    const next = [...new Set((Array.isArray(current) ? current : []).map(token))]
+        .filter((id) => id && !CORE_REACTION_TYPES.includes(id))
+        .slice(0, safeCapacity);
+    const existingIndex = next.indexOf(safeType);
+    if (existingIndex === targetIndex) return next;
+    if (existingIndex >= 0 && targetIndex < next.length) {
+        [next[existingIndex], next[targetIndex]] = [next[targetIndex], next[existingIndex]];
+        return next;
+    }
+    if (existingIndex >= 0) next.splice(existingIndex, 1);
+    if (targetIndex < next.length) next[targetIndex] = safeType;
+    else next.push(safeType);
+    return next.slice(0, safeCapacity);
+};

@@ -1,8 +1,24 @@
+import { buildCanonicalTonightLineup } from './tonightsLineupProjection.js';
+
 const normalizeCount = (value = 0) => Math.max(0, Math.round(Number(value || 0) || 0));
 const normalizeText = (value = '') => String(value || '').trim();
 
 const isPerformance = (item = null) => item?.objectType === 'performance';
 const isFinishedFlowItem = (item = null) => ['complete', 'skipped'].includes(normalizeText(item?.status).toLowerCase());
+
+export const getHostLineupItemDurationSec = (item = {}) => {
+    const raw = item?.raw && typeof item.raw === 'object' ? item.raw : item;
+    const candidates = [
+        item?.durationSec,
+        raw?.plannedDurationSec,
+        raw?.backingPlan?.durationSec,
+        raw?.durationSec,
+        raw?.duration,
+        raw?.expectedDurationSec,
+    ];
+    const resolved = candidates.find((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+    return resolved ? Math.max(1, Math.round(Number(resolved))) : 0;
+};
 
 const getQueueSongLookupKeys = (song = {}) => [
     song?.id,
@@ -31,13 +47,17 @@ const getFlowItemEmoji = (item = {}) => {
 };
 
 const buildFlowDisplayItem = (item = {}, queueLookup = new Map()) => {
-    const id = normalizeText(item?.id);
-    if (!id) return null;
+    const projectionId = normalizeText(item?.id);
+    if (!projectionId) return null;
     const type = normalizeText(item?.type).toLowerCase();
     const queueSong = [
+        item?.queueSongId,
         item?.preparedQueueSongId,
         item?.songId,
     ].map(normalizeText).filter(Boolean).map((key) => queueLookup.get(key)).find(Boolean) || null;
+    const id = item?.projectionSource === 'queue_song'
+        ? normalizeText(queueSong?.id || item?.queueSongId || item?.preparedQueueSongId) || projectionId
+        : projectionId;
     const performance = type === 'performance';
     const singerName = normalizeText(item?.assignedPerformerName || queueSong?.singerName);
     const songTitle = normalizeText(item?.songTitle || queueSong?.songTitle);
@@ -47,6 +67,15 @@ const buildFlowDisplayItem = (item = {}, queueLookup = new Map()) => {
         || item?.modeLaunchPlan?.prompt
         || item?.notes
     );
+    const raw = {
+        ...item,
+        ...(item?.projectionSource === 'queue_song' ? {
+            id,
+            projectionId,
+        } : {}),
+        queueSongId: normalizeText(queueSong?.id || item?.preparedQueueSongId),
+        duration: queueSong?.duration || item?.duration || null,
+    };
     return {
         id,
         objectType: performance ? 'performance' : 'moment',
@@ -67,22 +96,153 @@ const buildFlowDisplayItem = (item = {}, queueLookup = new Map()) => {
             || item?.presentationPlan?.backgroundMedia
         ),
         avatarEmoji: normalizeText(queueSong?.emoji || queueSong?.avatar) || getFlowItemEmoji(item),
-        sourceLabel: 'Show',
-        reason: 'Tonight\'s Flow',
-        raw: {
-            ...item,
-            queueSongId: normalizeText(queueSong?.id || item?.preparedQueueSongId),
-        },
+        sourceLabel: item?.projectionSource === 'queue_song' ? 'Queue' : 'Show',
+        reason: item?.projectionSource === 'queue_song' ? 'Performance queue' : 'Tonight\'s Flow',
+        durationSec: getHostLineupItemDurationSec(raw),
+        raw,
     };
 };
 
 const buildCommittedFlow = (director = null, queueSongs = []) => {
     const queueLookup = buildQueueSongLookup(queueSongs);
-    return (Array.isArray(director?.items) ? director.items : [])
-        .filter((item) => item?.destination !== 'planner' && !isFinishedFlowItem(item))
-        .sort((left, right) => Number(left?.sequence || 0) - Number(right?.sequence || 0))
+    return buildCanonicalTonightLineup({
+        queueSongs,
+        directorItems: Array.isArray(director?.items) ? director.items : [],
+    })
+        .filter((item) => !isFinishedFlowItem(item))
         .map((item) => buildFlowDisplayItem(item, queueLookup))
         .filter(Boolean);
+};
+
+export const deriveTonightLineupAutomationState = ({
+    director = null,
+    committedFlow = [],
+    runOfShowEnabled = false,
+    automationMode = 'auto',
+    currentPerformanceSession = null,
+    hasCurrentPerformance = false,
+    legacyAutoDj = false,
+} = {}) => {
+    const configuredForAuto = normalizeText(automationMode).toLowerCase() !== 'manual'
+        && normalizeText(director?.automationIntent || 'auto').toLowerCase() !== 'manual';
+    const paused = director?.automationPaused === true || !configuredForAuto;
+    const liveItems = (Array.isArray(director?.items) ? director.items : [])
+        .filter((item) => normalizeText(item?.status).toLowerCase() === 'live');
+    const stagedItem = (Array.isArray(director?.items) ? director.items : [])
+        .find((item) => normalizeText(item?.status).toLowerCase() === 'staged') || null;
+    const nextItem = (Array.isArray(committedFlow) ? committedFlow : [])
+        .find((item) => !['live', 'complete', 'skipped'].includes(normalizeText(item?.status).toLowerCase())) || null;
+    const sessionState = normalizeText(currentPerformanceSession?.playbackState || currentPerformanceSession?.state).toLowerCase();
+    const activeSession = ['starting', 'playing', 'paused', 'ending'].includes(sessionState);
+    const liveItem = liveItems[0] || null;
+    const liveQueueSongId = normalizeText(liveItem?.queueSongId || liveItem?.preparedQueueSongId);
+    const sessionQueueSongId = normalizeText(currentPerformanceSession?.songId);
+    const sessionId = normalizeText(currentPerformanceSession?.sessionId);
+    const claimedSessionId = normalizeText(liveItem?.activePerformanceSessionId || director?.activePerformanceSessionId);
+    const needsRepair = liveItems.length > 1
+        || (!!director?.currentItemId && !liveItems.some((item) => item.id === director.currentItemId))
+        || (activeSession && !!liveItem && liveItem.type === 'performance' && !!sessionQueueSongId && !!liveQueueSongId && sessionQueueSongId !== liveQueueSongId)
+        || (activeSession && !!sessionId && !!claimedSessionId && sessionId !== claimedSessionId);
+    const missingPerformanceReference = (Array.isArray(committedFlow) ? committedFlow : [])
+        .some((item) => item?.objectType === 'performance' && item?.raw?.referenceState === 'missing');
+    const base = {
+        active: runOfShowEnabled === true,
+        enabled: runOfShowEnabled === true && configuredForAuto && !paused,
+        paused: runOfShowEnabled === true && paused,
+        limited: runOfShowEnabled !== true && legacyAutoDj === true,
+        state: 'off',
+        label: 'Auto-Advance Off',
+        detail: 'Turn on Auto-Advance to play scenes and performances in Tonight\'s Lineup order.',
+    };
+    if (!runOfShowEnabled) {
+        return legacyAutoDj ? {
+            ...base,
+            state: 'limited',
+            label: 'Songs Only',
+            detail: 'Performances are auto-playing, but scenes are being bypassed. Turn on Auto-Advance to use the full lineup.',
+        } : base;
+    }
+    if (needsRepair || missingPerformanceReference) return {
+        ...base,
+        enabled: false,
+        state: 'repair',
+        label: 'Needs Repair',
+        detail: 'The live stage and Tonight\'s Lineup disagree. Pause and repair the active item before advancing.',
+    };
+    if (['waiting_for_performer', 'blocked'].includes(normalizeText(director?.automationStatus).toLowerCase())) return {
+        ...base,
+        enabled: false,
+        state: 'blocked',
+        label: 'Blocked',
+        detail: 'The next lineup item needs host attention before Auto-Advance can continue.',
+    };
+    if (paused) return {
+        ...base,
+        state: 'paused',
+        label: 'Auto-Advance Paused',
+        detail: 'Tonight\'s Lineup order is preserved. Resume when you are ready to continue.',
+    };
+    if (director?.holdCurrent === true || director?.holdAfterCurrent === true) return {
+        ...base,
+        state: 'blocked',
+        label: 'Advance Held',
+        detail: director?.holdCurrent === true
+            ? 'The current lineup item is held by the host.'
+            : 'Auto-Advance will stop after the current item.',
+    };
+    if (sessionState === 'starting') return {
+        ...base,
+        state: 'starting',
+        label: 'Starting',
+        detail: 'The next performance is starting. Auto-Advance remains armed.',
+    };
+    if (sessionState === 'paused') return {
+        ...base,
+        state: 'paused_playback',
+        label: 'Playback Paused',
+        detail: 'The active performance is paused. Resume playback before the lineup can advance.',
+    };
+    if (liveItem || activeSession || hasCurrentPerformance) return {
+        ...base,
+        state: 'running',
+        label: 'Auto-Advance Running',
+        detail: 'The current item is live; the next eligible item will follow in lineup order.',
+    };
+    if (stagedItem) return {
+        ...base,
+        state: 'armed',
+        label: 'Auto-Advance Armed',
+        detail: 'The next item is staged and ready to start.',
+    };
+    const nextRaw = nextItem?.raw || nextItem;
+    if (normalizeText(nextRaw?.status).toLowerCase() === 'blocked') return {
+        ...base,
+        state: 'blocked',
+        label: 'Blocked',
+        detail: 'The next lineup item needs host attention before Auto-Advance can continue.',
+    };
+    if (nextRaw && (
+        normalizeText(nextRaw?.automationMode).toLowerCase() === 'manual'
+        || ['host', 'host_after_min'].includes(normalizeText(nextRaw?.advanceMode).toLowerCase())
+        || nextRaw?.requireHostAdvance === true
+    )) return {
+        ...base,
+        state: 'manual',
+        label: 'Manual Step Next',
+        detail: 'The next item requires the host to start or advance it.',
+    };
+    if (nextItem) return {
+        ...base,
+        state: 'ready',
+        label: 'Auto-Advance Ready',
+        detail: 'The next eligible scene or performance will start in lineup order.',
+    };
+    return {
+        ...base,
+        state: 'finished',
+        label: 'Lineup Finished',
+        detail: 'There are no remaining scenes or performances to advance.',
+    };
 };
 
 const pushUniqueSegment = (segments, seenIds, segment) => {
@@ -98,6 +258,10 @@ export const buildHostQueueHorizonModel = ({
     attentionCount = 0,
     runOfShowDirector = null,
     queueSongs = [],
+    runOfShowEnabled = false,
+    runOfShowAutomationMode = 'auto',
+    currentPerformanceSession = null,
+    progressionPending = false,
 } = {}) => {
     const current = runtimeModel?.currentPerformance || null;
     const committedNext = runtimeModel?.nextPerformance || null;
@@ -109,7 +273,7 @@ export const buildHostQueueHorizonModel = ({
     const seenIds = new Set();
 
     if (current?.id) {
-            pushUniqueSegment(segments, seenIds, {
+        pushUniqueSegment(segments, seenIds, {
             key: 'on-stage',
             label: 'On Stage',
             item: current,
@@ -124,7 +288,7 @@ export const buildHostQueueHorizonModel = ({
             const upcomingIndex = segments.filter((segment) => segment.key !== 'on-stage').length;
             const itemIsPerformance = isPerformance(item);
             const isLiveMoment = item.status === 'live' && !current?.id;
-        pushUniqueSegment(segments, seenIds, {
+            pushUniqueSegment(segments, seenIds, {
                 key: isLiveMoment ? 'live-moment' : upcomingIndex === 0 ? 'next' : `then-${upcomingIndex}`,
                 label: isLiveMoment ? 'Live' : upcomingIndex === 0 ? (current?.id ? 'Next' : 'Start') : 'Then',
                 item,
@@ -185,19 +349,29 @@ export const buildHostQueueHorizonModel = ({
     const remainingCount = committedFlow.length
         ? Math.max(0, totalUpcomingCount - visibleUpcomingCount)
         : Math.max(0, normalizeCount(queueTotalCount) - visibleQueuePerformanceCount);
-    const autoDjEnabled = runtimeModel?.roomControlsSummary?.autoDj === true;
+    const automation = deriveTonightLineupAutomationState({
+        director: runOfShowDirector,
+        committedFlow,
+        runOfShowEnabled,
+        automationMode: runOfShowAutomationMode,
+        currentPerformanceSession,
+        hasCurrentPerformance: !!current?.id,
+        legacyAutoDj: runtimeModel?.roomControlsSummary?.autoDj === true,
+    });
 
     return {
         segments,
+        timelineItems: committedFlow.length
+            ? committedFlow
+            : segments.map((segment) => segment.item).filter(Boolean),
         remainingCount,
         queueTotalCount: normalizeCount(queueTotalCount),
         liveQueueItemCount: totalUpcomingCount,
         liveQueueMomentCount: committedFlow.filter((item) => !isPerformance(item)).length,
         attentionCount: normalizeCount(attentionCount),
         automation: {
-            enabled: autoDjEnabled,
-            label: autoDjEnabled ? 'Songs: Auto' : 'Songs: Manual',
-            detail: 'Controls karaoke performance advancement only. Planned moments use Tonight\'s Flow controls.',
+            ...automation,
+            pending: progressionPending === true,
         },
         empty: !segments.length,
     };

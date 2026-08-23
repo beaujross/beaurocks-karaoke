@@ -12,6 +12,8 @@ const workspaceHeaderSource = readFileSync('src/apps/Host/components/HostWorkspa
 const helpSource = readFileSync('src/apps/Help/HelpCenter.jsx', 'utf8');
 const forHostsSource = readFileSync('src/apps/Marketing/pages/ForHostsPage.jsx', 'utf8');
 const topChromeSource = readFileSync('src/apps/Host/components/HostTopChrome.jsx', 'utf8');
+const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
+const feedbackDrawerSource = readFileSync('src/apps/Host/components/HostFeedbackDrawer.jsx', 'utf8');
 const firebaseSource = readFileSync('src/lib/firebase.js', 'utf8');
 const indexesSource = readFileSync('firestore.indexes.json', 'utf8');
 
@@ -44,6 +46,18 @@ test('support conversations are private to their Host and the team', () => {
   assert.match(relationsSource, /Reply as BeauRocks Team/);
   assert.match(relationsSource, /Reply to the BeauRocks team/);
   assert.doesNotMatch(relationsSource, /HostInboxPanel/);
+});
+
+test('Hosts can send contextual feedback without navigating away from the live panel', () => {
+  assert.match(topChromeSource, /data-feature-id="host-feedback-button"/);
+  assert.match(hostAppSource, /<HostFeedbackDrawer/);
+  assert.match(feedbackDrawerSource, /createHostSupportThread/);
+  assert.match(feedbackDrawerSource, /Include current Room context/);
+  assert.match(feedbackDrawerSource, /No chat messages, audience details, or credentials are attached\./);
+  assert.match(callableSource, /sanitizeSupportContext\(request\.data\?\.context\)/);
+  assert.doesNotMatch(callableSource, /performanceSinger: text\(value\.performanceSinger/);
+  assert.doesNotMatch(hostAppSource, /performanceSinger: String\(currentSong/);
+  assert.match(relationsSource, /data-host-support-context/);
 });
 
 test('the Host Hub and Operations surfaces are lazy, canonical, and discoverable', () => {
@@ -82,6 +96,12 @@ test('Host Operations presents graphical summary analytics and drillable Host re
   assert.match(analyticsSource, /data-host-cohort-chart/);
   assert.match(analyticsSource, /data-host-activity-health/);
   assert.match(analyticsSource, /data-host-detail-drawer/);
+  assert.match(analyticsSource, /data-host-account-console/);
+  assert.match(analyticsSource, /createHostPasswordResetLink/);
+  assert.match(analyticsSource, /setHostApprovalStatus/);
+  assert.match(indexSource, /password_reset_link_created/);
+  assert.match(indexSource, /generatePasswordResetLink/);
+  assert.match(analyticsSource, /Open feedback/);
   assert.match(analyticsSource, /Onboarding milestones/);
   assert.match(relationsSource, /url\.searchParams\.set\('hostId', hostId\)/);
   assert.match(indexSource, /submittedAtMs: valueToMillis\(application\.lastSubmittedAt/);

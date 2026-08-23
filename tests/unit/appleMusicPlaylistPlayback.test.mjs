@@ -6,6 +6,7 @@ import {
   buildAppleMusicPlaylistStartKey,
   isAppleMusicAutomaticRetryCoolingDown,
   parseAppleMusicPlaylistId,
+  quiesceAppleMusicTransport,
 } from '../../src/lib/appleMusicPlaylistPlayback.js';
 
 describe('Apple Music playlist playback planning', () => {
@@ -92,5 +93,28 @@ describe('Apple Music playlist playback planning', () => {
       key,
       failedAtMs + 1,
     ), false);
+  });
+
+  test('quiesces an existing MusicKit transport before replacing its queue', async () => {
+    const calls = [];
+    const method = await quiesceAppleMusicTransport({
+      stop: async () => calls.push('stop'),
+      pause: async () => calls.push('pause'),
+    });
+    assert.equal(method, 'stop');
+    assert.deepEqual(calls, ['stop']);
+  });
+
+  test('falls back to pause when MusicKit rejects stop', async () => {
+    const calls = [];
+    const method = await quiesceAppleMusicTransport({
+      stop: async () => {
+        calls.push('stop');
+        throw new Error('not stoppable');
+      },
+      pause: async () => calls.push('pause'),
+    });
+    assert.equal(method, 'pause');
+    assert.deepEqual(calls, ['stop', 'pause']);
   });
 });

@@ -20,6 +20,29 @@ const millis = (value) => {
   return 0;
 };
 
+const sanitizeSupportContext = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = token(value.source, 80);
+  if (source !== "host_panel_feedback") return null;
+  const count = Number(value.queueCount);
+  const capturedAtMs = Number(value.capturedAtMs);
+  const context = {
+    source,
+    roomCode: text(value.roomCode, 24).toUpperCase(),
+    roomName: text(value.roomName, 120),
+    workspaceView: token(value.workspaceView, 80),
+    workspaceSection: token(value.workspaceSection, 120),
+    tab: token(value.tab, 80),
+    activeMode: token(value.activeMode, 80),
+    queueCount: Number.isFinite(count) ? Math.max(0, Math.min(9999, Math.round(count))) : 0,
+    performanceTitle: text(value.performanceTitle, 180),
+    performanceArtist: text(value.performanceArtist, 180),
+    pathname: text(value.pathname, 240).split(/[?#]/, 1)[0].replace(/[^A-Za-z0-9_./-]/g, ""),
+    capturedAtMs: Number.isFinite(capturedAtMs) ? Math.max(0, Math.round(capturedAtMs)) : 0,
+  };
+  return Object.fromEntries(Object.entries(context).filter(([, entry]) => entry !== ""));
+};
+
 const serializeAnnouncement = (snap) => {
   const data = snap?.data?.() || {};
   return {
@@ -67,6 +90,7 @@ const serializeThread = (snap) => {
     messageCount: Math.max(0, Number(data.messageCount || 0) || 0),
     createdAtMs: millis(data.createdAt),
     updatedAtMs: millis(data.updatedAt),
+    context: sanitizeSupportContext(data.context),
   };
 };
 
@@ -274,6 +298,7 @@ const createHostCommunicationCallables = ({
       const messageRef = ref.collection("messages").doc();
       const timestamp = now();
       const authorRole = access.isAdmin ? "team" : "host";
+      const context = sanitizeSupportContext(request.data?.context);
       const batch = db.batch();
       batch.set(ref, {
         ownerUid: access.uid, ownerEmail: access.email, ownerName: access.name,
@@ -281,6 +306,7 @@ const createHostCommunicationCallables = ({
         status: access.isAdmin ? "waiting_on_host" : "waiting_on_team",
         lastMessagePreview: text(body, 240), lastMessageByRole: authorRole,
         messageCount: 1, createdAt: timestamp, updatedAt: timestamp,
+        ...(context ? { context } : {}),
       });
       batch.set(messageRef, {
         threadId: ref.id, body, authorUid: access.uid,
@@ -356,5 +382,6 @@ module.exports = {
   serializeAnnouncement,
   serializeComment,
   serializeThread,
+  sanitizeSupportContext,
   serializeMessage,
 };

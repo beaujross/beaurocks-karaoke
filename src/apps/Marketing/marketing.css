@@ -20977,7 +20977,52 @@
   }
 
   .mk3-fans-hero-simplified-copy h1 {
-    font-size: clamp(2.4rem, 12vw, 3.6rem);
+    font-size: clamp(2.15rem, 10.5vw, 3.15rem);
+    line-height: 0.94;
+  }
+
+  .mk3-fans-home-minimal {
+    gap: 30px;
+    padding-top: 10px;
+  }
+
+  .mk3-fans-hero-simplified {
+    gap: 20px;
+  }
+
+  .mk3-fans-hero-simplified-copy {
+    gap: 12px;
+  }
+
+  .mk3-fans-hero-simplified-copy p {
+    font-size: 0.94rem;
+    line-height: 1.48;
+  }
+
+  .mk3-fans-home-hero-actions {
+    gap: 8px;
+  }
+
+  .mk3-fans-home-hero-actions .mk3-rebuild-button {
+    min-height: 46px;
+    padding-top: 0.68rem;
+    padding-bottom: 0.68rem;
+  }
+
+  .mk3-fans-cinematic-pill-row {
+    display: none;
+  }
+
+  .mk3-fans-hero-tv-card {
+    padding: 10px;
+  }
+
+  .mk3-fans-hero-tv-screen {
+    padding: 16px;
+  }
+
+  .mk3-fans-hero-tv-screen strong {
+    font-size: 2rem;
   }
 }
 .mk3-charts-page {

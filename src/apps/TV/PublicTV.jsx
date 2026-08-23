@@ -147,7 +147,8 @@ import {
     getTvReactionLabel,
     getTvReactionLaneLeft,
     getTvReactionMotionSpec,
-    getTvReactionThemeKey
+    getTvReactionThemeKey,
+    selectTvReactionPresentation
 } from './publicTvReactionConfig';
 import {
     buildGivebutterSupportLaunchUrl,
@@ -914,8 +915,6 @@ const GUITAR_SYNC_DECAY_PER_SECOND = 14;
 const GUITAR_SYNC_GAIN_PER_HIT = 11;
 const GUITAR_SYNC_GROUND_THRESHOLD = 12;
 const GUITAR_SYNC_ACTIVE_WINDOW_MS = 3400;
-const GUITAR_SYNC_BASE_BEAT_MS = 620;
-const GUITAR_SYNC_BEAT_WINDOW_MS = 130;
 const GUITAR_SYNC_EVENT_WINDOW_MS = 12000;
 
 const getLobbyTierDefinition = (tierNumber = 0) => (
@@ -935,18 +934,6 @@ const createGuitarSyncState = () => ({
     lastHitAt: 0,
     recentHits: []
 });
-
-const getGuitarBeatMs = ({ micVolume = 0, visualizerEnabled = false } = {}) => {
-    const hasRhythmSignal = !!visualizerEnabled && Number(micVolume || 0) >= 10;
-    if (!hasRhythmSignal) return GUITAR_SYNC_BASE_BEAT_MS;
-    return Math.max(420, Math.min(760, 700 - (Number(micVolume || 0) * 2.6)));
-};
-
-const getBeatOffsetMs = (timestampMs, beatMs) => {
-    const safeBeatMs = Math.max(260, Number(beatMs || GUITAR_SYNC_BASE_BEAT_MS));
-    const mod = ((Number(timestampMs || 0) % safeBeatMs) + safeBeatMs) % safeBeatMs;
-    return Math.min(mod, safeBeatMs - mod);
-};
 
 const shouldDisableLobbyMotion = (reduceMotion) => !!reduceMotion;
 
@@ -2772,6 +2759,19 @@ const MiniVideoPane = ({ room, current, muted = false }) => {
 
 // --- MAIN TV COMPONENT ---
 
+const TvReactionFlourish = ({ visualStyle = '', emojiChar = '' }) => {
+    if (visualStyle === 'tomato_splat') return <div className="absolute -inset-x-24 -top-24 grid h-56 place-items-center text-[9rem] opacity-35 animate-ping">{emojiChar}</div>;
+    if (visualStyle === 'confetti') return <div className="absolute -inset-x-20 -top-20 flex justify-between text-4xl opacity-70"><span className="animate-bounce">✦</span><span className="animate-pulse">●</span><span className="animate-bounce">◆</span></div>;
+    if (visualStyle === 'neon_bolt') return <div className="absolute -inset-x-20 -top-28 h-64 bg-[linear-gradient(110deg,transparent_42%,rgba(103,232,249,0.5)_48%,white_50%,rgba(168,85,247,0.45)_53%,transparent_59%)] blur-[1px] opacity-75" />;
+    if (visualStyle === 'mic_drop') return <div className="absolute -left-24 -right-24 -top-32 h-72 bg-[conic-gradient(from_164deg_at_50%_0%,transparent_0deg,rgba(250,204,21,0.3)_22deg,transparent_46deg)] opacity-80" />;
+    if (visualStyle === 'ufo_beam') return <div className="absolute -left-24 -right-24 -top-8 h-64 bg-[conic-gradient(from_165deg_at_50%_0%,transparent_0deg,rgba(103,232,249,0.38)_28deg,transparent_58deg)] blur-sm opacity-80" />;
+    if (visualStyle === 'dragon_breath') return <div className="absolute -left-28 -top-10 h-32 w-72 bg-[radial-gradient(ellipse_at_right,rgba(253,186,116,0.62),rgba(239,68,68,0.3)_38%,transparent_72%)] blur-sm opacity-85" />;
+    if (visualStyle === 'galaxy') return <div className="absolute -inset-20 rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(168,85,247,0.38),transparent,rgba(34,211,238,0.34),transparent)] blur-md opacity-80 animate-spin" />;
+    if (visualStyle === 'starburst') return <div className="absolute -inset-20 bg-[repeating-conic-gradient(from_0deg,rgba(250,204,21,0.3)_0deg_7deg,transparent_7deg_22deg)] opacity-75 animate-spin" />;
+    if (visualStyle === 'meteor') return <div className="absolute -right-10 -top-20 h-44 w-56 rotate-[-28deg] bg-[linear-gradient(90deg,transparent,rgba(251,146,60,0.42),rgba(255,255,255,0.65))] blur-sm opacity-75" />;
+    return null;
+};
+
 const PublicTV = ({ roomCode }) => {
     const initialTvExploreConfig = useMemo(() => getInitialTvExploreConfig(), []);
     const tvExploreEnabled = initialTvExploreConfig.enabled;
@@ -3906,7 +3906,10 @@ const PublicTV = ({ roomCode }) => {
         });
         
         const unsubActivity = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), where('roomCode', '==', roomCode), limit(8)), s => {
-             const sorted = s.docs.map(d => d.data()).sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+             const sorted = s.docs
+                 .map(d => d.data())
+                 .filter((entry) => String(entry?.type || '').trim().toLowerCase() !== 'cohost_signal')
+                 .sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
              setActivities(sorted);
         });
 
@@ -4303,22 +4306,19 @@ const PublicTV = ({ roomCode }) => {
                         } else if (d.type === 'strum') {
                             const strumCount = Math.max(1, Number(d.count || 1));
                             const eventTimestamp = nowMs();
-                            const beatMs = getGuitarBeatMs({
-                                micVolume: lobbyMicVolumeRef.current,
-                                visualizerEnabled: lobbyVisualizerEnabledRef.current
-                            });
-                            const beatOffsetMs = getBeatOffsetMs(eventTimestamp, beatMs);
-                            const timingScore = clampLobby(100 - ((beatOffsetMs / Math.max(1, beatMs / 2)) * 100), 0, 100);
-                            const inBeatWindow = beatOffsetMs <= GUITAR_SYNC_BEAT_WINDOW_MS;
+                            // The phone owns timing feedback. Network batching and snapshot latency
+                            // make arrival time unsuitable for judging whether a guest was in rhythm.
+                            const grooveScore = clampLobby(Number(d.grooveScore ?? 70), 0, 100);
+                            const grooveHits = clampLobby(Number(d.grooveHits ?? Math.round(strumCount * (grooveScore / 100))), 0, strumCount);
                             setGuitarSyncState((prev) => {
                                 const baseGain = strumCount * GUITAR_SYNC_GAIN_PER_HIT;
-                                const timingBoost = 0.72 + (timingScore / 100) * 0.7;
-                                const meter = clampLobby(Number(prev?.meter || 0) + (baseGain * timingBoost), 0, 100);
+                                const grooveBoost = 0.8 + (grooveScore / 100) * 0.5;
+                                const meter = clampLobby(Number(prev?.meter || 0) + (baseGain * grooveBoost), 0, 100);
                                 return {
                                     ...prev,
                                     meter,
-                                    cadenceScore: clampLobby((Number(prev?.cadenceScore || 0) * 0.58) + (timingScore * 0.42), 0, 100),
-                                    perfectHits: Number(prev?.perfectHits || 0) + (inBeatWindow ? strumCount : 0),
+                                    cadenceScore: clampLobby((Number(prev?.cadenceScore || 0) * 0.58) + (grooveScore * 0.42), 0, 100),
+                                    perfectHits: Number(prev?.perfectHits || 0) + grooveHits,
                                     totalHits: Number(prev?.totalHits || 0) + strumCount,
                                     lastHitAt: eventTimestamp,
                                     recentHits: [
@@ -4335,7 +4335,7 @@ const PublicTV = ({ roomCode }) => {
                                 id: `strum-${c.doc.id}`,
                                 avatar: d.avatar || EMOJI.guitar,
                                 user: d.userName || d.user || 'Guest',
-                                text: `${inBeatWindow ? 'hit the groove with' : 'sent'} ${strumCount} ${getTvReactionLabel('strum').toLowerCase()}${strumCount > 1 ? 's' : ''}${inBeatWindow ? ' in the sync window' : ''}`,
+                                text: `powered the crowd solo with ${strumCount} ${getTvReactionLabel('strum').toLowerCase()}${strumCount > 1 ? 's' : ''}`,
                                 timestampMs: eventTimestamp
                             });
                             // Guitar strums are reflected in the live guitar leaderboard instead.
@@ -4482,7 +4482,7 @@ const PublicTV = ({ roomCode }) => {
             return () => {};
         }
         const chatQuery = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'),
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'tv_chat_messages'),
             where('roomCode', '==', roomCode),
             orderBy('timestamp', 'desc'),
             limit(20)
@@ -4497,7 +4497,7 @@ const PublicTV = ({ roomCode }) => {
                 setChatMessages(visibleMessages);
             },
             {
-                label: `tv:chat_messages:${roomCode}`,
+                label: `tv:tv_chat_messages:${roomCode}`,
                 onFallback: () => setChatMessages([])
             }
         );
@@ -5189,7 +5189,6 @@ const PublicTV = ({ roomCode }) => {
 
     // Auto Recap
     useEffect(() => {
-        if (room?.activeMode && room.activeMode !== 'karaoke') return;
         if (room?.activeScreen && room.activeScreen !== 'stage') return;
         if (room?.showPerformanceRecap === false) {
             if (recap && !recap.preview) setRecap(null);
@@ -5222,7 +5221,7 @@ const PublicTV = ({ roomCode }) => {
                 if(recap) setRecap(null);
             }
         }
-    }, [room?.lastPerformance, room?.activeMode, room?.activeScreen, room?.showPerformanceRecap, recap, performanceRecapTotalMs]);
+    }, [room?.lastPerformance, room?.activeScreen, room?.showPerformanceRecap, recap, performanceRecapTotalMs]);
 
     useEffect(() => {
         if (!room?.recapPreview?.timestamp) return;
@@ -6627,9 +6626,6 @@ const PublicTV = ({ roomCode }) => {
         [strobeTotalTaps, strobeLeaders.length, strobePhase, strobeModeEvents]
     );
     const strobeEngagementScore = clampPct(Number(strobeModeState?.score || 0));
-    const guitarPeakHits = guitarSessionParticipants.length
-        ? Math.max(...guitarSessionParticipants.map((user) => Number(user.guitarHits || 0)))
-        : 0;
     const guitarSessionTotalHits = guitarSessionParticipants.reduce((sum, user) => sum + Number(user?.guitarHits || 0), 0);
     const guitarActivePlayers = room?.guitarSessionId
         ? roomUsers.filter((user) => (
@@ -6638,20 +6634,40 @@ const PublicTV = ({ roomCode }) => {
         ))
         : [];
     const guitarActiveCount = guitarActivePlayers.length;
-    const guitarSyncAccuracy = Number(guitarSyncState?.totalHits || 0) > 0
+    const guitarSyncGroove = Number(guitarSyncState?.totalHits || 0) > 0
         ? Math.round((Number(guitarSyncState?.perfectHits || 0) / Number(guitarSyncState?.totalHits || 1)) * 100)
         : 0;
     const guitarSyncPower = clampPct(
         (Number(guitarSyncState?.meter || 0) * 0.5)
         + (Number(guitarSyncState?.cadenceScore || 0) * 0.28)
-        + (guitarSyncAccuracy * 0.22)
+        + (guitarSyncGroove * 0.22)
         + (guitarActiveCount * 10)
     );
-    const guitarEngagementScore = clampPct(
-        (guitarSyncPower * 0.64)
-        + (Math.min(100, guitarSessionTotalHits) * 0.2)
-        + (Math.min(100, guitarPeakHits * 4) * 0.16)
-    );
+    const guitarVisualNow = nowMs();
+    const guitarRecentBurstCount = (guitarSyncState?.recentHits || [])
+        .filter((entry) => (guitarVisualNow - Number(entry?.timestampMs || 0)) < 900)
+        .reduce((sum, entry) => sum + Math.max(1, Number(entry?.count || 1)), 0);
+    const guitarRecentStrumEvents = (guitarSyncState?.recentHits || [])
+        .filter((entry) => (guitarVisualNow - Number(entry?.timestampMs || 0)) < 1500)
+        .slice(-7);
+    const guitarLastStrumAgeMs = guitarSyncState?.lastHitAt
+        ? Math.max(0, guitarVisualNow - Number(guitarSyncState.lastHitAt || 0))
+        : Number.POSITIVE_INFINITY;
+    const guitarStrumFlashActive = guitarLastStrumAgeMs < 480;
+    const guitarEnergyTier = guitarSyncPower >= 86
+        ? { id: 'face_melting', label: 'Face Melting', accent: 'text-pink-100' }
+        : guitarSyncPower >= 62
+            ? { id: 'shredding', label: 'Shredding', accent: 'text-yellow-100' }
+            : guitarSyncPower >= 34
+                ? { id: 'amped', label: 'Amped', accent: 'text-cyan-100' }
+                : { id: 'warming_up', label: 'Warming Up', accent: 'text-zinc-200' };
+    const guitarVisualStyle = {
+        '--guitar-energy-opacity': String((0.18 + (guitarSyncPower / 100) * 0.58).toFixed(2)),
+        '--guitar-energy-scale': String((0.92 + (guitarSyncPower / 100) * 0.18).toFixed(3)),
+        '--guitar-burst-scale': String((1 + Math.min(0.24, guitarRecentBurstCount * 0.025)).toFixed(3)),
+        '--guitar-pulse-duration': `${Math.max(0.48, 1.32 - (guitarSyncPower / 125)).toFixed(2)}s`,
+        '--guitar-laser-duration': `${Math.max(1.4, 4.2 - (guitarSyncPower / 32)).toFixed(2)}s`
+    };
     const bangerHeatScore = clampPct(Number(bangerModeState?.score || 0));
     const balladGlowScore = clampPct(Number(balladModeState?.score || 0));
     const stormLayerTotal = STORM_CROWD_LAYERS.reduce((sum, layer) => sum + Number(stormLayerMeters?.[layer.id] || 0), 0);
@@ -7596,7 +7612,7 @@ const PublicTV = ({ roomCode }) => {
     const pickerUser = roomUsers.find(u => u.uid === room?.bingoPickerUid) || null;
 
     // 2. Game Cartridges
-    if (activeGameCartridgeMode) {
+    if (activeGameCartridgeMode && !applauseOverlayVisible && !recap) {
         // Map correct payload based on mode
         const isTrivia = room.activeMode.includes('trivia');
         const isWyr = room.activeMode.includes('wyr');
@@ -8129,6 +8145,11 @@ const PublicTV = ({ roomCode }) => {
     const exploreCinema = tvPresentationProfile === 'cinema';
     const isCinema = exploreCinema || roomLayoutMode === 'cinema';
     const isSimpleTvProfile = exploreSimple;
+    const presentedReactions = selectTvReactionPresentation(reactions, {
+        maxVisible: isSimpleTvProfile ? 5 : 7,
+        maxPerParticipant: isSimpleTvProfile ? 1 : 2,
+    });
+    const reactionDisplayCrowded = presentedReactions.length >= 5;
     const isMinimal = !exploreSimple && !exploreCinema && roomLayoutMode === 'minimal';
     const guitarTakeoverMode = room?.lightMode === 'guitar';
     const hasActivePopTriviaPanel = !!(popTriviaQuestion || showPopTriviaEndState);
@@ -8483,7 +8504,7 @@ const PublicTV = ({ roomCode }) => {
                         <div className="text-xl md:text-3xl 2xl:text-4xl">{guitarWinner.avatar}</div>
                         <div className="text-xs md:text-base 2xl:text-xl font-bold text-yellow-300">Guitar Solo MVP</div>
                         <div className="text-white font-black text-xs md:text-base truncate max-w-[30vw]">{guitarWinner.name}</div>
-                        <div className="text-yellow-400 font-mono text-xs md:text-base">{guitarWinner.hits} hits</div>
+                        <div className="text-yellow-400 font-mono text-xs md:text-base">{guitarWinner.hits} points</div>
                     </div>
                 </div>
             )}
@@ -8691,41 +8712,101 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
 
-            {showAmbientFx && room?.lightMode === 'guitar' && (
+            {room?.lightMode === 'guitar' && (
                 <>
-                    <div className="absolute inset-0 z-[80] pointer-events-none bg-gradient-to-b from-black/60 via-black/70 to-red-900/50"></div>
-                    <div className="absolute inset-0 z-[81] pointer-events-none">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,59,120,0.15),transparent_55%)]"></div>
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(255,140,0,0.1),transparent_60%)]"></div>
+                    <div className="absolute inset-0 z-[80] pointer-events-none bg-gradient-to-b from-black/55 via-black/5 to-black/80"></div>
+                    <div
+                        data-feature-id="tv-guitar-solo-reactive-visuals"
+                        data-energy-tier={guitarEnergyTier.id}
+                        className={`guitar-solo-visuals guitar-tier-${guitarEnergyTier.id} absolute inset-0 z-[81] pointer-events-none ${motionSafeFx ? '' : 'guitar-solo-motion'} ${guitarStrumFlashActive ? 'guitar-solo-hit-active' : ''}`}
+                        style={guitarVisualStyle}
+                    >
+                        <div className="guitar-solo-aurora absolute -inset-[12%]"></div>
+                        <div className="guitar-solo-color-wash absolute inset-0"></div>
+                        <div className="guitar-solo-fret-field absolute inset-x-[4%] top-[17%] bottom-[20%] overflow-hidden">
+                            {[0, 1, 2, 3, 4, 5].map((stringIndex) => (
+                                <span key={`tv-guitar-string-${stringIndex}`} style={{ '--guitar-string-index': stringIndex }}></span>
+                            ))}
+                        </div>
+                        <div className="guitar-solo-lasers absolute inset-0 overflow-hidden">
+                            {[0, 1, 2, 3, 4, 5, 6].map((laserIndex) => (
+                                <span key={`tv-guitar-laser-${laserIndex}`} style={{ '--guitar-laser-index': laserIndex }}></span>
+                            ))}
+                        </div>
+                        <div className="guitar-solo-stage-halo absolute left-1/2 top-[45%] h-[min(48vw,600px)] w-[min(48vw,600px)] -translate-x-1/2 -translate-y-1/2">
+                            <div className="guitar-solo-halo-core absolute inset-[23%] rounded-full"></div>
+                            <div className="guitar-solo-halo-ring guitar-solo-halo-ring-a absolute inset-[12%] rounded-full"></div>
+                            <div className="guitar-solo-halo-ring guitar-solo-halo-ring-b absolute inset-[2%] rounded-full"></div>
+                        </div>
+                        <i className="fa-solid fa-guitar guitar-solo-side-guitar guitar-solo-side-guitar-left absolute left-[2.5%] top-[34%]"></i>
+                        <i className="fa-solid fa-guitar guitar-solo-side-guitar guitar-solo-side-guitar-right absolute right-[2.5%] top-[34%]"></i>
+                        <div className="guitar-solo-sparks absolute inset-x-[3%] bottom-[14%] h-[34%] overflow-hidden">
+                            {Array.from({ length: 24 }, (_unused, sparkIndex) => (
+                                <span
+                                    key={`tv-guitar-spark-${sparkIndex}`}
+                                    style={{
+                                        '--guitar-spark-left': `${(sparkIndex * 37 + 11) % 96}%`,
+                                        '--guitar-spark-delay': `${((sparkIndex * 17) % 23) / 10}s`,
+                                        '--guitar-spark-drift': `${((sparkIndex % 7) - 3) * 18}px`,
+                                        '--guitar-spark-size': `${3 + (sparkIndex % 5)}px`
+                                    }}
+                                ></span>
+                            ))}
+                        </div>
+                        <div className="guitar-solo-shockwaves absolute inset-0 overflow-hidden">
+                            {guitarRecentStrumEvents.map((event, eventIndex) => {
+                                const eventKey = `${event?.timestampMs || 0}-${event?.uid || 'guest'}-${eventIndex}`;
+                                const horizontalPct = 18 + ((eventIndex * 19 + String(event?.uid || '').length * 7) % 64);
+                                return (
+                                    <span
+                                        key={eventKey}
+                                        className="guitar-solo-shockwave absolute rounded-full"
+                                        style={{
+                                            left: `${horizontalPct}%`,
+                                            top: `${34 + ((eventIndex * 13) % 24)}%`,
+                                            '--guitar-event-strength': String(Math.min(1.45, 0.8 + (Number(event?.count || 1) * 0.12)))
+                                        }}
+                                    ></span>
+                                );
+                            })}
+                        </div>
+                        <div className="guitar-solo-hit-flash absolute inset-0"></div>
                     </div>
-                    <div className="absolute inset-0 z-[85] pointer-events-none flex flex-col justify-between py-4 md:py-6 2xl:py-8">
+                    <div
+                        className={`guitar-tier-${guitarEnergyTier.id} absolute inset-0 z-[85] pointer-events-none flex flex-col justify-between py-4 md:py-6 2xl:py-8 ${motionSafeFx ? '' : 'guitar-solo-motion'}`}
+                        style={guitarVisualStyle}
+                    >
                         <div className="px-4 md:px-8">
                             <div className="mx-auto max-w-[1480px] flex flex-col md:flex-row md:items-start md:justify-between gap-4 md:gap-5">
                                 <div className="min-w-0">
-                                    <div className={`${motionSafeFx ? 'text-5xl md:text-7xl' : 'text-[clamp(3.6rem,8.2vw,7.2rem)]'} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_26px_rgba(255,120,0,0.8)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR VIBE SYNC</div>
-                                    <div className="mt-2 text-base md:text-[1.45rem] uppercase tracking-[0.18em] text-yellow-100/90">The room spotlight follows whoever is jamming hardest right now.</div>
+                                    <div className={`guitar-solo-title ${motionSafeFx ? 'text-5xl md:text-7xl' : 'text-[clamp(3.6rem,8.2vw,7.2rem)]'} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_26px_rgba(255,120,0,0.8)]`}>CROWD GUITAR SOLO</div>
+                                    <div className="mt-1 text-base md:text-[1.35rem] font-bold uppercase tracking-[0.14em] text-yellow-100/95">Strum on your phone — every hit powers the stage.</div>
                                     <div className="mt-4 flex flex-wrap items-center gap-3">
+                                        <div className={`guitar-solo-tier-chip rounded-full border border-white/25 bg-black/65 px-4 py-2 text-[13px] md:text-[15px] font-black uppercase tracking-[0.18em] ${guitarEnergyTier.accent}`}>
+                                            <i className="fa-solid fa-bolt mr-2"></i>{guitarEnergyTier.label}
+                                        </div>
                                         <div className="bg-black/65 border border-yellow-300/35 rounded-full px-4 py-2 text-[13px] md:text-[15px] uppercase tracking-[0.16em] text-yellow-100">
-                                            Top Jammer {guitarTopJammer ? `${guitarTopJammer.name} ${guitarTopJammer.guitarHits}` : 'Waiting'}
+                                            Solo Leader {guitarTopJammer ? `${guitarTopJammer.name} ${guitarTopJammer.guitarHits}` : 'Waiting'}
                                         </div>
                                         <div className="bg-black/65 border border-cyan-300/35 rounded-full px-4 py-2 text-[13px] md:text-[15px] uppercase tracking-[0.16em] text-cyan-100">{guitarActiveCount} Live Jammers</div>
-                                        <div className="bg-black/65 border border-fuchsia-300/35 rounded-full px-4 py-2 text-[13px] md:text-[15px] uppercase tracking-[0.16em] text-fuchsia-100">{guitarSessionTotalHits} Total Hits</div>
+                                        <div className="bg-black/65 border border-fuchsia-300/35 rounded-full px-4 py-2 text-[13px] md:text-[15px] uppercase tracking-[0.16em] text-fuchsia-100">{guitarSessionTotalHits} Solo Score</div>
                                     </div>
                                 </div>
                                 <div className="bg-black/65 border border-white/20 rounded-2xl px-4 py-4 min-w-[250px] md:min-w-[320px]">
                                     <div className="flex items-center justify-between gap-3 text-[12px] md:text-[13px] uppercase tracking-[0.2em] text-zinc-200">
-                                        <span>Room Jam Intensity</span>
+                                        <span>Crowd Solo Energy</span>
                                         <span className="font-black text-white text-lg md:text-2xl">{guitarSyncPower}%</span>
                                     </div>
-                                    <div className="mt-2 h-3 w-full bg-white/20 rounded-full overflow-hidden border border-white/20">
-                                        <div className="h-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-400 transition-all duration-200" style={{ width: `${guitarSyncPower}%` }}></div>
+                                    <div className="guitar-solo-energy-track relative mt-2 h-3 w-full bg-white/20 rounded-full overflow-hidden border border-white/20">
+                                        <div className="guitar-solo-energy-fill h-full bg-gradient-to-r from-cyan-300 via-yellow-300 to-pink-400 transition-all duration-200" style={{ width: `${guitarSyncPower}%` }}></div>
+                                        <div className="guitar-solo-energy-scan absolute inset-y-0 w-[28%]"></div>
                                     </div>
                                     <div className="mt-3 flex items-center justify-between text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-zinc-200">
-                                        <span>Accuracy {guitarSyncAccuracy}%</span>
-                                        <span>Peak {guitarLeaderMaxHits} hits</span>
+                                        <span>Sync bonus {guitarSyncGroove}%</span>
+                                        <span>{guitarActiveCount} playing now</span>
                                     </div>
                                     <div className="mt-2 text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-zinc-300">
-                                        {guitarTopJammer ? `Now leading: ${guitarTopJammer.name}` : `Energy ${guitarEngagementScore}%`}
+                                        {guitarTopJammer ? `Solo leader: ${guitarTopJammer.name}` : 'Waiting for the first strum'}
                                     </div>
                                     {showJoinOverlay ? (
                                         <div className="mt-4 flex items-center gap-4">
@@ -8748,6 +8829,71 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                         </div>
                         <div className="w-full px-3 md:px-6 pb-2 md:pb-4">
+                            <div data-feature-id="tv-guitar-crowd-solo" className="mx-auto max-w-[1560px] rounded-[1.6rem] border border-white/15 bg-black/60 px-5 py-4 md:px-7 md:py-5 backdrop-blur-md shadow-[0_20px_70px_rgba(0,0,0,0.4)]">
+                                <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(240px,0.42fr)] gap-4 md:gap-6 items-center">
+                                    <div className="min-w-0">
+                                        <div className="flex items-end justify-between gap-4">
+                                            <div>
+                                                <div className="text-[13px] md:text-[15px] font-black uppercase tracking-[0.22em] text-cyan-100">The crowd is playing the solo</div>
+                                                <div className="mt-1 text-xl md:text-3xl font-bold text-white">{guitarActiveCount > 0 ? `${guitarActiveCount} ${guitarActiveCount === 1 ? 'person is' : 'people are'} strumming live` : 'Open the audience app and start strumming'}</div>
+                                            </div>
+                                            <div className="shrink-0 text-right">
+                                                <div className="text-[12px] uppercase tracking-[0.16em] text-zinc-300">Crowd score</div>
+                                                <div className="text-4xl md:text-6xl font-bebas text-yellow-200 leading-none">{guitarSessionTotalHits}</div>
+                                            </div>
+                                        </div>
+                                        <div className="guitar-solo-energy-track relative mt-4 h-5 md:h-6 overflow-hidden rounded-full border border-white/20 bg-white/10 p-1">
+                                            <div className="guitar-solo-energy-fill h-full rounded-full bg-gradient-to-r from-cyan-300 via-yellow-300 to-pink-500 transition-all duration-200 shadow-[0_0_28px_rgba(250,204,21,0.5)]" style={{ width: `${Math.max(guitarSyncPower > 0 ? 8 : 0, guitarSyncPower)}%` }}></div>
+                                            <div className="guitar-solo-energy-scan absolute inset-y-0 w-[22%]"></div>
+                                        </div>
+                                        <div className="guitar-solo-equalizer mt-2.5 flex h-7 items-end gap-1 overflow-hidden" aria-hidden="true">
+                                            {Array.from({ length: 22 }, (_unused, barIndex) => {
+                                                const baseHeight = 24 + ((barIndex * 31) % 58);
+                                                const poweredHeight = Math.min(100, baseHeight + (guitarSyncPower * 0.34) + (guitarRecentBurstCount * 2.4));
+                                                return (
+                                                    <span
+                                                        key={`tv-guitar-eq-${barIndex}`}
+                                                        style={{
+                                                            height: `${Math.max(18, poweredHeight)}%`,
+                                                            '--guitar-eq-index': barIndex,
+                                                            '--guitar-eq-delay': `${(barIndex % 7) * -0.08}s`
+                                                        }}
+                                                    ></span>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="mt-4 flex items-center gap-2 overflow-hidden">
+                                            {guitarDisplayParticipants.length === 0 ? (
+                                                <div className="rounded-full border border-dashed border-white/20 px-4 py-2 text-sm md:text-base font-semibold text-zinc-300">Your avatar appears here when you strum</div>
+                                            ) : guitarDisplayParticipants.slice(0, 10).map((player) => {
+                                                const isLive = (nowMs() - Number(player?.lastVibeAt || 0)) <= GUITAR_SYNC_ACTIVE_WINDOW_MS;
+                                                return (
+                                                    <div key={player.uid} className={`flex min-w-0 items-center gap-2 rounded-full border px-3 py-2 ${isLive ? 'guitar-solo-avatar-live border-cyan-300/50 bg-cyan-400/12 shadow-[0_0_22px_rgba(34,211,238,0.16)]' : 'border-white/10 bg-black/35 opacity-70'}`}>
+                                                        <span className="text-2xl md:text-3xl">{player.avatar || EMOJI.guitar}</span>
+                                                        <span className="max-w-[110px] truncate text-sm md:text-base font-bold text-white">{player.name}</span>
+                                                        <span className="text-sm font-black text-yellow-200">{player.guitarHits}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                    <div className="border-t border-white/15 pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+                                        <div className="text-[12px] md:text-[14px] font-black uppercase tracking-[0.2em] text-zinc-300">Solo leaders</div>
+                                        <div className="mt-3 space-y-2">
+                                            {guitarLeaders.length === 0 ? <div className="text-base md:text-xl text-zinc-300">First strum takes the lead</div> : guitarLeaders.slice(0, 3).map((player, index) => (
+                                                <div key={player.uid} className={`flex items-center gap-3 rounded-xl border px-3 py-2 ${index === 0 ? 'guitar-solo-leader border-yellow-300/45 bg-yellow-300/10' : 'border-white/10 bg-white/5'}`}>
+                                                    <div className="w-7 text-xl md:text-2xl font-bebas text-yellow-200">{index + 1}</div>
+                                                    <div className="text-2xl md:text-3xl">{player.avatar || EMOJI.guitar}</div>
+                                                    <div className="min-w-0 flex-1 truncate text-base md:text-xl font-bold text-white">{player.name}</div>
+                                                    <div className="text-xl md:text-3xl font-bebas text-yellow-200">{player.guitarHits}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="hidden w-full px-3 md:px-6 pb-2 md:pb-4" aria-hidden="true">
                             <div className="mx-auto max-w-[1560px] grid grid-cols-1 xl:grid-cols-[minmax(0,1.3fr)_340px] gap-4 md:gap-5 items-stretch">
                                 <div className="bg-black/62 border border-white/10 rounded-2xl md:rounded-3xl px-5 py-4 md:px-8 md:py-6 2xl:px-10 2xl:py-8 backdrop-blur-md min-w-0">
                                     <div className="flex items-center justify-between gap-3 mb-4 md:mb-5">
@@ -10793,17 +10939,21 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {/* Reactions */}
-            <div className={`absolute inset-0 ${applauseOverlayVisible ? 'z-[285]' : 'z-[200]'} pointer-events-none overflow-hidden`}>
-                {reactions.filter((r) => !r.audienceDisplaySessionId).map(r => {
+            <div className={`absolute inset-0 ${applauseOverlayVisible ? 'z-[285]' : 'z-[200]'} pointer-events-none overflow-hidden`} data-tv-reaction-count={presentedReactions.length} data-tv-reaction-density={reactionDisplayCrowded ? 'compact' : 'full'}>
+                {presentedReactions.map(r => {
                     const reactionTheme = getTvReactionThemeKey(r.type);
                     const reactionDefinition = getReactionDefinition(r.type);
                     const premiumFlourish = reactionDefinition?.premiumFlourish === true;
+                    const reactionLeftPct = isCinema
+                        ? Math.max(10, Math.min(86, Number(r.left || 50)))
+                        : Math.max(10, Math.min(62, 6 + (Number(r.left || 50) * 0.68)));
                     return (
                         <div
                             key={r.id}
+                            data-reaction-visual-style={reactionDefinition?.visualStyle || 'default'}
                             className={`absolute bottom-0 flex flex-col items-center reaction-stack reaction-stack-${r.motionVariant || 'drift-right'}`}
                             style={{
-                                left: `${r.left}%`,
+                                left: `${reactionLeftPct}%`,
                                 '--reaction-duration': `${Math.max(6800, Number(r.motionDurationMs || TV_REACTION_VISIBILITY_MS))}ms`,
                                 '--reaction-drift-x': `${Number(r.motionDriftX || 32)}px`,
                                 '--reaction-rise-y': `${Number(r.motionRiseY || 96)}px`,
@@ -10822,7 +10972,7 @@ const PublicTV = ({ roomCode }) => {
                             {(r.isVip || premiumFlourish) && (
                                 <div className={`absolute -inset-10 rounded-full ${premiumFlourish ? 'bg-gradient-to-tr from-violet-500/35 via-fuchsia-400/35 to-cyan-300/30' : 'bg-gradient-to-tr from-yellow-400/30 via-pink-400/30 to-cyan-400/30'} blur-xl animate-vip-glow`}></div>
                             )}
-                            {reactionDefinition?.visualStyle === 'tomato_splat' ? <div className="absolute -inset-x-24 -top-24 grid h-56 place-items-center text-[9rem] opacity-35 animate-ping">{r.emojiChar || getEmojiChar(r.type)}</div> : null}
+                            <TvReactionFlourish visualStyle={reactionDefinition?.visualStyle} emojiChar={r.emojiChar || getEmojiChar(r.type)} />
                             <div className="relative flex flex-col items-center">
                                 <div className={`reaction-impact-bloom reaction-impact-bloom-${reactionTheme} ${(r.isVip || premiumFlourish) ? 'reaction-impact-bloom-vip' : ''}`} />
                                 <div className={`reaction-impact-ring reaction-impact-ring-${reactionTheme} ${(r.isVip || premiumFlourish) ? 'reaction-impact-ring-vip' : ''}`} />
@@ -10833,7 +10983,7 @@ const PublicTV = ({ roomCode }) => {
                                         <span className="absolute -top-3 -right-3 md:-top-4 md:-right-4 text-xl md:text-3xl animate-vip-spin">{'\u2728'}</span>
                                     )}
                                 </div>
-                                {isSimpleTvProfile ? (
+                                {isSimpleTvProfile || reactionDisplayCrowded ? (
                                     <div className="reaction-nameplate mt-2 inline-flex items-center rounded-full border border-white/18 bg-black/74 px-3 py-1.5 text-sm font-black text-white shadow-[0_0_16px_rgba(255,255,255,0.08)]">
                                         <span className="text-lg leading-none">{r.avatar || EMOJI.sparkle}</span>
                                         <span className="ml-2 max-w-[8rem] truncate">{r.userName || 'Guest'}</span>
@@ -11034,6 +11184,211 @@ const PublicTV = ({ roomCode }) => {
                 68% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.72), calc(var(--reaction-rise-y, 96px) * -0.38), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.62)); }
                 100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 1.22), calc(var(--reaction-rise-y, 96px) * -0.72), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
               }
+              .guitar-solo-aurora {
+                background:
+                  conic-gradient(from 210deg at 50% 48%, rgba(34,211,238,0.28), rgba(250,204,21,0.08), rgba(244,63,94,0.32), rgba(168,85,247,0.2), rgba(34,211,238,0.28)),
+                  radial-gradient(circle at 50% 48%, rgba(255,255,255,0.13), transparent 27%);
+                filter: blur(58px) saturate(1.45);
+                mix-blend-mode: screen;
+                opacity: var(--guitar-energy-opacity, .25);
+                transform: scale(var(--guitar-energy-scale, 1));
+                will-change: transform, opacity, filter;
+              }
+              .guitar-solo-color-wash {
+                background:
+                  radial-gradient(circle at 18% 42%, rgba(34,211,238,0.18), transparent 28%),
+                  radial-gradient(circle at 82% 36%, rgba(244,63,94,0.2), transparent 28%),
+                  radial-gradient(ellipse at 50% 82%, rgba(250,204,21,0.18), transparent 44%);
+                mix-blend-mode: screen;
+                opacity: var(--guitar-energy-opacity, .25);
+              }
+              .guitar-solo-fret-field {
+                transform: perspective(900px) rotateX(58deg) rotateZ(-2deg);
+                transform-origin: 50% 88%;
+                opacity: calc(var(--guitar-energy-opacity, .25) * .58);
+              }
+              .guitar-solo-fret-field span {
+                position: absolute;
+                left: 1%;
+                right: 1%;
+                height: 2px;
+                top: calc(8% + (var(--guitar-string-index) * 16%));
+                background: linear-gradient(90deg, transparent, rgba(34,211,238,0.72), rgba(255,255,255,0.78), rgba(244,114,182,0.72), transparent);
+                box-shadow: 0 0 14px rgba(255,255,255,0.3);
+              }
+              .guitar-solo-lasers span {
+                position: absolute;
+                top: -18%;
+                bottom: 7%;
+                width: 3px;
+                transform-origin: 50% 0;
+                background: linear-gradient(180deg, transparent, rgba(255,255,255,0.82) 18%, rgba(34,211,238,0.36) 48%, transparent 88%);
+                filter: blur(.35px);
+                opacity: calc(var(--guitar-energy-opacity, .25) * .82);
+                box-shadow: 0 0 22px rgba(34,211,238,0.48);
+              }
+              .guitar-solo-lasers span:nth-child(1) { left: 6%; transform: rotate(-23deg); }
+              .guitar-solo-lasers span:nth-child(2) { left: 19%; transform: rotate(-13deg); animation-delay: -.7s; }
+              .guitar-solo-lasers span:nth-child(3) { left: 35%; transform: rotate(-6deg); animation-delay: -1.35s; }
+              .guitar-solo-lasers span:nth-child(4) { left: 50%; transform: rotate(2deg); animation-delay: -2s; }
+              .guitar-solo-lasers span:nth-child(5) { left: 65%; transform: rotate(7deg); animation-delay: -2.55s; }
+              .guitar-solo-lasers span:nth-child(6) { left: 81%; transform: rotate(14deg); animation-delay: -3.1s; }
+              .guitar-solo-lasers span:nth-child(7) { left: 94%; transform: rotate(23deg); animation-delay: -3.7s; }
+              .guitar-solo-stage-halo {
+                opacity: var(--guitar-energy-opacity, .25);
+                transform: translate(-50%, -50%) scale(var(--guitar-burst-scale, 1));
+                will-change: transform, opacity;
+              }
+              .guitar-solo-halo-core {
+                background: radial-gradient(circle, rgba(255,255,255,0.2), rgba(250,204,21,0.12) 34%, rgba(244,63,94,0.08) 52%, transparent 72%);
+                filter: blur(16px);
+                mix-blend-mode: screen;
+              }
+              .guitar-solo-halo-ring {
+                border: 2px solid rgba(255,255,255,0.3);
+                box-shadow: inset 0 0 34px rgba(34,211,238,0.15), 0 0 42px rgba(244,63,94,0.18);
+              }
+              .guitar-solo-halo-ring-a { border-color: rgba(34,211,238,0.42); }
+              .guitar-solo-halo-ring-b { border-color: rgba(244,114,182,0.34); }
+              .guitar-solo-side-guitar {
+                font-size: clamp(7rem, 14vw, 15rem);
+                color: transparent;
+                -webkit-text-stroke: 2px rgba(255,255,255,0.22);
+                filter: drop-shadow(0 0 30px rgba(34,211,238,0.26));
+                opacity: calc(var(--guitar-energy-opacity, .25) * .72);
+              }
+              .guitar-solo-side-guitar-left { transform: translateY(-50%) rotate(-24deg); }
+              .guitar-solo-side-guitar-right { transform: translateY(-50%) rotate(24deg) scaleX(-1); filter: drop-shadow(0 0 30px rgba(244,63,94,0.3)); }
+              .guitar-solo-sparks span {
+                position: absolute;
+                left: var(--guitar-spark-left);
+                bottom: -12px;
+                width: var(--guitar-spark-size);
+                height: var(--guitar-spark-size);
+                border-radius: 9999px;
+                background: linear-gradient(135deg, #fff, #fde047 44%, #fb7185);
+                box-shadow: 0 0 13px rgba(250,204,21,0.82);
+                opacity: 0;
+              }
+              .guitar-solo-shockwave {
+                width: 38px;
+                height: 38px;
+                border: 3px solid rgba(255,255,255,0.9);
+                box-shadow: 0 0 26px rgba(34,211,238,0.72), inset 0 0 22px rgba(244,114,182,0.42);
+                transform: translate(-50%, -50%) scale(.2);
+                opacity: 0;
+              }
+              .guitar-solo-hit-flash {
+                opacity: 0;
+                background: radial-gradient(circle at 50% 46%, rgba(255,255,255,0.28), rgba(250,204,21,0.12) 24%, transparent 58%);
+                mix-blend-mode: screen;
+              }
+              .guitar-solo-energy-fill {
+                background-size: 220% 100%;
+                box-shadow: 0 0 24px rgba(250,204,21,0.38), 0 0 42px rgba(244,63,94,0.16);
+              }
+              .guitar-solo-energy-scan {
+                left: -36%;
+                transform: skewX(-18deg);
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.78), transparent);
+                opacity: .72;
+              }
+              .guitar-solo-equalizer span {
+                flex: 1 1 0;
+                min-width: 3px;
+                border-radius: 9999px 9999px 2px 2px;
+                background: linear-gradient(180deg, #fef9c3, #facc15 32%, #fb7185 67%, #22d3ee);
+                box-shadow: 0 0 12px rgba(250,204,21,0.28);
+                transform-origin: 50% 100%;
+                opacity: .82;
+              }
+              .guitar-solo-avatar-live {
+                position: relative;
+                overflow: hidden;
+              }
+              .guitar-solo-avatar-live::after {
+                content: '';
+                position: absolute;
+                inset: -70% -25%;
+                background: linear-gradient(110deg, transparent 36%, rgba(255,255,255,0.28) 49%, transparent 62%);
+                transform: translateX(-80%);
+              }
+              .guitar-solo-leader {
+                box-shadow: 0 0 26px rgba(250,204,21,0.14), inset 0 0 20px rgba(250,204,21,0.06);
+              }
+              .guitar-tier-amped .guitar-solo-title { filter: brightness(1.08) saturate(1.12); }
+              .guitar-tier-shredding .guitar-solo-title { filter: brightness(1.16) saturate(1.25); }
+              .guitar-tier-face_melting .guitar-solo-title { filter: brightness(1.28) saturate(1.45); }
+              .guitar-tier-shredding .guitar-solo-tier-chip,
+              .guitar-tier-face_melting .guitar-solo-tier-chip { box-shadow: 0 0 26px rgba(250,204,21,0.2), inset 0 0 18px rgba(244,63,94,0.08); }
+              @keyframes guitar-aurora-shift {
+                0%, 100% { transform: translate3d(-2%, 1%, 0) scale(var(--guitar-energy-scale, 1)) rotate(-3deg); filter: blur(58px) saturate(1.38); }
+                50% { transform: translate3d(2%, -1%, 0) scale(calc(var(--guitar-energy-scale, 1) + .045)) rotate(4deg); filter: blur(48px) saturate(1.75); }
+              }
+              @keyframes guitar-laser-sweep {
+                0%, 100% { opacity: .1; margin-left: -5vw; }
+                38% { opacity: var(--guitar-energy-opacity, .3); }
+                58% { opacity: calc(var(--guitar-energy-opacity, .3) * .62); margin-left: 8vw; }
+              }
+              @keyframes guitar-halo-breathe {
+                0%, 100% { transform: translate(-50%, -50%) scale(var(--guitar-burst-scale, 1)); filter: brightness(1); }
+                50% { transform: translate(-50%, -50%) scale(calc(var(--guitar-burst-scale, 1) + .07)); filter: brightness(1.28); }
+              }
+              @keyframes guitar-ring-spin { to { transform: rotate(360deg); } }
+              @keyframes guitar-side-float {
+                0%, 100% { margin-top: -9px; }
+                50% { margin-top: 10px; }
+              }
+              @keyframes guitar-spark-rise {
+                0% { opacity: 0; transform: translate3d(0, 22px, 0) scale(.45); }
+                16% { opacity: var(--guitar-energy-opacity, .4); }
+                100% { opacity: 0; transform: translate3d(var(--guitar-spark-drift), -190px, 0) scale(1.2) rotate(160deg); }
+              }
+              @keyframes guitar-shockwave-hit {
+                0% { opacity: .95; transform: translate(-50%, -50%) scale(.18); }
+                70% { opacity: .42; }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(calc(4.2 * var(--guitar-event-strength, 1))); }
+              }
+              @keyframes guitar-hit-flash {
+                0% { opacity: .72; transform: scale(.94); }
+                100% { opacity: 0; transform: scale(1.12); }
+              }
+              @keyframes guitar-energy-flow { to { background-position: 220% 50%; } }
+              @keyframes guitar-energy-scan { to { left: 118%; } }
+              @keyframes guitar-equalizer-bounce {
+                0%, 100% { transform: scaleY(.54); filter: brightness(.9); }
+                48% { transform: scaleY(1.08); filter: brightness(1.38); }
+              }
+              @keyframes guitar-avatar-sheen { to { transform: translateX(110%); } }
+              @keyframes guitar-leader-pulse {
+                0%, 100% { transform: scale(1); filter: brightness(1); }
+                50% { transform: scale(1.018); filter: brightness(1.18); }
+              }
+              @keyframes guitar-title-flare {
+                0%, 100% { text-shadow: 0 0 24px rgba(250,204,21,.34), 0 0 48px rgba(244,63,94,.18); }
+                50% { text-shadow: 0 0 34px rgba(250,204,21,.68), 0 0 68px rgba(244,63,94,.46), 0 0 88px rgba(34,211,238,.3); }
+              }
+              .guitar-solo-motion .guitar-solo-aurora { animation: guitar-aurora-shift 6.2s ease-in-out infinite; }
+              .guitar-solo-motion .guitar-solo-lasers span { animation: guitar-laser-sweep var(--guitar-laser-duration, 3.4s) ease-in-out infinite; }
+              .guitar-solo-motion .guitar-solo-stage-halo { animation: guitar-halo-breathe var(--guitar-pulse-duration, 1s) ease-in-out infinite; }
+              .guitar-solo-motion .guitar-solo-halo-ring-a { animation: guitar-ring-spin 12s linear infinite; border-style: dashed; }
+              .guitar-solo-motion .guitar-solo-halo-ring-b { animation: guitar-ring-spin 18s linear infinite reverse; border-style: dotted; }
+              .guitar-solo-motion .guitar-solo-side-guitar { animation: guitar-side-float 2.8s ease-in-out infinite; }
+              .guitar-solo-motion .guitar-solo-side-guitar-right { animation-delay: -1.4s; }
+              .guitar-solo-motion .guitar-solo-sparks span { animation: guitar-spark-rise 2.4s ease-out infinite; animation-delay: var(--guitar-spark-delay); }
+              .guitar-solo-motion .guitar-solo-shockwave { animation: guitar-shockwave-hit 1.2s ease-out both; }
+              .guitar-solo-motion.guitar-solo-hit-active .guitar-solo-hit-flash { animation: guitar-hit-flash .48s ease-out both; }
+              .guitar-solo-motion .guitar-solo-energy-fill { animation: guitar-energy-flow 1.4s linear infinite; }
+              .guitar-solo-motion .guitar-solo-energy-scan { animation: guitar-energy-scan 2.1s ease-in-out infinite; }
+              .guitar-solo-motion .guitar-solo-equalizer span { animation: guitar-equalizer-bounce var(--guitar-pulse-duration, 1s) ease-in-out infinite; animation-delay: var(--guitar-eq-delay); }
+              .guitar-solo-motion .guitar-solo-avatar-live::after { animation: guitar-avatar-sheen 1.8s ease-in-out infinite; }
+              .guitar-solo-motion .guitar-solo-leader { animation: guitar-leader-pulse var(--guitar-pulse-duration, 1s) ease-in-out infinite; }
+              .guitar-solo-motion.guitar-tier-face_melting .guitar-solo-title { animation: guitar-title-flare .72s ease-in-out infinite; }
+              @media (max-height: 720px) {
+                .guitar-solo-side-guitar { font-size: clamp(5rem, 11vw, 9rem); }
+                .guitar-solo-stage-halo { width: min(38vw, 420px); height: min(38vw, 420px); }
+                .guitar-solo-sparks { bottom: 12%; height: 28%; }
+              }
               @keyframes points-burst { 0% { opacity: 0; transform: translate3d(0, 18px, 0) scale(0.42) rotate(0deg); } 14% { opacity: 1; transform: translate3d(var(--burst-pop-x, 0px), -8px, 0) scale(1.32) rotate(24deg); } 42% { opacity: 0.95; transform: translate3d(calc(var(--burst-x, 0px) * 0.38), -28px, 0) scale(1.05) rotate(96deg); } 78% { opacity: 0.74; } 100% { opacity: 0; transform: translate3d(var(--burst-x, 0px), -82px, 0) scale(1.82) rotate(210deg); } }
               @keyframes applause-meter-aurora { 0%, 100% { transform: translate3d(-2%, 0, 0) scale(1); opacity: 0.72; } 50% { transform: translate3d(2%, -1%, 0) scale(1.04); opacity: 0.94; } }
               @keyframes applause-meter-beam-sweep { 0% { opacity: 0; transform: translateX(-24vw) rotate(var(--beam-tilt, -8deg)); } 20% { opacity: 0.5; } 78% { opacity: 0.32; } 100% { opacity: 0; transform: translateX(28vw) rotate(var(--beam-tilt, -8deg)); } }
@@ -11069,6 +11424,61 @@ const PublicTV = ({ roomCode }) => {
               @keyframes reaction-impact-ring {
                 0% { opacity: 0.88; transform: translate(-50%, -50%) scale(0.44); }
                 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.34); }
+              }
+              @keyframes reaction-starburst-entry {
+                0% { opacity: 0; transform: translate3d(0, 42px, 0) scale(0.16) rotate(-85deg); }
+                18% { opacity: 1; transform: translate3d(0, -24px, 0) scale(1.34) rotate(16deg); }
+                45% { transform: translate3d(var(--reaction-sway-x, 14px), -54px, 0) scale(1.04) rotate(-8deg); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 30px) * .45), calc(var(--reaction-rise-y, 100px) * -1), 0) scale(.72) rotate(55deg); }
+              }
+              @keyframes reaction-meteor-entry {
+                0% { opacity: 0; transform: translate3d(120px, -90px, 0) scale(.22) rotate(42deg); }
+                22% { opacity: 1; transform: translate3d(-12px, 18px, 0) scale(1.32) rotate(-12deg); }
+                52% { transform: translate3d(20px, -44px, 0) scale(1.02) rotate(8deg); }
+                100% { opacity: 0; transform: translate3d(-80px, calc(var(--reaction-rise-y, 100px) * -1.1), 0) scale(.7) rotate(-38deg); }
+              }
+              @keyframes reaction-galaxy-entry {
+                0% { opacity: 0; transform: translate3d(0, 36px, 0) scale(.14) rotate(-180deg); filter: blur(8px); }
+                25% { opacity: 1; transform: translate3d(0, -18px, 0) scale(1.3) rotate(24deg); filter: blur(0); }
+                62% { transform: translate3d(calc(var(--reaction-sway-x, 14px) * -1), -62px, 0) scale(1.08) rotate(145deg); }
+                100% { opacity: 0; transform: translate3d(var(--reaction-drift-x, 30px), calc(var(--reaction-rise-y, 100px) * -1), 0) scale(.56) rotate(300deg); }
+              }
+              @keyframes reaction-tomato-splat-entry {
+                0% { opacity: 0; transform: translate3d(-80px, -70px, 0) scale(2.2) rotate(-32deg); }
+                20% { opacity: 1; transform: translate3d(0, 6px, 0) scale(.78) rotate(10deg); }
+                34% { transform: translate3d(0, -8px, 0) scale(1.25) rotate(-5deg); }
+                100% { opacity: 0; transform: translate3d(22px, -72px, 0) scale(.9) rotate(24deg); }
+              }
+              @keyframes reaction-neon-bolt-entry {
+                0%, 12% { opacity: 0; transform: translate3d(0, -120px, 0) scaleY(1.8) skewX(-22deg); }
+                16% { opacity: 1; transform: translate3d(0, 12px, 0) scale(1.42) skewX(10deg); }
+                24% { opacity: .35; }
+                30% { opacity: 1; transform: translate3d(8px, -20px, 0) scale(1.1) skewX(-5deg); }
+                100% { opacity: 0; transform: translate3d(-18px, calc(var(--reaction-rise-y, 100px) * -1), 0) scale(.72); }
+              }
+              @keyframes reaction-confetti-entry {
+                0% { opacity: 0; transform: translate3d(0, -110px, 0) scale(.25) rotate(-70deg); }
+                24% { opacity: 1; transform: translate3d(16px, 8px, 0) scale(1.3) rotate(20deg); }
+                54% { transform: translate3d(-22px, -54px, 0) scale(1.02) rotate(90deg); }
+                100% { opacity: 0; transform: translate3d(42px, -110px, 0) scale(.7) rotate(190deg); }
+              }
+              @keyframes reaction-mic-drop-entry {
+                0% { opacity: 0; transform: translate3d(0, -125px, 0) scale(.38) rotate(-62deg); }
+                28% { opacity: 1; transform: translate3d(0, 12px, 0) scale(1.28) rotate(18deg); }
+                40% { transform: translate3d(0, -4px, 0) scale(1.08) rotate(-8deg); }
+                100% { opacity: 0; transform: translate3d(12px, -74px, 0) scale(.82) rotate(34deg); }
+              }
+              @keyframes reaction-ufo-beam-entry {
+                0% { opacity: 0; transform: translate3d(-145px, -82px, 0) scale(.3) rotate(-16deg); }
+                26% { opacity: 1; transform: translate3d(0, -24px, 0) scale(1.3) rotate(5deg); }
+                58% { transform: translate3d(28px, -54px, 0) scale(1.04) rotate(-4deg); }
+                100% { opacity: 0; transform: translate3d(150px, -96px, 0) scale(.58) rotate(14deg); }
+              }
+              @keyframes reaction-dragon-breath-entry {
+                0% { opacity: 0; transform: translate3d(145px, 30px, 0) scale(.26) rotate(26deg); }
+                22% { opacity: 1; transform: translate3d(-12px, -18px, 0) scale(1.35) rotate(-10deg); }
+                54% { transform: translate3d(32px, -62px, 0) scale(1.05) rotate(7deg); }
+                100% { opacity: 0; transform: translate3d(-120px, -128px, 0) scale(.64) rotate(-28deg); }
               }
               @keyframes reaction-launch-trail {
                 0% { opacity: 0; transform: translate3d(var(--reaction-entry-x, 0px), var(--reaction-entry-y, 48px), 0) scale(0.28) rotate(calc(var(--reaction-spin, 18deg) * -0.46)); }
@@ -11639,6 +12049,15 @@ const PublicTV = ({ roomCode }) => {
               .reaction-stack-ember { animation: reaction-ember-rise var(--reaction-duration, 9200ms) cubic-bezier(0.18, 0.7, 0.22, 1) forwards; }
               .reaction-stack-heart { animation: reaction-heart-lift var(--reaction-duration, 9600ms) ease-out forwards; }
               .reaction-stack-applause { animation: reaction-applause-snap var(--reaction-duration, 8800ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+              .reaction-stack-starburst { animation: reaction-starburst-entry var(--reaction-duration, 9000ms) cubic-bezier(0.18, 0.75, 0.2, 1) forwards; }
+              .reaction-stack-meteor { animation: reaction-meteor-entry var(--reaction-duration, 8800ms) cubic-bezier(0.16, 0.72, 0.2, 1) forwards; }
+              .reaction-stack-galaxy { animation: reaction-galaxy-entry var(--reaction-duration, 9800ms) ease-out forwards; }
+              .reaction-stack-tomato-splat { animation: reaction-tomato-splat-entry var(--reaction-duration, 8200ms) cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+              .reaction-stack-neon-bolt { animation: reaction-neon-bolt-entry var(--reaction-duration, 8200ms) cubic-bezier(0.1, 0.8, 0.18, 1) forwards; }
+              .reaction-stack-confetti { animation: reaction-confetti-entry var(--reaction-duration, 9000ms) ease-out forwards; }
+              .reaction-stack-mic-drop { animation: reaction-mic-drop-entry var(--reaction-duration, 8600ms) cubic-bezier(0.18, 0.76, 0.22, 1) forwards; }
+              .reaction-stack-ufo-beam { animation: reaction-ufo-beam-entry var(--reaction-duration, 9200ms) ease-in-out forwards; }
+              .reaction-stack-dragon-breath { animation: reaction-dragon-breath-entry var(--reaction-duration, 9000ms) cubic-bezier(0.16, 0.74, 0.2, 1) forwards; }
               .reaction-label { animation: reaction-label-in 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
               .reaction-nameplate { backdrop-filter: blur(12px); }
               .reaction-type-chip { box-shadow: 0 0 20px rgba(34, 211, 238, 0.16); }
@@ -11734,6 +12153,17 @@ const PublicTV = ({ roomCode }) => {
               .motion-safe-fx .reaction-stack-ember,
               .motion-safe-fx .reaction-stack-heart,
               .motion-safe-fx .reaction-stack-applause {
+                animation: reaction-safe-float var(--reaction-duration, 9000ms) ease-out forwards;
+              }
+              .motion-safe-fx .reaction-stack-starburst,
+              .motion-safe-fx .reaction-stack-meteor,
+              .motion-safe-fx .reaction-stack-galaxy,
+              .motion-safe-fx .reaction-stack-tomato-splat,
+              .motion-safe-fx .reaction-stack-neon-bolt,
+              .motion-safe-fx .reaction-stack-confetti,
+              .motion-safe-fx .reaction-stack-mic-drop,
+              .motion-safe-fx .reaction-stack-ufo-beam,
+              .motion-safe-fx .reaction-stack-dragon-breath {
                 animation: reaction-safe-float var(--reaction-duration, 9000ms) ease-out forwards;
               }
               .motion-safe-fx .reaction-impact-bloom,
