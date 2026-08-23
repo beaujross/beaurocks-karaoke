@@ -14542,7 +14542,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     fifthReactionSlotPointsCost={fifthReactionSlotPointsCost}
                     fifthReactionSlotPurchasesEnabled={fifthReactionSlotPurchasesEnabled}
                     onUnlockFifth={() => void unlockFifthReactionSlot()}
-                    layout={tab === 'home' ? 'grid' : 'strip'}
+                    layout="grid"
                 />
             ) : null}
 

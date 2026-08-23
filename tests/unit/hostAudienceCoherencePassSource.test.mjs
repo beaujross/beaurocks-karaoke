@@ -17,7 +17,7 @@ test('audience join, reaction sizing, fifth slot, and Fame entry follow the simp
   assert.match(deck, /h-\[88px\][\s\S]*isGrid \? 'text-6xl' : 'text-4xl'/);
   assert.match(deck, /data-reaction-layout/);
   assert.match(deck, /min-h-\[136px\]/);
-  assert.match(singer, /layout=\{tab === 'home' \? 'grid' : 'strip'\}/);
+  assert.match(singer, /layout="grid"/);
   assert.match(deck, /data-feature-id="reaction-deck-unlock-slot-5"/);
 });
 
